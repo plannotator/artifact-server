@@ -44,12 +44,13 @@ This repository contains the local publication foundation and the first external
 
 ## Remaining implementation
 
-The next implementation block packages the compiled local and external-storage runtimes.
-The executable scope is in
+Packaging is now in progress. The direct local archive and its installed-package
+gate exist. The remaining executable scope is in
 [`spec/phase-6-packaging.md`](./spec/phase-6-packaging.md). It defines a native
 local package that does not require Docker, one optional OCI image, Compact
-Compose and External-storage Compose, a Helm chart, migrations, graceful shutdown, recovery,
-release evidence, and the tests that make those targets supportable.
+Compose and External-storage Compose, a Helm chart, migrations, graceful
+shutdown, recovery, release evidence, and the tests that make those targets
+supportable.
 
 After that foundation passes, the remaining work is:
 
@@ -61,7 +62,38 @@ After that foundation passes, the remaining work is:
 5. The Plannotator connection and review bridge after its separate integration
    contract passes.
 
-## Run locally
+## Install the direct local package
+
+The direct local release is a self-contained Node package. It includes compiled
+JavaScript and all production dependencies. It does not include Artifact Server
+source code, TypeScript, pnpm, test tools, or a container. Node.js 24.12 or newer
+is the only runtime prerequisite after the archive is downloaded.
+
+Build and unpack the package:
+
+```sh
+pnpm package:local
+tar -xzf release/artifact-server-*-node.tar.gz
+./artifactserver/bin/artifactserver --version
+./artifactserver/bin/artifactserver start --data .artifact-server --port 8787
+```
+
+Move the extracted `artifactserver` directory anywhere user-owned. Add its
+`bin` directory to `PATH` if the shorter `artifactserver` command is preferred.
+The executable directory and persistent data directory are separate: replacing
+the executable directory must not replace or remove local data.
+
+The package is built without native Node extensions, so the same archive can be
+used with supported Node installations on macOS, Linux, and Windows. The
+archive contains both the POSIX `artifactserver` launcher and
+`artifactserver.cmd` for Windows.
+
+`pnpm test:local-package` builds the archive without network access, extracts it
+twice into clean directories, and runs the packaged executable through publish,
+open, program-directory replacement, restart, stopped-data backup, and clean
+restore. It records the archive checksum and runtime proof in `evidence/`.
+
+## Run from the source checkout
 
 Requirements: Node.js 24.12 or newer, pnpm 10.34.3, and Ruby for validating the conformance ledger.
 

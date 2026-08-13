@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+artifactserver_bin_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec node "$artifactserver_bin_directory/../dist/cli/main.js" "$@"

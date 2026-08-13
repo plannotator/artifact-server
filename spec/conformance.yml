@@ -2049,6 +2049,24 @@ requirements:
     depends_on: [DEP-012, DEP-015]
     evidence: []
 
+  - id: DEP-019
+    kind: deployment
+    behavior: The direct local release is one offline-extractable Node archive containing the compiled CLI, POSIX and Windows launchers, and production dependencies, with its replaceable program directory separate from the persistent data directory.
+    owner: deployment
+    source: {file: phase-6-packaging.md, anchor: direct-local-package-contract}
+    acceptance:
+      behavior: {id: DEP-019-B, description: Extract the archive into a clean directory, run its real launcher, publish and open a file, replace the program directory, restart against the same data, restore a stopped backup into an empty directory, and preserve artifact ID, version ID, pointer, and bytes.}
+      failure: {id: DEP-019-F, description: Building and running the extracted package cannot require Docker, pnpm, TypeScript, a source checkout, package-registry access, an external service, a development dependency, or a platform-specific native Node extension.}
+    deployments: [local]
+    status: behavior_verified
+    depends_on: [DEP-004]
+    evidence:
+      - deployment: local
+        tests: [DEP-019-B, DEP-019-F]
+        result: pass
+        run: evidence/local-package.json
+        recorded_at: "2026-08-13T23:54:46Z"
+
   - id: OPS-001
     kind: behavior
     behavior: Every non-local deployment exposes health and readiness checks that distinguish process health from database, blob, migration, and configuration readiness.
@@ -2212,7 +2230,7 @@ requirements:
       failure: {id: REL-001-F, description: The local release cannot be declared complete when any applicable behavior or hostile test lacks passing local evidence.}
     deployments: [local]
     status: specified
-    depends_on: [DEP-004, REL-006]
+    depends_on: [DEP-004, DEP-019, REL-006]
     evidence: []
 
   - id: REL-002

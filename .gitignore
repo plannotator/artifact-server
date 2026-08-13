@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 performance/results/
+/release/
 .artifact-server/
 .env
 .env.*

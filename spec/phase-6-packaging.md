@@ -1,6 +1,6 @@
 # Phase 6: local, container, Compose, and Kubernetes packaging
 
-Status: proposed
+Status: implementing
 
 This phase turns the working local and external-storage runtimes into installable,
 upgradable, recoverable release packages. It does not change artifact, version,
@@ -56,6 +56,34 @@ are not mature enough to become an invisible Artifact Server dependency.
 The low-level Docker and Helm surfaces ship first. The common Artifact Server
 deployment command wraps those exact surfaces after they are stable. It must
 not introduce a second deployment implementation.
+
+### Direct local package contract
+
+The direct local release is one compressed archive containing compiled
+JavaScript, the `artifactserver` launcher, and its complete production
+dependency tree. Extracting it does not contact a package registry. Running it
+requires only a supported Node installation; it does not require Docker, pnpm,
+TypeScript, a source checkout, or an external service.
+
+The build uses the pinned lockfile and an already populated pnpm content store
+with network access disabled. Release automation must populate that store from
+the pinned lockfile before invoking the package build. The archive itself is
+complete and requires no package-manager operation when it is extracted or run.
+
+The archive contains no native Node extensions. The same package can therefore
+run on supported Node installations on macOS, Linux, and Windows. It includes a
+POSIX launcher and a Windows command launcher. Platform-specific installers or
+a bundled Node runtime may be added later as conveniences, but they must wrap
+this same compiled CLI and do not define another runtime.
+
+The extracted program directory is replaceable. The persistent data directory
+is separate and is never inside the program directory. A package test must
+extract the release into a clean directory, run its real launcher, publish and
+open a file, stop and replace the extracted program directory, restart against
+the same data, restore a stopped copy of that data into an empty directory, and
+verify the original artifact ID, version ID, current pointer, and bytes. This
+replacement test proves package/data separation; compatibility between two
+different released schema versions remains part of the later upgrade gate.
 
 ## Required runtime changes
 
@@ -413,20 +441,24 @@ fail the packaging gate.
 
 ## Implementation order
 
-1. Add the runtime lifecycle commands and behavior: migration apply and
+1. Build the direct local package from compiled JavaScript and production
+   dependencies, then prove clean extraction, offline execution, program
+   replacement, restart, stopped-data backup, and restore through the packaged
+   executable.
+2. Add the remaining runtime lifecycle commands and behavior: migration apply and
    validate, configuration check, secret files, support manifest, integrity
    check, readiness drain, and version injection.
-2. Build and verify the OCI image against the existing local, external-storage, MCP,
+3. Build and verify the OCI image against the existing local, external-storage, MCP,
    observability, smoke, and bounded performance suites.
-3. Ship the compact Compose package and complete its install, restart, upgrade,
+4. Ship the compact Compose package and complete its install, restart, upgrade,
    backup, restore, and hostile-configuration evidence.
-4. Ship External-storage Compose and run the existing multi-process Postgres
+5. Ship External-storage Compose and run the existing multi-process Postgres
    and S3 suite through containers.
-5. Ship the Helm chart and pass the multi-replica migration, rollout, failure,
+6. Ship the Helm chart and pass the multi-replica migration, rollout, failure,
    recovery, observability, and performance gates in a disposable cluster.
-6. Add compact-to-external-storage export and import, then prove one installation can move
+7. Add compact-to-external-storage export and import, then prove one installation can move
    from the Compose package to the Helm package without changing IDs or bytes.
-7. Publish signed release artifacts and add the common CLI wrapper around the
+8. Publish signed release artifacts and add the common CLI wrapper around the
    verified Compose and Helm operations.
 
 Every step ends with the normal lint, type, build, conformance, smoke, real
@@ -459,3 +491,5 @@ phase.
 5. Choose the self-hosted browser-login baseline when WorkOS is not configured.
 6. Define recovery-point and recovery-time targets after the backup procedures
    have measured evidence.
+7. Choose and publish the source and binary distribution license before a
+   public release. The repository does not yet contain a license file.

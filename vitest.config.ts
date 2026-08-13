@@ -14,7 +14,11 @@ export default defineConfig({
       reportsDirectory: "coverage",
     },
     fileParallelism: true,
-    exclude: [...configDefaults.exclude, "tests/integration/**"],
+    exclude: [
+      ...configDefaults.exclude,
+      "tests/integration/**",
+      "tests/release/**",
+    ],
     include: ["tests/**/*.test.ts"],
     pool: "forks",
     testTimeout: 15_000,

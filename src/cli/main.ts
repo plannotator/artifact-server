@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { randomBytes } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -72,10 +74,15 @@ const externalStorageEnvironmentSchema = z.object({
   ARTIFACT_SERVER_WORKOS_API_KEY: z.string().min(1).optional(),
   ARTIFACT_SERVER_WORKOS_CLIENT_ID: z.string().min(1).optional(),
 });
+const packageMetadataSchema = z.object({version: z.string().min(1)});
+const packageMetadata = packageMetadataSchema.parse(
+  JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8")),
+);
 
 const program = new Command()
   .name("artifactserver")
   .description("Run Artifact Server.")
+  .version(packageMetadata.version)
   .showHelpAfterError();
 
 configurePublishCommand(program);
