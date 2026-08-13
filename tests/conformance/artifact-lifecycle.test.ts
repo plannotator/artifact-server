@@ -36,7 +36,13 @@ const artifactPageSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 const actionRecordSchema = z.object({
-  action: z.enum(["change_access", "delete", "publish", "restore"]),
+  action: z.enum([
+    "change_access",
+    "change_tags",
+    "delete",
+    "publish",
+    "restore",
+  ]),
   artifactId: z.string(),
   authorizedByPrincipalId: z.string().nullable(),
   createdAt: z.string(),

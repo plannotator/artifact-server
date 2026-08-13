@@ -8,12 +8,14 @@ import {
   AuthorizationService,
 } from "./authorization.js";
 import { parseIdempotencyKey } from "./idempotency-key.js";
+import { parseArtifactTag, parseArtifactTags } from "./artifact-tags.js";
 import {
   ArtifactNotFound,
   type ArtifactMutationConflict,
   type ArtifactRepositoryFailure,
   type AuthorizationDenied,
   type IdempotencyConflict,
+  type InvalidArtifactTags,
   type InvalidIdempotencyKey,
   InvalidPagination,
   VersionNotFound,
@@ -32,6 +34,7 @@ import type {
 } from "../core/model.js";
 import type {
   ChangeArtifactAccessSetting,
+  ChangeArtifactTags,
   DeleteArtifact,
   ListArtifactActions,
   ListArtifacts,
@@ -70,11 +73,19 @@ export interface ChangeArtifactAccessCommand extends ReadArtifactCommand {
   readonly idempotencyKey: string;
 }
 
+/** Input for replacing one artifact's complete tag set. */
+export interface ChangeArtifactTagsCommand extends ReadArtifactCommand {
+  readonly expectedCurrentVersionId: string;
+  readonly idempotencyKey: string;
+  readonly tags: readonly string[];
+}
+
 /** Input for listing active artifacts visible to one principal. */
 export interface ListArtifactsCommand {
   readonly cursor: PageCursor | null;
   readonly limit: number;
   readonly principal: Principal;
+  readonly tag: string | null;
 }
 
 /** Input for listing one artifact's attributed mutation history. */
@@ -93,6 +104,15 @@ export interface DeleteArtifactCommand extends ReadArtifactCommand {
 export interface ArtifactManagementRepository {
   readonly changeAccessSetting: (
     command: ChangeArtifactAccessSetting,
+  ) => Effect.Effect<
+    ArtifactState,
+    | ArtifactMutationConflict
+    | ArtifactNotFound
+    | IdempotencyConflict
+    | ArtifactRepositoryFailure
+  >;
+  readonly changeTags: (
+    command: ChangeArtifactTags,
   ) => Effect.Effect<
     ArtifactState,
     | ArtifactMutationConflict
@@ -153,6 +173,7 @@ export type ArtifactManagementFailure =
   | ArtifactMutationConflict
   | IdempotencyConflict
   | InvalidIdempotencyKey
+  | InvalidArtifactTags
   | InvalidPagination
   | AuthorizationDenied
   | ArtifactRepositoryFailure;
@@ -160,6 +181,9 @@ export type ArtifactManagementFailure =
 interface ArtifactManagementOperations {
   readonly changeAccess: (
     command: ChangeArtifactAccessCommand,
+  ) => Effect.Effect<ArtifactState, ArtifactManagementFailure>;
+  readonly changeTags: (
+    command: ChangeArtifactTagsCommand,
   ) => Effect.Effect<ArtifactState, ArtifactManagementFailure>;
   readonly deleteArtifact: (
     command: DeleteArtifactCommand,
@@ -288,12 +312,16 @@ function makeArtifactManagementService(
     function*(command: ListArtifactsCommand) {
       const limit = yield* requirePageSize(command.limit);
       const scope = yield* authorization.artifactReadScope(command.principal);
+      const tag = command.tag === null
+        ? null
+        : yield* parseArtifactTag(command.tag);
       return yield* dependencies.repository.listArtifacts({
         cursor: command.cursor,
         limit,
         ownerPrincipalId: scope.kind === "owned"
           ? scope.ownerPrincipalId
           : null,
+        tag,
       });
     },
   );
@@ -362,6 +390,32 @@ function makeArtifactManagementService(
     },
   );
 
+  const changeTags = Effect.fn("ArtifactManagementService.changeTags")(
+    function*(command: ChangeArtifactTagsCommand) {
+      const artifact = yield* requireArtifact(command.artifactId);
+      yield* authorization.requireArtifactManagement(command.principal, artifact);
+      const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
+      const tags = yield* parseArtifactTags(command.tags);
+      const createdAt = DateTime.formatIso(yield* dependencies.clock.now);
+      return yield* dependencies.repository.changeTags({
+        artifactId: artifact.id,
+        authorizedByPrincipalId: command.principal.authorizedByPrincipalId,
+        createdAt,
+        expectedCurrentVersionId: command.expectedCurrentVersionId,
+        idempotencyKey,
+        inputDigest: managementInputDigest({
+          artifactId: artifact.id,
+          expectedCurrentVersionId: command.expectedCurrentVersionId,
+          operation: "change_tags",
+          principalId: command.principal.id,
+          value: JSON.stringify(tags),
+        }),
+        principalId: command.principal.id,
+        tags,
+      });
+    },
+  );
+
   const deleteArtifact = Effect.fn("ArtifactManagementService.deleteArtifact")(
     function*(command: DeleteArtifactCommand) {
       const artifact = yield* requireArtifactForAdministration(command.artifactId);
@@ -388,6 +442,7 @@ function makeArtifactManagementService(
 
   return ArtifactManagementService.of({
     changeAccess,
+    changeTags,
     deleteArtifact,
     getArtifact,
     getVersion,
@@ -401,7 +456,7 @@ function makeArtifactManagementService(
 interface ManagementInputDigest {
   readonly artifactId: string;
   readonly expectedCurrentVersionId: string;
-  readonly operation: "change_access" | "delete" | "restore";
+  readonly operation: "change_access" | "change_tags" | "delete" | "restore";
   readonly principalId: string;
   readonly value: string;
 }

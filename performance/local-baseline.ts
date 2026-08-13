@@ -263,9 +263,11 @@ async function measureArtifactLists(
   const phaseStartedAt = performance.now();
   await runBounded(count, concurrency, async (index) => {
     const startedAt = performance.now();
-    const response = await fetch(`${server.baseUrl}/api/v1/artifacts?limit=100`, {
+    const response = await fetch(
+      `${server.baseUrl}/api/v1/artifacts?limit=100&tag=performance`, {
       headers: {Authorization: `Bearer ${apiToken}`},
-    });
+      },
+    );
     if (response.status !== 200) {
       throw new Error(`An artifact list request returned ${response.status}.`);
     }
@@ -374,6 +376,7 @@ async function measurePublications(
       content: createPayload(configuration.payloadBytes, `measured-${index}`),
       idempotencyKey: `performance-measured-publication-${index}`,
       name: `Measured artifact ${index}`,
+      tags: ["performance"],
     });
     latencies.push(performance.now() - startedAt);
     assertStatus(published.response, 201, "measured publication");

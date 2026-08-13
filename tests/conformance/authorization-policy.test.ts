@@ -166,6 +166,7 @@ function artifactOwnedBy(ownerPrincipalId: string): ArtifactRecord {
     id: "artifact-1",
     name: "Authorization fixture",
     ownerPrincipalId,
+    tags: [],
   };
 }
 

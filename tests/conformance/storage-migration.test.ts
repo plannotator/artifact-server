@@ -100,7 +100,7 @@ describe("local storage migration", () => {
     });
   });
 
-  test("foundation: the previous management schema upgrades to durable deletion idempotency", async () => {
+  test("foundation: the previous management schema upgrades to durable tag and deletion idempotency", async () => {
     server = await startTestServer(installation);
     const published = await publishNew(server, installation, {
       accessSetting: "account_required",
@@ -125,8 +125,14 @@ describe("local storage migration", () => {
           access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
           created_at TEXT NOT NULL
         ) STRICT;
-        INSERT INTO idempotency_records_previous
-          SELECT * FROM idempotency_records;
+        INSERT INTO idempotency_records_previous (
+          idempotency_key, input_digest, artifact_id, version_id,
+          operation, access_setting, created_at
+        )
+          SELECT
+            idempotency_key, input_digest, artifact_id, version_id,
+            operation, access_setting, created_at
+          FROM idempotency_records;
         DROP TABLE idempotency_records;
         ALTER TABLE idempotency_records_previous RENAME TO idempotency_records;
         COMMIT;
@@ -136,6 +142,21 @@ describe("local storage migration", () => {
     }
 
     server = await startTestServer(installation);
+    const tagged = await fetch(
+      `${server.baseUrl}/api/v1/artifacts/${published.body.artifact.id}/tags`,
+      {
+        body: JSON.stringify({
+          expectedCurrentVersionId: published.body.version.id,
+          tags: ["migrated"],
+        }),
+        headers: apiHeaders(installation, "previous-management-schema-tags"),
+        method: "PATCH",
+      },
+    );
+    expect(tagged.status).toBe(200);
+    await expect(tagged.json()).resolves.toMatchObject({
+      artifact: {tags: ["migrated"]},
+    });
     const deleted = await fetch(
       `${server.baseUrl}/api/v1/artifacts/${published.body.artifact.id}`,
       {
@@ -148,6 +169,7 @@ describe("local storage migration", () => {
     );
     expect(deleted.status).toBe(200);
     await expect(deleted.json()).resolves.toMatchObject({
+      artifact: {tags: ["migrated"]},
       replayed: false,
       retainedVersionCount: 1,
     });

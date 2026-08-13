@@ -41,6 +41,7 @@ import {
 import type {
   ArtifactRepository,
   ChangeArtifactAccessSetting,
+  ChangeArtifactTags,
   CommitArtifactVersion,
   CommitNewArtifact,
   ContentSessionRepository,
@@ -71,6 +72,7 @@ const uploadStatusSchema = z.enum([
 const routingModeSchema = z.enum([routingModes.static]);
 const artifactActionKindSchema = z.enum([
   artifactActionKinds.changeAccess,
+  artifactActionKinds.changeTags,
   artifactActionKinds.delete,
   artifactActionKinds.publish,
   artifactActionKinds.restore,
@@ -106,7 +108,14 @@ const idempotencyRowSchema = z.object({
   accessSetting: accessSettingSchema.nullable(),
   artifactId: z.string(),
   inputDigest: z.string(),
-  operation: z.enum(["change_access", "delete", "publish", "restore"]),
+  operation: z.enum([
+    "change_access",
+    "change_tags",
+    "delete",
+    "publish",
+    "restore",
+  ]),
+  tagsJson: z.string().nullable(),
   versionId: z.string(),
 });
 const artifactActionRowSchema = z.object({
@@ -127,6 +136,10 @@ const artifactRowSchema = z.object({
   id: z.string(),
   name: z.string(),
   ownerPrincipalId: z.string(),
+});
+const artifactTagRowSchema = z.object({
+  artifactId: z.string(),
+  tag: z.string(),
 });
 const versionRowSchema = z.object({
   artifactId: z.string(),
@@ -261,6 +274,8 @@ export class SqliteArtifactRepository implements
             command.accessSetting,
             command.createdAt,
           );
+
+        this.#replaceTags(command.artifactId, command.tags);
 
         this.#insertVersion(
           command.artifactId,
@@ -449,6 +464,50 @@ export class SqliteArtifactRepository implements
     );
   }
 
+  changeTags(command: ChangeArtifactTags): Promise<ArtifactState> {
+    return Promise.resolve().then(() =>
+      this.#transaction(() => {
+        const replayed = this.#findIdempotentTagResult(
+          command.idempotencyKey,
+          command.inputDigest,
+        );
+        if (replayed !== null) return replayed;
+        const artifact = this.#readArtifact(command.artifactId);
+        this.#assertExpectedCurrentVersion(
+          artifact,
+          command.expectedCurrentVersionId,
+        );
+        this.#replaceTags(command.artifactId, command.tags);
+        this.#insertAction(
+          command.artifactId,
+          command.expectedCurrentVersionId,
+          command.idempotencyKey,
+          command.createdAt,
+          artifactActionKinds.changeTags,
+          command.principalId,
+          command.authorizedByPrincipalId,
+        );
+        this.#insertIdempotency(
+          command.idempotencyKey,
+          command.inputDigest,
+          command.artifactId,
+          command.expectedCurrentVersionId,
+          command.createdAt,
+          "change_tags",
+          artifact.accessSetting,
+          JSON.stringify(command.tags),
+        );
+        return this.#readArtifactState(
+          command.artifactId,
+          command.expectedCurrentVersionId,
+          artifact.accessSetting,
+          false,
+          command.tags,
+        );
+      }),
+    );
+  }
+
   deleteArtifact(command: DeleteArtifact): Promise<ArtifactDeletion> {
     return Promise.resolve().then(() =>
       this.#transaction(() => {
@@ -589,6 +648,14 @@ export class SqliteArtifactRepository implements
              AND (? IS NULL OR owner_principal_id = ?)
              AND (
                ? IS NULL
+               OR EXISTS (
+                 SELECT 1 FROM artifact_tags
+                 WHERE artifact_tags.artifact_id = artifacts.id
+                   AND artifact_tags.tag = ?
+               )
+             )
+             AND (
+               ? IS NULL
                OR created_at < ?
                OR (created_at = ? AND id < ?)
              )
@@ -598,6 +665,8 @@ export class SqliteArtifactRepository implements
         .all(
           command.ownerPrincipalId,
           command.ownerPrincipalId,
+          command.tag,
+          command.tag,
           cursorCreatedAt,
           cursorCreatedAt,
           cursorCreatedAt,
@@ -605,7 +674,7 @@ export class SqliteArtifactRepository implements
           command.limit + 1,
         );
       return pageFromRows(
-        z.array(artifactRowSchema).parse(rows),
+        this.#withTagsForArtifacts(z.array(artifactRowSchema).parse(rows)),
         command.limit,
       );
     });
@@ -1006,6 +1075,7 @@ export class SqliteArtifactRepository implements
           artifact_id AS artifactId,
           input_digest AS inputDigest,
           operation,
+          tags_json AS tagsJson,
           version_id AS versionId
          FROM idempotency_records
          WHERE idempotency_key = ?`,
@@ -1030,6 +1100,46 @@ export class SqliteArtifactRepository implements
     );
   }
 
+  #findIdempotentTagResult(
+    idempotencyKey: string,
+    inputDigest: string,
+  ): ArtifactState | null {
+    const row = this.#database
+      .prepare(
+        `SELECT
+          access_setting AS accessSetting,
+          artifact_id AS artifactId,
+          input_digest AS inputDigest,
+          operation,
+          tags_json AS tagsJson,
+          version_id AS versionId
+         FROM idempotency_records
+         WHERE idempotency_key = ?`,
+      )
+      .get(idempotencyKey);
+    const parsed = idempotencyRowSchema.nullable().parse(row ?? null);
+    if (parsed === null) return null;
+    if (
+      parsed.inputDigest !== inputDigest ||
+      parsed.operation !== "change_tags" ||
+      parsed.accessSetting === null ||
+      parsed.tagsJson === null
+    ) {
+      throw new IdempotencyConflict({
+        message: "The idempotency key was already used with different input.",
+      });
+    }
+    const decoded: unknown = JSON.parse(parsed.tagsJson);
+    const tags = z.array(z.string()).parse(decoded);
+    return this.#readArtifactState(
+      parsed.artifactId,
+      parsed.versionId,
+      parsed.accessSetting,
+      true,
+      tags,
+    );
+  }
+
   #findIdempotentDeletion(
     idempotencyKey: string,
     inputDigest: string,
@@ -1041,6 +1151,7 @@ export class SqliteArtifactRepository implements
           artifact_id AS artifactId,
           input_digest AS inputDigest,
           operation,
+          tags_json AS tagsJson,
           version_id AS versionId
          FROM idempotency_records
          WHERE idempotency_key = ?`,
@@ -1079,7 +1190,8 @@ export class SqliteArtifactRepository implements
          WHERE id = ? AND deleted_at IS NULL`,
       )
       .get(artifactId);
-    return artifactRowSchema.nullable().parse(row ?? null);
+    const artifact = artifactRowSchema.nullable().parse(row ?? null);
+    return artifact === null ? null : this.#withTags(artifact);
   }
 
   #readArtifactIncludingDeletedOrNull(
@@ -1099,7 +1211,57 @@ export class SqliteArtifactRepository implements
          WHERE id = ?`,
       )
       .get(artifactId);
-    return artifactRowSchema.nullable().parse(row ?? null);
+    const artifact = artifactRowSchema.nullable().parse(row ?? null);
+    return artifact === null ? null : this.#withTags(artifact);
+  }
+
+  #withTags(artifact: z.infer<typeof artifactRowSchema>): ArtifactRecord {
+    return {...artifact, tags: this.#readTags(artifact.id)};
+  }
+
+  #withTagsForArtifacts(
+    artifacts: readonly z.infer<typeof artifactRowSchema>[],
+  ): readonly ArtifactRecord[] {
+    if (artifacts.length === 0) return [];
+    const tagsByArtifact = new Map<string, string[]>();
+    for (const artifact of artifacts) tagsByArtifact.set(artifact.id, []);
+    const placeholders = artifacts.map(() => "?").join(", ");
+    const rows = this.#database
+      .prepare(
+        `SELECT artifact_id AS artifactId, tag
+         FROM artifact_tags
+         WHERE artifact_id IN (${placeholders})
+         ORDER BY artifact_id, tag`,
+      )
+      .all(...artifacts.map((artifact) => artifact.id));
+    for (const row of z.array(artifactTagRowSchema).parse(rows)) {
+      tagsByArtifact.get(row.artifactId)?.push(row.tag);
+    }
+    return artifacts.map((artifact) => ({
+      ...artifact,
+      tags: tagsByArtifact.get(artifact.id) ?? [],
+    }));
+  }
+
+  #readTags(artifactId: string): readonly string[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT artifact_id AS artifactId, tag
+         FROM artifact_tags
+         WHERE artifact_id = ?
+         ORDER BY tag`,
+      )
+      .all(artifactId);
+    return z.array(artifactTagRowSchema).parse(rows).map((row) => row.tag);
+  }
+
+  #replaceTags(artifactId: string, tags: readonly string[]): void {
+    this.#database.prepare("DELETE FROM artifact_tags WHERE artifact_id = ?")
+      .run(artifactId);
+    const insert = this.#database.prepare(
+      "INSERT INTO artifact_tags (artifact_id, tag) VALUES (?, ?)",
+    );
+    for (const tag of tags) insert.run(artifactId, tag);
   }
 
   #readDeletionResult(
@@ -1132,6 +1294,7 @@ export class SqliteArtifactRepository implements
     versionId: string,
     accessSetting: ArtifactRecord["accessSetting"],
     replayed: boolean,
+    tags: readonly string[] | null = null,
   ): ArtifactState {
     const artifact = this.#readArtifact(artifactId);
     const version = this.#readVersionOrNull(versionId, artifactId);
@@ -1143,6 +1306,7 @@ export class SqliteArtifactRepository implements
         ...artifact,
         accessSetting,
         currentVersionId: versionId,
+        tags: tags ?? artifact.tags,
       },
       replayed,
       version,
@@ -1223,6 +1387,7 @@ export class SqliteArtifactRepository implements
           artifact_id AS artifactId,
           input_digest AS inputDigest,
           operation,
+          tags_json AS tagsJson,
           version_id AS versionId
          FROM idempotency_records
          WHERE idempotency_key = ?`,
@@ -1330,15 +1495,21 @@ export class SqliteArtifactRepository implements
     artifactId: string,
     versionId: string,
     createdAt: string,
-    operation: "change_access" | "delete" | "publish" | "restore" = "publish",
+    operation:
+      | "change_access"
+      | "change_tags"
+      | "delete"
+      | "publish"
+      | "restore" = "publish",
     accessSetting: ArtifactRecord["accessSetting"] | null = null,
+    tagsJson: string | null = null,
   ): void {
     this.#database
       .prepare(
         `INSERT INTO idempotency_records (
           idempotency_key, input_digest, artifact_id, version_id,
-          operation, access_setting, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          operation, access_setting, tags_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         idempotencyKey,
@@ -1347,6 +1518,7 @@ export class SqliteArtifactRepository implements
         versionId,
         operation,
         accessSetting,
+        tagsJson,
         createdAt,
       );
   }
@@ -1431,13 +1603,20 @@ export class SqliteArtifactRepository implements
         PRIMARY KEY (version_id, path)
       ) STRICT;
 
+      CREATE TABLE IF NOT EXISTS artifact_tags (
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+        tag TEXT NOT NULL,
+        PRIMARY KEY (artifact_id, tag)
+      ) STRICT;
+
       CREATE TABLE IF NOT EXISTS idempotency_records (
         idempotency_key TEXT PRIMARY KEY,
         input_digest TEXT NOT NULL,
         artifact_id TEXT NOT NULL REFERENCES artifacts(id),
         version_id TEXT NOT NULL REFERENCES versions(id),
-        operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access', 'delete')),
+        operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access', 'change_tags', 'delete')),
         access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
+        tags_json TEXT,
         created_at TEXT NOT NULL
       ) STRICT;
 
@@ -1505,6 +1684,8 @@ export class SqliteArtifactRepository implements
         ON versions (artifact_id, number);
       CREATE INDEX IF NOT EXISTS artifacts_active_created
         ON artifacts (deleted_at, created_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS artifact_tags_tag_artifact
+        ON artifact_tags (tag, artifact_id);
       CREATE INDEX IF NOT EXISTS actions_artifact_created
         ON actions (artifact_id, created_at DESC, id DESC);
       CREATE INDEX IF NOT EXISTS manifest_entries_sha256
@@ -1520,21 +1701,21 @@ export class SqliteArtifactRepository implements
     this.#addVersionPublisherColumnIfMissing();
     this.#addActionAuthorizerColumnIfMissing();
     this.#addIdempotencyOperationColumnsIfMissing();
-    this.#addDeleteIdempotencyOperationIfMissing();
+    this.#addTagIdempotencyOperationIfMissing();
     this.#database.exec(`
       CREATE INDEX IF NOT EXISTS artifacts_owner_active_created
         ON artifacts (owner_principal_id, deleted_at, created_at DESC, id DESC);
     `);
   }
 
-  #addDeleteIdempotencyOperationIfMissing(): void {
+  #addTagIdempotencyOperationIfMissing(): void {
     const row = this.#database
       .prepare(
         "SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'idempotency_records'",
       )
       .get();
     const {sql} = z.object({sql: z.string()}).parse(row);
-    if (sql.includes("'delete'")) return;
+    if (sql.includes("'change_tags'")) return;
     this.#transaction(() => {
       this.#database.exec(`
         CREATE TABLE idempotency_records_next (
@@ -1542,18 +1723,19 @@ export class SqliteArtifactRepository implements
           input_digest TEXT NOT NULL,
           artifact_id TEXT NOT NULL REFERENCES artifacts(id),
           version_id TEXT NOT NULL REFERENCES versions(id),
-          operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access', 'delete')),
+          operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access', 'change_tags', 'delete')),
           access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
+          tags_json TEXT,
           created_at TEXT NOT NULL
         ) STRICT;
 
         INSERT INTO idempotency_records_next (
           idempotency_key, input_digest, artifact_id, version_id,
-          operation, access_setting, created_at
+          operation, access_setting, tags_json, created_at
         )
         SELECT
           idempotency_key, input_digest, artifact_id, version_id,
-          operation, access_setting, created_at
+          operation, access_setting, tags_json, created_at
         FROM idempotency_records;
 
         DROP TABLE idempotency_records;
@@ -1588,6 +1770,11 @@ export class SqliteArtifactRepository implements
     if (!columns.includes("access_setting")) {
       this.#database.exec(
         "ALTER TABLE idempotency_records ADD COLUMN access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link'))",
+      );
+    }
+    if (!columns.includes("tags_json")) {
+      this.#database.exec(
+        "ALTER TABLE idempotency_records ADD COLUMN tags_json TEXT",
       );
     }
   }
@@ -1735,6 +1922,7 @@ export class SqliteArtifactRepository implements
       id: parsed.artifactId,
       name: parsed.artifactName,
       ownerPrincipalId: parsed.ownerPrincipalId,
+      tags: this.#readTags(parsed.artifactId),
     };
     const version: VersionRecord = {
       artifactId: parsed.artifactId,

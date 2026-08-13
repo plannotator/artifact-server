@@ -15,7 +15,7 @@ The first release runs locally. Later releases add one-server, Kubernetes, Cloud
 | What does it publish? | Finished HTML, CSS, JavaScript, images, fonts, and other files needed by a client-side site, or one ordinary file such as an image, PDF, audio recording, video, text file, or ZIP archive. |
 | What does it execute? | Only code that a browser can run. Artifact Server does not install packages, compile source code, run Node.js or Python for an artifact, connect an artifact to a database, execute server functions, or perform server-side rendering. |
 | How are files displayed? | Artifact Server sends the correct HTTP headers and lets the browser handle formats it already understands. The first release has no custom document viewer, media converter, thumbnail service, ZIP extractor, Markdown renderer, or syntax-highlighting interface. |
-| What is an artifact? | One published item with a stable ID, owner, access setting, current version, and immutable saved versions. |
+| What is an artifact? | One published item with a stable ID, owner, access setting, optional tags, current version, and immutable saved versions. |
 | Who can read it? | Exactly two settings: account required, or public link. On a standalone installation, account required means every person admitted to that one installation may read it. A public link opens only the current version; history and comparisons remain account-required. |
 | Who can change it? | Its owner and installation administrators. A service principal can perform only the actions granted to its API key. |
 | How do agents use it? | Through MCP or the normal HTTP API. The `publish-artifact` Agent Skill handles routine publishing and opening. The optional `operate-artifact-server` skill handles deployment and administration. |
@@ -46,11 +46,18 @@ An artifact keeps one identity over time. A version is one immutable saved manif
 
 The core records are:
 
-- **Artifact:** stable ID, name, owner, access setting, current version, created time, and deletion state.
+- **Artifact:** stable ID, name, owner, access setting, zero to 20 tags, current version, created time, and deletion state.
 - **Version:** stable ID, artifact ID, version number, canonical manifest digest, entry file, routing mode, publisher, and created time.
 - **Manifest entry:** normalized path, byte length, media type, SHA-256 fingerprint, and file disposition.
 - **Blob:** immutable file bytes addressed internally by SHA-256 fingerprint.
-- **Action record:** publish, restore, access change, ownership change, or deletion with the responsible principal and idempotency key when applicable.
+- **Action record:** publish, restore, access change, tag change, ownership change, or deletion with the responsible principal and idempotency key when applicable.
+
+Tags are optional artifact metadata for exact filtering. The server trims whitespace,
+normalizes Unicode, folds case, removes duplicates, sorts the result, and stores no more
+than 20 tags of 40 characters each. Tags apply to the artifact, not to one saved version,
+so publishing or restoring a version does not change them. Replacing the complete tag set
+is an authorized, idempotent, audited metadata operation. The first release does not add
+tag categories, nesting, per-version tags, or a separate tag-management system.
 
 ### Portable path rules
 

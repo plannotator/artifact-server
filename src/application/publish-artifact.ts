@@ -9,6 +9,7 @@ import {
   type BlobStorageFailure,
   type IdempotencyConflict,
   InvalidArtifactName,
+  type InvalidArtifactTags,
   type InvalidIdempotencyKey,
   type PublishConflict,
   type StagingStorageFailure,
@@ -41,6 +42,7 @@ import {
 } from "./authorization.js";
 import type { ApplicationClock } from "./application-clock.js";
 import { parseIdempotencyKey } from "./idempotency-key.js";
+import { parseArtifactTags } from "./artifact-tags.js";
 
 /** Input for publishing one inline file as a new artifact. */
 export interface PublishNewArtifactCommand {
@@ -51,6 +53,7 @@ export interface PublishNewArtifactCommand {
   readonly name: string;
   readonly path: string;
   readonly principal: Principal;
+  readonly tags?: readonly string[];
 }
 
 /** Input for publishing one inline file as the next artifact version. */
@@ -81,6 +84,7 @@ export interface PublishPreparedNewArtifactCommand {
   readonly name: string;
   readonly principal: Principal;
   readonly source: PublicationSource;
+  readonly tags?: readonly string[];
 }
 
 /** Input for publishing an already parsed and fingerprinted artifact version. */
@@ -149,6 +153,7 @@ export interface PublishArtifactDependencies {
 /** Expected failures produced by the publication application service. */
 export type PublishArtifactFailure =
   | InvalidArtifactName
+  | InvalidArtifactTags
   | InvalidIdempotencyKey
   | ManifestFailure
   | IdempotencyConflict
@@ -243,12 +248,14 @@ function makePublishArtifactService(
       ),
     );
     const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
+    const tags = yield* parseArtifactTags(command.tags ?? []);
     const inputDigest = newArtifactInputDigest({
       accessSetting: command.accessSetting,
       manifest: command.manifest,
       name,
       principalId: command.principal.id,
       source: command.source,
+      tags,
     });
     const replayed = yield* dependencies.repository.findIdempotentPublication(
       idempotencyKey,
@@ -279,6 +286,7 @@ function makePublishArtifactService(
       principalId: command.principal.id,
       authorizedByPrincipalId: command.principal.authorizedByPrincipalId,
       source: command.source,
+      tags,
       versionId: dependencies.ids.versionId(),
     });
   });
@@ -353,6 +361,7 @@ function makePublishArtifactService(
         name: command.name,
         principal: command.principal,
         source: {kind: "inline"},
+        tags: command.tags ?? [],
       });
     },
   );
@@ -389,6 +398,7 @@ interface NewArtifactDigestInput {
   readonly name: string;
   readonly principalId: string;
   readonly source: PublicationSource;
+  readonly tags: readonly string[];
 }
 
 interface ArtifactVersionDigestInput {
@@ -406,6 +416,7 @@ function newArtifactInputDigest(input: NewArtifactDigestInput): string {
     name: input.name,
     principalId: input.principalId,
     source: sourceDigestValue(input.source),
+    tags: input.tags,
   });
   return createHash("sha256").update(canonicalInput).digest("hex");
 }

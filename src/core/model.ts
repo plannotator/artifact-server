@@ -8,6 +8,7 @@ export type AccessSetting = (typeof accessSettings)[keyof typeof accessSettings]
 /** Artifact mutation kinds persisted in the standalone action history. */
 export const artifactActionKinds = {
   changeAccess: "change_access",
+  changeTags: "change_tags",
   delete: "delete",
   publish: "publish",
   restore: "restore",
@@ -47,6 +48,7 @@ export interface ArtifactRecord {
   readonly id: string;
   readonly name: string;
   readonly ownerPrincipalId: string;
+  readonly tags: readonly string[];
 }
 
 /** An artifact record whose deletion state is known to be committed. */

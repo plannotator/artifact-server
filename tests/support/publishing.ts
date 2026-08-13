@@ -16,6 +16,7 @@ const publishResponseSchema = z.object({
     id: z.string(),
     name: z.string(),
     ownerPrincipalId: z.string(),
+    tags: z.array(z.string()),
   }),
   links: z.object({artifact: z.url(), version: z.url()}),
   replayed: z.boolean(),
@@ -66,6 +67,7 @@ export interface PublishNewInput {
   readonly mediaType?: string;
   readonly name?: string;
   readonly path?: string;
+  readonly tags?: readonly string[];
 }
 
 export interface PublishVersionInput {
@@ -91,6 +93,7 @@ export async function publishNew(
         path: input.path ?? "index.html",
       },
       name: input.name ?? "Test artifact",
+      tags: input.tags ?? [],
     }),
     headers: apiHeaders(installation, input.idempotencyKey),
     method: "POST",
@@ -201,6 +204,7 @@ const commitTargetSchema = z.discriminatedUnion("kind", [
     accessSetting: z.enum(["account_required", "public_link"]),
     kind: z.literal("new_artifact"),
     name: z.string(),
+    tags: z.array(z.string()).optional(),
   }),
   z.object({
     artifactId: z.string(),

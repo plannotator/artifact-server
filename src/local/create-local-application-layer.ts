@@ -204,6 +204,11 @@ export function createLocalApplicationLayer(
           try: () => adapters.repository.changeAccessSetting(command),
           catch: classifyChangeAccessFailure,
         }),
+      changeTags: (command) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.changeTags(command),
+          catch: classifyChangeTagsFailure,
+        }),
       deleteArtifact: (command) =>
         Effect.tryPromise({
           try: () => adapters.repository.deleteArtifact(command),
@@ -459,6 +464,21 @@ function classifyChangeAccessFailure(cause: unknown):
     return cause;
   }
   return repositoryFailure("changeAccessSetting", cause);
+}
+
+function classifyChangeTagsFailure(cause: unknown):
+  | ArtifactNotFound
+  | ArtifactMutationConflict
+  | IdempotencyConflict
+  | ArtifactRepositoryFailure {
+  if (
+    cause instanceof ArtifactNotFound ||
+    cause instanceof ArtifactMutationConflict ||
+    cause instanceof IdempotencyConflict
+  ) {
+    return cause;
+  }
+  return repositoryFailure("changeTags", cause);
 }
 
 function classifyRestoreFailure(cause: unknown):

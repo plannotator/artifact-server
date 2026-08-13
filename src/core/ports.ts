@@ -71,6 +71,7 @@ export interface CommitNewArtifact {
   readonly principalId: string;
   readonly authorizedByPrincipalId: string | null;
   readonly source: PublicationSource;
+  readonly tags: readonly string[];
   readonly versionId: string;
 }
 
@@ -112,6 +113,18 @@ export interface ChangeArtifactAccessSetting {
   readonly principalId: string;
 }
 
+/** Values used to atomically replace one artifact's complete tag set. */
+export interface ChangeArtifactTags {
+  readonly artifactId: string;
+  readonly authorizedByPrincipalId: string | null;
+  readonly createdAt: string;
+  readonly expectedCurrentVersionId: string;
+  readonly idempotencyKey: string;
+  readonly inputDigest: string;
+  readonly principalId: string;
+  readonly tags: readonly string[];
+}
+
 /** Values used to atomically tombstone one artifact. */
 export interface DeleteArtifact {
   readonly artifactId: string;
@@ -128,6 +141,7 @@ export interface ListArtifacts {
   readonly cursor: PageCursor | null;
   readonly limit: number;
   readonly ownerPrincipalId: string | null;
+  readonly tag: string | null;
 }
 
 /** Values used to read one bounded page of artifact actions. */
@@ -174,6 +188,7 @@ export interface ArtifactRepository {
   commitNewArtifact(command: CommitNewArtifact): Promise<PublishedVersion>;
   commitVersion(command: CommitArtifactVersion): Promise<PublishedVersion>;
   changeAccessSetting(command: ChangeArtifactAccessSetting): Promise<ArtifactState>;
+  changeTags(command: ChangeArtifactTags): Promise<ArtifactState>;
   deleteArtifact(command: DeleteArtifact): Promise<ArtifactDeletion>;
   findArtifact(artifactId: string): Promise<ArtifactRecord | null>;
   findArtifactForAdministration(artifactId: string): Promise<ArtifactRecord | null>;

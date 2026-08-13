@@ -1695,7 +1695,7 @@
             <h2 id="artifact-title">Artifact and version model</h2>
             <p>
               An artifact is one published item that keeps the same identity over time. It has a
-              name, an owner, an access setting, a link, and a history of saved versions.
+              name, an owner, an access setting, optional tags, a link, and a history of saved versions.
             </p>
           </div>
 
@@ -1712,6 +1712,14 @@
                 Artifact Server serves finished client-side files. It does not install packages,
                 compile source code, start Node.js or Python, connect an artifact to a database, run
                 server functions, or perform server-side rendering when a request arrives.
+              </p>
+              <p>
+                An artifact can have up to 20 optional tags. The server trims whitespace,
+                normalizes Unicode and letter case, removes duplicates, and stores tags in a
+                stable order. Each stored tag contains 1 to 40 user-perceived characters and no
+                control characters. Tags apply to the artifact, not one saved version, so publishing or
+                restoring does not change them. The first release supports exact tag filtering;
+                it does not add tag categories, nested tags, or per-version tags.
               </p>
             </div>
           </div>
@@ -1746,12 +1754,12 @@
               <div class="detail-body">
                 <p>The server stores six kinds of records:</p>
                 <ul>
-                  <li><strong>Artifact:</strong> the same item over time, including its name, owner, access setting, and current version.</li>
+                  <li><strong>Artifact:</strong> the same item over time, including its name, owner, access setting, optional tags, and current version.</li>
                   <li><strong>Version:</strong> the saved copy created when someone publishes. It never changes and points to one manifest.</li>
                   <li><strong>Manifest:</strong> the canonical, ordered list of file paths, fingerprints, sizes, media types, and the entry file.</li>
                   <li><strong>File:</strong> one file in a version, including its name, folder path, file type, size, and SHA-256 fingerprint.</li>
                   <li><strong>Source:</strong> an optional note about an upload, approved local import, or agent.</li>
-                  <li><strong>Action:</strong> who published, restored, changed access, or deleted the artifact and when.</li>
+                  <li><strong>Action:</strong> who published, restored, changed access, changed tags, or deleted the artifact and when.</li>
                 </ul>
                 <p>
                   A SHA-256 fingerprint is calculated from a file's exact contents. If one byte
@@ -3673,6 +3681,7 @@ artifact_diff</code></pre>
             <article class="decision-item"><p>The product stores and serves finished client-side sites and arbitrary files. The browser handles supported formats natively. The server does not run artifact backends or perform file conversion.</p></article>
             <article class="decision-item"><p>An artifact keeps one identity. Each intentional publish creates an immutable version with a canonical manifest and unique version origin. Restoring only changes which version is current.</p></article>
             <article class="decision-item"><p>A retry with the same idempotency key returns the stored result. A new key creates a new version even when the manifest matches an earlier version.</p></article>
+            <article class="decision-item"><p>An artifact may have up to 20 normalized tags for exact filtering. Tags belong to the artifact, persist across version changes and tombstones, and are replaced through one authorized, idempotent, audited operation. The first release has no tag hierarchy or per-version tags.</p></article>
             <article class="decision-item"><p>Comparisons use canonical manifests and changed text. Binary comparison shows metadata and links. Git is not required.</p></article>
             <article class="decision-item"><p>Git history is an optional private copy. The normal object store remains authoritative, and Git failure never blocks or loses a saved version.</p></article>
             <article class="decision-item"><p>Account required and public link are the only two read settings. A public link opens only the current version; history and comparisons still require an account. Publishing, access changes, and deletion follow a separate owner, administrator, and scoped-service authorization matrix.</p></article>

@@ -61,6 +61,7 @@ export type CommitStagedUploadTarget =
     readonly accessSetting: AccessSetting;
     readonly kind: "new_artifact";
     readonly name: string;
+    readonly tags?: readonly string[];
   }
   | {
     readonly artifactId: string;
@@ -311,6 +312,7 @@ function makeStagedUploadService(
             name: command.target.name,
             principal: command.principal,
             source,
+            tags: command.target.tags ?? [],
           });
         case "new_version":
           return yield* publish.publishPreparedVersion({

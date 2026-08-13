@@ -1,6 +1,6 @@
 version: 1
 product: artifactserver.com
-updated: "2026-08-12"
+updated: "2026-08-13"
 evidence_root: ".."
 
 source:
@@ -77,7 +77,7 @@ allowed_modules:
 required_source_sections:
   top: [PRD-001, PRD-002]
   product: [PRD-003]
-  artifact: [ART-001, ART-002, ART-003, ART-004, ART-005]
+  artifact: [ART-001, ART-002, ART-003, ART-004, ART-005, ART-008]
   experience: [CNT-001, CNT-002, VER-001, DIF-001, GIT-001]
   sharing: [AUTH-001, AUTH-002, AUTH-003, AUTH-004]
   plannotator: [PLN-001, PLN-002, PLN-003, PLN-004]
@@ -267,6 +267,24 @@ requirements:
         result: pass
         run: evidence/local-foundation.json
         recorded_at: "2026-08-13T07:50:46Z"
+
+  - id: ART-008
+    kind: behavior
+    behavior: An artifact has zero to 20 normalized, unique tags. Tags belong to the artifact rather than one version, remain through publish, restore, and tombstone operations, and support exact normalized filtering.
+    owner: artifact-core
+    source: {file: artifact-server-product-spec.html, anchor: artifact}
+    acceptance:
+      behavior: {id: ART-008-B, description: Create tags through inline and staged publication, replace them atomically, filter by an exact normalized tag, and confirm they remain through publish, restore, and tombstone operations.}
+      failure: {id: ART-008-F, description: Reject empty, overlong, control-character, and oversized tag sets plus conflicting retries without changing stored tags or action history.}
+    deployments: *all
+    status: behavior_verified
+    depends_on: [ART-001, ART-005, ART-006, AUD-001]
+    evidence:
+      - deployment: local
+        tests: [ART-008-B, ART-008-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T08:03:55Z"
 
   - id: MAN-001
     kind: behavior

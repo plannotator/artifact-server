@@ -56,10 +56,12 @@ const inlineFileSchema = z.object({
   mediaType: z.string().trim().min(1).max(200),
   path: z.string().min(1).max(1_024),
 });
+const artifactTagsSchema = z.array(z.string()).default([]);
 const publishNewSchema = z.object({
   accessSetting: accessSettingSchema.default(accessSettings.accountRequired),
   file: inlineFileSchema,
   name: z.string().min(1).max(200),
+  tags: artifactTagsSchema,
 });
 const publishVersionSchema = z.object({
   expectedCurrentVersionId: z.string().min(1).max(200),
@@ -81,6 +83,7 @@ const commitUploadSchema = z.object({
       accessSetting: accessSettingSchema.default(accessSettings.accountRequired),
       kind: z.literal("new_artifact"),
       name: z.string().min(1).max(200),
+      tags: artifactTagsSchema,
     }),
     z.object({
       artifactId: z.string().min(1).max(200),
@@ -113,6 +116,10 @@ const changeAccessSchema = z.object({
   accessSetting: accessSettingSchema,
   expectedCurrentVersionId: z.string().min(1).max(200),
 });
+const changeTagsSchema = z.object({
+  expectedCurrentVersionId: z.string().min(1).max(200),
+  tags: artifactTagsSchema,
+});
 const comparisonQuerySchema = z.object({
   fromVersionId: z.string().min(1).max(200),
   toVersionId: z.string().min(1).max(200),
@@ -123,6 +130,7 @@ const deleteArtifactSchema = z.object({
 const pageQuerySchema = z.object({
   cursor: z.string().max(1_024).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
+  tag: z.string().max(200).optional(),
 });
 const pageCursorSchema = z.object({
   createdAt: z.string().min(1).max(100),
@@ -228,6 +236,7 @@ export function createHttpApp(
           name: body.name,
           path: body.file.path,
           principal: context.get("principal"),
+          tags: body.tags,
         })
       ),
     );
@@ -246,6 +255,7 @@ export function createHttpApp(
           cursor: decodePageCursor(query.cursor),
           limit: query.limit,
           principal: context.get("principal"),
+          tag: query.tag ?? null,
         })
       ),
     );
@@ -406,6 +416,33 @@ export function createHttpApp(
           ? "New public requests are blocked. Copies already downloaded or cached outside Artifact Server cannot be recalled."
           : null,
       });
+    },
+  );
+
+  app.patch(
+    "/api/v1/artifacts/:artifactId/tags",
+    boundedJsonBody,
+    async (context) => {
+      const body = changeTagsSchema.parse(await context.req.json());
+      const state = await runApplicationEffect(
+        dependencies.applicationRuntime,
+        ArtifactManagementService.use((management) =>
+          management.changeTags({
+            artifactId: context.req.param("artifactId"),
+            expectedCurrentVersionId: body.expectedCurrentVersionId,
+            idempotencyKey: requiredIdempotencyKey(
+              context.req.header("idempotency-key"),
+            ),
+            principal: context.get("principal"),
+            tags: body.tags,
+          })
+        ),
+      );
+      return context.json(artifactStateResponse(
+        new URL(context.req.url),
+        dependencies.contentDomain,
+        state,
+      ));
     },
   );
 
@@ -720,6 +757,7 @@ function httpFailure(failure: ArtifactServerFailure): HttpFailure {
         status: 401,
       };
     case "InvalidArtifactName":
+    case "InvalidArtifactTags":
     case "InvalidIdempotencyKey":
     case "InvalidPagination":
     case "EmptyManifest":

@@ -22,6 +22,7 @@ This repository contains the local publication foundation. It is not the complet
 - pointer-only restore of an existing immutable version;
 - atomic changes between account-required and public-link access;
 - bounded, cursor-paginated artifact and action-history lists;
+- normalized artifact tags with exact filtering and audited replacement;
 - idempotent artifact tombstones that retain committed versions and block every content path;
 - public-link delivery and version-scoped account-required browser sessions;
 - single-use private-content bootstraps and host-only, HttpOnly content cookies;
@@ -54,6 +55,7 @@ curl --fail-with-body http://localhost:8787/api/v1/artifacts \
   --data '{
     "name": "Hello",
     "accessSetting": "public_link",
+    "tags": ["demo", "html"],
     "file": {
       "path": "index.html",
       "mediaType": "text/html; charset=utf-8",
@@ -73,10 +75,12 @@ Authenticated management routes are available beneath
 `/api/v1/artifacts/{artifactId}`. They return the current artifact record,
 canonical manifests, and saved-version history; compare any two saved versions;
 move the current pointer back to an existing version; and change the artifact's
-access setting. The API also lists active artifacts with bounded cursors, lists
+access setting or complete tag set. The artifact list accepts an exact `tag`
+filter in addition to bounded cursors. The API also lists active artifacts, lists
 an artifact's attributed action history, and tombstones an artifact without
 removing its committed versions. Restore, access changes, and deletion require
-an idempotency key and the current version ID observed by the caller.
+an idempotency key and the current version ID observed by the caller; tag
+replacement follows the same rule.
 
 ## Publish a complete site
 

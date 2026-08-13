@@ -74,6 +74,12 @@ export class InvalidArtifactName extends Schema.TaggedError<InvalidArtifactName>
   messageField,
 ) {}
 
+/** Artifact tags cannot be normalized into the supported metadata contract. */
+export class InvalidArtifactTags extends Schema.TaggedError<InvalidArtifactTags>()(
+  "InvalidArtifactTags",
+  messageField,
+) {}
+
 /** An idempotency key does not meet the publishing contract. */
 export class InvalidIdempotencyKey extends Schema.TaggedError<InvalidIdempotencyKey>()(
   "InvalidIdempotencyKey",
@@ -178,6 +184,7 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
     operation: Schema.Literals([
       "assertPublicationSourceReady",
       "changeAccessSetting",
+      "changeTags",
       "commitNewArtifact",
       "commitVersion",
       "createContentBootstrap",
@@ -227,6 +234,7 @@ const artifactServerFailureSchema = Schema.Union([
   ContentBootstrapRejected,
   ContentSessionRequired,
   InvalidArtifactName,
+  InvalidArtifactTags,
   InvalidIdempotencyKey,
   InvalidPagination,
   EmptyManifest,
