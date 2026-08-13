@@ -3,10 +3,11 @@ set -euo pipefail
 
 artifactserver_repository=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 artifactserver_output=${1:-"$artifactserver_repository/release"}
-artifactserver_stage_parent=$(mktemp -d "${TMPDIR:-/tmp}/artifact-server-local-package.XXXXXX")
-artifactserver_stage="$artifactserver_stage_parent/artifactserver"
 artifactserver_tmp_root=${TMPDIR:-/tmp}
+artifactserver_tmp_root=${artifactserver_tmp_root%/}
 artifactserver_stage_prefix="${artifactserver_tmp_root%/}/artifact-server-local-package."
+artifactserver_stage_parent=$(mktemp -d "$artifactserver_stage_prefix"XXXXXX)
+artifactserver_stage="$artifactserver_stage_parent/artifactserver"
 
 cleanup() {
   if [[ "$artifactserver_stage_parent" == "$artifactserver_stage_prefix"* ]]; then
