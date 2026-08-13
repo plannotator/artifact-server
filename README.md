@@ -47,8 +47,8 @@ This repository contains the local publication foundation and the first shared-s
 The next implementation block packages the compiled local and shared runtimes.
 The executable scope is in
 [`spec/phase-6-packaging.md`](./spec/phase-6-packaging.md). It defines a native
-local package that does not require Docker, one optional OCI image, compact and
-shared Compose profiles, a Helm chart, migrations, graceful shutdown, recovery,
+local package that does not require Docker, one optional OCI image, Compact
+Compose and External-storage Compose, a Helm chart, migrations, graceful shutdown, recovery,
 release evidence, and the tests that make those targets supportable.
 
 After that foundation passes, the remaining work is:

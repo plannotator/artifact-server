@@ -3118,7 +3118,7 @@ artifact_delete</code></pre>
             </article>
             <article class="deployment-item">
               <h3>Private team</h3>
-              <p>Compact Compose runs one container with SQLite and attached disk. Shared Compose uses the same image with existing Postgres and object storage, and it can run multiple application processes.</p>
+              <p>Compact Compose runs one container with SQLite and attached disk. External-storage Compose uses the same image with existing Postgres and object storage, and it can run multiple application processes.</p>
             </article>
             <article class="deployment-item">
               <h3>Cloudflare</h3>
@@ -3193,7 +3193,7 @@ artifact_delete</code></pre>
                   <text class="svg-title" x="314" y="328">Compact profile</text>
                   <text class="svg-copy" x="314" y="349">SQLite + persistent disk</text>
                   <rect class="svg-node-store" x="296" y="386" width="196" height="68" rx="7"></rect>
-                  <text class="svg-title" x="314" y="414">Shared profile</text>
+                  <text class="svg-title" x="314" y="414">External storage</text>
                   <text class="svg-copy" x="314" y="435">Postgres + S3-compatible</text>
                   <path class="svg-line" d="M364 282 V300" marker-end="url(#deployment-arrow)"></path>
                   <path class="svg-line" d="M424 282 H500 V420 H492" marker-end="url(#deployment-arrow)"></path>
@@ -3263,7 +3263,7 @@ artifact_delete</code></pre>
                   <td>Only when a publishing client runs on that server. Artifact Server itself never accepts a filesystem path through HTTP or MCP.</td>
                 </tr>
                 <tr>
-                  <td>One server, shared</td>
+                  <td>One server, external storage</td>
                   <td>One or more stateless software containers</td>
                   <td>Existing Postgres</td>
                   <td>Existing S3-compatible object storage</td>
@@ -3320,7 +3320,7 @@ artifact_delete</code></pre>
               <div class="detail-body">
                 <p>
                   The product ships as a downloadable local package that does not require Docker,
-                  one optional container image, compact and shared Compose profiles for one server,
+                  one optional container image, Compact Compose and External-storage Compose for one server,
                   a Helm chart for Kubernetes, an Alchemy-backed Cloudflare
                   package, and Pulumi-backed packages for AWS, GCP, and Azure. Each package pins its
                   tool version and emits a deployment manifest for support. These are install paths
@@ -3348,7 +3348,7 @@ artifact_delete</code></pre>
                 <ul>
                   <li><strong>Laptop:</strong> one process runs directly on the host by default, with SQLite for records, files stored on disk by their SHA-256 fingerprints, optional local file links, and optional Git repositories in the same data folder. Docker is optional.</li>
                   <li><strong>One server, compact:</strong> one process, SQLite in write-ahead logging mode, one persistent data directory, and optional Git repositories in that directory. This profile does not support multiple application writers or claim failover.</li>
-                  <li><strong>One server, shared:</strong> the same image connected to existing Postgres and object storage through a supported adapter. The Compose package does not bundle those providers.</li>
+                  <li><strong>One server, external storage:</strong> the same image connected to existing Postgres and object storage through a supported adapter. The Compose package does not bundle those providers.</li>
                   <li><strong>Kubernetes:</strong> Postgres plus S3, Google Cloud Storage, Azure Blob, R2, or compatible object storage, with an optional internal Git history service or private Git server.</li>
                   <li><strong>Cloudflare:</strong> Workers for the application, D1 for records, R2 for files, and optional Cloudflare Artifacts history. External Postgres is supported through a separate adapter but is not the default.</li>
                   <li><strong>AWS, GCP, and Azure:</strong> the same container or Kubernetes runtime, managed Postgres, and the provider's native object store. Pulumi supplies the official infrastructure package.</li>

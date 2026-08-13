@@ -278,7 +278,7 @@ Every deployed process records request counts, handling time, and spans. It writ
 | --- | --- | --- | --- |
 | Laptop | One process running directly on the host and SQLite. A local container is optional. | Local disk | Downloadable package and `artifactserver start` |
 | One server, compact | One container and SQLite | One persistent data directory | Compact Docker Compose |
-| One server, shared | One or more stateless containers and Postgres | Object storage through a supported adapter | Shared Docker Compose profile |
+| One server, external storage | One or more stateless containers and Postgres | Object storage through a supported adapter | External-storage Compose |
 | Kubernetes | Stateless containers and Postgres | S3, GCS, Azure Blob, or compatible store | Helm chart |
 | Cloudflare | Workers and D1 | R2 | Alchemy-backed Artifact Server installer |
 | AWS | Container service or managed Kubernetes and Postgres | S3 | Pulumi-backed Artifact Server installer |
@@ -290,10 +290,10 @@ Customers use one Artifact Server CLI. They choose a target, not an infrastructu
 Local use runs directly on the host by default and does not require Docker. The
 one-server Compose package has two explicit profiles. Compact Compose runs one
 application container with SQLite and one persistent data directory. It does
-not claim failover or support multiple application writers. Shared Compose uses
-the same image but connects it to existing Postgres and object storage through
-a supported adapter; it can run multiple application processes. Kubernetes
-uses the shared profile and never stores artifact data on pod-local
+not claim failover or support multiple application writers. External-storage
+Compose uses the same image but connects it to existing Postgres and object
+storage through a supported adapter; it can run multiple application processes.
+Kubernetes uses that external-storage runtime and never stores artifact data on pod-local
 filesystems. The packages do not bundle a production database, object-storage
 server, ingress controller, DNS server, or certificate authority.
 
@@ -336,8 +336,8 @@ A requirement is complete only when both tests pass on every applicable deployme
 
 ### Release 2: private teams
 
-- One digest-pinned Docker image for compact and shared storage profiles.
-- Docker Compose for a compact one-server install plus a shared profile that
+- One digest-pinned Docker image for compact and external-storage profiles.
+- Compact Compose for a one-server install plus External-storage Compose that
   connects to existing Postgres and object storage.
 - Browser login, scoped API keys, Postgres and native blob drivers.
 - Helm chart for Kubernetes. The chart deploys Artifact Server and connects to

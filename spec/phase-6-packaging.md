@@ -22,11 +22,12 @@ it does not require a specific package:
 | Profile | Process and storage | Used by | Limit |
 | --- | --- | --- | --- |
 | Compact | One process, SQLite, and one persistent data directory | Direct local installs, optional local containers, and compact Compose on one server | One application process. No high-availability claim. |
-| Shared | One or more stateless processes, Postgres, and object storage reached through a supported adapter | Shared Compose, Kubernetes, and managed-cloud packages | The database and object store must exist before Artifact Server starts. |
+| External storage | One or more stateless processes, Postgres, and object storage reached through a supported adapter | External-storage Compose, Kubernetes, and managed-cloud packages | The database and object store must exist before Artifact Server starts. |
 
-The official Compose package uses the compact profile by default. The shared
-Compose profile connects the same image to operator-provided Postgres and
-object storage. The official Helm chart uses only the shared profile.
+The official Compose package uses the compact profile by default.
+External-storage Compose connects the same image to operator-provided Postgres
+and object storage. The official Helm chart uses only the external-storage
+profile.
 
 The packages will not bundle a production object-storage server. Storage is
 replaceable through a narrow adapter contract. The first shared package includes
@@ -47,7 +48,7 @@ are not mature enough to become an invisible Artifact Server dependency.
 | --- | --- |
 | Local package | The compiled Artifact Server CLI and its production runtime dependencies. It runs directly on the host without Docker and keeps SQLite, files, and local secrets in one user-owned data directory. |
 | Runtime image | Compiled JavaScript, production dependencies, the Artifact Server CLI, a fixed non-root user, health support, and no source tree or development tools. |
-| Compose package | A compact `compose.yaml`, a shared `compose.shared.yaml` override, secret-file examples, persistent-volume declarations, and operating instructions. |
+| Compose package | A Compact Compose `compose.yaml`, an External-storage Compose `compose.external-storage.yaml` override, secret-file examples, persistent-volume declarations, and operating instructions. |
 | Helm chart | Artifact Server Deployment, Service, migration Job, probes, disruption controls, optional Ingress templates, secret references, and a chart test. |
 | Operator commands | Configuration validation, migration status and apply, support manifest, integrity check, backup verification, and compact-to-shared transfer. |
 | Release evidence | Image, Compose, and Kubernetes conformance reports, bounded performance reports, an SBOM, provenance, and signatures. |
@@ -112,12 +113,12 @@ failover. Restarting or replacing the container must preserve the data volume.
 The package must refuse to start when the data path is missing, ephemeral, or
 not writable by the fixed runtime user.
 
-### Shared Compose profile
+### External-storage Compose
 
-Compact Compose and shared Compose package the same application image. Their
+Compact Compose and External-storage Compose package the same application image. Their
 state model is different:
 
-| | Compact Compose | Shared Compose |
+| | Compact Compose | External-storage Compose |
 | --- | --- | --- |
 | Application processes | Exactly one | One or more |
 | Records | SQLite in the persistent data directory | Existing Postgres |
@@ -125,11 +126,11 @@ state model is different:
 | Backup unit | Stop the process and copy the complete data directory | Back up Postgres and object storage as one coordinated installation |
 | Intended use | The shortest one-server team install | A server that already has shared providers or a step toward Kubernetes |
 
-`compose.shared.yaml` is a Compose override file. It changes the runtime command
-and provider configuration; it does not start Postgres or an object-storage
-server. It accepts existing provider addresses and mounted credentials. Calling
-it an override describes how the Compose files are combined, not a third
-deployment model.
+`compose.external-storage.yaml` is a Compose override file. It changes the
+runtime command and provider configuration; it does not start Postgres or an
+object-storage server. It accepts existing provider addresses and mounted
+credentials. Calling it an override describes how the Compose files are
+combined, not a third deployment model.
 
 Disposable Postgres and MinIO Compose files remain under test tooling. They are
 not presented as the production install.
@@ -356,7 +357,7 @@ runtime image.
   clean directory, and compare every required ID and byte.
 - Fail closed for an ephemeral data path, bad permissions, missing secrets,
   invalid DNS configuration, and an unavailable login provider.
-- Run shared Compose against real Postgres and S3-compatible providers and
+- Run External-storage Compose against real Postgres and S3-compatible providers and
   prove cross-process reads and publish conflicts remain correct.
 
 ### Kubernetes
@@ -419,7 +420,7 @@ fail the packaging gate.
    observability, smoke, and bounded performance suites.
 3. Ship the compact Compose package and complete its install, restart, upgrade,
    backup, restore, and hostile-configuration evidence.
-4. Ship the shared Compose overlay and run the existing multi-process Postgres
+4. Ship External-storage Compose and run the existing multi-process Postgres
    and S3 suite through containers.
 5. Ship the Helm chart and pass the multi-replica migration, rollout, failure,
    recovery, observability, and performance gates in a disposable cluster.

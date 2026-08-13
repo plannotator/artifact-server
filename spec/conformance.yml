@@ -1869,12 +1869,12 @@ requirements:
 
   - id: DEP-005
     kind: deployment
-    behavior: The one-server Compose target has a compact profile with one container, SQLite, and one persistent data directory, plus a shared profile that connects the same image to existing Postgres and object storage through a supported adapter.
+    behavior: The one-server target offers Compact Compose with one container, SQLite, and one persistent data directory, plus External-storage Compose that connects the same image to existing Postgres and object storage through a supported adapter.
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: deployment}
     acceptance:
-      behavior: {id: DEP-005-B, description: Deploy compact Compose and shared Compose, replace every application container, and preserve all IDs, records, pointers, and bytes.}
-      failure: {id: DEP-005-F, description: Compact mode rejects an ephemeral data path, cannot run multiple application writers or claim failover, and shared Compose cannot depend on container-local durable state.}
+      behavior: {id: DEP-005-B, description: Deploy Compact Compose and External-storage Compose, replace every application container, and preserve all IDs, records, pointers, and bytes.}
+      failure: {id: DEP-005-F, description: Compact Compose rejects an ephemeral data path, cannot run multiple application writers or claim failover, and External-storage Compose cannot depend on container-local durable state.}
     deployments: [single_server]
     status: specified
     depends_on: [OPS-003]
