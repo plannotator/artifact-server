@@ -1,0 +1,53 @@
+{
+  "name": "artifact-server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Publish, version, and serve finished browser artifacts.",
+  "type": "module",
+  "bin": {
+    "artifactserver": "./dist/cli/main.js"
+  },
+  "packageManager": "pnpm@10.34.3",
+  "engines": {
+    "node": ">=24.12.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm conformance:validate && pnpm conformance:tests",
+    "conformance:tests": "ruby scripts/check-conformance-test-ids.rb",
+    "conformance:validate": "ruby scripts/validate-conformance.rb spec/conformance.yml --report",
+    "dev": "tsx watch src/cli/main.ts start",
+    "lint": "oxlint --type-aware --type-check --deny-warnings .",
+    "perf:baseline": "tsx performance/run-local-baseline.ts",
+    "smoke": "vitest run tests/smoke",
+    "start": "tsx src/cli/main.ts start",
+    "test": "vitest run --reporter=default --reporter=json --outputFile.json=evidence/local-foundation.json",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:iteration": "pnpm check && pnpm test:coverage && pnpm perf:baseline"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.0",
+    "commander": "15.0.0",
+    "effect": "4.0.0-rc.108",
+    "hono": "4.13.1",
+    "unicode-case-folding": "1.1.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@oxlint/plugins": "1.78.0",
+    "@types/node": "24.13.3",
+    "@vitest/coverage-v8": "4.1.10",
+    "oxlint": "1.78.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "tsx": "4.23.12",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

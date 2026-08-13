@@ -1,0 +1,74 @@
+{
+  "checks": {
+    "healthEndpoint": "passed",
+    "previousVersionDeniedAfterRestart": "passed",
+    "restartPersistence": "passed"
+  },
+  "configuration": {
+    "concurrency": 6,
+    "payloadBytes": 16384,
+    "publications": 40,
+    "reads": 120,
+    "warmupPublications": 3
+  },
+  "environment": {
+    "availableParallelism": 18,
+    "cpu": "Apple M5 Max",
+    "node": "v24.15.0",
+    "operatingSystem": "darwin 25.3.0",
+    "platform": "darwin"
+  },
+  "eventLoop": {
+    "maximumDelayMilliseconds": 11.805,
+    "meanDelayMilliseconds": 10.088,
+    "p95DelayMilliseconds": 10.805,
+    "utilization": 0.315
+  },
+  "generatedAt": "2026-08-13T06:25:33.835Z",
+  "memory": {
+    "arrayBuffersDeltaBytes": 8463130,
+    "externalDeltaBytes": 8807125,
+    "heapUsedDeltaBytes": 4088176,
+    "rssAfterBytes": 218316800,
+    "rssBeforeBytes": 154189824,
+    "rssDeltaBytes": 64126976,
+    "scope": "combined benchmark client and local server process"
+  },
+  "processCpu": {
+    "systemMilliseconds": 74.908,
+    "userMilliseconds": 197.425
+  },
+  "publish": {
+    "latency": {
+      "count": 40,
+      "maximumMilliseconds": 12.238,
+      "meanMilliseconds": 9.45,
+      "minimumMilliseconds": 8.847,
+      "p50Milliseconds": 9.14,
+      "p95Milliseconds": 10.043,
+      "p99Milliseconds": 12.238
+    },
+    "operationsPerSecond": 105.785,
+    "totalMilliseconds": 378.127
+  },
+  "read": {
+    "latency": {
+      "count": 120,
+      "maximumMilliseconds": 4.227,
+      "meanMilliseconds": 1.509,
+      "minimumMilliseconds": 0.666,
+      "p50Milliseconds": 1.231,
+      "p95Milliseconds": 3.696,
+      "p99Milliseconds": 4.186
+    },
+    "operationsPerSecond": 3860.797,
+    "totalMilliseconds": 31.082
+  },
+  "restartMilliseconds": 4.707,
+  "storage": {
+    "bytes": 897024,
+    "files": 47
+  },
+  "totalMilliseconds": 489.969,
+  "warnings": []
+}

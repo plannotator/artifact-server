@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+performance/results/
+.artifact-server/
+*.db
+*.db-shm
+*.db-wal
+*.log
+.DS_Store

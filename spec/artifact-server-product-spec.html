@@ -1,0 +1,3779 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <meta
+    name="description"
+    content="A product and architecture proposal for an artifact server that can run locally or on shared infrastructure."
+  />
+  <title>artifactserver.com | Product proposal</title>
+  <script>
+    (() => {
+      try {
+        const savedTheme = localStorage.getItem("artifact-spec-theme");
+        if (savedTheme === "light" || savedTheme === "dark") {
+          document.documentElement.dataset.theme = savedTheme;
+        }
+      } catch (_) {
+        // The document still follows the operating-system theme when storage is unavailable.
+      }
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #f3f6fa;
+      --paper: #ffffff;
+      --paper-raised: rgba(255, 255, 255, 0.88);
+      --ink: #111c2d;
+      --ink-soft: #526176;
+      --ink-faint: #748196;
+      --line: #d9e1eb;
+      --line-strong: #bcc8d7;
+      --signal: #285fd1;
+      --signal-deep: #1748b0;
+      --signal-wash: #e9f0ff;
+      --mint: #187157;
+      --mint-wash: #e8f5f0;
+      --code: #0d1726;
+      --code-ink: #eaf1ff;
+      --shadow-soft: 0 1px 2px rgba(25, 45, 75, 0.04), 0 12px 36px rgba(25, 45, 75, 0.07);
+      --shadow-float: 0 1px 2px rgba(17, 28, 45, 0.06), 0 22px 65px rgba(17, 28, 45, 0.12);
+      --font-display: ui-serif, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+      --weight-normal: 400;
+      --weight-medium: 560;
+      --weight-semibold: 650;
+      --weight-bold: 720;
+      --content: 74rem;
+      --reading: 42rem;
+      --radius-small: 0.45rem;
+      --radius-medium: 0.8rem;
+      --radius-large: 1.35rem;
+      --hairline: 1px;
+      --z-header: 20;
+    }
+
+    @media only screen and (min-device-pixel-ratio: 2),
+      only screen and (min-resolution: 192dpi) {
+      :root {
+        --hairline: 0.5px;
+      }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --canvas: #0a111b;
+        --paper: #111b28;
+        --paper-raised: rgba(17, 27, 40, 0.9);
+        --ink: #edf3fb;
+        --ink-soft: #a9b7ca;
+        --ink-faint: #8494aa;
+        --line: #293648;
+        --line-strong: #3b4c62;
+        --signal: #7ba7ff;
+        --signal-deep: #a4c1ff;
+        --signal-wash: #182b4d;
+        --mint: #67c9a6;
+        --mint-wash: #102f28;
+        --code: #070c13;
+        --code-ink: #eaf1ff;
+        --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.25), 0 14px 38px rgba(0, 0, 0, 0.22);
+        --shadow-float: 0 1px 2px rgba(0, 0, 0, 0.38), 0 28px 70px rgba(0, 0, 0, 0.35);
+      }
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --canvas: #0a111b;
+      --paper: #111b28;
+      --paper-raised: rgba(17, 27, 40, 0.9);
+      --ink: #edf3fb;
+      --ink-soft: #a9b7ca;
+      --ink-faint: #8494aa;
+      --line: #293648;
+      --line-strong: #3b4c62;
+      --signal: #7ba7ff;
+      --signal-deep: #a4c1ff;
+      --signal-wash: #182b4d;
+      --mint: #67c9a6;
+      --mint-wash: #102f28;
+      --code: #070c13;
+      --code-ink: #eaf1ff;
+      --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.25), 0 14px 38px rgba(0, 0, 0, 0.22);
+      --shadow-float: 0 1px 2px rgba(0, 0, 0, 0.38), 0 28px 70px rgba(0, 0, 0, 0.35);
+    }
+
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --canvas: #f3f6fa;
+      --paper: #ffffff;
+      --paper-raised: rgba(255, 255, 255, 0.88);
+      --ink: #111c2d;
+      --ink-soft: #526176;
+      --ink-faint: #748196;
+      --line: #d9e1eb;
+      --line-strong: #bcc8d7;
+      --signal: #285fd1;
+      --signal-deep: #1748b0;
+      --signal-wash: #e9f0ff;
+      --mint: #187157;
+      --mint-wash: #e8f5f0;
+      --code: #0d1726;
+      --code-ink: #eaf1ff;
+      --shadow-soft: 0 1px 2px rgba(25, 45, 75, 0.04), 0 12px 36px rgba(25, 45, 75, 0.07);
+      --shadow-float: 0 1px 2px rgba(17, 28, 45, 0.06), 0 22px 65px rgba(17, 28, 45, 0.12);
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--canvas);
+    }
+
+    body {
+      margin: 0;
+      min-width: 20rem;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: var(--font-body);
+      font-size: 1rem;
+      line-height: 1.62;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    button,
+    a,
+    summary {
+      touch-action: manipulation;
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+    }
+
+    a {
+      color: var(--signal-deep);
+      text-underline-offset: 0.18em;
+      text-decoration-thickness: 0.07em;
+    }
+
+    a:focus-visible,
+    button:focus-visible,
+    summary:focus-visible {
+      outline: 2px solid var(--ink);
+      outline-offset: 3px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p,
+    ul,
+    ol,
+    figure,
+    blockquote,
+    pre {
+      margin: 0;
+    }
+
+    h1,
+    h2,
+    h3 {
+      color: var(--ink);
+      text-wrap: balance;
+      font-optical-sizing: auto;
+    }
+
+    h1,
+    h2 {
+      font-family: var(--font-display);
+    }
+
+    h1 {
+      max-width: none;
+      font-family: var(--font-body);
+      font-size: clamp(2.2rem, 5vw, 4rem);
+      font-weight: var(--weight-semibold);
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+    }
+
+    h2 {
+      max-width: 21ch;
+      font-size: clamp(2.15rem, 4.2vw, 3.65rem);
+      font-weight: var(--weight-normal);
+      line-height: 1.02;
+      letter-spacing: -0.037em;
+    }
+
+    h3 {
+      font-size: clamp(1.08rem, 2vw, 1.3rem);
+      font-weight: var(--weight-semibold);
+      line-height: 1.25;
+      letter-spacing: -0.018em;
+    }
+
+    p,
+    li {
+      max-width: 65ch;
+    }
+
+    code,
+    .mono {
+      font-family: var(--font-mono);
+      font-size: 0.92em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .skip-link {
+      position: fixed;
+      z-index: calc(var(--z-header) + 1);
+      top: 0.75rem;
+      left: 0.75rem;
+      padding: 0.7rem 0.9rem;
+      transform: translateY(-160%);
+      border-radius: var(--radius-small);
+      background: var(--ink);
+      color: var(--paper);
+      text-decoration: none;
+    }
+
+    .skip-link:focus {
+      transform: translateY(0);
+    }
+
+    .site-header {
+      position: sticky;
+      z-index: var(--z-header);
+      top: 0;
+      background: var(--paper-raised);
+      box-shadow: 0 var(--hairline) 0 var(--line);
+      backdrop-filter: blur(18px) saturate(150%);
+      -webkit-backdrop-filter: blur(18px) saturate(150%);
+    }
+
+    .header-inner {
+      display: flex;
+      min-height: 4rem;
+      max-width: var(--content);
+      margin-inline: auto;
+      padding: 0.55rem max(1rem, env(safe-area-inset-right)) 0.55rem max(1rem, env(safe-area-inset-left));
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .wordmark {
+      display: inline-flex;
+      min-height: 2.75rem;
+      align-items: center;
+      color: var(--ink);
+      font-size: 0.94rem;
+      font-weight: var(--weight-semibold);
+      letter-spacing: -0.012em;
+      text-decoration: none;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .quiet-button {
+      display: inline-flex;
+      min-height: 2.75rem;
+      padding: 0 0.85rem;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      border: 0;
+      border-radius: 0.48rem;
+      background: transparent;
+      color: var(--ink-soft);
+      cursor: pointer;
+      font-size: 0.84rem;
+      font-weight: var(--weight-medium);
+    }
+
+    .quiet-button:active {
+      transform: scale(0.97);
+    }
+
+    .status-pill {
+      display: inline-flex;
+      min-height: 1.75rem;
+      padding: 0.3rem 0.6rem;
+      align-items: center;
+      border-radius: 999px;
+      background: var(--signal-wash);
+      color: var(--signal-deep);
+      font-size: 0.72rem;
+      font-weight: var(--weight-semibold);
+      letter-spacing: 0.04em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .hero {
+      border-bottom: var(--hairline) solid var(--line);
+      background: var(--paper);
+    }
+
+    .hero-inner {
+      display: grid;
+      max-width: var(--content);
+      margin-inline: auto;
+      padding: clamp(4rem, 8vw, 7rem) max(1.25rem, env(safe-area-inset-right)) clamp(3.5rem, 7vw, 6rem) max(1.25rem, env(safe-area-inset-left));
+    }
+
+    .hero-copy {
+      display: grid;
+      max-width: 58rem;
+      gap: 1.5rem;
+    }
+
+    .hero-deck {
+      max-width: 52rem;
+      color: var(--ink-soft);
+      font-size: clamp(1.02rem, 1.7vw, 1.2rem);
+      line-height: 1.58;
+    }
+
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.7rem 1.2rem;
+      color: var(--ink-faint);
+      font-size: 0.82rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .minute-band {
+      background: var(--canvas);
+      border-bottom: var(--hairline) solid var(--line);
+    }
+
+    .minute-inner {
+      display: grid;
+      max-width: var(--content);
+      margin-inline: auto;
+      padding: clamp(3rem, 6vw, 5.5rem) max(1.25rem, env(safe-area-inset-right)) clamp(3rem, 6vw, 5.5rem) max(1.25rem, env(safe-area-inset-left));
+      grid-template-columns: minmax(12rem, 0.58fr) minmax(0, 1.42fr);
+      gap: clamp(2rem, 6vw, 6rem);
+    }
+
+    .minute-title {
+      display: grid;
+      align-content: start;
+      gap: 0.8rem;
+    }
+
+    .minute-title h2 {
+      max-width: 8ch;
+      font-size: clamp(2rem, 3.5vw, 3rem);
+    }
+
+    .minute-title p {
+      color: var(--ink-soft);
+    }
+
+    .answer-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--hairline);
+      overflow: hidden;
+      border-radius: var(--radius-medium);
+      background: var(--line);
+      box-shadow: 0 0 0 var(--hairline) var(--line);
+    }
+
+    .answer {
+      display: grid;
+      min-height: 8.7rem;
+      padding: 1.25rem;
+      align-content: start;
+      gap: 0.55rem;
+      background: var(--paper);
+    }
+
+    .answer-label {
+      color: var(--ink-faint);
+      font-size: 0.7rem;
+      font-weight: var(--weight-semibold);
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .answer-value {
+      color: var(--ink);
+      font-size: 0.96rem;
+      line-height: 1.48;
+    }
+
+    .answer-setting {
+      display: block;
+    }
+
+    .answer-setting + .answer-setting {
+      margin-top: 0.5rem;
+    }
+
+    .document {
+      display: grid;
+      max-width: var(--content);
+      margin-inline: auto;
+      padding: clamp(3.75rem, 7vw, 7.5rem) max(1.25rem, env(safe-area-inset-right)) 7rem max(1.25rem, env(safe-area-inset-left));
+      grid-template-columns: 13.5rem minmax(0, 1fr);
+      gap: clamp(3rem, 7vw, 7rem);
+    }
+
+    .toc {
+      align-self: start;
+      position: sticky;
+      top: 6.25rem;
+      display: grid;
+      gap: 1.25rem;
+    }
+
+    .toc-label {
+      color: var(--ink-faint);
+      font-size: 0.68rem;
+      font-weight: var(--weight-semibold);
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+    }
+
+    .toc-list {
+      display: grid;
+      padding: 0;
+      gap: 0.12rem;
+      list-style: none;
+    }
+
+    .toc-list a {
+      display: flex;
+      min-height: 2.45rem;
+      padding: 0.4rem 0.55rem;
+      align-items: center;
+      border-radius: 0.35rem;
+      color: var(--ink-soft);
+      font-size: 0.82rem;
+      font-weight: var(--weight-medium);
+      line-height: 1.25;
+      text-decoration: none;
+    }
+
+    .document-main {
+      display: grid;
+      min-width: 0;
+      gap: clamp(5rem, 9vw, 9rem);
+    }
+
+    .mobile-toc {
+      display: none;
+    }
+
+    .section {
+      display: grid;
+      min-width: 0;
+      scroll-margin-top: 6rem;
+      gap: clamp(2rem, 4vw, 3.5rem);
+    }
+
+    .section-heading {
+      display: grid;
+      max-width: 48rem;
+      gap: 1.2rem;
+    }
+
+    .section-heading > p {
+      color: var(--ink-soft);
+      font-size: clamp(1.03rem, 1.7vw, 1.18rem);
+      line-height: 1.62;
+    }
+
+    .section-label {
+      color: var(--signal-deep);
+      font-size: 0.71rem;
+      font-weight: var(--weight-semibold);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .editorial-lead {
+      max-width: 39rem;
+      font-family: var(--font-display);
+      font-size: clamp(1.55rem, 3vw, 2.35rem);
+      line-height: 1.25;
+      letter-spacing: -0.027em;
+    }
+
+    .pathway {
+      display: grid;
+      overflow: hidden;
+      border-radius: var(--radius-medium);
+      background: var(--line);
+      box-shadow: 0 0 0 var(--hairline) var(--line);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: var(--hairline);
+      counter-reset: pathway;
+    }
+
+    .pathway-step {
+      display: grid;
+      min-height: 14rem;
+      padding: 1.35rem;
+      align-content: space-between;
+      gap: 2rem;
+      background: var(--paper);
+      counter-increment: pathway;
+    }
+
+    .pathway-step::before {
+      color: var(--signal);
+      content: counter(pathway, decimal-leading-zero);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .pathway-copy {
+      display: grid;
+      gap: 0.6rem;
+    }
+
+    .pathway-copy p {
+      color: var(--ink-soft);
+      font-size: 0.87rem;
+      line-height: 1.48;
+    }
+
+    .definition {
+      display: grid;
+      padding: clamp(1.6rem, 4vw, 2.8rem);
+      border-radius: var(--radius-medium);
+      background: var(--signal-wash);
+      grid-template-columns: minmax(11rem, 0.6fr) minmax(0, 1.4fr);
+      gap: clamp(1.5rem, 4vw, 4rem);
+      box-shadow: inset 0 0 0 var(--hairline) color-mix(in srgb, var(--signal) 28%, transparent);
+    }
+
+    .definition-term {
+      color: var(--signal-deep);
+      font-family: var(--font-display);
+      font-size: clamp(1.5rem, 3vw, 2.25rem);
+      line-height: 1.08;
+      letter-spacing: -0.035em;
+    }
+
+    .definition-copy {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .definition-copy p {
+      color: var(--ink);
+      font-size: 1.03rem;
+    }
+
+    .artifact-types {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .artifact-type {
+      display: grid;
+      min-height: 10.5rem;
+      padding: 1.2rem;
+      align-content: space-between;
+      gap: 1.5rem;
+      border-radius: var(--radius-small);
+      background: var(--paper);
+      box-shadow: var(--shadow-soft), inset 0 0 0 var(--hairline) var(--line);
+    }
+
+    .artifact-type-symbol {
+      color: var(--signal-deep);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+    }
+
+    .artifact-type p {
+      color: var(--ink-soft);
+      font-size: 0.84rem;
+      line-height: 1.48;
+    }
+
+    .feature-list {
+      display: grid;
+      border-top: var(--hairline) solid var(--line-strong);
+    }
+
+    .feature-row {
+      display: grid;
+      padding: 2rem 0;
+      border-bottom: var(--hairline) solid var(--line);
+      grid-template-columns: minmax(10rem, 0.55fr) minmax(0, 1.45fr);
+      gap: clamp(1.5rem, 5vw, 5rem);
+    }
+
+    .feature-copy {
+      display: grid;
+      gap: 0.85rem;
+    }
+
+    .feature-copy p {
+      color: var(--ink-soft);
+    }
+
+    .feature-note {
+      color: var(--ink-faint);
+      font-size: 0.84rem;
+    }
+
+    .visibility {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .visibility-card {
+      display: grid;
+      min-height: 17rem;
+      padding: clamp(1.4rem, 3vw, 2rem);
+      align-content: space-between;
+      gap: 2.5rem;
+      border-radius: var(--radius-medium);
+      background: var(--paper);
+      box-shadow: var(--shadow-soft), inset 0 0 0 var(--hairline) var(--line);
+    }
+
+    .visibility-card.public-card {
+      background: var(--mint-wash);
+      box-shadow: inset 0 0 0 var(--hairline) color-mix(in srgb, var(--mint) 30%, transparent);
+    }
+
+    .visibility-icon {
+      display: grid;
+      width: 2.6rem;
+      height: 2.6rem;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--signal-wash);
+      color: var(--signal-deep);
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      font-weight: var(--weight-semibold);
+    }
+
+    .public-card .visibility-icon {
+      background: color-mix(in srgb, var(--mint) 13%, transparent);
+      color: var(--mint);
+    }
+
+    .visibility-copy {
+      display: grid;
+      gap: 0.7rem;
+    }
+
+    .visibility-copy p {
+      color: var(--ink-soft);
+    }
+
+    .network-note {
+      display: grid;
+      padding: 1.2rem 1.3rem;
+      border-left: 0.22rem solid var(--signal);
+      background: var(--paper);
+      gap: 0.35rem;
+      box-shadow: inset 0 0 0 var(--hairline) var(--line);
+    }
+
+    .network-note strong {
+      font-size: 0.93rem;
+    }
+
+    .network-note p {
+      color: var(--ink-soft);
+      font-size: 0.9rem;
+    }
+
+    .architecture {
+      display: grid;
+      padding: clamp(1.4rem, 4vw, 2.6rem);
+      overflow: hidden;
+      border-radius: var(--radius-large);
+      background: var(--code);
+      color: var(--code-ink);
+      gap: clamp(1.4rem, 4vw, 2.6rem);
+      box-shadow: var(--shadow-float);
+      user-select: none;
+    }
+
+    .architecture-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .architecture-title {
+      color: var(--code-ink);
+      font-family: var(--font-display);
+      font-size: clamp(1.6rem, 3vw, 2.4rem);
+      line-height: 1.05;
+      letter-spacing: -0.035em;
+    }
+
+    .architecture-caption {
+      max-width: 28rem;
+      color: color-mix(in srgb, var(--code-ink) 66%, transparent);
+      font-size: 0.83rem;
+      line-height: 1.5;
+    }
+
+    .diagram-stack {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .diagram-shell {
+      display: grid;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 0.7rem;
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .diagram-heading {
+      display: flex;
+      padding: 0.85rem 1rem;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .diagram-heading strong {
+      color: var(--code-ink);
+      font-size: 0.82rem;
+    }
+
+    .diagram-heading span {
+      color: color-mix(in srgb, var(--code-ink) 56%, transparent);
+      font-size: 0.72rem;
+    }
+
+    .diagram-scroll {
+      overflow-x: auto;
+      overscroll-behavior-inline: contain;
+    }
+
+    .architecture-diagram {
+      display: block;
+      width: 100%;
+      min-width: 58rem;
+      height: auto;
+    }
+
+    .architecture-diagram.skill-diagram {
+      min-width: 46rem;
+    }
+
+    .architecture-diagram text {
+      fill: var(--code-ink);
+      font-family: var(--font-body);
+    }
+
+    .architecture-diagram .svg-label {
+      fill: color-mix(in srgb, var(--code-ink) 58%, transparent);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+    }
+
+    .architecture-diagram .svg-title {
+      font-size: 15px;
+      font-weight: var(--weight-semibold);
+    }
+
+    .architecture-diagram .svg-copy {
+      fill: color-mix(in srgb, var(--code-ink) 66%, transparent);
+      font-size: 12px;
+    }
+
+    .architecture-diagram .svg-small {
+      fill: color-mix(in srgb, var(--code-ink) 54%, transparent);
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    .architecture-diagram .svg-boundary {
+      fill: rgba(255, 255, 255, 0.018);
+      stroke: rgba(255, 255, 255, 0.18);
+      stroke-width: 1.2;
+    }
+
+    .architecture-diagram .svg-boundary-optional {
+      fill: color-mix(in srgb, var(--mint) 9%, transparent);
+      stroke: color-mix(in srgb, var(--mint) 48%, transparent);
+      stroke-dasharray: 6 5;
+      stroke-width: 1.2;
+    }
+
+    .architecture-diagram .svg-node {
+      fill: rgba(255, 255, 255, 0.055);
+      stroke: rgba(255, 255, 255, 0.2);
+      stroke-width: 1;
+    }
+
+    .architecture-diagram .svg-node-primary {
+      fill: color-mix(in srgb, var(--signal) 27%, var(--code));
+      stroke: color-mix(in srgb, var(--signal) 72%, transparent);
+      stroke-width: 1.2;
+    }
+
+    .architecture-diagram .svg-node-store {
+      fill: color-mix(in srgb, var(--mint) 18%, var(--code));
+      stroke: color-mix(in srgb, var(--mint) 58%, transparent);
+      stroke-width: 1.1;
+    }
+
+    .architecture-diagram .svg-node-auth {
+      fill: color-mix(in srgb, var(--signal) 16%, var(--code));
+      stroke: color-mix(in srgb, var(--signal) 58%, transparent);
+      stroke-width: 1.1;
+    }
+
+    .architecture-diagram .svg-step {
+      fill: var(--signal);
+      stroke: color-mix(in srgb, var(--code-ink) 90%, transparent);
+      stroke-width: 1;
+    }
+
+    .architecture-diagram .svg-step-number {
+      fill: #ffffff;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: var(--weight-semibold);
+      text-anchor: middle;
+    }
+
+    .architecture-diagram .svg-line {
+      fill: none;
+      stroke: color-mix(in srgb, var(--code-ink) 58%, transparent);
+      stroke-linecap: square;
+      stroke-linejoin: round;
+      stroke-width: 1.5;
+    }
+
+    .architecture-diagram .svg-line-optional {
+      fill: none;
+      stroke: color-mix(in srgb, var(--mint) 74%, transparent);
+      stroke-dasharray: 6 5;
+      stroke-linecap: square;
+      stroke-linejoin: round;
+      stroke-width: 1.5;
+    }
+
+    .architecture-diagram .svg-divider {
+      stroke: rgba(255, 255, 255, 0.1);
+      stroke-width: 1;
+    }
+
+    .diagram-legend {
+      display: flex;
+      padding: 0.8rem 1rem;
+      flex-wrap: wrap;
+      gap: 0.7rem 1.2rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      color: color-mix(in srgb, var(--code-ink) 64%, transparent);
+      font-size: 0.7rem;
+    }
+
+    .diagram-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .diagram-key {
+      display: inline-block;
+      width: 1.55rem;
+      border-top: 1.5px solid color-mix(in srgb, var(--code-ink) 62%, transparent);
+    }
+
+    .diagram-key.optional {
+      border-top-color: color-mix(in srgb, var(--mint) 74%, transparent);
+      border-top-style: dashed;
+    }
+
+    .architecture-rules {
+      display: grid;
+      padding-top: 1.2rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .architecture-rule {
+      display: grid;
+      gap: 0.4rem;
+      color: color-mix(in srgb, var(--code-ink) 72%, transparent);
+      font-size: 0.74rem;
+      line-height: 1.42;
+    }
+
+    .architecture-rule b {
+      color: var(--code-ink);
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: var(--weight-medium);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: var(--radius-medium);
+      box-shadow: 0 0 0 var(--hairline) var(--line);
+    }
+
+    table {
+      width: 100%;
+      min-width: 46rem;
+      border-collapse: collapse;
+      background: var(--paper);
+      font-size: 0.86rem;
+      line-height: 1.45;
+    }
+
+    .deployment-table {
+      min-width: 64rem;
+    }
+
+    th,
+    td {
+      padding: 1rem 1.05rem;
+      border-bottom: var(--hairline) solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--ink-faint);
+      font-size: 0.68rem;
+      font-weight: var(--weight-semibold);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    td:first-child {
+      color: var(--ink);
+      font-weight: var(--weight-semibold);
+    }
+
+    td {
+      color: var(--ink-soft);
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .deployment-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .deployment-item {
+      display: grid;
+      padding: 1.2rem;
+      align-content: start;
+      gap: 0.7rem;
+      border-top: 0.18rem solid var(--line-strong);
+      background: var(--paper);
+    }
+
+    .deployment-item p {
+      color: var(--ink-soft);
+      font-size: 0.86rem;
+    }
+
+    .mcp-sequence {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 0.55rem;
+    }
+
+    .mcp-step {
+      display: grid;
+      min-height: 9rem;
+      padding: 1rem;
+      align-content: space-between;
+      gap: 1.2rem;
+      border-radius: var(--radius-small);
+      background: var(--paper);
+      box-shadow: inset 0 0 0 var(--hairline) var(--line);
+    }
+
+    .mcp-step code {
+      color: var(--signal-deep);
+      font-size: 0.68rem;
+    }
+
+    .mcp-step p {
+      color: var(--ink-soft);
+      font-size: 0.8rem;
+      line-height: 1.45;
+    }
+
+    .disclosure-stack {
+      display: grid;
+      border-top: var(--hairline) solid var(--line-strong);
+    }
+
+    details {
+      border-bottom: var(--hairline) solid var(--line);
+    }
+
+    summary {
+      position: relative;
+      display: flex;
+      min-height: 4.2rem;
+      padding: 1rem 3rem 1rem 0;
+      align-items: center;
+      color: var(--ink);
+      cursor: pointer;
+      font-size: 0.96rem;
+      font-weight: var(--weight-semibold);
+      list-style: none;
+    }
+
+    summary::-webkit-details-marker {
+      display: none;
+    }
+
+    summary::after {
+      position: absolute;
+      right: 0.2rem;
+      display: grid;
+      width: 2rem;
+      height: 2rem;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--canvas);
+      color: var(--ink-soft);
+      content: "+";
+      font-family: var(--font-mono);
+      font-size: 1rem;
+      font-weight: var(--weight-normal);
+    }
+
+    details[open] summary::after {
+      content: "−";
+    }
+
+    .detail-body {
+      display: grid;
+      max-width: var(--reading);
+      padding: 0 0 2rem;
+      gap: 1rem;
+      color: var(--ink-soft);
+      font-size: 0.93rem;
+    }
+
+    .detail-body ul,
+    .detail-body ol {
+      display: grid;
+      padding-left: 1.25rem;
+      gap: 0.55rem;
+    }
+
+    .detail-body strong {
+      color: var(--ink);
+    }
+
+    .detail-body pre {
+      max-width: 100%;
+      padding: 1rem;
+      overflow-x: auto;
+      border-radius: var(--radius-small);
+      background: var(--code);
+      color: var(--code-ink);
+      font-size: 0.78rem;
+      line-height: 1.6;
+    }
+
+    .scope-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .scope-panel {
+      display: grid;
+      padding: 1.4rem;
+      align-content: start;
+      gap: 1rem;
+      border-radius: var(--radius-medium);
+      background: var(--paper);
+      box-shadow: inset 0 0 0 var(--hairline) var(--line);
+    }
+
+    .scope-panel.no-panel {
+      background: var(--canvas);
+    }
+
+    .scope-panel ul {
+      display: grid;
+      padding-left: 1.15rem;
+      gap: 0.55rem;
+      color: var(--ink-soft);
+      font-size: 0.9rem;
+    }
+
+    .roadmap {
+      display: grid;
+      border-top: var(--hairline) solid var(--line-strong);
+    }
+
+    .roadmap-item {
+      display: grid;
+      padding: 2rem 0;
+      border-bottom: var(--hairline) solid var(--line);
+      grid-template-columns: 7rem minmax(0, 1fr);
+      gap: clamp(1.4rem, 4vw, 4rem);
+    }
+
+    .roadmap-stage {
+      color: var(--signal-deep);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: var(--weight-medium);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .roadmap-copy {
+      display: grid;
+      gap: 0.7rem;
+    }
+
+    .roadmap-copy p {
+      color: var(--ink-soft);
+    }
+
+    .decision-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--hairline);
+      overflow: hidden;
+      border-radius: var(--radius-medium);
+      background: var(--line);
+      box-shadow: 0 0 0 var(--hairline) var(--line);
+    }
+
+    .decision-item {
+      display: grid;
+      min-height: 7rem;
+      padding: 1.2rem;
+      align-content: start;
+      gap: 0.6rem;
+      background: var(--paper);
+    }
+
+    .decision-item::before {
+      color: var(--mint);
+      content: "Decided";
+      font-size: 0.66rem;
+      font-weight: var(--weight-semibold);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .decision-item p {
+      color: var(--ink-soft);
+      font-size: 0.86rem;
+      line-height: 1.45;
+    }
+
+    .decision-item:last-child:nth-child(odd) {
+      grid-column: 1 / -1;
+    }
+
+    .open-decisions {
+      display: grid;
+      padding: clamp(1.5rem, 4vw, 2.5rem);
+      border-radius: var(--radius-medium);
+      background: var(--paper);
+      gap: 1.5rem;
+      box-shadow: var(--shadow-soft), inset 0 0 0 var(--hairline) var(--line);
+    }
+
+    .open-decisions ol {
+      display: grid;
+      padding-left: 1.35rem;
+      gap: 0.85rem;
+      color: var(--ink-soft);
+    }
+
+    .document-footer {
+      padding: 3rem max(1.25rem, env(safe-area-inset-right)) max(3rem, env(safe-area-inset-bottom)) max(1.25rem, env(safe-area-inset-left));
+      border-top: var(--hairline) solid var(--line);
+      background: var(--paper);
+    }
+
+    .footer-inner {
+      display: flex;
+      max-width: var(--content);
+      margin-inline: auto;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      color: var(--ink-faint);
+      font-size: 0.78rem;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .quiet-button:hover {
+        background: var(--canvas);
+        color: var(--ink);
+      }
+
+      .toc-list a:hover {
+        background: var(--paper);
+        color: var(--ink);
+      }
+
+      summary:hover {
+        color: var(--signal-deep);
+      }
+
+      summary:hover::after {
+        background: var(--signal-wash);
+        color: var(--signal-deep);
+      }
+    }
+
+    @media (max-width: 62rem) {
+      .hero-copy {
+        max-width: 48rem;
+      }
+
+      .document {
+        grid-template-columns: 1fr;
+      }
+
+      .toc {
+        display: none;
+      }
+
+      .mobile-toc {
+        display: block;
+        border-top: var(--hairline) solid var(--line);
+      }
+
+      .mobile-toc .detail-body {
+        max-width: none;
+      }
+
+      .mobile-toc nav {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.3rem;
+      }
+
+      .mobile-toc a {
+        display: flex;
+        min-height: 2.75rem;
+        padding: 0.5rem 0.65rem;
+        align-items: center;
+        border-radius: 0.35rem;
+        color: var(--ink-soft);
+        font-size: 0.82rem;
+        text-decoration: none;
+      }
+
+      .pathway {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .architecture-rules {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .mcp-sequence {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 46rem) {
+      .header-inner {
+        min-height: 3.65rem;
+      }
+
+      .status-pill {
+        display: none;
+      }
+
+      .hero-inner {
+        padding-top: 4rem;
+      }
+
+      .minute-inner,
+      .definition,
+      .feature-row {
+        grid-template-columns: 1fr;
+      }
+
+      .answer-grid,
+      .visibility,
+      .scope-grid,
+      .decision-list {
+        grid-template-columns: 1fr;
+      }
+
+      .artifact-types,
+      .deployment-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .mcp-sequence {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .diagram-heading {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.2rem;
+      }
+
+      .roadmap-item {
+        grid-template-columns: 1fr;
+        gap: 0.8rem;
+      }
+
+      .footer-inner {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+
+    @media (max-width: 32rem) {
+      .header-actions .quiet-button {
+        padding-inline: 0.62rem;
+      }
+
+      .theme-prefix {
+        display: none;
+      }
+
+      .pathway,
+      .artifact-types,
+      .deployment-summary,
+      .mcp-sequence,
+      .architecture-rules,
+      .mobile-toc nav {
+        grid-template-columns: 1fr;
+      }
+
+      .pathway-step {
+        min-height: 10rem;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    @media (prefers-reduced-transparency: reduce) {
+      .site-header {
+        background: var(--paper);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
+    }
+
+    @media (prefers-contrast: more) {
+      :root {
+        --line: var(--line-strong);
+      }
+
+      .site-header,
+      .artifact-type,
+      .visibility-card,
+      .scope-panel,
+      .open-decisions {
+        box-shadow: 0 0 0 1px var(--line-strong);
+      }
+    }
+
+    @media print {
+      :root {
+        color-scheme: light;
+        --canvas: #ffffff;
+        --paper: #ffffff;
+        --ink: #111827;
+        --ink-soft: #374151;
+        --ink-faint: #6b7280;
+        --line: #d1d5db;
+        --line-strong: #9ca3af;
+        --signal: #1d4ed8;
+        --signal-deep: #1d4ed8;
+        --signal-wash: #eff6ff;
+        --mint: #166534;
+        --mint-wash: #f0fdf4;
+      }
+
+      body {
+        background: #ffffff;
+        font-size: 10pt;
+      }
+
+      .site-header,
+      .toc,
+      .mobile-toc,
+      .header-actions {
+        display: none !important;
+      }
+
+      .hero,
+      .minute-band {
+        break-after: page;
+      }
+
+      .hero-inner {
+        min-height: auto;
+        padding: 2.5rem 0;
+      }
+
+      .minute-inner,
+      .document {
+        max-width: none;
+        padding: 2rem 0;
+      }
+
+      .document {
+        display: block;
+      }
+
+      .document-main {
+        gap: 4rem;
+      }
+
+      .section,
+      .architecture,
+      .diagram-shell,
+      details,
+      .table-wrap {
+        break-inside: avoid;
+      }
+
+      .architecture,
+      .diagram-shell,
+      .artifact-type,
+      .visibility-card,
+      .open-decisions {
+        box-shadow: 0 0 0 1px var(--line);
+      }
+
+      .architecture-diagram {
+        min-width: 0;
+      }
+
+      details[open] .detail-body {
+        display: grid;
+      }
+
+      .document-footer {
+        padding: 1.5rem 0;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to the proposal</a>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="wordmark" href="#top" aria-label="artifactserver.com proposal, back to top">
+        <span>artifactserver.com</span>
+      </a>
+      <div class="header-actions">
+        <span class="status-pill">Decision draft</span>
+        <button class="quiet-button" id="theme-button" type="button" aria-label="Change color theme">
+          <span class="theme-prefix">Theme:</span>
+          <span id="theme-label">System</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <section class="hero" id="top">
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <h1>Artifact Server product and architecture proposal</h1>
+          <p class="hero-deck">
+            Publish finished client-side websites and web applications, including multi-page static
+            sites, compiled React, Vue, or Svelte applications, and prototypes written in HTML, CSS,
+            and JavaScript. Also publish Markdown, text, JSON, source code, images, PDFs, audio,
+            video, ZIP archives, and other files. Artifact Server stores the exact files and uses
+            the browser's built-in display or download behavior. It does not build source code, run
+            backend code, convert media, or provide specialized document viewers.
+          </p>
+          <div class="hero-meta">
+            <span>August 12, 2026</span>
+            <span>Product proposal</span>
+            <span>Local, private network, server, Kubernetes, Cloudflare, AWS, GCP, Azure</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="minute-band" aria-labelledby="minute-title">
+      <div class="minute-inner">
+        <div class="minute-title">
+          <h2 id="minute-title">Product summary</h2>
+          <p>Proposed behavior, access, deployment, and scope.</p>
+        </div>
+        <div class="answer-grid">
+          <article class="answer">
+            <span class="answer-label">Supported web content</span>
+            <p class="answer-value">Finished client-side sites and web applications whose runtime consists only of files served to a browser: HTML, CSS, JavaScript, images, and fonts. This includes multi-page static sites, single-page applications compiled from React, Vue, or Svelte, and prototypes written directly in HTML, CSS, and JavaScript. It also stores ordinary files such as images, video, PDFs, audio, text, and ZIP archives. It does not support an application that needs Node.js, Python, a database, a server function, or server-side rendering when a request arrives.</p>
+          </article>
+          <article class="answer">
+            <span class="answer-label">Who can open it</span>
+            <p class="answer-value">
+              <span class="answer-setting">One installation is one closed group: one person or one team.</span>
+              <span class="answer-setting"><strong>1. Account required.</strong> Only people admitted to that installation can open it. There is no public self-sign-up.</span>
+              <span class="answer-setting"><strong>2. Public link.</strong> No account is required. Anyone who can connect to this Artifact Server and has the link can open the current version. History and comparisons still require an account.</span>
+              <span class="answer-setting">A public link does not put a private server on the internet.</span>
+            </p>
+          </article>
+          <article class="answer">
+            <span class="answer-label">What gets saved</span>
+            <p class="answer-value">For a website or web application, the server saves the complete directory of finished runtime files and the HTML file that opens first, usually <code>index.html</code>. Publishing again creates a new saved copy and never alters a previous copy. The server compares file lists and changed text without Git. Optional Git history is a second, private copy.</p>
+          </article>
+          <article class="answer">
+            <span class="answer-label">Agents</span>
+            <p class="answer-value">AI agents publish through normal web requests or MCP. A hosted MCP connection opens browser sign-in and approval the first time. Local and private installations can use local or server API keys. A publish returns an ID, version number, and link.</p>
+          </article>
+          <article class="answer">
+            <span class="answer-label">Deployment</span>
+            <p class="answer-value">The same product rules run locally, on one server, on Kubernetes, or on Cloudflare. Official installers later cover AWS, GCP, and Azure without changing the product.</p>
+          </article>
+          <article class="answer">
+            <span class="answer-label">Not included</span>
+            <p class="answer-value">No comments, annotations, workspace collaboration, general-purpose source-code hosting, code-building service, arbitrary add-ons, or programs that must keep running on the server. Plannotator provides review and collaboration.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <div class="document">
+      <aside class="toc" aria-label="On this page">
+        <span class="toc-label">On this page</span>
+        <nav>
+          <ul class="toc-list">
+            <li><a href="#product">The product</a></li>
+            <li><a href="#artifact">An artifact</a></li>
+            <li><a href="#experience">Customer experience</a></li>
+            <li><a href="#sharing">Sharing</a></li>
+            <li><a href="#plannotator">Plannotator connection</a></li>
+            <li><a href="#architecture">Architecture</a></li>
+            <li><a href="#mcp">AI agent access</a></li>
+            <li><a href="#deployment">Deployment</a></li>
+            <li><a href="#safety">Safety</a></li>
+            <li><a href="#scope">Scope</a></li>
+            <li><a href="#implementation">Implementation</a></li>
+            <li><a href="#decisions">Decisions</a></li>
+          </ul>
+        </nav>
+      </aside>
+
+      <div class="document-main">
+        <details class="mobile-toc">
+          <summary>On this page</summary>
+          <div class="detail-body">
+            <nav>
+              <a href="#product">The product</a>
+              <a href="#artifact">An artifact</a>
+              <a href="#experience">Customer experience</a>
+              <a href="#sharing">Sharing</a>
+              <a href="#plannotator">Plannotator connection</a>
+              <a href="#architecture">Architecture</a>
+              <a href="#mcp">AI agent access</a>
+              <a href="#deployment">Deployment</a>
+              <a href="#safety">Safety</a>
+              <a href="#scope">Scope</a>
+              <a href="#implementation">Implementation</a>
+              <a href="#decisions">Decisions</a>
+            </nav>
+          </div>
+        </details>
+
+        <section class="section" id="product" aria-labelledby="product-title">
+          <div class="section-heading">
+            <span class="section-label">The product</span>
+            <h2 id="product-title">Publishing workflow</h2>
+            <p>
+              An agent finishes a compiled web application, HTML prototype, or report and publishes it.
+              A person opens the returned link. The agent can publish another version without
+              changing the earlier one, and a person can compare the two versions.
+            </p>
+          </div>
+
+          <p class="editorial-lead">
+            No separate hosting project is created for each artifact. The server already owns the
+            link, browser view, saved versions, comparisons, and sharing. It does not store comments or annotations.
+          </p>
+
+          <div class="pathway" aria-label="The four steps in the normal artifact workflow">
+            <article class="pathway-step">
+              <div class="pathway-copy">
+                <h3>Publish</h3>
+                <p>Send one file or the complete directory of finished client-side files.</p>
+              </div>
+            </article>
+            <article class="pathway-step">
+              <div class="pathway-copy">
+                <h3>Open</h3>
+                <p>Ask the agent to open it. A local artifact opens from the local server; a team artifact opens from that team's server.</p>
+              </div>
+            </article>
+            <article class="pathway-step">
+              <div class="pathway-copy">
+                <h3>Compare</h3>
+                <p>See which files and text changed between any two saved versions.</p>
+              </div>
+            </article>
+            <article class="pathway-step">
+              <div class="pathway-copy">
+                <h3>Share</h3>
+                <p>Choose whether opening it requires an account.</p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="section" id="artifact" aria-labelledby="artifact-title">
+          <div class="section-heading">
+            <span class="section-label">The object</span>
+            <h2 id="artifact-title">Artifact and version model</h2>
+            <p>
+              An artifact is one published item that keeps the same identity over time. It has a
+              name, an owner, an access setting, a link, and a history of saved versions.
+            </p>
+          </div>
+
+          <div class="definition">
+            <p class="definition-term">An artifact is one item that can be published more than once.</p>
+            <div class="definition-copy">
+              <p>
+                Each intentional publish saves a new version. That saved version never changes. It
+                contains one or more files and names which file should open first. A retry with the
+                same request key returns the earlier result instead of creating another version. A
+                one-file report and the finished output from a React project use the same model.
+              </p>
+              <p>
+                Artifact Server serves finished client-side files. It does not install packages,
+                compile source code, start Node.js or Python, connect an artifact to a database, run
+                server functions, or perform server-side rendering when a request arrives.
+              </p>
+            </div>
+          </div>
+
+          <div class="artifact-types">
+            <article class="artifact-type">
+              <span class="artifact-type-symbol">index.html</span>
+              <div>
+                <h3>Client-side websites and web applications</h3>
+                <p>Multi-page static sites, single-page applications compiled from React, Vue, or Svelte, HTML reports, and prototypes written directly in HTML, CSS, and JavaScript.</p>
+              </div>
+            </article>
+            <article class="artifact-type">
+              <span class="artifact-type-symbol">report.md</span>
+              <div>
+                <h3>Documents and data</h3>
+                <p>Markdown, text, JSON, source code, and other readable files.</p>
+              </div>
+            </article>
+            <article class="artifact-type">
+              <span class="artifact-type-symbol">video.mp4</span>
+              <div>
+                <h3>Images, audio, video, and downloads</h3>
+                <p>Images, PDFs, audio recordings, videos, ZIP archives, and other downloads.</p>
+              </div>
+            </article>
+          </div>
+
+          <div class="disclosure-stack">
+            <details>
+              <summary>How the server stores an artifact</summary>
+              <div class="detail-body">
+                <p>The server stores six kinds of records:</p>
+                <ul>
+                  <li><strong>Artifact:</strong> the same item over time, including its name, owner, access setting, and current version.</li>
+                  <li><strong>Version:</strong> the saved copy created when someone publishes. It never changes and points to one manifest.</li>
+                  <li><strong>Manifest:</strong> the canonical, ordered list of file paths, fingerprints, sizes, media types, and the entry file.</li>
+                  <li><strong>File:</strong> one file in a version, including its name, folder path, file type, size, and SHA-256 fingerprint.</li>
+                  <li><strong>Source:</strong> an optional note about an upload, approved local import, or agent.</li>
+                  <li><strong>Action:</strong> who published, restored, changed access, or deleted the artifact and when.</li>
+                </ul>
+                <p>
+                  A SHA-256 fingerprint is calculated from a file's exact contents. If one byte
+                  changes, the fingerprint changes.
+                </p>
+                <p>
+                  Paths are portable relative paths. The server rejects absolute paths, dot
+                  segments, <code>.git</code> path components, backslashes, null bytes,
+                  percent-encoded separators, symlinks, special files, duplicate normalized names,
+                  and names that collide only by case or Unicode normalization. The entry file must
+                  exist in the manifest.
+                </p>
+                <p>
+                  The manifest is serialized in one fixed order and hashed. That manifest digest,
+                  not an operating-system directory walk or Git commit, is the portable identity of
+                  the saved file set and the basis for comparison and idempotency checks.
+                </p>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <section class="section" id="experience" aria-labelledby="experience-title">
+          <div class="section-heading">
+            <span class="section-label">Customer experience</span>
+            <h2 id="experience-title">Supported content and publishing behavior</h2>
+            <p>
+              The product stays small enough to explain without a tour. Publishing, viewing,
+              versions, and sharing make up the customer experience.
+            </p>
+          </div>
+
+          <div class="feature-list">
+            <article class="feature-row">
+              <h3>Use the browser's native file behavior</h3>
+              <div class="feature-copy">
+                <p>
+                  HTML opens as a website. Images, PDFs, audio, and video use the browser's normal
+                  controls. Text, JSON, Markdown, and source files open as plain text in the first
+                  release. ZIP archives and unknown file types download. Audio and video support
+                  byte-range requests so seeking works.
+                </p>
+                <p class="feature-note">
+                  The first release does not convert media, generate thumbnails, extract ZIP files,
+                  render Markdown, highlight source code, or ship a custom PDF viewer. Supporting
+                  these file types adds routing, media-type, range-request, and download tests—not a
+                  separate processing service.
+                </p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Serve complete client-side output directories</h3>
+              <div class="feature-copy">
+                <p>
+                  The server delivers the published directory without rebuilding it. Relative links
+                  between HTML, CSS, JavaScript, images, and fonts continue to work. The content may
+                  also load scripts, styles, images, and fonts from other websites.
+                </p>
+                <p class="feature-note">
+                  If the published website or HTML report contacts another web service, that service must allow requests from
+                  other websites. A private network may block internet access. Artifact Server does
+                  not copy or replace files loaded from elsewhere.
+                </p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Saved versions that do not change</h3>
+              <div class="feature-copy">
+                <p>
+                  Every new publish request creates a saved version. Once saved, its files never change. The
+                  main link opens the current version. A link to a specific version always opens the
+                  same files. An earlier version can be restored without deleting later history.
+                </p>
+                <p class="feature-note">
+                  If someone else published first, the server refuses to replace the newer work and
+                  explains how to try again. Retrying the same request key returns the same version.
+                  Reusing that key with different input is rejected. Starting a new publish with a
+                  new request key creates a new version even when its manifest matches an earlier
+                  version. Restoring changes the current pointer; it does not create or alter a
+                  saved version.
+                </p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Compare any two versions</h3>
+              <div class="feature-copy">
+                <p>
+                  Every saved version already lists each file's path, size, and SHA-256 fingerprint.
+                  Comparing those lists shows which files were added, removed, renamed, or changed.
+                  The server reads only changed text files to show changed lines. Images and other
+                  binary files open individually from each version.
+                </p>
+                <p class="feature-note">
+                  For images, PDFs, audio, video, ZIP archives, and other binary files, the first
+                  release reports that the file changed and shows its old and new size and
+                  fingerprint. It does not build image-comparison, PDF-comparison, archive-preview,
+                  or media-conversion interfaces. Unchanged files reuse the stored copy with the
+                  same fingerprint. Without Git, the extra cost is small version metadata plus work
+                  performed only when someone requests a comparison.
+                </p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Optional Git history</h3>
+              <div class="feature-copy">
+                <p>
+                  An administrator can enable a private Git copy when installing the server. Each
+                  artifact gets one repository, and each saved version maps to one commit. Git is
+                  not required for saved versions or comparisons.
+                </p>
+                <p class="feature-note">
+                  Cloudflare deployments use Cloudflare Artifacts. Self-hosted deployments store
+                  Git repositories in the Artifact Server data folder, use a small internal Git
+                  storage service, or connect to an existing private Git server.
+                </p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Plannotator integration</h3>
+              <div class="feature-copy">
+                <p>
+                  One Artifact Server installation can connect to one Plannotator organization.
+                  Plannotator owns sign-in, workspaces, workspace permissions, comments, and review
+                  state. Artifact Server owns artifact files, saved versions, browser delivery, and
+                  comparisons.
+                </p>
+                <p>
+                  Example: a reviewer comments on a button in version 12. Plannotator saves the
+                  comment with the artifact ID, version 12's ID, and information that identifies the
+                  button. If version 13 is published later, opening the comment still loads version
+                  12. Artifact Server returns the saved files and Plannotator returns the comment.
+                  Artifact Server never stores the comment.
+                </p>
+                <p class="feature-note">
+                  Normal artifact links return the stored files unchanged. An explicit review
+                  address may add a small review bridge to the HTML response for that session only.
+                  The bridge receives no reusable credential, and the stored version remains
+                  unchanged.
+                </p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Original files</h3>
+              <div class="feature-copy">
+                <p>
+                  People can download the exact files that were published. Opening or downloading
+                  an artifact does not alter the stored version.
+                </p>
+              </div>
+            </article>
+          </div>
+
+        </section>
+
+        <section class="section" id="sharing" aria-labelledby="sharing-title">
+          <div class="section-heading">
+            <span class="section-label">Sharing</span>
+            <h2 id="sharing-title">One person or team, with two access settings</h2>
+            <p>
+              One Artifact Server installation contains one closed group of people. This is a
+              single-organization model without an organization list or organization switcher: the
+              installation itself is the group. On a laptop, that can be one implicit local user.
+              On a team server, an administrator controls who can sign in through invitations or
+              the configured company login. The product has no public self-sign-up and does not host
+              several organizations inside one installation.
+            </p>
+          </div>
+
+          <div class="visibility">
+            <article class="visibility-card">
+              <span class="visibility-icon" aria-hidden="true">S</span>
+              <div class="visibility-copy">
+                <h3>1. Account required</h3>
+                <p>
+                  This is the default. Only people admitted to this installation can open the item.
+                  In the standalone namespace, every admitted person can read every account-required
+                  item. A person outside that group cannot open it. Plannotator-managed artifacts
+                  live in a separate area controlled through the Plannotator connection and do not
+                  inherit this standalone read rule.
+                </p>
+              </div>
+            </article>
+            <article class="visibility-card public-card">
+              <span class="visibility-icon" aria-hidden="true">P</span>
+              <div class="visibility-copy">
+                <h3>2. Public link</h3>
+                <p>
+                  No account is required to open the item. Anyone who can connect to this Artifact
+                  Server and has the unpredictable link can open it. Public links are unlisted and
+                  send <code>X-Robots-Tag: noindex, nofollow</code> by default, but that is not an
+                  access-control guarantee. The public link opens only the current version. Version
+                  lists, comparisons, and earlier saved versions still require an account.
+                </p>
+              </div>
+            </article>
+          </div>
+
+          <aside class="network-note">
+            <strong>A public link removes sign-in. It does not put the server on the internet.</strong>
+            <p>
+              It does not open a firewall, create an internet tunnel, or change who can connect to
+              the server. If Artifact Server runs inside a private company network, a public link
+              still works only for people who can connect to that network. An administrator can
+              disable public links.
+            </p>
+          </aside>
+
+          <div class="disclosure-stack">
+            <details>
+              <summary>Who may change an artifact</summary>
+              <div class="detail-body">
+                <p>The two access settings control reading. They do not grant permission to publish or administer.</p>
+                <div class="table-wrap">
+                  <table>
+                    <thead><tr><th>Actor</th><th>Read account-required</th><th>Publish</th><th>Change access or delete</th></tr></thead>
+                    <tbody>
+                      <tr><td>Owner</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+                      <tr><td>Installation administrator</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+                      <tr><td>Other admitted person</td><td>Yes</td><td>No by default</td><td>No</td></tr>
+                      <tr><td>Service principal or API key</td><td>Only within its grant</td><td>Only within its grant</td><td>Only when explicitly granted</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <details>
+              <summary>How this fits with Plannotator organizations, projects, and workspaces</summary>
+              <div class="detail-body">
+                <p>Artifact Server does not copy Plannotator's organization or workspace permission model.</p>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Concern</th>
+                        <th>System that owns it</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Sign-in, organizations, projects, workspaces, and workspace permissions</td>
+                        <td>Plannotator</td>
+                      </tr>
+                      <tr>
+                        <td>Comments, annotations, replies, notifications, and review state</td>
+                        <td>Plannotator</td>
+                      </tr>
+                      <tr>
+                        <td>Finished artifact files, saved versions, file fingerprints, and comparisons</td>
+                        <td>Artifact Server</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p>
+                  The first Plannotator integration release connects one Artifact Server installation
+                  to one Plannotator organization. Artifacts controlled by Plannotator live in a
+                  separate logical area and are bound to a Plannotator workspace ID. Normal Artifact
+                  Server sessions cannot browse that area.
+                </p>
+                <p>
+                  Plannotator first decides whether a person or agent may use the workspace. It then
+                  sends Artifact Server a short-lived signed request limited to one operation,
+                  workspace, artifact, or exact version. WorkOS tokens and browser cookies are not
+                  forwarded.
+                </p>
+                <p>
+                  Connecting a server does not silently move existing standalone artifacts. A
+                  separate attach action lets an administrator choose an artifact and its destination
+                  workspace after the migration behavior has passed its release tests.
+                </p>
+                <p>
+                  The complete connection and review behavior is described in the
+                  <a href="./plannotator-artifact-server-integration-spec.md">Plannotator integration handoff</a>.
+                </p>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <section class="section" id="plannotator" aria-labelledby="plannotator-title">
+          <div class="section-heading">
+            <span class="section-label">Plannotator connection</span>
+            <h2 id="plannotator-title">One approval connects the products</h2>
+            <p>
+              A reachable Artifact Server connects to one Plannotator organization from one approval
+              screen. Plannotator controls who may use a workspace. Artifact Server still verifies
+              every request and serves only the named artifact or version.
+            </p>
+          </div>
+
+          <div class="pathway" aria-label="The four steps in the Plannotator connection and access flow">
+            <article class="pathway-step">
+              <div class="pathway-copy">
+                <h3>Connect</h3>
+                <p>An Artifact Server administrator opens Plannotator, chooses one organization, and approves the connection.</p>
+              </div>
+            </article>
+            <article class="pathway-step">
+              <div class="pathway-copy">
+                <h3>Authorize</h3>
+                <p>Plannotator checks the workspace permission and signs a short-lived request for one operation.</p>
+              </div>
+            </article>
+            <article class="pathway-step">
+              <div class="pathway-copy">
+                <h3>Open</h3>
+                <p>Artifact Server creates a one-use URL and a temporary, read-only browser session for the exact version.</p>
+              </div>
+            </article>
+            <article class="pathway-step">
+              <div class="pathway-copy">
+                <h3>Review</h3>
+                <p>An explicit review address adds the review bridge. Normal artifact responses and stored files stay unchanged.</p>
+              </div>
+            </article>
+          </div>
+
+          <figure class="architecture" aria-labelledby="plannotator-diagram-title">
+            <div class="architecture-top">
+              <strong class="architecture-title" id="plannotator-diagram-title">Connection and private artifact opening</strong>
+              <p class="architecture-caption">
+                Plannotator makes the workspace decision. Artifact Server enforces a narrow request
+                and creates its own browser session. No user account is copied.
+              </p>
+            </div>
+            <div class="diagram-shell">
+              <div class="diagram-heading">
+                <strong>Required request path</strong>
+                <span>The connector is needed only when Plannotator cannot reach the server.</span>
+              </div>
+              <div class="diagram-scroll">
+                <svg class="architecture-diagram" viewBox="0 0 1040 520" role="img" aria-labelledby="plannotator-flow-title plannotator-flow-desc">
+                  <title id="plannotator-flow-title">Plannotator and Artifact Server connection flow</title>
+                  <desc id="plannotator-flow-desc">A person signs in to Plannotator. Plannotator checks the workspace and sends a signed operation request through a direct connection or optional outbound connector. Artifact Server verifies the request, reads the exact saved version, and returns a one-use browser address. Review mode adds a temporary bridge while comments remain in Plannotator.</desc>
+                  <defs>
+                    <marker id="plannotator-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                      <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
+                    </marker>
+                    <marker id="plannotator-arrow-optional" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                      <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
+                    </marker>
+                  </defs>
+
+                  <rect class="svg-boundary" x="24" y="42" width="190" height="404" rx="14"></rect>
+                  <text class="svg-label" x="48" y="72">PERSON OR AGENT</text>
+                  <rect class="svg-node" x="48" y="98" width="142" height="76" rx="8"></rect>
+                  <text class="svg-title" x="68" y="129">Browser</text>
+                  <text class="svg-copy" x="68" y="153">Sign in and approve</text>
+                  <rect class="svg-node" x="48" y="204" width="142" height="76" rx="8"></rect>
+                  <text class="svg-title" x="68" y="235">AI client</text>
+                  <text class="svg-copy" x="68" y="259">Publish or open</text>
+                  <rect class="svg-node" x="48" y="342" width="142" height="76" rx="8"></rect>
+                  <text class="svg-title" x="68" y="373">Artifact tab</text>
+                  <text class="svg-copy" x="68" y="397">Exact saved version</text>
+
+                  <rect class="svg-boundary" x="258" y="42" width="286" height="404" rx="14"></rect>
+                  <text class="svg-label" x="282" y="72">PLANNOTATOR</text>
+                  <rect class="svg-node-auth" x="282" y="98" width="238" height="86" rx="8"></rect>
+                  <text class="svg-title" x="302" y="129">Sign-in and organization</text>
+                  <text class="svg-copy" x="302" y="153">WorkOS session stays here</text>
+                  <text class="svg-small" x="302" y="170">NO ACCOUNT COPY</text>
+                  <rect class="svg-node-primary" x="282" y="214" width="238" height="90" rx="8"></rect>
+                  <text class="svg-title" x="302" y="245">Workspace permission</text>
+                  <text class="svg-copy" x="302" y="269">Allow or reject the action</text>
+                  <text class="svg-small" x="302" y="286">SIGNED REQUEST · FIVE MINUTES OR LESS</text>
+                  <rect class="svg-node" x="282" y="334" width="238" height="84" rx="8"></rect>
+                  <text class="svg-title" x="302" y="365">Comments and review state</text>
+                  <text class="svg-copy" x="302" y="389">Exact artifact + version reference</text>
+
+                  <rect class="svg-boundary-optional" x="578" y="198" width="120" height="116" rx="12"></rect>
+                  <text class="svg-label" x="596" y="224">PRIVATE ONLY</text>
+                  <rect class="svg-node" x="596" y="244" width="84" height="48" rx="7"></rect>
+                  <text class="svg-copy" x="608" y="273">Connector</text>
+
+                  <rect class="svg-boundary" x="732" y="42" width="284" height="404" rx="14"></rect>
+                  <text class="svg-label" x="756" y="72">CONNECTED ARTIFACT SERVER</text>
+                  <rect class="svg-node-auth" x="756" y="98" width="236" height="86" rx="8"></rect>
+                  <text class="svg-title" x="776" y="129">Connection verifier</text>
+                  <text class="svg-copy" x="776" y="153">Connection, scope, expiry</text>
+                  <text class="svg-small" x="776" y="170">REJECT EVERYTHING ELSE</text>
+                  <rect class="svg-node-store" x="756" y="214" width="236" height="90" rx="8"></rect>
+                  <text class="svg-title" x="776" y="245">Saved version</text>
+                  <text class="svg-copy" x="776" y="269">Manifest, files and comparison</text>
+                  <text class="svg-small" x="776" y="286">ONE WORKSPACE BINDING</text>
+                  <rect class="svg-node-primary" x="756" y="334" width="236" height="84" rx="8"></rect>
+                  <text class="svg-title" x="776" y="365">Browser response</text>
+                  <text class="svg-copy" x="776" y="389">Normal or explicit review mode</text>
+
+                  <path class="svg-line" d="M190 136 H282" marker-end="url(#plannotator-arrow)"></path>
+                  <text class="svg-small" x="212" y="124">1 · SIGN IN</text>
+                  <path class="svg-line" d="M190 242 H282" marker-end="url(#plannotator-arrow)"></path>
+                  <text class="svg-small" x="212" y="230">2 · ACTION</text>
+                  <path class="svg-line" d="M520 245 H638 V141 H756" marker-end="url(#plannotator-arrow)"></path>
+                  <text class="svg-small" x="566" y="128">3 · DIRECT SIGNED REQUEST</text>
+                  <path class="svg-line-optional" d="M520 280 H578" marker-end="url(#plannotator-arrow-optional)"></path>
+                  <path class="svg-line-optional" d="M698 280 H714 V166 H756" marker-end="url(#plannotator-arrow-optional)"></path>
+                  <text class="svg-small" x="566" y="328">PRIVATE ROUTE</text>
+                  <path class="svg-line" d="M874 304 V334" marker-end="url(#plannotator-arrow)"></path>
+                  <path class="svg-line" d="M756 376 H716 V460 H119 V418" marker-end="url(#plannotator-arrow)"></path>
+                  <text class="svg-small" x="426" y="481">4 · ONE-USE URL → FIRST-PARTY CONTENT SESSION</text>
+                  <path class="svg-line-optional" d="M756 402 H544" marker-end="url(#plannotator-arrow-optional)"></path>
+                  <text class="svg-small" x="558" y="390">REVIEW ANCHOR MESSAGES</text>
+                </svg>
+              </div>
+              <div class="diagram-legend" aria-label="Plannotator diagram legend">
+                <span><i class="diagram-key" aria-hidden="true"></i>Required access path</span>
+                <span><i class="diagram-key optional" aria-hidden="true"></i>Review-only message</span>
+                <span>The connector carries Artifact Server traffic only</span>
+              </div>
+            </div>
+          </figure>
+
+          <div class="feature-list">
+            <article class="feature-row">
+              <h3>One server, one Plannotator organization</h3>
+              <div class="feature-copy">
+                <p>
+                  The first Plannotator integration release does not add a multi-organization
+                  switcher to Artifact Server. The connection belongs to one Plannotator
+                  organization and can be disconnected or have its keys rotated by an administrator.
+                </p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Separate storage areas</h3>
+              <div class="feature-copy">
+                <p>
+                  Standalone artifacts keep normal Artifact Server access. Plannotator-managed
+                  artifacts are bound to a workspace and cannot be browsed through a normal
+                  standalone session. Connecting the products does not silently migrate existing
+                  artifacts.
+                </p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Private servers require a route</h3>
+              <div class="feature-copy">
+                <p>
+                  Hosted and publicly reachable servers connect from the approval screen. A server
+                  inside a private network also needs a customer-provided route or an outbound-only
+                  connector limited to Artifact Server. The connection does not change firewall
+                  rules or provide general access to the private network.
+                </p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Bounded integration work</h3>
+              <div class="feature-copy">
+                <p>
+                  Connection, publishing, and opening are estimated at three to five engineer-weeks.
+                  The first supported review bridge adds three to six engineer-weeks. Private
+                  networking based on an established tunnel adds two to four engineer-weeks.
+                </p>
+                <p class="feature-note">
+                  These estimates exclude Plannotator's existing organizations, Workspaces product,
+                  comment system, and the normal Artifact Server product. The teams must replace the
+                  estimates after inspecting both repositories and completing the browser and network
+                  prototypes.
+                </p>
+              </div>
+            </article>
+          </div>
+
+          <aside class="network-note">
+            <strong>The detailed handoff is ready for the Plannotator team.</strong>
+            <p>
+              It defines the connection record, signed request, browser session, review bridge,
+              private-network choices, failure behavior, work split, investigation questions, and
+              acceptance tests. Open the
+              <a href="./plannotator-artifact-server-integration-spec.md">Plannotator and Artifact Server integration specification</a>.
+            </p>
+          </aside>
+        </section>
+
+        <section class="section" id="architecture" aria-labelledby="architecture-section-title">
+          <div class="section-heading">
+            <span class="section-label">Architecture</span>
+            <h2 id="architecture-section-title">Shared product logic with deployment-specific storage</h2>
+            <p>
+              The browser, MCP, and normal web requests from software follow the same rules for sign-in, sharing, versions,
+              comparisons, and publishing. Small pieces of code connect those rules to the database,
+              file storage, and optional Git provider selected when the server is installed.
+            </p>
+          </div>
+
+          <figure class="architecture" aria-labelledby="system-diagram-title">
+            <div class="architecture-top">
+              <strong class="architecture-title" id="system-diagram-title">System boundaries and data flow</strong>
+              <p class="architecture-caption">
+                Saved versions and comparisons work in every deployment. Git is an optional private
+                copy of the same history.
+              </p>
+            </div>
+            <div class="diagram-stack">
+              <div class="diagram-shell">
+                <div class="diagram-heading">
+                  <strong>Runtime architecture</strong>
+                  <span>Solid lines are required. Dashed lines are optional integrations.</span>
+                </div>
+                <div class="diagram-scroll">
+                  <svg class="architecture-diagram" viewBox="0 0 1040 570" role="img" aria-labelledby="runtime-title runtime-desc">
+                    <title id="runtime-title">Artifact Server runtime architecture</title>
+                    <desc id="runtime-desc">People and agents call the Artifact Server application. The application stores artifact records and files, computes comparisons, and serves artifacts from an isolated content address. Optional Git stores a private history copy. Plannotator remains a separate product that owns organizations, workspaces, comments, and review state; it calls Artifact Server as a content service and receives stable artifact and version identifiers.</desc>
+                    <defs>
+                      <marker id="arrow-required" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                        <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
+                      </marker>
+                      <marker id="arrow-optional" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                        <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
+                      </marker>
+                    </defs>
+
+                    <text class="svg-label" x="28" y="34">CALLERS</text>
+                    <rect class="svg-node" x="28" y="58" width="164" height="82" rx="8"></rect>
+                    <text class="svg-title" x="48" y="88">People</text>
+                    <text class="svg-copy" x="48" y="112">Browser</text>
+                    <text class="svg-copy" x="48" y="130">Command line</text>
+                    <rect class="svg-node" x="28" y="164" width="164" height="82" rx="8"></rect>
+                    <text class="svg-title" x="48" y="194">AI agents</text>
+                    <text class="svg-copy" x="48" y="218">MCP</text>
+                    <text class="svg-copy" x="48" y="236">Normal web requests</text>
+
+                    <rect class="svg-boundary" x="226" y="32" width="508" height="500" rx="14"></rect>
+                    <text class="svg-label" x="250" y="62">ARTIFACT SERVER APPLICATION</text>
+
+                    <rect class="svg-node-primary" x="260" y="88" width="190" height="92" rx="8"></rect>
+                    <text class="svg-title" x="280" y="120">Application entry</text>
+                    <text class="svg-copy" x="280" y="144">Sign-in, browser, MCP</text>
+                    <text class="svg-copy" x="280" y="163">and software requests</text>
+
+                    <rect class="svg-node-primary" x="498" y="88" width="202" height="92" rx="8"></rect>
+                    <text class="svg-title" x="518" y="120">Product rules</text>
+                    <text class="svg-copy" x="518" y="144">Publish, share, restore</text>
+                    <text class="svg-copy" x="518" y="163">and check permissions</text>
+
+                    <rect class="svg-node-store" x="260" y="236" width="190" height="100" rx="8"></rect>
+                    <text class="svg-title" x="280" y="268">Records</text>
+                    <text class="svg-copy" x="280" y="292">Artifacts, versions, access</text>
+                    <text class="svg-small" x="280" y="316">SQLite · Postgres · D1</text>
+
+                    <rect class="svg-node-store" x="498" y="236" width="202" height="100" rx="8"></rect>
+                    <text class="svg-title" x="518" y="268">Published files</text>
+                    <text class="svg-copy" x="518" y="292">Files addressed by fingerprint</text>
+                    <text class="svg-small" x="518" y="316">Disk · S3 · GCS · Azure Blob · R2</text>
+
+                    <rect class="svg-node" x="260" y="392" width="190" height="94" rx="8"></rect>
+                    <text class="svg-title" x="280" y="424">Comparison engine</text>
+                    <text class="svg-copy" x="280" y="448">File list and text changes</text>
+                    <text class="svg-copy" x="280" y="467">between saved versions</text>
+
+                    <rect class="svg-node" x="498" y="392" width="202" height="94" rx="8"></rect>
+                    <text class="svg-title" x="518" y="424">Background work</text>
+                    <text class="svg-copy" x="518" y="448">Staging cleanup and optional</text>
+                    <text class="svg-copy" x="518" y="467">Git copy retries</text>
+
+                    <rect class="svg-boundary" x="770" y="32" width="242" height="174" rx="14"></rect>
+                    <text class="svg-label" x="794" y="62">ISOLATED VERSION ORIGIN</text>
+                    <rect class="svg-node" x="794" y="88" width="194" height="90" rx="8"></rect>
+                    <text class="svg-title" x="814" y="120">Artifact website</text>
+                    <text class="svg-copy" x="814" y="144">HTML, files and downloads</text>
+                    <text class="svg-small" x="814" y="164">Unique host · read-only</text>
+
+                    <rect class="svg-boundary-optional" x="770" y="234" width="242" height="126" rx="14"></rect>
+                    <text class="svg-label" x="794" y="264">OPTIONAL PRIVATE GIT</text>
+                    <rect class="svg-node-store" x="794" y="282" width="194" height="54" rx="8"></rect>
+                    <text class="svg-title" x="814" y="314">Git history provider</text>
+                    <text class="svg-small" x="814" y="330">Cloudflare or self-hosted</text>
+
+                    <rect class="svg-boundary-optional" x="770" y="388" width="242" height="144" rx="14"></rect>
+                    <text class="svg-label" x="794" y="418">SEPARATE PRODUCT</text>
+                    <rect class="svg-node" x="794" y="438" width="194" height="76" rx="8"></rect>
+                    <text class="svg-title" x="814" y="464">Plannotator</text>
+                    <text class="svg-copy" x="814" y="486">Organizations + workspaces</text>
+                    <text class="svg-small" x="814" y="504">Sharing, comments and review</text>
+
+                    <path class="svg-line" d="M192 100 H226 V124 H260" marker-end="url(#arrow-required)"></path>
+                    <text class="svg-small" x="202" y="91">BROWSER</text>
+                    <path class="svg-line" d="M192 205 H226 V146 H260" marker-end="url(#arrow-required)"></path>
+                    <text class="svg-small" x="202" y="222">MCP / HTTP</text>
+                    <path class="svg-line" d="M450 134 H498" marker-end="url(#arrow-required)"></path>
+                    <path class="svg-line" d="M599 180 V208 H355 V236" marker-end="url(#arrow-required)"></path>
+                    <text class="svg-small" x="371" y="203">SAVE VERSION RECORD</text>
+                    <path class="svg-line" d="M599 180 V236" marker-end="url(#arrow-required)"></path>
+                    <text class="svg-small" x="610" y="213">SAVE FILES</text>
+                    <path class="svg-line" d="M355 336 V392" marker-end="url(#arrow-required)"></path>
+                    <path class="svg-line" d="M498 286 H474 V439 H450" marker-end="url(#arrow-required)"></path>
+                    <path class="svg-line" d="M700 286 H742 V133 H794" marker-end="url(#arrow-required)"></path>
+                    <text class="svg-small" x="710" y="273">READ FILES</text>
+                    <path class="svg-line-optional" d="M700 439 H742 V309 H794" marker-end="url(#arrow-optional)"></path>
+                    <text class="svg-small" x="748" y="368">COPY AFTER SAVE</text>
+                    <path class="svg-line-optional" d="M770 472 H742 V160 H700" marker-start="url(#arrow-optional)" marker-end="url(#arrow-optional)"></path>
+                    <text class="svg-small" transform="translate(756 455) rotate(-90)">SERVICE REQUESTS + IDS</text>
+                  </svg>
+                </div>
+                <div class="diagram-legend" aria-label="Diagram legend">
+                  <span><i class="diagram-key" aria-hidden="true"></i>Required request or data flow</span>
+                  <span><i class="diagram-key optional" aria-hidden="true"></i>Optional integration</span>
+                  <span>Green storage is durable</span>
+                </div>
+              </div>
+
+              <div class="diagram-shell">
+                <div class="diagram-heading">
+                  <strong>What happens when version 12 is published</strong>
+                  <span>The browser link becomes available before an optional Git copy finishes.</span>
+                </div>
+                <div class="diagram-scroll">
+                  <svg class="architecture-diagram" viewBox="0 0 1040 420" role="img" aria-labelledby="publish-title publish-desc">
+                    <title id="publish-title">Publishing and version comparison sequence</title>
+                    <desc id="publish-desc">A client publishes version 12. Artifact Server saves its records and files, returns stable links, and can compare version 11 with version 12. When enabled, Git receives an asynchronous private copy that may retry without blocking publication.</desc>
+                    <defs>
+                      <marker id="sequence-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                        <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
+                      </marker>
+                    </defs>
+
+                    <rect class="svg-node" x="30" y="34" width="170" height="56" rx="8"></rect>
+                    <text class="svg-title" x="50" y="67">Person or agent</text>
+                    <rect class="svg-node-primary" x="278" y="34" width="190" height="56" rx="8"></rect>
+                    <text class="svg-title" x="298" y="67">Artifact application</text>
+                    <rect class="svg-node-store" x="546" y="34" width="184" height="56" rx="8"></rect>
+                    <text class="svg-title" x="566" y="67">Primary storage</text>
+                    <rect class="svg-boundary-optional" x="808" y="24" width="202" height="76" rx="10"></rect>
+                    <text class="svg-title" x="832" y="59">Optional Git provider</text>
+                    <text class="svg-small" x="832" y="80">PRIVATE COPY</text>
+
+                    <line class="svg-divider" x1="115" y1="90" x2="115" y2="386"></line>
+                    <line class="svg-divider" x1="373" y1="90" x2="373" y2="386"></line>
+                    <line class="svg-divider" x1="638" y1="90" x2="638" y2="386"></line>
+                    <line class="svg-divider" x1="909" y1="100" x2="909" y2="386"></line>
+
+                    <circle class="svg-node-primary" cx="54" cy="136" r="14"></circle>
+                    <text class="svg-small" x="50" y="140">1</text>
+                    <path class="svg-line" d="M115 136 H373" marker-end="url(#sequence-arrow)"></path>
+                    <text class="svg-copy" x="142" y="126">Publish finished files as version 12</text>
+
+                    <circle class="svg-node-primary" cx="312" cy="196" r="14"></circle>
+                    <text class="svg-small" x="308" y="200">2</text>
+                    <path class="svg-line" d="M373 196 H638" marker-end="url(#sequence-arrow)"></path>
+                    <text class="svg-copy" x="402" y="186">Save record, manifest and files</text>
+
+                    <circle class="svg-node-primary" cx="577" cy="252" r="14"></circle>
+                    <text class="svg-small" x="573" y="256">3</text>
+                    <path class="svg-line" d="M638 252 H373" marker-end="url(#sequence-arrow)"></path>
+                    <text class="svg-copy" x="409" y="242">Version 12 is durable</text>
+
+                    <circle class="svg-node-primary" cx="312" cy="306" r="14"></circle>
+                    <text class="svg-small" x="308" y="310">4</text>
+                    <path class="svg-line" d="M373 306 H115" marker-end="url(#sequence-arrow)"></path>
+                    <text class="svg-copy" x="152" y="296">Return main link and version link</text>
+                    <text class="svg-small" x="152" y="317">VERSION 12 CAN NOW OPEN</text>
+
+                    <circle class="svg-node-store" cx="844" cy="196" r="14"></circle>
+                    <text class="svg-small" x="840" y="200">5</text>
+                    <path class="svg-line-optional" d="M638 196 H909" marker-end="url(#sequence-arrow)"></path>
+                    <text class="svg-copy" x="686" y="186">Copy commit after save</text>
+                    <text class="svg-small" x="725" y="211">RETRY ON FAILURE</text>
+
+                    <rect class="svg-node" x="278" y="346" width="452" height="48" rx="8"></rect>
+                    <text class="svg-title" x="298" y="376">Compare version 11 with version 12 from primary storage</text>
+                    <path class="svg-line" d="M638 346 V326 H373 V346" marker-end="url(#sequence-arrow)"></path>
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <div class="architecture-rules">
+              <span class="architecture-rule"><b>Rule 01</b> Browser, MCP, and software requests follow the same rules.</span>
+              <span class="architecture-rule"><b>Rule 02</b> Saved versions and comparisons do not depend on Git.</span>
+              <span class="architecture-rule"><b>Rule 03</b> Large files upload directly to file storage.</span>
+              <span class="architecture-rule"><b>Rule 04</b> Artifact JavaScript cannot use the application login.</span>
+            </div>
+          </figure>
+
+          <div class="disclosure-stack">
+            <details>
+              <summary>How a large website or file is published</summary>
+              <div class="detail-body">
+                <ol>
+                  <li>The client creates an upload and receives a unique staging location.</li>
+                  <li>It sends regular files directly to disk or cloud file storage.</li>
+                  <li>The server verifies every size and SHA-256 fingerprint and rejects unsafe or colliding paths.</li>
+                  <li>The client names the entry file, states the version it started from, and sends one idempotency key for the request.</li>
+                  <li>The server writes missing content-addressed blobs without overwriting an existing blob, saves the immutable manifest and version, and updates the current-version pointer in one database transaction.</li>
+                  <li>A retry with the same key returns the stored result. Scheduled work deletes only expired staging uploads in the first release.</li>
+                </ol>
+                <p>
+                  Object storage and the database cannot commit atomically. The safe order is stage,
+                  verify, write each blob once, then commit the database records. The first release
+                  intentionally keeps committed or orphaned blobs. Reference garbage collection is
+                  added only after a lease-based or mark-and-sweep design survives crash, retry, and
+                  concurrent-publish tests.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>How optional Git history works</summary>
+              <div class="detail-body">
+                <p>
+                  Artifact Server always saves the version record, file list, fingerprints, and
+                  published files first. When Git history is enabled, it then copies that version
+                  into one private repository for the artifact. Each saved version maps to one commit,
+                  and the database records the Git commit identifier.
+                </p>
+                <p>
+                  Git never supplies the files used to open the artifact. If the Git provider is
+                  unavailable, the saved version remains available and the server retries the Git copy.
+                </p>
+                <pre><code>history:
+  git:
+    enabled: true
+    provider: auto</code></pre>
+                <p>
+                  Git history is off unless an administrator enables it. With <code>provider: auto</code>,
+                  the server chooses the provider that matches the deployment.
+                </p>
+                <div class="table-wrap" role="region" aria-label="Optional Git history providers" tabindex="0">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Deployment</th>
+                        <th>Git provider when enabled</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Laptop or one server</td>
+                        <td>Git repositories stored inside the Artifact Server data folder.</td>
+                      </tr>
+                      <tr>
+                        <td>Kubernetes</td>
+                        <td>A small internal Git history service with persistent storage, or an existing private Git server.</td>
+                      </tr>
+                      <tr>
+                        <td>Cloudflare</td>
+                        <td><a href="https://developers.cloudflare.com/artifacts/">Cloudflare Artifacts</a>.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p>
+                  Large files remain in the normal file store. Their names, sizes, and fingerprints
+                  stay in the Git version manifest. An administrator sets the largest file or artifact
+                  copied into Git. Cloudflare Artifacts currently
+                  <a href="https://developers.cloudflare.com/artifacts/platform/limits/">limits each repository to 10 GB</a>
+                  and does not document Git's separate large-file extension, called Git LFS. It is also
+                  <a href="https://developers.cloudflare.com/artifacts/">in closed beta</a>.
+                </p>
+                <p>
+                  Git repositories remain private. A public artifact link never grants Git access
+                  or exposes earlier versions through a Git remote.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>How isolated version addresses and private delivery work</summary>
+              <div class="detail-body">
+                <p>Hosted deployments use an application address plus a unique content host for each saved version:</p>
+                <pre><code>app.example.com
+v12-7f3a.content.example.net</code></pre>
+                <p>
+                  The content domain is separate from the application's registrable domain. Each
+                  saved version receives its own origin, so root-relative paths and service workers
+                  stay inside that version. Application cookies are host-only. The content service
+                  accepts only <code>GET</code> and <code>HEAD</code>, sends no credentialed CORS
+                  responses, and cannot change application data. The application also enforces CSRF
+                  tokens, trusted origins, and Fetch Metadata on browser mutations.
+                </p>
+                <p>
+                  For account-required content, the application checks the viewer and creates a
+                  short-lived, single-use bootstrap token for one version host. That host exchanges
+                  the token for a Secure, HttpOnly, host-only content cookie. Relative CSS,
+                  JavaScript, image, and font requests then work without exposing an application
+                  credential. Private content is not placed in a shared CDN cache in the first release.
+                </p>
+                <p>
+                  The current public version uses immutable cache keys and may be cached by a CDN.
+                  Publishing a new current version or changing the artifact to account required
+                  purges the previous public version from supported caches and stops new public
+                  origin requests. It cannot revoke copies already downloaded or retained outside
+                  the server. The interface must state that limitation before it is first made
+                  public and again before access is changed.
+                </p>
+                <p>
+                  The stable application link checks access and selects the current version. The
+                  version link stays fixed. A static-site artifact returns 404 for a missing path.
+                  A single-page application may return its entry HTML only for browser navigation
+                  requests; a missing JavaScript, stylesheet, image, or other asset still returns
+                  404. Responses use an explicit media type, <code>nosniff</code>, ETag, and safe
+                  download disposition. Media supports byte ranges.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>How local file links fit</summary>
+              <div class="detail-body">
+                <p>
+                  Local file import is available only through the local helper, when the helper and
+                  server can read the same disk. An administrator configures allowed root folders.
+                  The helper resolves the real path, rejects symlinks and special files, verifies
+                  that every file remains inside an allowed root, and copies the current bytes into
+                  staging. Changing the original file never changes a saved version.
+                </p>
+                <p>
+                  A remote server never accepts a client filesystem path. The agent uploads the
+                  bytes. The first release does not fetch arbitrary source URLs, which avoids a
+                  server-side request path into private networks and cloud metadata services.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>How deletion, retention, backup, and restore work</summary>
+              <div class="detail-body">
+                <p>
+                  A committed version cannot be edited or deleted by itself. Deleting an artifact
+                  creates a tombstone and stops every application and content link. The first
+                  release does not immediately remove blobs, because reference reclamation must not
+                  race a publish, retry, backup, or restore.
+                </p>
+                <p>
+                  A team deployment is not ready until backup and restore preserve installation,
+                  artifact, version, manifest, and action IDs and an integrity check confirms that
+                  every referenced blob exists. Retention duration, tombstone duration, physical
+                  deletion, recovery-point target, and recovery-time target remain deployment
+                  policy and release-gate decisions.
+                </p>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <section class="section" id="mcp" aria-labelledby="mcp-title">
+          <div class="section-heading">
+            <span class="section-label">AI agent access</span>
+            <h2 id="mcp-title">MCP connection, sign-in, and publishing</h2>
+            <p>
+              A remote AI client connects to one address: <code>/mcp</code>. On a shared server, its
+              first request opens browser sign-in and approval. After approval, the client receives
+              a short-lived credential that works only with this Artifact Server. On a laptop, a
+              local helper uses a local credential instead. MCP sends publishing instructions and
+              small results; large website and file uploads go directly to file storage.
+            </p>
+          </div>
+
+          <figure class="architecture" aria-labelledby="mcp-auth-diagram-title">
+            <div class="architecture-top">
+              <strong class="architecture-title" id="mcp-auth-diagram-title">Remote connection and browser sign-in</strong>
+              <p class="architecture-caption">
+                Artifact Server tells the client where to sign in. WorkOS is the proposed hosted
+                service. A private installation can use another compatible authorization service.
+              </p>
+            </div>
+            <div class="diagram-shell">
+              <div class="diagram-heading">
+                <strong>Connection flow</strong>
+                <span>The access credential is valid only for the exact Artifact Server address.</span>
+              </div>
+              <div class="diagram-scroll">
+                <svg class="architecture-diagram" viewBox="0 0 1040 550" role="img" aria-labelledby="mcp-flow-title mcp-flow-desc">
+                  <title id="mcp-flow-title">MCP connection and authorization flow</title>
+                  <desc id="mcp-flow-desc">An AI client contacts Artifact Server, reads its sign-in instructions, opens a browser at the configured sign-in service, receives a credential for this Artifact Server, and then calls publishing tools. Large file bytes upload separately to file storage.</desc>
+                  <defs>
+                    <marker id="mcp-auth-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                      <path d="M0,0 L8,4 L0,8 Z" style="fill: var(--code-ink)"></path>
+                    </marker>
+                    <marker id="mcp-auth-arrow-optional" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                      <path d="M0,0 L8,4 L0,8 Z" style="fill: var(--mint)"></path>
+                    </marker>
+                  </defs>
+
+                  <text class="svg-label" x="28" y="34">AI CLIENT</text>
+                  <rect class="svg-boundary" x="28" y="54" width="218" height="304" rx="12"></rect>
+                  <rect class="svg-node" x="52" y="84" width="170" height="76" rx="8"></rect>
+                  <text class="svg-title" x="72" y="114">Codex or Claude</text>
+                  <text class="svg-copy" x="72" y="138">Stores the server address</text>
+                  <rect class="svg-node" x="52" y="190" width="170" height="118" rx="8"></rect>
+                  <text class="svg-title" x="72" y="220">OAuth client</text>
+                  <text class="svg-copy" x="72" y="244">Opens the browser</text>
+                  <text class="svg-copy" x="72" y="264">proves it started sign-in</text>
+                  <text class="svg-small" x="72" y="287">PKCE · refresh · revoke</text>
+
+                  <text class="svg-label" x="292" y="34">ARTIFACT SERVER</text>
+                  <rect class="svg-boundary" x="292" y="54" width="420" height="432" rx="12"></rect>
+                  <rect class="svg-node-primary" x="318" y="84" width="176" height="92" rx="8"></rect>
+                  <text class="svg-title" x="338" y="116">POST /mcp</text>
+                  <text class="svg-copy" x="338" y="140">Returns sign-in instructions</text>
+                  <text class="svg-small" x="338" y="159">when no credential is present</text>
+                  <rect class="svg-node-auth" x="510" y="84" width="176" height="92" rx="8"></rect>
+                  <text class="svg-title" x="530" y="116">Credential check</text>
+                  <text class="svg-copy" x="530" y="140">Issuer · server address</text>
+                  <text class="svg-small" x="530" y="159">expiry · scope · user</text>
+                  <rect class="svg-node-primary" x="318" y="236" width="368" height="92" rx="8"></rect>
+                  <text class="svg-title" x="338" y="268">Artifact product rules</text>
+                  <text class="svg-copy" x="338" y="292">Permissions, publish, versions, access settings and comparisons</text>
+                  <text class="svg-small" x="338" y="313">The same service used by the browser and normal HTTP API</text>
+                  <rect class="svg-node-store" x="318" y="388" width="368" height="68" rx="8"></rect>
+                  <text class="svg-title" x="338" y="418">Direct upload storage</text>
+                  <text class="svg-copy" x="338" y="440">Website and file bytes do not pass through MCP messages</text>
+
+                  <text class="svg-label" x="758" y="34">SIGN-IN SERVICE</text>
+                  <rect class="svg-boundary-optional" x="758" y="54" width="254" height="304" rx="12"></rect>
+                  <rect class="svg-node-auth" x="782" y="84" width="206" height="92" rx="8"></rect>
+                  <text class="svg-title" x="802" y="116">Browser sign-in</text>
+                  <text class="svg-copy" x="802" y="140">WorkOS for hosted service</text>
+                  <text class="svg-small" x="802" y="159">or a compatible private service</text>
+                  <rect class="svg-node-auth" x="782" y="216" width="206" height="92" rx="8"></rect>
+                  <text class="svg-title" x="802" y="248">Issue credential</text>
+                  <text class="svg-copy" x="802" y="272">Only for this /mcp address</text>
+                  <text class="svg-small" x="802" y="291">short life · renewable · revocable</text>
+
+                  <path class="svg-line" d="M222 122 H318" marker-end="url(#mcp-auth-arrow)"></path>
+                  <circle class="svg-step" cx="266" cy="122" r="13"></circle>
+                  <text class="svg-step-number" x="266" y="126">1</text>
+                  <text class="svg-small" x="236" y="103">first request</text>
+
+                  <path class="svg-line" d="M318 154 H246 V206 H222" marker-end="url(#mcp-auth-arrow)"></path>
+                  <circle class="svg-step" cx="246" cy="180" r="13"></circle>
+                  <text class="svg-step-number" x="246" y="184">2</text>
+                  <text class="svg-small" x="262" y="184">sign-in location</text>
+
+                  <path class="svg-line-optional" d="M222 244 H744 V130 H782" marker-end="url(#mcp-auth-arrow-optional)"></path>
+                  <circle class="svg-step" cx="734" cy="244" r="13"></circle>
+                  <text class="svg-step-number" x="734" y="248">3</text>
+                  <text class="svg-small" x="602" y="229">browser opens; user signs in and approves</text>
+
+                  <path class="svg-line-optional" d="M782 272 H744 V326 H222 V282" marker-end="url(#mcp-auth-arrow-optional)"></path>
+                  <circle class="svg-step" cx="734" cy="326" r="13"></circle>
+                  <text class="svg-step-number" x="734" y="330">4</text>
+                  <text class="svg-small" x="556" y="346">client receives and stores the credential</text>
+
+                  <path class="svg-line" d="M222 300 H276 V130 H510" marker-end="url(#mcp-auth-arrow)"></path>
+                  <circle class="svg-step" cx="276" cy="300" r="13"></circle>
+                  <text class="svg-step-number" x="276" y="304">5</text>
+                  <text class="svg-small" x="52" y="340">Later MCP calls include the credential</text>
+
+                  <path class="svg-line" d="M598 176 V210 H502 V236" marker-end="url(#mcp-auth-arrow)"></path>
+                  <circle class="svg-step" cx="550" cy="210" r="13"></circle>
+                  <text class="svg-step-number" x="550" y="214">6</text>
+                  <text class="svg-small" x="568" y="214">verified user and permissions</text>
+
+                  <path class="svg-line" d="M502 328 V388" marker-end="url(#mcp-auth-arrow)"></path>
+                  <circle class="svg-step" cx="502" cy="358" r="13"></circle>
+                  <text class="svg-step-number" x="502" y="362">7</text>
+                  <text class="svg-small" x="520" y="363">direct upload plan</text>
+
+                  <rect class="svg-boundary" x="28" y="394" width="218" height="92" rx="12"></rect>
+                  <text class="svg-label" x="52" y="423">LAPTOP MODE</text>
+                  <text class="svg-title" x="52" y="450">Local helper + local token</text>
+                  <text class="svg-copy" x="52" y="470">No browser OAuth is required.</text>
+                </svg>
+              </div>
+              <div class="diagram-legend" aria-label="MCP connection diagram legend">
+                <span><i class="diagram-key" aria-hidden="true"></i>Required Artifact Server path</span>
+                <span><i class="diagram-key optional" aria-hidden="true"></i>Replaceable sign-in provider</span>
+              </div>
+            </div>
+          </figure>
+
+          <div class="mcp-sequence" aria-label="Normal steps an agent uses to publish">
+            <article class="mcp-step">
+              <code>available options</code>
+              <p>Learn whether direct text, file upload, public links, and local file linking are available.</p>
+            </article>
+            <article class="mcp-step">
+              <code>publish</code>
+              <p>Send small text directly or upload a complete client-side output directory or large file.</p>
+            </article>
+            <article class="mcp-step">
+              <code>finish upload</code>
+              <p>Name the file that should open first and the version the agent started from.</p>
+            </article>
+            <article class="mcp-step">
+              <code>open</code>
+              <p>Receive the exact browser link from the selected local or team server, then open it on the user's computer.</p>
+            </article>
+            <article class="mcp-step">
+              <code>compare versions</code>
+              <p>List saved versions and receive the file and text changes between any two.</p>
+            </article>
+          </div>
+
+          <div class="section-heading">
+            <span class="section-label">Skills shipped with Artifact Server</span>
+            <h3>Two skills with different permissions</h3>
+            <p>
+              Artifact Server ships two Agent Skills: small folders of instructions that Codex,
+              Claude Code, and other compatible clients can install. Publishing and server
+              operation stay separate. This keeps routine publishing instructions short and
+              prevents an ordinary publishing request from loading deployment or administrator instructions.
+            </p>
+          </div>
+
+          <div class="scope-grid" aria-label="Artifact Server Agent Skills">
+            <article class="scope-panel">
+              <h3><code>publish-artifact</code></h3>
+              <p>
+                The normal skill. It is used when someone asks an agent to publish, update, open,
+                share, list, or compare an artifact. It connects through MCP and uses the signed-in
+                person's normal Artifact Server permissions.
+              </p>
+              <ul>
+                <li>Resolve which local or team server the user means before reading, publishing, or opening an artifact.</li>
+                <li>Ask the server what it supports before choosing an upload method.</li>
+                <li>Use direct text for small files, direct upload for large files or sites, and local file linking only when available.</li>
+                <li>Return the artifact link and exact saved version after publishing.</li>
+                <li>Never install, upgrade, reconfigure, back up, or delete an Artifact Server installation.</li>
+              </ul>
+            </article>
+            <article class="scope-panel no-panel">
+              <h3><code>operate-artifact-server</code></h3>
+              <p>
+                An optional administrator skill. It is used only when someone explicitly asks an
+                agent to install, deploy, upgrade, back up, restore, inspect, or repair Artifact
+                Server. It uses the Artifact Server command-line program and the selected deployment adapter.
+              </p>
+              <ul>
+                <li>Read only the instructions for the selected target: laptop, server, Kubernetes, Cloudflare, AWS, GCP, or Azure.</li>
+                <li>Show the proposed change before applying it and verify health after it finishes.</li>
+                <li>Require administrator access. It does not gain infrastructure access through the publishing MCP connection.</li>
+                <li>Remain an explicit, separately installed skill because its actions can change running infrastructure.</li>
+              </ul>
+            </article>
+          </div>
+
+          <figure class="architecture" aria-labelledby="skill-diagram-title">
+            <div class="architecture-top">
+              <strong class="architecture-title" id="skill-diagram-title">Publishing and server operation use separate paths.</strong>
+              <p class="architecture-caption">
+                There is one publishing skill for every deployment. It asks the connected server
+                which upload methods and limits are available instead of carrying a different copy for each cloud.
+              </p>
+            </div>
+            <div class="diagram-shell">
+              <div class="diagram-heading">
+                <strong>Separate publishing and administrator paths</strong>
+                <span>The publishing skill never receives infrastructure credentials.</span>
+              </div>
+              <div class="diagram-scroll">
+                <svg class="architecture-diagram skill-diagram" viewBox="0 0 1040 430" role="img" aria-labelledby="skill-flow-title skill-flow-desc">
+                  <title id="skill-flow-title">Agent Skill workflow</title>
+                  <desc id="skill-flow-desc">A routine publishing request activates the publish-artifact skill, which resolves the intended local or team server, asks that server for its capabilities, and then calls publishing tools through MCP. A separate explicit administrator request activates the optional operate-artifact-server skill, which uses the command-line program and a deployment adapter. The two paths use separate credentials.</desc>
+                  <defs>
+                    <marker id="skill-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                      <path d="M0,0 L8,4 L0,8 Z" style="fill: var(--code-ink)"></path>
+                    </marker>
+                    <marker id="skill-arrow-optional" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                      <path d="M0,0 L8,4 L0,8 Z" style="fill: var(--mint)"></path>
+                    </marker>
+                  </defs>
+
+                  <text class="svg-label" x="28" y="34">ROUTINE PUBLISHING</text>
+                  <rect class="svg-boundary" x="28" y="54" width="984" height="132" rx="12"></rect>
+                  <rect class="svg-node" x="52" y="82" width="156" height="76" rx="8"></rect>
+                  <text class="svg-title" x="72" y="112">User request</text>
+                  <text class="svg-copy" x="72" y="135">“Publish this site”</text>
+                  <rect class="svg-node-primary" x="260" y="82" width="188" height="76" rx="8"></rect>
+                  <text class="svg-title" x="280" y="112">publish-artifact</text>
+                  <text class="svg-copy" x="280" y="135">Loads for publishing work</text>
+                  <rect class="svg-node-auth" x="500" y="82" width="188" height="76" rx="8"></rect>
+                  <text class="svg-title" x="520" y="112">Target + capabilities</text>
+                  <text class="svg-copy" x="520" y="135">Local or team · methods · limits</text>
+                  <rect class="svg-node-primary" x="740" y="82" width="248" height="76" rx="8"></rect>
+                  <text class="svg-title" x="760" y="112">Artifact Server MCP</text>
+                  <text class="svg-copy" x="760" y="135">Upload · save version · return link</text>
+                  <path class="svg-line" d="M208 120 H260" marker-end="url(#skill-arrow)"></path>
+                  <path class="svg-line" d="M448 120 H500" marker-end="url(#skill-arrow)"></path>
+                  <path class="svg-line" d="M688 120 H740" marker-end="url(#skill-arrow)"></path>
+
+                  <text class="svg-label" x="28" y="238">SERVER OPERATION · OPTIONAL</text>
+                  <rect class="svg-boundary-optional" x="28" y="258" width="984" height="132" rx="12"></rect>
+                  <rect class="svg-node" x="52" y="286" width="156" height="76" rx="8"></rect>
+                  <text class="svg-title" x="72" y="316">Admin request</text>
+                  <text class="svg-copy" x="72" y="339">“Deploy to GCP”</text>
+                  <rect class="svg-node-auth" x="260" y="286" width="188" height="76" rx="8"></rect>
+                  <text class="svg-title" x="280" y="316">operate-artifact-server</text>
+                  <text class="svg-copy" x="280" y="339">Loads only when requested</text>
+                  <rect class="svg-node" x="500" y="286" width="188" height="76" rx="8"></rect>
+                  <text class="svg-title" x="520" y="316">Artifact Server CLI</text>
+                  <text class="svg-copy" x="520" y="339">Plan · apply · verify</text>
+                  <rect class="svg-node-store" x="740" y="286" width="248" height="76" rx="8"></rect>
+                  <text class="svg-title" x="760" y="316">Deployment adapter</text>
+                  <text class="svg-copy" x="760" y="339">Server · Kubernetes · cloud</text>
+                  <path class="svg-line-optional" d="M208 324 H260" marker-end="url(#skill-arrow-optional)"></path>
+                  <path class="svg-line-optional" d="M448 324 H500" marker-end="url(#skill-arrow-optional)"></path>
+                  <path class="svg-line-optional" d="M688 324 H740" marker-end="url(#skill-arrow-optional)"></path>
+                </svg>
+              </div>
+              <div class="diagram-legend" aria-label="Agent Skill diagram legend">
+                <span><i class="diagram-key" aria-hidden="true"></i>Normal user permission</span>
+                <span><i class="diagram-key optional" aria-hidden="true"></i>Separate administrator permission</span>
+              </div>
+            </div>
+          </figure>
+
+          <div class="disclosure-stack">
+            <details open>
+              <summary>How an agent chooses the local or team server</summary>
+              <div class="detail-body">
+                <p>
+                  Every artifact reference includes the Artifact Server address, artifact ID, and,
+                  when needed, the exact version ID. An artifact ID by itself is not enough because
+                  the same person may use a local server and one or more team servers.
+                </p>
+                <p>The publishing skill resolves the target in this order:</p>
+                <ol>
+                  <li>An Artifact Server address, artifact link, or named server stated in the current request.</li>
+                  <li>The server contained in an artifact reference already present in the conversation.</li>
+                  <li>The server used by the artifact most recently published or opened in the current conversation.</li>
+                  <li>The current project's configured default server.</li>
+                  <li>The user's default server.</li>
+                </ol>
+                <p>
+                  If those rules do not produce one server, the agent asks whether to use the local
+                  or team server. It never publishes to, reads from, or opens an artifact from a guessed server.
+                </p>
+                <p>
+                  The Artifact Server command-line program keeps named connection profiles such as
+                  <code>local</code> and <code>team</code>. A project may contain an optional,
+                  non-secret <code>.artifactserver.json</code> file that names its default server
+                  address or connection profile. User defaults, recent artifact
+                  references, and the local server's current address remain in user-local state.
+                  Access credentials stay in the MCP client or operating-system credential store;
+                  they are never written into the project file.
+                </p>
+                <p>
+                  The MCP <code>artifact_open</code> tool returns the canonical browser address for
+                  the chosen artifact and version. A local helper may ask the operating system to
+                  open that address directly. A remote server only returns its address; the agent
+                  or client opens it on the user's computer. The remote server never attempts to
+                  start a browser on the server machine.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>Skill packaging, installation, and updates</summary>
+              <div class="detail-body">
+                <p>
+                  Both skills use the open Agent Skills folder format and ship in the official
+                  Artifact Server repository under <code>skills/publish-artifact</code> and
+                  <code>skills/operate-artifact-server</code>. They are listed on skills.sh and can
+                  be installed into Codex, Claude Code, and other compatible clients with the
+                  <code>npx skills</code> installer. The final copy-and-paste command is published
+                  after the official repository address is fixed.
+                </p>
+                <p>
+                  The skill name is the portable contract. A client may display it as a slash
+                  command, but Artifact Server does not depend on slash-command spelling because
+                  that behavior differs between clients. Each skill contains a short main
+                  instruction file. Detailed upload errors and deployment-specific procedures live
+                  in separate reference files that the agent reads only when required.
+                </p>
+                <p>
+                  The publishing skill does not contain a cloud-specific configuration. It calls
+                  <code>artifact_capabilities</code> at the start of a publishing task. That response
+                  reports the server version, supported upload methods, size limits, sharing
+                  settings, comparison support, and optional Git history. The same installed skill
+                  therefore works with a laptop, private server, Kubernetes, or hosted service.
+                </p>
+                <p>
+                  Skills are versioned with Artifact Server releases and tested for correct
+                  activation as well as correct output. A skill tells the user when the connected
+                  server is too old for a requested operation. The release process tests realistic
+                  requests that should activate each skill and similar requests that must not.
+                </p>
+                <p>
+                  Format and distribution follow the current
+                  <a href="https://agentskills.io/specification">Agent Skills specification</a> and
+                  the <a href="https://skills.sh/">skills.sh directory and installer</a>.
+                </p>
+              </div>
+            </details>
+            <details open>
+              <summary>Deployment choices for MCP sign-in</summary>
+              <div class="detail-body">
+                <div class="table-wrap" role="region" aria-label="MCP authorization choices" tabindex="0">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Installation</th>
+                        <th>Default</th>
+                        <th>What the user experiences</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Hosted Artifact Server</td>
+                        <td>WorkOS AuthKit</td>
+                        <td>Add the server address, sign in and approve in the browser, then return to the AI client.</td>
+                      </tr>
+                      <tr>
+                        <td>Private or self-hosted server</td>
+                        <td>Server API key</td>
+                        <td>Configure a revocable key. A compatible company authorization service may replace it. Better Auth is a candidate for optional built-in browser authorization after its current beta MCP path passes testing.</td>
+                      </tr>
+                      <tr>
+                        <td>One laptop</td>
+                        <td>Local helper and local token</td>
+                        <td>The AI client starts or contacts the local server. No web sign-in is required.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p>
+                  Ordinary OpenID Connect sign-in proves who a person is in a browser. It is not, by
+                  itself, enough for an MCP client. Remote MCP also needs discovery, approval,
+                  a credential issued for the exact <code>/mcp</code> address, renewal, and revocation.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>The modern MCP server contract</summary>
+              <div class="detail-body">
+                <p>
+                  The primary endpoint uses MCP revision <code>2026-07-28</code> and the official
+                  TypeScript SDK version 2. Every request is independent. There is no initialization
+                  handshake, MCP session identifier, sticky load-balancer route, or permanent event
+                  stream. The client may call <code>server/discover</code> to learn versions,
+                  tools, resources, instructions, and limits.
+                </p>
+                <ul>
+                  <li>Remote and shared installations use HTTP <code>POST /mcp</code>.</li>
+                  <li>Normal results use JSON. Request-scoped server-sent events are reserved for useful progress.</li>
+                  <li>The first release rejects <code>subscriptions/listen</code>. It is enabled only after the deployment has a real shared event service.</li>
+                  <li>Modern <code>GET /mcp</code> and <code>DELETE /mcp</code> return 405. Older MCP behavior is an isolated, optional compatibility path.</li>
+                  <li>Every write has an application idempotency key and the version the caller started from. A broken connection cannot silently publish twice or overwrite newer work.</li>
+                </ul>
+              </div>
+            </details>
+            <details>
+              <summary>Hosted OAuth and Artifact Server's responsibility</summary>
+              <div class="detail-body">
+                <p>
+                  In the hosted service, WorkOS owns the authorization page, approval screen,
+                  authorization codes, client registration, access credentials, renewal, and revoke
+                  behavior. Artifact Server remains the protected service. It publishes the standard
+                  metadata that tells clients where to sign in and verifies every credential before an MCP request reaches product code.
+                </p>
+                <p>
+                  The credential must name the exact Artifact Server MCP address as its audience and
+                  include the <code>mcp</code> scope. Artifact Server also verifies the issuer,
+                  signature, expiry, and user, then maps that user to an account admitted to this
+                  installation. Artifact Server does not copy WorkOS organizations into a second
+                  organization system. The same artifact ownership and write checks used by the
+                  browser still apply.
+                </p>
+                <p>
+                  The hosted authorization service enables Client ID Metadata Documents first and
+                  keeps Dynamic Client Registration temporarily for clients that still require it.
+                  Authorization uses the browser authorization-code flow with S256 PKCE. WorkOS
+                  credentials never pass to file storage, background workers, or published websites.
+                </p>
+                <p>
+                  The exact wire behavior, metadata, token checks, self-hosted modes, and release
+                  test matrix are recorded in the <a href="artifact-server-mcp-baseline.md">Artifact Server MCP engineering baseline</a>.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>See the proposed MCP tools</summary>
+              <div class="detail-body">
+                <pre><code>artifact_capabilities
+artifact_list
+artifact_get
+artifact_open
+artifact_publish_inline
+artifact_create_upload
+artifact_commit_upload
+artifact_link_local
+artifact_set_visibility
+artifact_version_list
+artifact_diff</code></pre>
+                <p>
+                  These names may change. Read tools return small responses in a predictable
+                  structure. Results from changes return the artifact ID, version ID, SHA-256
+                  manifest digest, access setting, main link, link to the saved version, and optional
+                  Git commit identifier. The capabilities tool reports whether Git history is enabled
+                  and which provider the installation uses.
+                </p>
+                <p>
+                  Version manifests and bounded text files may also be readable MCP resources. Full
+                  websites, large files, and complete comparison reports return ordinary HTTPS links
+                  instead of being copied into the AI conversation.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>How agents connect and avoid overwriting newer work</summary>
+              <div class="detail-body">
+                <p>
+                  Remote agents use HTTP <code>POST /mcp</code>. On the same computer, a small
+                  command-line helper or loopback listener uses a local token and calls the same
+                  product service. The helper never writes directly to the database.
+                </p>
+                <p>
+                  Every change includes the version the agent believes is current. If newer work
+                  exists, the server returns the actual current version and tells the agent what to read before trying again.
+                  Retrying the same idempotency key returns the same result. Starting a new publish
+                  with a new key creates a new version even when the bytes match an earlier version.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>Compatibility and release checks</summary>
+              <div class="detail-body">
+                <p>
+                  The released July 2026 protocol is the product target. Compatibility with older
+                  MCP clients is not mixed into the modern path. If a required client still uses the
+                  older initialization handshake, an administrator can enable a separately tested compatibility handler.
+                </p>
+                <p>
+                  Release testing covers current Codex, Claude Code, Claude.ai, and at least one
+                  DCR-only client. Each is tested with a fresh connection, an old cached connection,
+                  an expired credential, a revoked grant, a wrong audience, an invalid origin, and a
+                  user who has not been admitted to that installation. Claude.ai can reach only Artifact Servers exposed to
+                  Anthropic's cloud; a server reachable only inside a private network is not supported there.
+                </p>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <section class="section" id="deployment" aria-labelledby="deployment-title">
+          <div class="section-heading">
+            <span class="section-label">Deployment</span>
+            <h2 id="deployment-title">Supported deployment targets</h2>
+            <p>
+              A local installation starts as one process with one data folder. A team deployment may
+              run several copies of the application, all using the same database and file storage.
+              The product defines runtime and storage interfaces; official infrastructure packages
+              select the provider-specific services.
+            </p>
+          </div>
+
+          <div class="deployment-summary">
+            <article class="deployment-item">
+              <h3>Local first</h3>
+              <p>One running application, one SQLite database file, local disk, optional links to local files, and optional Git history in the same data folder.</p>
+            </article>
+            <article class="deployment-item">
+              <h3>Private team</h3>
+              <p>One server uses SQLite and local or attached disk. Kubernetes or multiple application replicas use Postgres and S3, Google Cloud Storage, Azure Blob, R2, or compatible object storage.</p>
+            </article>
+            <article class="deployment-item">
+              <h3>Cloudflare</h3>
+              <p>Cloudflare Workers, D1 records, R2 files, nearby copies of public files, and optional Cloudflare Artifacts history.</p>
+            </article>
+            <article class="deployment-item">
+              <h3>Major clouds</h3>
+              <p>AWS, GCP, and Azure use the same container or Kubernetes runtime with Postgres and the provider's native object store.</p>
+            </article>
+          </div>
+
+          <p class="section-note">
+            Each standalone deployment is one installation for one person or team. The hosted
+            artifactserver.com service may run many isolated installations on shared Cloudflare
+            infrastructure. The installation identity comes from trusted authentication and routing,
+            never from a caller-supplied filter. Tenant-scoped storage APIs, composite keys, cache
+            keys, signed links, background jobs, backups, and restore tests enforce the boundary.
+          </p>
+
+          <figure class="architecture" aria-labelledby="deployment-diagram-title">
+            <div class="architecture-top">
+              <strong class="architecture-title" id="deployment-diagram-title">One product, four runtime shapes</strong>
+              <p class="architecture-caption">
+                Product rules, artifact IDs, version behavior, comparisons, links, and permissions
+                stay the same. Only the runtime and storage adapters change.
+              </p>
+            </div>
+            <div class="diagram-shell">
+              <div class="diagram-heading">
+                <strong>Deployment map</strong>
+                <span>Git history is optional in every column.</span>
+              </div>
+              <div class="diagram-scroll">
+                <svg class="architecture-diagram" viewBox="0 0 1040 520" role="img" aria-labelledby="deployment-map-title deployment-map-desc">
+                  <title id="deployment-map-title">Deployment architecture map</title>
+                  <desc id="deployment-map-desc">The same Artifact Server product rules connect to different application runtimes, databases, file stores, and optional Git providers on a laptop, one server, Kubernetes, and Cloudflare. AWS, GCP, and Azure use the server or Kubernetes shape with native managed storage.</desc>
+                  <defs>
+                    <marker id="deployment-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                      <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
+                    </marker>
+                  </defs>
+
+                  <rect class="svg-node-primary" x="300" y="24" width="440" height="84" rx="10"></rect>
+                  <text class="svg-label" x="324" y="49">SHARED CORE</text>
+                  <text class="svg-title" x="324" y="76">Publish · versions · compare · share · permissions · MCP</text>
+                  <text class="svg-copy" x="324" y="96">The same tests and visible behavior run in every deployment.</text>
+
+                  <path class="svg-line" d="M520 108 V142 H142 V174" marker-end="url(#deployment-arrow)"></path>
+                  <path class="svg-line" d="M520 108 V142 H394 V174" marker-end="url(#deployment-arrow)"></path>
+                  <path class="svg-line" d="M520 108 V142 H646 V174" marker-end="url(#deployment-arrow)"></path>
+                  <path class="svg-line" d="M520 108 V142 H898 V174" marker-end="url(#deployment-arrow)"></path>
+
+                  <rect class="svg-boundary" x="22" y="174" width="240" height="318" rx="12"></rect>
+                  <text class="svg-label" x="44" y="204">LAPTOP</text>
+                  <rect class="svg-node" x="44" y="226" width="196" height="56" rx="7"></rect>
+                  <text class="svg-title" x="62" y="259">One Node.js process</text>
+                  <rect class="svg-node-store" x="44" y="300" width="196" height="68" rx="7"></rect>
+                  <text class="svg-title" x="62" y="328">SQLite</text>
+                  <text class="svg-copy" x="62" y="349">Artifact records</text>
+                  <rect class="svg-node-store" x="44" y="386" width="196" height="68" rx="7"></rect>
+                  <text class="svg-title" x="62" y="414">Local disk</text>
+                  <text class="svg-copy" x="62" y="435">Files + optional Git repos</text>
+                  <path class="svg-line" d="M112 282 V300" marker-end="url(#deployment-arrow)"></path>
+                  <path class="svg-line" d="M172 282 H248 V420 H240" marker-end="url(#deployment-arrow)"></path>
+
+                  <rect class="svg-boundary" x="274" y="174" width="240" height="318" rx="12"></rect>
+                  <text class="svg-label" x="296" y="204">ONE SERVER</text>
+                  <rect class="svg-node" x="296" y="226" width="196" height="56" rx="7"></rect>
+                  <text class="svg-title" x="314" y="259">Application or container</text>
+                  <rect class="svg-node-store" x="296" y="300" width="196" height="68" rx="7"></rect>
+                  <text class="svg-title" x="314" y="328">SQLite</text>
+                  <text class="svg-copy" x="314" y="349">Artifact records</text>
+                  <rect class="svg-node-store" x="296" y="386" width="196" height="68" rx="7"></rect>
+                  <text class="svg-title" x="314" y="414">Disk or S3-compatible</text>
+                  <text class="svg-copy" x="314" y="435">Files + optional Git repos</text>
+                  <path class="svg-line" d="M364 282 V300" marker-end="url(#deployment-arrow)"></path>
+                  <path class="svg-line" d="M424 282 H500 V420 H492" marker-end="url(#deployment-arrow)"></path>
+
+                  <rect class="svg-boundary" x="526" y="174" width="240" height="318" rx="12"></rect>
+                  <text class="svg-label" x="548" y="204">KUBERNETES</text>
+                  <rect class="svg-node" x="548" y="226" width="196" height="56" rx="7"></rect>
+                  <text class="svg-title" x="566" y="251">Stateless application</text>
+                  <text class="svg-copy" x="566" y="269">Multiple containers</text>
+                  <rect class="svg-node-store" x="548" y="300" width="196" height="68" rx="7"></rect>
+                  <text class="svg-title" x="566" y="328">Postgres + S3-compatible</text>
+                  <text class="svg-copy" x="566" y="349">Shared records and files</text>
+                  <rect class="svg-boundary-optional" x="548" y="386" width="196" height="68" rx="7"></rect>
+                  <text class="svg-title" x="566" y="414">Git history service</text>
+                  <text class="svg-copy" x="566" y="435">Persistent or private remote</text>
+                  <path class="svg-line" d="M616 282 V300" marker-end="url(#deployment-arrow)"></path>
+                  <path class="svg-line-optional" d="M676 282 H752 V420 H744" marker-end="url(#deployment-arrow)"></path>
+
+                  <rect class="svg-boundary" x="778" y="174" width="240" height="318" rx="12"></rect>
+                  <text class="svg-label" x="800" y="204">CLOUDFLARE</text>
+                  <rect class="svg-node" x="800" y="226" width="196" height="56" rx="7"></rect>
+                  <text class="svg-title" x="818" y="259">Cloudflare Workers</text>
+                  <rect class="svg-node-store" x="800" y="300" width="196" height="68" rx="7"></rect>
+                  <text class="svg-title" x="818" y="328">D1 + R2</text>
+                  <text class="svg-copy" x="818" y="349">Records and published files</text>
+                  <rect class="svg-boundary-optional" x="800" y="386" width="196" height="68" rx="7"></rect>
+                  <text class="svg-title" x="818" y="414">Cloudflare Artifacts</text>
+                  <text class="svg-copy" x="818" y="435">Optional private Git history</text>
+                  <path class="svg-line" d="M868 282 V300" marker-end="url(#deployment-arrow)"></path>
+                  <path class="svg-line-optional" d="M928 282 H1004 V420 H996" marker-end="url(#deployment-arrow)"></path>
+                </svg>
+              </div>
+              <div class="diagram-legend" aria-label="Deployment diagram legend">
+                <span><i class="diagram-key" aria-hidden="true"></i>Required component</span>
+                <span><i class="diagram-key optional" aria-hidden="true"></i>Optional Git history</span>
+              </div>
+            </div>
+          </figure>
+
+          <div class="table-wrap" role="region" aria-label="Deployment comparison" tabindex="0">
+            <table class="deployment-table">
+              <thead>
+                <tr>
+                  <th>Environment</th>
+                  <th>How it runs</th>
+                  <th>Where records are stored</th>
+                  <th>Where files are stored</th>
+                  <th>Optional Git history</th>
+                  <th>Can it read local files?</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Laptop</td>
+                  <td>Node.js</td>
+                  <td>SQLite</td>
+                  <td>Local disk</td>
+                  <td>Git repositories in the data folder</td>
+                  <td>Only through the local helper and approved roots</td>
+                </tr>
+                <tr>
+                  <td>One server</td>
+                  <td>Installed application or software container</td>
+                  <td>SQLite by default</td>
+                  <td>Local or attached disk</td>
+                  <td>Git repositories on persistent disk</td>
+                  <td>Disabled by default; an administrator may run the local helper against approved roots on that server</td>
+                </tr>
+                <tr>
+                  <td>Kubernetes</td>
+                  <td>Node.js containers that keep no data on their own disks</td>
+                  <td>Postgres</td>
+                  <td>S3, Google Cloud Storage, Azure Blob, or compatible object storage</td>
+                  <td>Internal Git history service or private Git server</td>
+                  <td>Normally no</td>
+                </tr>
+                <tr>
+                  <td>Cloudflare</td>
+                  <td>Cloudflare Workers</td>
+                  <td>D1</td>
+                  <td>Cloudflare R2</td>
+                  <td>Cloudflare Artifacts</td>
+                  <td>No</td>
+                </tr>
+                <tr>
+                  <td>AWS</td>
+                  <td>Containers or Kubernetes</td>
+                  <td>Managed Postgres</td>
+                  <td>Amazon S3</td>
+                  <td>Configured private Git server</td>
+                  <td>No</td>
+                </tr>
+                <tr>
+                  <td>GCP</td>
+                  <td>Containers or Kubernetes</td>
+                  <td>Managed Postgres</td>
+                  <td>Google Cloud Storage</td>
+                  <td>Configured private Git server</td>
+                  <td>No</td>
+                </tr>
+                <tr>
+                  <td>Azure</td>
+                  <td>Containers or Kubernetes</td>
+                  <td>Managed Postgres</td>
+                  <td>Azure Blob Storage</td>
+                  <td>Configured private Git server</td>
+                  <td>No</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="disclosure-stack">
+            <details>
+              <summary>How it is installed and how people sign in</summary>
+              <div class="detail-body">
+                <p>
+                  The product ships as a downloadable local package, one Docker image, a Compose
+                  file for one server, a Helm chart for Kubernetes, an Alchemy-backed Cloudflare
+                  package, and Pulumi-backed packages for AWS, GCP, and Azure. Each package pins its
+                  tool version and emits a deployment manifest for support. These are install paths
+                  for one product, not separate editions.
+                </p>
+                <p>
+                  Browser login and MCP authorization are separate protocols even when they use the
+                  same identity provider. Team browser login may use OpenID Connect. Hosted MCP
+                  connections use WorkOS AuthKit. Private installations can use server API keys or a
+                  compatible authorization service. A single-user installation may rely on the
+                  operating-system account or a local token.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>How the same code works with different databases and file storage</summary>
+              <div class="detail-body">
+                <p>
+                  The product rules do not know which database or file storage is in use. Each
+                  deployment supplies small pieces of code for saving records, saving files, signing
+                  users in, and running cleanup work. The shared rules do not call Node.js file
+                  functions or a specific database library directly. Optional Git history follows
+                  the same rule through one small provider interface.
+                </p>
+                <ul>
+                  <li><strong>Laptop:</strong> SQLite for records, files stored on disk by their SHA-256 fingerprints, optional local file links, and optional Git repositories in the same data folder.</li>
+                  <li><strong>One server:</strong> SQLite in write-ahead logging mode for records, local or attached disk for files, and optional Git repositories on persistent disk. Postgres is not required while one application process owns writes.</li>
+                  <li><strong>Kubernetes:</strong> Postgres plus S3, Google Cloud Storage, Azure Blob, R2, or compatible object storage, with an optional internal Git history service or private Git server.</li>
+                  <li><strong>Cloudflare:</strong> Workers for the application, D1 for records, R2 for files, and optional Cloudflare Artifacts history. External Postgres is supported through a separate adapter but is not the default.</li>
+                  <li><strong>AWS, GCP, and Azure:</strong> the same container or Kubernetes runtime, managed Postgres, and the provider's native object store. Pulumi supplies the official infrastructure package.</li>
+                </ul>
+                <p>
+                  The storage boundary uses product operations such as “publish this version only
+                  if the current version has not changed,” not a generic function that sends raw SQL
+                  to any database. SQLite/D1 and Postgres keep their own migrations, indexes,
+                  transactions, and optimized queries. Shared tests prove that publishing, access,
+                  versions, and cleanup behave the same.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>Why D1 is the Cloudflare launch default and what must be proven before it grows</summary>
+              <div class="detail-body">
+                <p>
+                  D1 stores small relational records: installations, accounts, artifacts, saved
+                  versions, file paths, fingerprints, access settings, credentials, and cleanup
+                  state. R2 stores the artifact files. An artifact file never goes into D1.
+                </p>
+                <p>
+                  The hosted service starts with one production D1 database. The authenticated
+                  installation identity is bound before product code reaches storage. Composite
+                  database keys, R2 prefixes, cache keys, signed links, jobs, backups, and restore
+                  paths all include that trusted identity through a tenant-scoped storage API.
+                  Remembering to add an <code>installation_id</code> filter is not an adequate boundary.
+                </p>
+
+                <div class="diagram-shell">
+                  <div class="diagram-heading">
+                    <strong>Hosted storage growth</strong>
+                    <span>Start with one D1 database. Choose and test a control plane before adding another.</span>
+                  </div>
+                  <div class="diagram-scroll">
+                    <svg class="architecture-diagram" viewBox="0 0 1040 430" role="img" aria-labelledby="hosted-growth-title hosted-growth-desc">
+                      <title id="hosted-growth-title">The hosted Artifact Server launch shape and possible D1 growth path</title>
+                      <desc id="hosted-growth-desc">People and agents call one Cloudflare Worker. Trusted routing binds an installation to one D1 database and tenant-scoped R2 prefix. The service starts with D1 database zero. A tested directory and binding rollout or external Postgres decision is required before adding another database.</desc>
+                      <defs>
+                        <marker id="hosted-shard-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                          <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
+                        </marker>
+                      </defs>
+
+                      <text class="svg-label" x="28" y="42">CALLERS</text>
+                      <rect class="svg-node" x="28" y="70" width="170" height="96" rx="8"></rect>
+                      <text class="svg-title" x="48" y="104">People and agents</text>
+                      <text class="svg-copy" x="48" y="128">Browser · MCP · HTTP</text>
+                      <text class="svg-small" x="48" y="148">One installation ID per request</text>
+
+                      <rect class="svg-boundary" x="244" y="38" width="250" height="322" rx="14"></rect>
+                      <text class="svg-label" x="268" y="68">CLOUDFLARE WORKER</text>
+                      <rect class="svg-node-primary" x="268" y="94" width="202" height="88" rx="8"></rect>
+                      <text class="svg-title" x="288" y="126">Artifact Server</text>
+                      <text class="svg-copy" x="288" y="150">Authenticate and apply</text>
+                      <text class="svg-copy" x="288" y="168">product rules</text>
+                      <rect class="svg-node" x="268" y="220" width="202" height="96" rx="8"></rect>
+                      <text class="svg-title" x="288" y="252">Select storage</text>
+                      <text class="svg-copy" x="288" y="276">Bind trusted installation to</text>
+                      <text class="svg-copy" x="288" y="296">a database and R2 prefix</text>
+
+                      <rect class="svg-boundary" x="550" y="38" width="214" height="142" rx="12"></rect>
+                      <text class="svg-label" x="574" y="68">START HERE</text>
+                      <rect class="svg-node-store" x="574" y="92" width="166" height="64" rx="8"></rect>
+                      <text class="svg-title" x="594" y="120">D1 database 0</text>
+                      <text class="svg-copy" x="594" y="142">Installation records</text>
+
+                      <rect class="svg-boundary-optional" x="550" y="218" width="214" height="142" rx="12"></rect>
+                      <text class="svg-label" x="574" y="248">REQUIRES A CONTROL PLANE</text>
+                      <rect class="svg-node-store" x="574" y="272" width="166" height="64" rx="8"></rect>
+                      <text class="svg-title" x="594" y="300">D1 database 1+</text>
+                      <text class="svg-copy" x="594" y="322">Possible new installations</text>
+
+                      <rect class="svg-boundary" x="812" y="98" width="200" height="202" rx="12"></rect>
+                      <text class="svg-label" x="836" y="128">ARTIFACT FILES</text>
+                      <rect class="svg-node-store" x="836" y="152" width="152" height="112" rx="8"></rect>
+                      <text class="svg-title" x="856" y="184">Shared R2 bucket</text>
+                      <text class="svg-copy" x="856" y="208">Immutable files</text>
+                      <text class="svg-small" x="856" y="232">Key begins with</text>
+                      <text class="svg-small" x="856" y="248">installations/{id}/</text>
+
+                      <path class="svg-line" d="M198 118 H244" marker-end="url(#hosted-shard-arrow)"></path>
+                      <path class="svg-line" d="M470 252 H520 V124 H574" marker-end="url(#hosted-shard-arrow)"></path>
+                      <path class="svg-line-optional" d="M470 276 H520 V304 H574" marker-end="url(#hosted-shard-arrow)"></path>
+                      <path class="svg-line" d="M470 292 H788 V208 H836" marker-end="url(#hosted-shard-arrow)"></path>
+                    </svg>
+                  </div>
+                  <div class="diagram-legend" aria-label="Hosted growth diagram legend">
+                    <span><i class="diagram-key" aria-hidden="true"></i>Used at launch</span>
+                    <span><i class="diagram-key optional" aria-hidden="true"></i>Added after measured need</span>
+                  </div>
+                </div>
+
+                <p>
+                  The proposal does not claim that adding D1 databases is automatic. Before a
+                  second database, the team must choose and load-test either a D1 directory plus
+                  safe binding rollout or an external Postgres control plane. That decision must
+                  cover provisioning, tenant moves, retries, backups, restore, and rollback.
+                </p>
+                <p>
+                  D1 has a hard 10 GB limit per paid database and processes writes through one
+                  primary database. Global read replicas can reduce read latency when the Sessions
+                  API is used, but they do not scale writes. Artifact metadata remains much smaller
+                  than the files in R2. Measurements decide whether D1 sharding or external Postgres
+                  is the safer growth path.
+                </p>
+                <p>
+                  D1 scales to zero and includes substantial monthly reads and writes on Workers
+                  Paid. R2 stores Standard files for $0.015 per GB-month beyond the included
+                  allowance and does not charge for internet data transfer. External Postgres would
+                  add another provider, region, connection pool, credentials, backups, and another
+                  network failure path.
+                </p>
+                <p>Publishing across D1 and R2 follows this order:</p>
+                <ol>
+                  <li>Upload each file to a unique staging key.</li>
+                  <li>Verify size and fingerprint, then create the final blob without overwriting an existing object.</li>
+                  <li>Commit the manifest and version in D1 only if the current version is still the expected version.</li>
+                  <li>Return the recorded result when the same idempotency key is retried.</li>
+                  <li>Delete only expired staging uploads in the first release. Keep committed and orphaned blobs until a concurrency-safe garbage collector exists.</li>
+                </ol>
+                <p>
+                  Current platform references: <a href="https://developers.cloudflare.com/d1/platform/limits/">D1 limits</a>,
+                  <a href="https://developers.cloudflare.com/d1/platform/pricing/">D1 pricing</a>,
+                  <a href="https://developers.cloudflare.com/d1/best-practices/read-replication/">D1 global read replication</a>,
+                  and <a href="https://developers.cloudflare.com/r2/pricing/">R2 pricing</a>.
+                </p>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <section class="section" id="safety" aria-labelledby="safety-title">
+          <div class="section-heading">
+            <span class="section-label">Safety and trust</span>
+            <h2 id="safety-title">Treat every published website as untrusted code.</h2>
+            <p>
+              A published website may run arbitrary browser JavaScript. The architecture isolates
+              each saved version and keeps application credentials out of the content origin.
+            </p>
+          </div>
+
+          <div class="feature-list">
+            <article class="feature-row">
+              <h3>Unique origin for every version</h3>
+              <div class="feature-copy">
+                <p>The application and content use separate registrable domains. Every saved version gets a unique content host. Application cookies are host-only; content is read-only; credentialed CORS is disabled; browser changes require a CSRF token, trusted Origin, and valid Fetch Metadata.</p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Private content session</h3>
+              <div class="feature-copy">
+                <p>Account-required content begins at the application. After permission is checked, a single-use token creates a Secure, HttpOnly, host-only session for one exact version host. Relative assets use that session. It grants no write operation and no access to another version.</p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Public links cannot recall copies</h3>
+              <div class="feature-copy">
+                <p>Changing a public artifact back to account required purges supported caches and stops new public requests. It cannot revoke files already downloaded or cached outside the service. The product states this before the change.</p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Safe upload inputs</h3>
+              <div class="feature-copy">
+                <p>Portable manifest rules reject path traversal, absolute paths, symlinks, special files, duplicate normalized names, and case or Unicode collisions. Remote publishing uploads bytes; the server does not fetch arbitrary URLs. Local imports are limited to administrator-approved roots.</p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Tenant-scoped storage</h3>
+              <div class="feature-copy">
+                <p>The installation identity comes from trusted authentication and routing. Product code cannot issue an unscoped database, object-store, cache, background-job, backup, or restore operation. Cross-tenant tests cover every one of those paths.</p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Private Git history</h3>
+              <div class="feature-copy">
+                <p>Optional Git repositories remain private. Making an artifact available through a public link never grants Git access or exposes its earlier versions through a Git remote.</p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Recorded responsibility</h3>
+              <div class="feature-copy">
+                <p>Publishing actions record the signed-in user, agent, or automated account that performed the action.</p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <h3>Server policy</h3>
+              <div class="feature-copy">
+                <p>Administrators control login, whether public links are allowed, file limits, retention, network rules, and accepted file types. Hosted service policy also covers abuse reports, phishing and malware response, quotas, egress limits, and content-domain reputation.</p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="section" id="scope" aria-labelledby="scope-title">
+          <div class="section-heading">
+            <span class="section-label">Scope</span>
+            <h2 id="scope-title">Product scope</h2>
+            <p>
+              The product supports the shortest path from finished output to a stable browser link.
+              The implementation section phases delivery; this section defines the final product boundary.
+            </p>
+          </div>
+
+          <div class="scope-grid">
+            <article class="scope-panel">
+              <h3>Included</h3>
+              <ul>
+                <li>Finished client-side output directories and arbitrary individual files.</li>
+                <li>Saved versions that never change, plus the ability to restore an earlier one.</li>
+                <li>File and text comparisons between any two saved versions.</li>
+                <li>Optional private Git history selected when the server is installed.</li>
+                <li>Exactly two access settings: account required and public link.</li>
+                <li>Browser access, MCP, and normal web requests from software.</li>
+                <li>An optional connection from one Artifact Server installation to one Plannotator organization, including signed operation requests and temporary browser sessions.</li>
+                <li>An explicit Plannotator review response that may add a credential-free review bridge without changing the stored artifact.</li>
+                <li>A portable <code>publish-artifact</code> skill and a separately installed <code>operate-artifact-server</code> administrator skill.</li>
+                <li>Local, one-server, Kubernetes, Cloudflare, AWS, GCP, and Azure deployment packages delivered in stages.</li>
+              </ul>
+            </article>
+            <article class="scope-panel no-panel">
+              <h3>Not included</h3>
+              <ul>
+                <li>Comments, annotations, replies, review status, notifications, or workspace collaboration. Plannotator provides these features.</li>
+                <li>A general-purpose Git service for arbitrary source-code repositories. Optional Git history exists only for Artifact Server artifacts.</li>
+                <li>Installing packages or turning source code into a finished application.</li>
+                <li>Code inside an artifact that must run on the server.</li>
+                <li>Media conversion, thumbnails, ZIP extraction, Markdown rendering, source-code highlighting, custom PDF viewing, or specialized binary comparisons in the first release.</li>
+                <li>Fetching arbitrary source URLs from the server.</li>
+                <li>Add-ons that run inside Artifact Server.</li>
+                <li>A separate Artifact Server-managed user list for every standalone artifact. Plannotator may apply its workspace rules before sending a managed request.</li>
+                <li>Automatic firewall changes or a general-purpose tunnel into a customer's network. An optional connector may expose only the paired Artifact Server service.</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="section" id="implementation" aria-labelledby="implementation-title">
+          <div class="section-heading">
+            <span class="section-label">Implementation</span>
+            <h2 id="implementation-title">Implementation order</h2>
+            <p>
+              Each stage keeps the same product behavior. Code that connects a deployment to its
+              database and file storage must not copy or change the product rules.
+            </p>
+          </div>
+
+          <aside class="network-note">
+            <strong>The specification has an executable checklist.</strong>
+            <p>
+              Every product promise, security rule, exclusion, deployment claim, and unresolved
+              release gate has a stable ID, an owning module, a normal test, a hostile or failure
+              test, applicable deployments, status, dependencies, and evidence in
+              <a href="./conformance.yml">conformance.yml</a>. A requirement is complete only when
+              both tests pass on every applicable deployment and the proof is recorded there.
+              <a href="./CONFORMANCE.md">Read the validation and release-gate instructions</a>.
+            </p>
+          </aside>
+
+          <div class="roadmap">
+            <article class="roadmap-item">
+              <span class="roadmap-stage">First</span>
+              <div class="roadmap-copy">
+                <h3>One complete local product</h3>
+                <p>
+                  Build saved versions that never change, comparisons between versions, support for complete client-side output directories, the separate artifact website, SQLite and
+                  local file storage, the modern stateless MCP route, web publishing, local-token
+                  access, the two sharing modes, and optional Git repositories in the local data
+                  folder. Ship the <code>publish-artifact</code> skill after its MCP workflow is
+                  stable. Reject MCP subscriptions until a real event service exists. Ship it as one running application.
+                </p>
+              </div>
+            </article>
+            <article class="roadmap-item">
+              <span class="roadmap-stage">Next</span>
+              <div class="roadmap-copy">
+                <h3>The shared server</h3>
+                <p>
+                  Keep SQLite for a single-server installation. Add Postgres and cloud file storage
+                  for Kubernetes or any deployment with multiple application replicas. Support S3,
+                  Google Cloud Storage, Azure Blob, R2, and compatible object stores through one
+                  narrow interface. Add browser login, API-key and external-issuer modes for private
+                  deployments, staged direct uploads, expired-staging cleanup, a Docker image, a
+                  Compose file, a Helm chart, backup and restore, and optional private Git history.
+                  Ship the optional <code>operate-artifact-server</code> skill after install,
+                  upgrade, backup, restore, and health-check commands are stable and tested.
+                </p>
+              </div>
+            </article>
+            <article class="roadmap-item">
+              <span class="roadmap-stage">Then</span>
+              <div class="roadmap-copy">
+                <h3>The Plannotator connection</h3>
+                <p>
+                  Add browser approval for one Plannotator organization, signed requests limited to
+                  one workspace and operation, a single-use private artifact address, disconnect and
+                  key rotation, and connection audit records. Ship top-level private opening first.
+                  Add review mode only after the bridge passes hostile-artifact and browser tests.
+                  Use customer-provided networking or an established tunnel before building a
+                  product-owned connector.
+                </p>
+              </div>
+            </article>
+            <article class="roadmap-item">
+              <span class="roadmap-stage">Then</span>
+              <div class="roadmap-copy">
+                <h3>The Cloudflare deployment</h3>
+                <p>
+                  Add Cloudflare Workers, D1 records, R2 file storage, and the optional Cloudflare
+                  Artifacts provider. Enforce tenant-scoped storage from trusted routing. Start the
+                  hosted service with one D1 database. Before a second database, select and test a
+                  D1 directory and binding rollout or external Postgres control plane. Copy to Git only after the normal
+                  saved version is complete, and retry temporary failures. Verify file delivery with
+                  and without an account, upload limits, complete website behavior, comparisons, and signed-in MCP access over the web.
+                </p>
+              </div>
+            </article>
+            <article class="roadmap-item">
+              <span class="roadmap-stage">After</span>
+              <div class="roadmap-copy">
+                <h3>Official AWS, GCP, and Azure packages</h3>
+                <p>
+                  Ship pinned Pulumi packages for each cloud. Reuse the container or Kubernetes
+                  runtime, managed Postgres, and the provider's native object store. Test install,
+                  upgrade, rollback, backup, restore, private networking, and removal independently
+                  for each provider. Do not claim a provider is supported until those tests pass.
+                </p>
+              </div>
+            </article>
+          </div>
+
+          <div class="disclosure-stack">
+            <details>
+              <summary>How we know each release is ready</summary>
+              <div class="detail-body">
+                <ul>
+                  <li><strong>Local:</strong> one process publishes one file and a complete static site, opens the unique version host, compares versions without Git, retries safely, and survives a restart.</li>
+                  <li><strong>Private team:</strong> account-required subresources load, forbidden mutations fail, backup and restore preserve IDs, and cross-tenant and hostile-path tests pass on one server and Kubernetes.</li>
+                  <li><strong>Cloudflare:</strong> WorkOS MCP sign-in, R2 staged uploads, D1 transactions, public cache purge, private no-cache delivery, abuse controls, and a restore drill pass under measured cost and load.</li>
+                  <li><strong>Plannotator connection:</strong> one-click approval, cross-organization rejection, signed-request scope, one-use browser links, disconnect, key rotation, exact-version comments, hostile review-page tests, and private-route failure and recovery all pass.</li>
+                  <li><strong>Major clouds:</strong> every provider package passes install, upgrade, rollback, backup, restore, private-network, and removal tests before support is advertised.</li>
+                  <li><strong>All releases:</strong> browsers open native file types without a conversion service; arbitrary URL fetch is absent; optional Git failure never blocks or loses the primary saved version.</li>
+                </ul>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <section class="section" id="decisions" aria-labelledby="decisions-title">
+          <div class="section-heading">
+            <span class="section-label">Decision record</span>
+            <h2 id="decisions-title">Decisions made by this proposal</h2>
+            <p>
+              These choices make the proposal internally consistent. The remaining unknowns are
+              explicit release gates, not implied promises.
+            </p>
+          </div>
+
+          <div class="decision-list">
+            <article class="decision-item"><p>The product stores and serves finished client-side sites and arbitrary files. The browser handles supported formats natively. The server does not run artifact backends or perform file conversion.</p></article>
+            <article class="decision-item"><p>An artifact keeps one identity. Each intentional publish creates an immutable version with a canonical manifest and unique version origin. Restoring only changes which version is current.</p></article>
+            <article class="decision-item"><p>A retry with the same idempotency key returns the stored result. A new key creates a new version even when the manifest matches an earlier version.</p></article>
+            <article class="decision-item"><p>Comparisons use canonical manifests and changed text. Binary comparison shows metadata and links. Git is not required.</p></article>
+            <article class="decision-item"><p>Git history is an optional private copy. The normal object store remains authoritative, and Git failure never blocks or loses a saved version.</p></article>
+            <article class="decision-item"><p>Account required and public link are the only two read settings. A public link opens only the current version; history and comparisons still require an account. Publishing, access changes, and deletion follow a separate owner, administrator, and scoped-service authorization matrix.</p></article>
+            <article class="decision-item"><p>A standalone installation is one person or one team. One installation may connect to one Plannotator organization. Plannotator-managed artifacts use a separate logical area that normal standalone sessions cannot read.</p></article>
+            <article class="decision-item"><p>Plannotator checks workspace access and sends a short-lived, audience-restricted request. Artifact Server verifies it and creates its own one-use browser address and read-only content session. User accounts and browser login cookies are not copied.</p></article>
+            <article class="decision-item"><p>An explicit review address may add a credential-free review bridge to HTML responses for that session. Normal responses and stored versions remain unchanged. Plannotator stores every comment and review record.</p></article>
+            <article class="decision-item"><p>A private connected server uses a customer-provided route or an outbound-only connector limited to Artifact Server. Connecting never changes firewall rules or exposes the rest of the private network.</p></article>
+            <article class="decision-item"><p>Every saved version uses a unique host on a content domain separate from the application domain. Private subresources use a version-scoped content session; public content may use immutable CDN caching.</p></article>
+            <article class="decision-item"><p>Changing public content back to account required stops future public access and purges supported caches, but cannot recall downloaded or externally cached copies.</p></article>
+            <article class="decision-item"><p>Manifest paths follow one portable safety contract. Remote clients upload bytes. Local imports use approved roots. The server does not fetch arbitrary source URLs.</p></article>
+            <article class="decision-item"><p>Uploads stage, verify, then write content-addressed blobs without overwrite before the database commit. The first release deletes expired staging only and does not garbage-collect committed blobs.</p></article>
+            <article class="decision-item"><p>Browser, normal software requests, and MCP share the same product and authorization rules. Hosted MCP uses WorkOS AuthKit; local and self-hosted modes retain scoped API keys.</p></article>
+            <article class="decision-item"><p>Artifact Server ships a routine publishing skill and a separately installed operator skill. Stored references include the server and artifact, so agents open local or team artifacts at the correct origin.</p></article>
+            <article class="decision-item"><p>The shared core uses narrow database, blob, login, background-work, and optional Git interfaces. Official deployment packages are Compose, Helm, Alchemy for Cloudflare, and Pulumi for AWS, GCP, and Azure.</p></article>
+            <article class="decision-item"><p>Support is phased: local, private team and Kubernetes, hosted Cloudflare, then AWS, GCP, and Azure. A target is not supported until its install, upgrade, rollback, backup, restore, and isolation tests pass.</p></article>
+            <article class="decision-item"><p>Committed versions cannot be edited or deleted individually. Deleting an artifact creates a tombstone and stops access; physical reclamation waits for a proven retention and garbage-collection design.</p></article>
+          </div>
+
+          <article class="open-decisions">
+            <h3>Known unknowns and required failure probes</h3>
+            <ol>
+              <li><strong>Private site delivery:</strong> prototype the bootstrap token and version-scoped cookie in major browsers, including relative assets, reloads, redirects, range requests, and expiration.</li>
+              <li><strong>Version origins:</strong> prove wildcard DNS, certificates, local <code>*.localhost</code>, service workers, root-relative paths, SPA fallback, and host-count limits.</li>
+              <li><strong>Cloudflare Artifacts:</strong> confirm closed-beta availability, repository limits, retry behavior, retention, regional behavior, and production support. The product must work when it is disabled.</li>
+              <li><strong>WorkOS MCP:</strong> complete staging probes for token lifetime, refresh rotation, revoke behavior, live claims, consent wording, DCR, CIMD, and stale client state.</li>
+              <li><strong>Embedded self-hosted OAuth:</strong> decide whether Better Auth's beta MCP path is mature enough; API keys and compatible external issuers remain the default until it passes the same hostile tests.</li>
+              <li><strong>Cross-cloud packages:</strong> prove pinned Alchemy and Pulumi versions, state storage, preview, rollback, provider drift, upgrades, and clean removal in CI.</li>
+              <li><strong>Hosted abuse:</strong> design quotas, egress limits, rate limits, phishing and malware response, reporting, suspension, and content-domain reputation protection before public hosting.</li>
+              <li><strong>Capacity and cost:</strong> load-test manifests, large directories, concurrent uploads, text diffs, CDN behavior, database write limits, and worst-case egress. Set hard limits from measured results.</li>
+              <li><strong>Recovery:</strong> define retention, tombstone duration, backup schedule, restore procedure, recovery-point and recovery-time promises, and an operator-visible integrity check.</li>
+              <li><strong>Enterprise data controls:</strong> decide encryption-key ownership, regional placement, audit export, legal hold, deletion proof, data residency, and regulated-content boundaries.</li>
+              <li><strong>Custom domains:</strong> decide whether customer domains are supported and, if so, how certificates, version isolation, cookies, cache purge, domain takeover, and service workers remain safe.</li>
+              <li><strong>Plannotator review bridge:</strong> test the isolated review response against hostile artifact JavaScript, strict content policies, multi-page sites, single-page routes, service workers, anchor stability, session expiry, and browsers without third-party cookies. Use a browser extension if the bridge cannot pass without exposing a reusable credential.</li>
+              <li><strong>Existing artifact attachment:</strong> decide whether attaching a standalone artifact to a Plannotator workspace moves it or copies it, and prove permissions, IDs, links, rollback, and disconnect behavior.</li>
+              <li><strong>Private Plannotator route:</strong> choose the first supported path among customer-provided networking, Cloudflare Tunnel, or a product-owned connector. Define health, upgrades, replicas, egress addresses, and failure behavior before advertising one-click private connection.</li>
+            </ol>
+          </article>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="document-footer">
+    <div class="footer-inner">
+      <span>Artifact Server product proposal</span>
+      <span>Decision draft · August 12, 2026</span>
+    </div>
+  </footer>
+
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const themeButton = document.getElementById("theme-button");
+      const themeLabel = document.getElementById("theme-label");
+      const disclosures = Array.from(document.querySelectorAll(".document-main details:not(.mobile-toc)"));
+
+      const systemTheme = () =>
+        window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+
+      const updateThemeLabel = () => {
+        const explicitTheme = root.dataset.theme;
+        themeLabel.textContent = explicitTheme
+          ? explicitTheme[0].toUpperCase() + explicitTheme.slice(1)
+          : `System (${systemTheme()})`;
+      };
+
+      themeButton.addEventListener("click", () => {
+        const currentTheme = root.dataset.theme || systemTheme();
+        const nextTheme = currentTheme === "dark" ? "light" : "dark";
+        root.dataset.theme = nextTheme;
+        try {
+          localStorage.setItem("artifact-spec-theme", nextTheme);
+        } catch (_) {
+          // Theme choice remains active for this page even when storage is unavailable.
+        }
+        updateThemeLabel();
+      });
+
+      const media = window.matchMedia("(prefers-color-scheme: dark)");
+      const handleSystemThemeChange = () => {
+        if (!root.dataset.theme) updateThemeLabel();
+      };
+      if (typeof media.addEventListener === "function") {
+        media.addEventListener("change", handleSystemThemeChange);
+      }
+
+      let printState = [];
+      window.addEventListener("beforeprint", () => {
+        printState = disclosures.map((item) => item.open);
+        disclosures.forEach((item) => {
+          item.open = true;
+        });
+      });
+      window.addEventListener("afterprint", () => {
+        disclosures.forEach((item, index) => {
+          item.open = printState[index] ?? false;
+        });
+      });
+
+      updateThemeLabel();
+    })();
+  </script>
+</body>
+</html>
