@@ -241,9 +241,14 @@ requirements:
       behavior: {id: ART-006-B, description: Delete an artifact and confirm that all stable and exact-version links stop serving while its tombstone remains.}
       failure: {id: ART-006-F, description: A deleted artifact cannot be reopened through a cached application authorization or direct origin request.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [ART-004, AUTH-017]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [ART-006-B, ART-006-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T07:50:46Z"
 
   - id: ART-007
     kind: constraint
@@ -254,9 +259,14 @@ requirements:
       behavior: {id: ART-007-B, description: Confirm that a committed version remains addressable until its artifact is tombstoned under explicit policy.}
       failure: {id: ART-007-F, description: No API, UI, MCP tool, or cleanup worker can delete one committed version independently.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [ART-004]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [ART-007-B, ART-007-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T07:50:46Z"
 
   - id: MAN-001
     kind: behavior

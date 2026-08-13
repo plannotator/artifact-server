@@ -12,12 +12,15 @@ describe("bounded local runtime smoke", () => {
     expect(report.checks).toEqual({
       comparisonEndpoint: "passed",
       healthEndpoint: "passed",
+      listEndpoint: "passed",
       previousVersionDeniedAfterRestart: "passed",
       restartPersistence: "passed",
     });
     expect(report.publish.latency.count).toBe(smokeBaselineConfig.publications);
     expect(report.read.latency.count).toBe(smokeBaselineConfig.reads);
     expect(report.comparison.latency.count).toBe(smokeBaselineConfig.publications);
+    expect(report.artifactList.latency.count).toBe(smokeBaselineConfig.publications);
+    expect(report.artifactList.latency.p95Milliseconds).toBeLessThan(2_000);
     expect(report.comparison.latency.p95Milliseconds).toBeLessThan(2_000);
     expect(report.publish.latency.p95Milliseconds).toBeLessThan(2_000);
     expect(report.read.latency.p95Milliseconds).toBeLessThan(2_000);

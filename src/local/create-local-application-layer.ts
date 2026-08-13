@@ -204,10 +204,22 @@ export function createLocalApplicationLayer(
           try: () => adapters.repository.changeAccessSetting(command),
           catch: classifyChangeAccessFailure,
         }),
+      deleteArtifact: (command) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.deleteArtifact(command),
+          catch: classifyDeleteFailure,
+        }),
       findArtifact: (artifactId) =>
         Effect.tryPromise({
           try: () => adapters.repository.findArtifact(artifactId),
           catch: (cause) => repositoryFailure("findArtifact", cause),
+        }),
+      findArtifactForAdministration: (artifactId) =>
+        Effect.tryPromise({
+          try: () =>
+            adapters.repository.findArtifactForAdministration(artifactId),
+          catch: (cause) =>
+            repositoryFailure("findArtifactForAdministration", cause),
         }),
       findArtifactVersion: (artifactId, versionId) =>
         Effect.tryPromise({
@@ -219,6 +231,16 @@ export function createLocalApplicationLayer(
         Effect.tryPromise({
           try: () => adapters.repository.listArtifactVersions(artifactId),
           catch: (cause) => repositoryFailure("listArtifactVersions", cause),
+        }),
+      listArtifactActions: (command) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.listArtifactActions(command),
+          catch: (cause) => repositoryFailure("listArtifactActions", cause),
+        }),
+      listArtifacts: (command) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.listArtifacts(command),
+          catch: (cause) => repositoryFailure("listArtifacts", cause),
         }),
       restoreVersion: (command) =>
         Effect.tryPromise({
@@ -454,6 +476,21 @@ function classifyRestoreFailure(cause: unknown):
     return cause;
   }
   return repositoryFailure("restoreVersion", cause);
+}
+
+function classifyDeleteFailure(cause: unknown):
+  | ArtifactNotFound
+  | ArtifactMutationConflict
+  | IdempotencyConflict
+  | ArtifactRepositoryFailure {
+  if (
+    cause instanceof ArtifactNotFound ||
+    cause instanceof ArtifactMutationConflict ||
+    cause instanceof IdempotencyConflict
+  ) {
+    return cause;
+  }
+  return repositoryFailure("deleteArtifact", cause);
 }
 
 function repositoryFailure(

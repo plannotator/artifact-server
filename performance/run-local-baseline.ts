@@ -74,6 +74,7 @@ function formatSummary(
     `Publish: ${report.publish.operationsPerSecond} ops/s, p95 ${report.publish.latency.p95Milliseconds} ms.`,
     `Read: ${report.read.operationsPerSecond} ops/s, p95 ${report.read.latency.p95Milliseconds} ms.`,
     `Compare: ${report.comparison.operationsPerSecond} ops/s, p95 ${report.comparison.latency.p95Milliseconds} ms.`,
+    `Artifact list: ${report.artifactList.operationsPerSecond} ops/s, p95 ${report.artifactList.latency.p95Milliseconds} ms.`,
     `Restart: ${report.restartMilliseconds} ms.`,
     `Event-loop max delay: ${report.eventLoop.maximumDelayMilliseconds} ms.`,
     `RSS change: ${formatMib(report.memory.rssDeltaBytes)} MiB.`,

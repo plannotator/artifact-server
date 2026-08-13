@@ -80,6 +80,12 @@ export class InvalidIdempotencyKey extends Schema.TaggedError<InvalidIdempotency
   messageField,
 ) {}
 
+/** A bounded list request contains an invalid page size or cursor. */
+export class InvalidPagination extends Schema.TaggedError<InvalidPagination>()(
+  "InvalidPagination",
+  messageField,
+) {}
+
 /** A manifest contains no files. */
 export class EmptyManifest extends Schema.TaggedError<EmptyManifest>()(
   "EmptyManifest",
@@ -178,12 +184,16 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
       "createStagedUpload",
       "exchangeContentBootstrap",
       "findArtifact",
+      "findArtifactForAdministration",
       "findArtifactVersion",
       "findContentSession",
       "findCurrentVersion",
       "findIdempotentPublication",
       "findStagedUpload",
       "findVersionContent",
+      "deleteArtifact",
+      "listArtifactActions",
+      "listArtifacts",
       "listArtifactVersions",
       "markStagedFileUploaded",
       "restoreVersion",
@@ -218,6 +228,7 @@ const artifactServerFailureSchema = Schema.Union([
   ContentSessionRequired,
   InvalidArtifactName,
   InvalidIdempotencyKey,
+  InvalidPagination,
   EmptyManifest,
   MissingManifestEntry,
   InvalidManifestFile,

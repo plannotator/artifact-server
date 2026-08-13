@@ -85,6 +85,7 @@ export interface LocalBaselineReport {
   readonly checks: {
     readonly comparisonEndpoint: "passed";
     readonly healthEndpoint: "passed";
+    readonly listEndpoint: "passed";
     readonly previousVersionDeniedAfterRestart: "passed";
     readonly restartPersistence: "passed";
   };
@@ -117,6 +118,7 @@ export interface LocalBaselineReport {
     readonly userMilliseconds: number;
   };
   readonly comparison: OperationSummary;
+  readonly artifactList: OperationSummary;
   readonly publish: OperationSummary;
   readonly read: OperationSummary;
   readonly restartMilliseconds: number;
@@ -187,6 +189,12 @@ export async function runLocalBaseline(
       Math.min(configuration.publications, 20),
       configuration.concurrency,
     );
+    const artifactLists = await measureArtifactLists(
+      server,
+      installation.apiToken,
+      Math.min(configuration.publications, 20),
+      configuration.concurrency,
+    );
 
     const storage = await measureStorage(installation.dataDirectory);
     const memoryAfter = process.memoryUsage();
@@ -199,6 +207,7 @@ export async function runLocalBaseline(
       checks: {
         comparisonEndpoint: "passed" as const,
         healthEndpoint: "passed" as const,
+        listEndpoint: "passed" as const,
         previousVersionDeniedAfterRestart: "passed" as const,
         restartPersistence: "passed" as const,
       },
@@ -225,6 +234,7 @@ export async function runLocalBaseline(
         userMilliseconds: round(cpu.user / 1_000),
       },
       comparison: comparisons,
+      artifactList: artifactLists,
       publish: publications.summary,
       read: reads,
       restartMilliseconds,
@@ -241,6 +251,37 @@ export async function runLocalBaseline(
     if (server !== null) await server.stop();
     await removeTestInstallation(installation);
   }
+}
+
+async function measureArtifactLists(
+  server: RunningTestServer,
+  apiToken: string,
+  count: number,
+  concurrency: number,
+): Promise<OperationSummary> {
+  const latencies = Array.from<number>({length: count});
+  const phaseStartedAt = performance.now();
+  await runBounded(count, concurrency, async (index) => {
+    const startedAt = performance.now();
+    const response = await fetch(`${server.baseUrl}/api/v1/artifacts?limit=100`, {
+      headers: {Authorization: `Bearer ${apiToken}`},
+    });
+    if (response.status !== 200) {
+      throw new Error(`An artifact list request returned ${response.status}.`);
+    }
+    const page = z.object({
+      artifacts: z.array(z.object({artifact: z.object({id: z.string()})})).min(1),
+      nextCursor: z.string().nullable(),
+    }).parse(await response.json());
+    if (page.artifacts.length > 100) {
+      throw new Error("An artifact list exceeded its requested page bound.");
+    }
+    latencies[index] = performance.now() - startedAt;
+  });
+  return summarizeOperations(
+    z.array(z.number()).length(count).parse(latencies),
+    performance.now() - phaseStartedAt,
+  );
 }
 
 async function measureComparisons(
@@ -572,6 +613,7 @@ function environmentSummary(): LocalBaselineReport["environment"] {
 }
 
 function baselineWarnings(report: {
+  readonly artifactList: OperationSummary;
   readonly comparison: OperationSummary;
   readonly eventLoop: LocalBaselineReport["eventLoop"];
   readonly memory: LocalBaselineReport["memory"];
@@ -579,6 +621,9 @@ function baselineWarnings(report: {
   readonly read: OperationSummary;
 }): readonly string[] {
   const warnings: string[] = [];
+  if (report.artifactList.latency.p95Milliseconds > 100) {
+    warnings.push("Artifact-list p95 exceeded the local investigation threshold of 100 ms.");
+  }
   if (report.comparison.latency.p95Milliseconds > 250) {
     warnings.push("Comparison p95 exceeded the local investigation threshold of 250 ms.");
   }

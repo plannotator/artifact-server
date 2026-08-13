@@ -26,14 +26,19 @@ import {
   errorCodes,
   type ErrorCode,
   InlineContentTooLarge,
+  InvalidPagination,
   isArtifactServerFailure,
 } from "../core/errors.js";
 import type { Principal } from "../core/identity.js";
 import {
   accessSettings,
+  type ArtifactActionPage,
+  type ArtifactDeletion,
+  type ArtifactPage,
   type ArtifactState,
   type ArtifactVersion,
   type ManifestEntry,
+  type PageCursor,
   type PublishedVersion,
   type VersionRecord,
 } from "../core/model.js";
@@ -112,6 +117,21 @@ const comparisonQuerySchema = z.object({
   fromVersionId: z.string().min(1).max(200),
   toVersionId: z.string().min(1).max(200),
 });
+const deleteArtifactSchema = z.object({
+  expectedCurrentVersionId: z.string().min(1).max(200),
+});
+const pageQuerySchema = z.object({
+  cursor: z.string().max(1_024).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+const pageCursorSchema = z.object({
+  createdAt: z.string().min(1).max(100),
+  id: z.string().min(1).max(200),
+}).strict();
+const pageCursorTokenSchema = z.string()
+  .min(1)
+  .max(1_024)
+  .regex(/^[A-Za-z0-9_-]+$/u);
 
 interface HttpEnvironment {
   readonly Variables: {
@@ -217,6 +237,24 @@ export function createHttpApp(
     );
   });
 
+  app.get("/api/v1/artifacts", async (context) => {
+    const query = pageQuerySchema.parse(context.req.query());
+    const page = await runApplicationEffect(
+      dependencies.applicationRuntime,
+      ArtifactManagementService.use((management) =>
+        management.listArtifacts({
+          cursor: decodePageCursor(query.cursor),
+          limit: query.limit,
+          principal: context.get("principal"),
+        })
+      ),
+    );
+    return context.json(artifactPageResponse(
+      new URL(context.req.url),
+      page,
+    ));
+  });
+
   app.get("/api/v1/artifacts/:artifactId", async (context) => {
     const details = await runApplicationEffect(
       dependencies.applicationRuntime,
@@ -253,6 +291,22 @@ export function createHttpApp(
         version,
       )),
     });
+  });
+
+  app.get("/api/v1/artifacts/:artifactId/actions", async (context) => {
+    const query = pageQuerySchema.parse(context.req.query());
+    const page = await runApplicationEffect(
+      dependencies.applicationRuntime,
+      ArtifactManagementService.use((management) =>
+        management.listArtifactActions({
+          artifactId: context.req.param("artifactId"),
+          cursor: decodePageCursor(query.cursor),
+          limit: query.limit,
+          principal: context.get("principal"),
+        })
+      ),
+    );
+    return context.json(artifactActionPageResponse(page));
   });
 
   app.get(
@@ -352,6 +406,28 @@ export function createHttpApp(
           ? "New public requests are blocked. Copies already downloaded or cached outside Artifact Server cannot be recalled."
           : null,
       });
+    },
+  );
+
+  app.delete(
+    "/api/v1/artifacts/:artifactId",
+    boundedJsonBody,
+    async (context) => {
+      const body = deleteArtifactSchema.parse(await context.req.json());
+      const deletion = await runApplicationEffect(
+        dependencies.applicationRuntime,
+        ArtifactManagementService.use((management) =>
+          management.deleteArtifact({
+            artifactId: context.req.param("artifactId"),
+            expectedCurrentVersionId: body.expectedCurrentVersionId,
+            idempotencyKey: requiredIdempotencyKey(
+              context.req.header("idempotency-key"),
+            ),
+            principal: context.get("principal"),
+          })
+        ),
+      );
+      return context.json(deletionResponse(deletion));
     },
   );
 
@@ -562,7 +638,7 @@ export function createHttpApp(
         {
           error: {
             code: errorCodes.invalidInput,
-            message: "The request body does not match the publishing contract.",
+            message: "The request does not match the API contract.",
           },
         },
         422,
@@ -645,6 +721,7 @@ function httpFailure(failure: ArtifactServerFailure): HttpFailure {
       };
     case "InvalidArtifactName":
     case "InvalidIdempotencyKey":
+    case "InvalidPagination":
     case "EmptyManifest":
     case "MissingManifestEntry":
     case "InvalidManifestFile":
@@ -771,6 +848,68 @@ function artifactDetailsResponse(
       ).toString(),
     },
   };
+}
+
+function artifactPageResponse(
+  requestUrl: URL,
+  page: ArtifactPage,
+) {
+  return {
+    artifacts: page.items.map((artifact) => ({
+      artifact,
+      links: {
+        artifact: new URL(`/artifacts/${artifact.id}`, requestUrl).toString(),
+        management: new URL(
+          `/api/v1/artifacts/${artifact.id}`,
+          requestUrl,
+        ).toString(),
+      },
+    })),
+    nextCursor: encodePageCursor(page.nextCursor),
+  };
+}
+
+function artifactActionPageResponse(page: ArtifactActionPage) {
+  return {
+    actions: page.items,
+    nextCursor: encodePageCursor(page.nextCursor),
+  };
+}
+
+function deletionResponse(deletion: ArtifactDeletion) {
+  return {
+    artifact: deletion.artifact,
+    replayed: deletion.replayed,
+    retainedVersionCount: deletion.retainedVersionCount,
+  };
+}
+
+function decodePageCursor(token: string | undefined): PageCursor | null {
+  if (token === undefined) return null;
+  const parsedToken = pageCursorTokenSchema.safeParse(token);
+  if (!parsedToken.success) return invalidPageCursor();
+  try {
+    const decoded = JSON.parse(
+      Buffer.from(parsedToken.data, "base64url").toString("utf8"),
+    );
+    const cursor = pageCursorSchema.safeParse(decoded);
+    if (cursor.success) return cursor.data;
+  } catch {
+    return invalidPageCursor();
+  }
+  return invalidPageCursor();
+}
+
+function encodePageCursor(cursor: PageCursor | null): string | null {
+  return cursor === null
+    ? null
+    : Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+function invalidPageCursor(): never {
+  throw new InvalidPagination({
+    message: "The page cursor is invalid or no longer supported.",
+  });
 }
 
 function artifactVersionResponse(

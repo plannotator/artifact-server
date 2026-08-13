@@ -5,6 +5,18 @@ export const accessSettings = {
 
 export type AccessSetting = (typeof accessSettings)[keyof typeof accessSettings];
 
+/** Artifact mutation kinds persisted in the standalone action history. */
+export const artifactActionKinds = {
+  changeAccess: "change_access",
+  delete: "delete",
+  publish: "publish",
+  restore: "restore",
+} as const;
+
+/** One persisted artifact mutation kind. */
+export type ArtifactActionKind =
+  (typeof artifactActionKinds)[keyof typeof artifactActionKinds];
+
 export const routingModes = {
   static: "static",
 } as const;
@@ -35,6 +47,48 @@ export interface ArtifactRecord {
   readonly id: string;
   readonly name: string;
   readonly ownerPrincipalId: string;
+}
+
+/** An artifact record whose deletion state is known to be committed. */
+export interface ArtifactTombstone extends ArtifactRecord {
+  readonly deletedAt: string;
+}
+
+/** Stable keyset position used by bounded artifact and action queries. */
+export interface PageCursor {
+  readonly createdAt: string;
+  readonly id: string;
+}
+
+/** One immutable attribution record for an artifact mutation. */
+export interface ArtifactActionRecord {
+  readonly action: ArtifactActionKind;
+  readonly artifactId: string;
+  readonly authorizedByPrincipalId: string | null;
+  readonly createdAt: string;
+  readonly id: string;
+  readonly idempotencyKey: string;
+  readonly principalId: string;
+  readonly versionId: string;
+}
+
+/** One bounded page of active artifacts. */
+export interface ArtifactPage {
+  readonly items: readonly ArtifactRecord[];
+  readonly nextCursor: PageCursor | null;
+}
+
+/** One bounded page of artifact mutation records. */
+export interface ArtifactActionPage {
+  readonly items: readonly ArtifactActionRecord[];
+  readonly nextCursor: PageCursor | null;
+}
+
+/** The durable tombstone returned by an artifact deletion. */
+export interface ArtifactDeletion {
+  readonly artifact: ArtifactTombstone;
+  readonly replayed: boolean;
+  readonly retainedVersionCount: number;
 }
 
 export interface ManifestEntry {

@@ -59,6 +59,11 @@ describe("authorization policy", () => {
     await expectAllowed((authorization) =>
       authorization.requireArtifactRead(otherMember, artifact)
     );
+    await expect(runtime.runPromise(
+      AuthorizationService.use((authorization) =>
+        authorization.artifactReadScope(otherMember)
+      ),
+    )).resolves.toEqual({kind: "all"});
     await expectAllowed((authorization) =>
       authorization.requireArtifactRead(readerService, artifact)
     );
@@ -74,6 +79,11 @@ describe("authorization policy", () => {
     await expectAllowed((authorization) =>
       authorization.requireArtifactRead(ownerManagerService, artifact)
     );
+    await expect(runtime.runPromise(
+      AuthorizationService.use((authorization) =>
+        authorization.artifactReadScope(ownerManagerService)
+      ),
+    )).resolves.toEqual({kind: "owned", ownerPrincipalId: "owner"});
     await expectAllowed((authorization) =>
       authorization.requireContentSession(otherMember, artifact)
     );
@@ -97,6 +107,9 @@ describe("authorization policy", () => {
     );
     await expectDenied((authorization) =>
       authorization.requireArtifactRead(unscopedService, artifact)
+    );
+    await expectDenied((authorization) =>
+      authorization.artifactReadScope(unscopedService).pipe(Effect.asVoid)
     );
     await expectDenied((authorization) =>
       authorization.requireArtifactRead(foreignOwnerManagerService, artifact)

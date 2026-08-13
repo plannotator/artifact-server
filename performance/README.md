@@ -8,13 +8,13 @@ pnpm smoke
 pnpm perf:baseline
 ```
 
-`pnpm verify:iteration` is the required end-of-iteration command and includes the other verification layers plus the default baseline. `pnpm smoke` runs a very small CI-safe scenario and fails on broken behavior or only gross performance failures. `pnpm perf:baseline` runs 40 sequential 16 KiB publications, 120 content reads at concurrency 6, and one restart. The default run moves only a few megabytes and deletes its temporary server data when finished.
+`pnpm verify:iteration` is the required end-of-iteration command and includes the other verification layers plus the default baseline. `pnpm smoke` runs a very small CI-safe scenario and fails on broken behavior or only gross performance failures. `pnpm perf:baseline` runs 40 sequential 16 KiB publications, 120 content reads at concurrency 6, bounded version comparisons and artifact-list reads, and one restart. The default run moves only a few megabytes and deletes its temporary server data when finished.
 
 The baseline writes `evidence/local-performance-baseline.json`. Results are machine-specific. Compare the same machine, Node version, workload, and storage class when looking for a regression. Do not treat one laptop's operations-per-second number as a production capacity claim.
 
 The JSON report records:
 
-- publish and read p50, p95, p99, mean, maximum, and throughput;
+- publish, content read, comparison, and artifact-list p50, p95, p99, mean, maximum, and throughput;
 - event-loop delay and utilization;
 - process CPU and memory change for the combined benchmark client and local server process;
 - local storage bytes and file count;

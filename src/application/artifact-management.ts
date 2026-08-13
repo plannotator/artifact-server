@@ -15,20 +15,30 @@ import {
   type AuthorizationDenied,
   type IdempotencyConflict,
   type InvalidIdempotencyKey,
+  InvalidPagination,
   VersionNotFound,
 } from "../core/errors.js";
 import type { Principal } from "../core/identity.js";
 import type {
   AccessSetting,
+  ArtifactActionPage,
+  ArtifactDeletion,
+  ArtifactPage,
   ArtifactRecord,
   ArtifactState,
   ArtifactVersion,
+  PageCursor,
   VersionRecord,
 } from "../core/model.js";
 import type {
   ChangeArtifactAccessSetting,
+  DeleteArtifact,
+  ListArtifactActions,
+  ListArtifacts,
   RestoreArtifactVersion,
 } from "../core/ports.js";
+
+const maximumPageSize = 100;
 
 /** One artifact and the complete record for its current saved version. */
 export interface ArtifactDetails {
@@ -60,6 +70,25 @@ export interface ChangeArtifactAccessCommand extends ReadArtifactCommand {
   readonly idempotencyKey: string;
 }
 
+/** Input for listing active artifacts visible to one principal. */
+export interface ListArtifactsCommand {
+  readonly cursor: PageCursor | null;
+  readonly limit: number;
+  readonly principal: Principal;
+}
+
+/** Input for listing one artifact's attributed mutation history. */
+export interface ListArtifactActionsCommand extends ReadArtifactCommand {
+  readonly cursor: PageCursor | null;
+  readonly limit: number;
+}
+
+/** Input for atomically tombstoning one artifact. */
+export interface DeleteArtifactCommand extends ReadArtifactCommand {
+  readonly expectedCurrentVersionId: string;
+  readonly idempotencyKey: string;
+}
+
 /** Repository capabilities required by artifact management. */
 export interface ArtifactManagementRepository {
   readonly changeAccessSetting: (
@@ -71,7 +100,19 @@ export interface ArtifactManagementRepository {
     | IdempotencyConflict
     | ArtifactRepositoryFailure
   >;
+  readonly deleteArtifact: (
+    command: DeleteArtifact,
+  ) => Effect.Effect<
+    ArtifactDeletion,
+    | ArtifactMutationConflict
+    | ArtifactNotFound
+    | IdempotencyConflict
+    | ArtifactRepositoryFailure
+  >;
   readonly findArtifact: (
+    artifactId: string,
+  ) => Effect.Effect<ArtifactRecord | null, ArtifactRepositoryFailure>;
+  readonly findArtifactForAdministration: (
     artifactId: string,
   ) => Effect.Effect<ArtifactRecord | null, ArtifactRepositoryFailure>;
   readonly findArtifactVersion: (
@@ -81,6 +122,12 @@ export interface ArtifactManagementRepository {
   readonly listArtifactVersions: (
     artifactId: string,
   ) => Effect.Effect<readonly VersionRecord[], ArtifactRepositoryFailure>;
+  readonly listArtifactActions: (
+    command: ListArtifactActions,
+  ) => Effect.Effect<ArtifactActionPage, ArtifactRepositoryFailure>;
+  readonly listArtifacts: (
+    command: ListArtifacts,
+  ) => Effect.Effect<ArtifactPage, ArtifactRepositoryFailure>;
   readonly restoreVersion: (
     command: RestoreArtifactVersion,
   ) => Effect.Effect<
@@ -106,6 +153,7 @@ export type ArtifactManagementFailure =
   | ArtifactMutationConflict
   | IdempotencyConflict
   | InvalidIdempotencyKey
+  | InvalidPagination
   | AuthorizationDenied
   | ArtifactRepositoryFailure;
 
@@ -113,6 +161,9 @@ interface ArtifactManagementOperations {
   readonly changeAccess: (
     command: ChangeArtifactAccessCommand,
   ) => Effect.Effect<ArtifactState, ArtifactManagementFailure>;
+  readonly deleteArtifact: (
+    command: DeleteArtifactCommand,
+  ) => Effect.Effect<ArtifactDeletion, ArtifactManagementFailure>;
   readonly getArtifact: (
     command: ReadArtifactCommand,
   ) => Effect.Effect<ArtifactDetails, ArtifactManagementFailure>;
@@ -122,6 +173,12 @@ interface ArtifactManagementOperations {
   readonly listVersions: (
     command: ReadArtifactCommand,
   ) => Effect.Effect<readonly VersionRecord[], ArtifactManagementFailure>;
+  readonly listArtifactActions: (
+    command: ListArtifactActionsCommand,
+  ) => Effect.Effect<ArtifactActionPage, ArtifactManagementFailure>;
+  readonly listArtifacts: (
+    command: ListArtifactsCommand,
+  ) => Effect.Effect<ArtifactPage, ArtifactManagementFailure>;
   readonly restoreVersion: (
     command: RestoreArtifactVersionCommand,
   ) => Effect.Effect<ArtifactState, ArtifactManagementFailure>;
@@ -157,6 +214,29 @@ function makeArtifactManagementService(
       const artifact = yield* dependencies.repository.findArtifact(artifactId);
       if (artifact !== null) return artifact;
       return yield* new ArtifactNotFound({message: "The artifact does not exist."});
+    },
+  );
+
+  const requireArtifactForAdministration = Effect.fn(
+    "ArtifactManagementService.requireArtifactForAdministration",
+  )(function*(artifactId: string): Effect.fn.Return<
+    ArtifactRecord,
+    ArtifactNotFound | ArtifactRepositoryFailure
+  > {
+    const artifact = yield* dependencies.repository
+      .findArtifactForAdministration(artifactId);
+    if (artifact !== null) return artifact;
+    return yield* new ArtifactNotFound({message: "The artifact does not exist."});
+  });
+
+  const requirePageSize = Effect.fn("ArtifactManagementService.requirePageSize")(
+    function*(limit: number) {
+      if (Number.isInteger(limit) && limit >= 1 && limit <= maximumPageSize) {
+        return limit;
+      }
+      return yield* new InvalidPagination({
+        message: `A page must contain between 1 and ${maximumPageSize} records.`,
+      });
     },
   );
 
@@ -203,6 +283,33 @@ function makeArtifactManagementService(
       return yield* dependencies.repository.listArtifactVersions(artifact.id);
     },
   );
+
+  const listArtifacts = Effect.fn("ArtifactManagementService.listArtifacts")(
+    function*(command: ListArtifactsCommand) {
+      const limit = yield* requirePageSize(command.limit);
+      const scope = yield* authorization.artifactReadScope(command.principal);
+      return yield* dependencies.repository.listArtifacts({
+        cursor: command.cursor,
+        limit,
+        ownerPrincipalId: scope.kind === "owned"
+          ? scope.ownerPrincipalId
+          : null,
+      });
+    },
+  );
+
+  const listArtifactActions = Effect.fn(
+    "ArtifactManagementService.listArtifactActions",
+  )(function*(command: ListArtifactActionsCommand) {
+    const limit = yield* requirePageSize(command.limit);
+    const artifact = yield* requireArtifactForAdministration(command.artifactId);
+    yield* authorization.requireArtifactManagement(command.principal, artifact);
+    return yield* dependencies.repository.listArtifactActions({
+      artifactId: artifact.id,
+      cursor: command.cursor,
+      limit,
+    });
+  });
 
   const restoreVersion = Effect.fn("ArtifactManagementService.restoreVersion")(
     function*(command: RestoreArtifactVersionCommand) {
@@ -255,10 +362,37 @@ function makeArtifactManagementService(
     },
   );
 
+  const deleteArtifact = Effect.fn("ArtifactManagementService.deleteArtifact")(
+    function*(command: DeleteArtifactCommand) {
+      const artifact = yield* requireArtifactForAdministration(command.artifactId);
+      yield* authorization.requireArtifactManagement(command.principal, artifact);
+      const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
+      const createdAt = DateTime.formatIso(yield* dependencies.clock.now);
+      return yield* dependencies.repository.deleteArtifact({
+        artifactId: artifact.id,
+        authorizedByPrincipalId: command.principal.authorizedByPrincipalId,
+        createdAt,
+        expectedCurrentVersionId: command.expectedCurrentVersionId,
+        idempotencyKey,
+        inputDigest: managementInputDigest({
+          artifactId: artifact.id,
+          expectedCurrentVersionId: command.expectedCurrentVersionId,
+          operation: "delete",
+          principalId: command.principal.id,
+          value: artifact.id,
+        }),
+        principalId: command.principal.id,
+      });
+    },
+  );
+
   return ArtifactManagementService.of({
     changeAccess,
+    deleteArtifact,
     getArtifact,
     getVersion,
+    listArtifactActions,
+    listArtifacts,
     listVersions,
     restoreVersion,
   });
@@ -267,7 +401,7 @@ function makeArtifactManagementService(
 interface ManagementInputDigest {
   readonly artifactId: string;
   readonly expectedCurrentVersionId: string;
-  readonly operation: "change_access" | "restore";
+  readonly operation: "change_access" | "delete" | "restore";
   readonly principalId: string;
   readonly value: string;
 }

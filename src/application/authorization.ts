@@ -15,8 +15,16 @@ export interface AuthorizationDependencies {
   readonly installationId: string;
 }
 
+/** Persistence filter that follows a principal's standalone artifact read grant. */
+export type ArtifactReadScope =
+  | {readonly kind: "all"}
+  | {readonly kind: "owned"; readonly ownerPrincipalId: string};
+
 /** Authorization decisions shared by every application operation. */
 export interface AuthorizationOperations {
+  readonly artifactReadScope: (
+    principal: Principal,
+  ) => Effect.Effect<ArtifactReadScope, AuthorizationDenied>;
   readonly requireArtifactCreation: (
     principal: Principal,
   ) => Effect.Effect<void, AuthorizationDenied>;
@@ -77,6 +85,23 @@ function makeAuthorizationService(
       return;
     }
     yield* denied();
+  });
+
+  const artifactReadScope = Effect.fn(
+    "AuthorizationService.artifactReadScope",
+  )(function*(principal: Principal) {
+    yield* requireInstallation(principal);
+    if (
+      principal.kind === principalKinds.human ||
+      hasCapability(principal, principalCapabilities.readArtifacts) ||
+      hasCapability(principal, principalCapabilities.manageAnyArtifact)
+    ) {
+      return {kind: "all"} as const;
+    }
+    if (hasCapability(principal, principalCapabilities.manageOwnedArtifact)) {
+      return {kind: "owned", ownerPrincipalId: principal.id} as const;
+    }
+    return yield* denied();
   });
 
   const requireContentSession = Effect.fn(
@@ -172,6 +197,7 @@ function makeAuthorizationService(
   });
 
   return AuthorizationService.of({
+    artifactReadScope,
     requireArtifactCreation,
     requireArtifactManagement,
     requireArtifactRead,

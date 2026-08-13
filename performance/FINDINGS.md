@@ -21,6 +21,13 @@ warning. The final machine-readable run is the current baseline file; the
 range is recorded here so one unusually fast or slow laptop run is not treated
 as a regression budget.
 
+The artifact-lifecycle iteration added bounded artifact-list reads to every
+baseline run. Its final default run measured publish p95 at 13.71 ms, public
+read p95 at 5.06 ms, comparison p95 at 10.48 ms, artifact-list p95 at 7.34 ms,
+and restart at 4.78 ms. No investigation warning fired. These results show no
+obvious local regression from the tombstone, action-history, pagination-index,
+or migration work; they do not establish shared-database capacity.
+
 ## What the pre-phase review changed
 
 - Blob reads now stream from disk with backpressure. Normal GET requests do not load or fingerprint the complete file.

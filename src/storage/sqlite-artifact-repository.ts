@@ -16,15 +16,22 @@ import {
 } from "../core/errors.js";
 import {
   accessSettings,
+  artifactActionKinds,
   fileDispositions,
   routingModes,
   uploadStatuses,
+  type ArtifactActionPage,
+  type ArtifactActionRecord,
+  type ArtifactDeletion,
+  type ArtifactPage,
   type ArtifactRecord,
   type ArtifactState,
+  type ArtifactTombstone,
   type ArtifactVersion,
   type ContentBootstrapRecord,
   type ContentSessionRecord,
   type ManifestEntry,
+  type PageCursor,
   type PublishedVersion,
   type StagedUpload,
   type StagedUploadFile,
@@ -39,7 +46,10 @@ import type {
   ContentSessionRepository,
   CreateContentBootstrap,
   CreateStagedUpload,
+  DeleteArtifact,
   ExchangeContentBootstrap,
+  ListArtifactActions,
+  ListArtifacts,
   PublicationSource,
   RestoreArtifactVersion,
   StagedUploadRepository,
@@ -59,6 +69,12 @@ const uploadStatusSchema = z.enum([
   uploadStatuses.open,
 ]);
 const routingModeSchema = z.enum([routingModes.static]);
+const artifactActionKindSchema = z.enum([
+  artifactActionKinds.changeAccess,
+  artifactActionKinds.delete,
+  artifactActionKinds.publish,
+  artifactActionKinds.restore,
+]);
 const publishedRowSchema = z.object({
   accessSetting: accessSettingSchema,
   artifactCreatedAt: z.string(),
@@ -90,7 +106,17 @@ const idempotencyRowSchema = z.object({
   accessSetting: accessSettingSchema.nullable(),
   artifactId: z.string(),
   inputDigest: z.string(),
-  operation: z.enum(["change_access", "publish", "restore"]),
+  operation: z.enum(["change_access", "delete", "publish", "restore"]),
+  versionId: z.string(),
+});
+const artifactActionRowSchema = z.object({
+  action: artifactActionKindSchema,
+  artifactId: z.string(),
+  authorizedByPrincipalId: z.string().nullable(),
+  createdAt: z.string(),
+  id: z.string(),
+  idempotencyKey: z.string(),
+  principalId: z.string(),
   versionId: z.string(),
 });
 const artifactRowSchema = z.object({
@@ -167,6 +193,11 @@ const stagedUploadCommitRowSchema = z.object({
   readyCount: z.number().int().nonnegative(),
   status: uploadStatusSchema,
 });
+
+interface PageResult<Item> {
+  readonly items: readonly Item[];
+  readonly nextCursor: PageCursor | null;
+}
 
 export class SqliteArtifactRepository implements
   ArtifactRepository,
@@ -418,8 +449,67 @@ export class SqliteArtifactRepository implements
     );
   }
 
+  deleteArtifact(command: DeleteArtifact): Promise<ArtifactDeletion> {
+    return Promise.resolve().then(() =>
+      this.#transaction(() => {
+        const replayed = this.#findIdempotentDeletion(
+          command.idempotencyKey,
+          command.inputDigest,
+        );
+        if (replayed !== null) return replayed;
+
+        const artifact = this.#readArtifact(command.artifactId);
+        this.#assertExpectedCurrentVersion(
+          artifact,
+          command.expectedCurrentVersionId,
+        );
+        const update = this.#database
+          .prepare(
+            `UPDATE artifacts
+             SET deleted_at = ?
+             WHERE id = ? AND current_version_id = ? AND deleted_at IS NULL`,
+          )
+          .run(
+            command.createdAt,
+            command.artifactId,
+            command.expectedCurrentVersionId,
+          );
+        if (update.changes !== 1) {
+          throw changedDuringManagement();
+        }
+        this.#insertAction(
+          command.artifactId,
+          command.expectedCurrentVersionId,
+          command.idempotencyKey,
+          command.createdAt,
+          artifactActionKinds.delete,
+          command.principalId,
+          command.authorizedByPrincipalId,
+        );
+        this.#insertIdempotency(
+          command.idempotencyKey,
+          command.inputDigest,
+          command.artifactId,
+          command.expectedCurrentVersionId,
+          command.createdAt,
+          "delete",
+          artifact.accessSetting,
+        );
+        return this.#readDeletionResult(command.artifactId, false);
+      }),
+    );
+  }
+
   findArtifact(artifactId: string): Promise<ArtifactRecord | null> {
     return Promise.resolve().then(() => this.#readArtifactOrNull(artifactId));
+  }
+
+  findArtifactForAdministration(
+    artifactId: string,
+  ): Promise<ArtifactRecord | null> {
+    return Promise.resolve().then(() =>
+      this.#readArtifactIncludingDeletedOrNull(artifactId)
+    );
   }
 
   findArtifactVersion(
@@ -477,6 +567,87 @@ export class SqliteArtifactRepository implements
         )
         .all(artifactId);
       return z.array(versionRowSchema).parse(rows);
+    });
+  }
+
+  listArtifacts(command: ListArtifacts): Promise<ArtifactPage> {
+    return Promise.resolve().then(() => {
+      const cursorCreatedAt = command.cursor?.createdAt ?? null;
+      const cursorId = command.cursor?.id ?? null;
+      const rows = this.#database
+        .prepare(
+          `SELECT
+            id,
+            name,
+            owner_principal_id AS ownerPrincipalId,
+            access_setting AS accessSetting,
+            current_version_id AS currentVersionId,
+            created_at AS createdAt,
+            deleted_at AS deletedAt
+           FROM artifacts
+           WHERE deleted_at IS NULL
+             AND (? IS NULL OR owner_principal_id = ?)
+             AND (
+               ? IS NULL
+               OR created_at < ?
+               OR (created_at = ? AND id < ?)
+             )
+           ORDER BY created_at DESC, id DESC
+           LIMIT ?`,
+        )
+        .all(
+          command.ownerPrincipalId,
+          command.ownerPrincipalId,
+          cursorCreatedAt,
+          cursorCreatedAt,
+          cursorCreatedAt,
+          cursorId,
+          command.limit + 1,
+        );
+      return pageFromRows(
+        z.array(artifactRowSchema).parse(rows),
+        command.limit,
+      );
+    });
+  }
+
+  listArtifactActions(command: ListArtifactActions): Promise<ArtifactActionPage> {
+    return Promise.resolve().then(() => {
+      const cursorCreatedAt = command.cursor?.createdAt ?? null;
+      const cursorId = command.cursor?.id ?? null;
+      const rows = this.#database
+        .prepare(
+          `SELECT
+            id,
+            artifact_id AS artifactId,
+            version_id AS versionId,
+            action,
+            principal_id AS principalId,
+            authorized_by_principal_id AS authorizedByPrincipalId,
+            idempotency_key AS idempotencyKey,
+            created_at AS createdAt
+           FROM actions
+           WHERE artifact_id = ?
+             AND (
+               ? IS NULL
+               OR created_at < ?
+               OR (created_at = ? AND id < ?)
+             )
+           ORDER BY created_at DESC, id DESC
+           LIMIT ?`,
+        )
+        .all(
+          command.artifactId,
+          cursorCreatedAt,
+          cursorCreatedAt,
+          cursorCreatedAt,
+          cursorId,
+          command.limit + 1,
+        );
+      return pageFromRows(
+        z.array(artifactActionRowSchema).parse(rows),
+        command.limit,
+      );
     });
   }
 
@@ -628,18 +799,20 @@ export class SqliteArtifactRepository implements
         const row = this.#database
           .prepare(
             `SELECT
-              token_digest AS tokenDigest,
-              principal_id AS principalId,
-              artifact_id AS artifactId,
-              version_id AS versionId,
-              content_token AS contentToken,
-              created_at AS createdAt,
-              expires_at AS expiresAt
-            FROM content_bootstraps
-            WHERE token_digest = ?
-              AND content_token = ?
-              AND consumed_at IS NULL
-              AND expires_at > ?`,
+              b.token_digest AS tokenDigest,
+              b.principal_id AS principalId,
+              b.artifact_id AS artifactId,
+              b.version_id AS versionId,
+              b.content_token AS contentToken,
+              b.created_at AS createdAt,
+              b.expires_at AS expiresAt
+            FROM content_bootstraps b
+            JOIN artifacts a ON a.id = b.artifact_id
+            WHERE b.token_digest = ?
+              AND b.content_token = ?
+              AND b.consumed_at IS NULL
+              AND b.expires_at > ?
+              AND a.deleted_at IS NULL`,
           )
           .get(
             command.bootstrapTokenDigest,
@@ -697,17 +870,19 @@ export class SqliteArtifactRepository implements
       const row = this.#database
         .prepare(
           `SELECT
-            token_digest AS tokenDigest,
-            principal_id AS principalId,
-            artifact_id AS artifactId,
-            version_id AS versionId,
-            content_token AS contentToken,
-            created_at AS createdAt,
-            expires_at AS expiresAt
-          FROM content_sessions
-          WHERE token_digest = ?
-            AND content_token = ?
-            AND expires_at > ?`,
+            s.token_digest AS tokenDigest,
+            s.principal_id AS principalId,
+            s.artifact_id AS artifactId,
+            s.version_id AS versionId,
+            s.content_token AS contentToken,
+            s.created_at AS createdAt,
+            s.expires_at AS expiresAt
+          FROM content_sessions s
+          JOIN artifacts a ON a.id = s.artifact_id
+          WHERE s.token_digest = ?
+            AND s.content_token = ?
+            AND s.expires_at > ?
+            AND a.deleted_at IS NULL`,
         )
         .get(tokenDigest, contentToken, requestTime);
       return contentSessionRowSchema.nullable().parse(row ?? null);
@@ -855,6 +1030,32 @@ export class SqliteArtifactRepository implements
     );
   }
 
+  #findIdempotentDeletion(
+    idempotencyKey: string,
+    inputDigest: string,
+  ): ArtifactDeletion | null {
+    const row = this.#database
+      .prepare(
+        `SELECT
+          access_setting AS accessSetting,
+          artifact_id AS artifactId,
+          input_digest AS inputDigest,
+          operation,
+          version_id AS versionId
+         FROM idempotency_records
+         WHERE idempotency_key = ?`,
+      )
+      .get(idempotencyKey);
+    const parsed = idempotencyRowSchema.nullable().parse(row ?? null);
+    if (parsed === null) return null;
+    if (parsed.inputDigest !== inputDigest || parsed.operation !== "delete") {
+      throw new IdempotencyConflict({
+        message: "The idempotency key was already used with different input.",
+      });
+    }
+    return this.#readDeletionResult(parsed.artifactId, true);
+  }
+
   #readArtifact(artifactId: string): ArtifactRecord {
     const artifact = this.#readArtifactOrNull(artifactId);
     if (artifact === null) {
@@ -879,6 +1080,51 @@ export class SqliteArtifactRepository implements
       )
       .get(artifactId);
     return artifactRowSchema.nullable().parse(row ?? null);
+  }
+
+  #readArtifactIncludingDeletedOrNull(
+    artifactId: string,
+  ): ArtifactRecord | null {
+    const row = this.#database
+      .prepare(
+        `SELECT
+          id,
+          name,
+          owner_principal_id AS ownerPrincipalId,
+          access_setting AS accessSetting,
+          current_version_id AS currentVersionId,
+          created_at AS createdAt,
+          deleted_at AS deletedAt
+         FROM artifacts
+         WHERE id = ?`,
+      )
+      .get(artifactId);
+    return artifactRowSchema.nullable().parse(row ?? null);
+  }
+
+  #readDeletionResult(
+    artifactId: string,
+    replayed: boolean,
+  ): ArtifactDeletion {
+    const artifact = this.#readArtifactIncludingDeletedOrNull(artifactId);
+    if (artifact === null || artifact.deletedAt === null) {
+      throw new Error(`Artifact ${artifactId} has no persisted tombstone.`);
+    }
+    const tombstone: ArtifactTombstone = {
+      ...artifact,
+      deletedAt: artifact.deletedAt,
+    };
+    const row = this.#database
+      .prepare(
+        `SELECT COUNT(*) AS retainedVersionCount
+         FROM versions
+         WHERE artifact_id = ?`,
+      )
+      .get(artifactId);
+    const {retainedVersionCount} = z.object({
+      retainedVersionCount: z.number().int().nonnegative(),
+    }).parse(row);
+    return {artifact: tombstone, replayed, retainedVersionCount};
   }
 
   #readArtifactState(
@@ -997,7 +1243,7 @@ export class SqliteArtifactRepository implements
     versionId: string,
     idempotencyKey: string,
     createdAt: string,
-    action: string,
+    action: ArtifactActionRecord["action"],
     principalId: string,
     authorizedByPrincipalId: string | null,
   ): void {
@@ -1084,7 +1330,7 @@ export class SqliteArtifactRepository implements
     artifactId: string,
     versionId: string,
     createdAt: string,
-    operation: "change_access" | "publish" | "restore" = "publish",
+    operation: "change_access" | "delete" | "publish" | "restore" = "publish",
     accessSetting: ArtifactRecord["accessSetting"] | null = null,
   ): void {
     this.#database
@@ -1190,7 +1436,7 @@ export class SqliteArtifactRepository implements
         input_digest TEXT NOT NULL,
         artifact_id TEXT NOT NULL REFERENCES artifacts(id),
         version_id TEXT NOT NULL REFERENCES versions(id),
-        operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access')),
+        operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access', 'delete')),
         access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
         created_at TEXT NOT NULL
       ) STRICT;
@@ -1257,6 +1503,10 @@ export class SqliteArtifactRepository implements
 
       CREATE INDEX IF NOT EXISTS versions_artifact_id
         ON versions (artifact_id, number);
+      CREATE INDEX IF NOT EXISTS artifacts_active_created
+        ON artifacts (deleted_at, created_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS actions_artifact_created
+        ON actions (artifact_id, created_at DESC, id DESC);
       CREATE INDEX IF NOT EXISTS manifest_entries_sha256
         ON manifest_entries (sha256);
       CREATE INDEX IF NOT EXISTS staged_uploads_expiry
@@ -1270,6 +1520,46 @@ export class SqliteArtifactRepository implements
     this.#addVersionPublisherColumnIfMissing();
     this.#addActionAuthorizerColumnIfMissing();
     this.#addIdempotencyOperationColumnsIfMissing();
+    this.#addDeleteIdempotencyOperationIfMissing();
+    this.#database.exec(`
+      CREATE INDEX IF NOT EXISTS artifacts_owner_active_created
+        ON artifacts (owner_principal_id, deleted_at, created_at DESC, id DESC);
+    `);
+  }
+
+  #addDeleteIdempotencyOperationIfMissing(): void {
+    const row = this.#database
+      .prepare(
+        "SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'idempotency_records'",
+      )
+      .get();
+    const {sql} = z.object({sql: z.string()}).parse(row);
+    if (sql.includes("'delete'")) return;
+    this.#transaction(() => {
+      this.#database.exec(`
+        CREATE TABLE idempotency_records_next (
+          idempotency_key TEXT PRIMARY KEY,
+          input_digest TEXT NOT NULL,
+          artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+          version_id TEXT NOT NULL REFERENCES versions(id),
+          operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access', 'delete')),
+          access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
+          created_at TEXT NOT NULL
+        ) STRICT;
+
+        INSERT INTO idempotency_records_next (
+          idempotency_key, input_digest, artifact_id, version_id,
+          operation, access_setting, created_at
+        )
+        SELECT
+          idempotency_key, input_digest, artifact_id, version_id,
+          operation, access_setting, created_at
+        FROM idempotency_records;
+
+        DROP TABLE idempotency_records;
+        ALTER TABLE idempotency_records_next RENAME TO idempotency_records;
+      `);
+    });
   }
 
   #addActionAuthorizerColumnIfMissing(): void {
@@ -1292,7 +1582,7 @@ export class SqliteArtifactRepository implements
     const columns = this.#tableColumns("idempotency_records");
     if (!columns.includes("operation")) {
       this.#database.exec(
-        "ALTER TABLE idempotency_records ADD COLUMN operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access'))",
+        "ALTER TABLE idempotency_records ADD COLUMN operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access', 'delete'))",
       );
     }
     if (!columns.includes("access_setting")) {
@@ -1477,4 +1767,18 @@ function changedDuringManagement(): ArtifactMutationConflict {
   return new ArtifactMutationConflict({
     message: "The artifact changed during the management operation.",
   });
+}
+
+function pageFromRows<Item extends PageCursor>(
+  rows: readonly Item[],
+  limit: number,
+): PageResult<Item> {
+  const items = rows.slice(0, limit);
+  const lastItem = items.at(-1);
+  return {
+    items,
+    nextCursor: rows.length > limit && lastItem !== undefined
+      ? {createdAt: lastItem.createdAt, id: lastItem.id}
+      : null,
+  };
 }

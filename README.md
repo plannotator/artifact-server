@@ -21,12 +21,14 @@ This repository contains the local publication foundation. It is not the complet
 - bounded line comparisons for text and metadata-only binary comparisons;
 - pointer-only restore of an existing immutable version;
 - atomic changes between account-required and public-link access;
+- bounded, cursor-paginated artifact and action-history lists;
+- idempotent artifact tombstones that retain committed versions and block every content path;
 - public-link delivery and version-scoped account-required browser sessions;
 - single-use private-content bootstraps and host-only, HttpOnly content cookies;
 - authenticated browser sessions for current or earlier exact versions;
 - persistence of committed versions and in-progress uploads across a full server restart.
 
-Human browser login, API-key management, SPA routing, deletion, ownership changes, MCP, Agent Skills, optional Git, expired-staging cleanup, and non-local deployments remain to be implemented in the order defined by the specification.
+Human browser login, API-key management, SPA routing, ownership changes, MCP, Agent Skills, optional Git, expired-staging cleanup, permanent deletion, and non-local deployments remain to be implemented in the order defined by the specification.
 
 ## Run locally
 
@@ -71,8 +73,10 @@ Authenticated management routes are available beneath
 `/api/v1/artifacts/{artifactId}`. They return the current artifact record,
 canonical manifests, and saved-version history; compare any two saved versions;
 move the current pointer back to an existing version; and change the artifact's
-access setting. Restore and access changes require an idempotency key and the
-current version ID observed by the caller.
+access setting. The API also lists active artifacts with bounded cursors, lists
+an artifact's attributed action history, and tombstones an artifact without
+removing its committed versions. Restore, access changes, and deletion require
+an idempotency key and the current version ID observed by the caller.
 
 ## Publish a complete site
 
@@ -128,3 +132,5 @@ entry points use the same operations and failure values. See
 migration boundary and deliberate exclusions. See
 [`Decision 0002`](./spec/decisions/0002-shared-identity-and-private-content.md)
 for the provider-neutral principal and private-content session model.
+See [`Decision 0003`](./spec/decisions/0003-artifact-lifecycle-and-audit.md) for
+the list, tombstone, action-history, and shared-identity boundary.

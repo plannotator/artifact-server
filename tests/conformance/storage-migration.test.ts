@@ -5,6 +5,7 @@ import {afterEach, beforeEach, describe, expect, test} from "vitest";
 
 import {publishNew} from "../support/publishing.js";
 import {
+  apiHeaders,
   createTestInstallation,
   removeTestInstallation,
   startTestServer,
@@ -81,5 +82,74 @@ describe("local storage migration", () => {
     expect(published.response.status).toBe(201);
     expect(published.body.artifact.ownerPrincipalId).toBe("local-api-token");
     expect(published.body.version.publisherPrincipalId).toBe("local-api-token");
+
+    const deleted = await fetch(
+      `${server.baseUrl}/api/v1/artifacts/${published.body.artifact.id}`,
+      {
+        body: JSON.stringify({
+          expectedCurrentVersionId: published.body.version.id,
+        }),
+        headers: apiHeaders(installation, "legacy-database-delete-migration"),
+        method: "DELETE",
+      },
+    );
+    expect(deleted.status).toBe(200);
+    await expect(deleted.json()).resolves.toMatchObject({
+      artifact: {deletedAt: expect.any(String)},
+      retainedVersionCount: 1,
+    });
+  });
+
+  test("foundation: the previous management schema upgrades to durable deletion idempotency", async () => {
+    server = await startTestServer(installation);
+    const published = await publishNew(server, installation, {
+      accessSetting: "account_required",
+      content: "previous management schema",
+      idempotencyKey: "previous-management-schema-publish",
+    });
+    await server.stop();
+    server = null;
+
+    const database = new DatabaseSync(
+      path.join(installation.dataDirectory, "artifact-server.db"),
+    );
+    try {
+      database.exec(`
+        BEGIN IMMEDIATE;
+        CREATE TABLE idempotency_records_previous (
+          idempotency_key TEXT PRIMARY KEY,
+          input_digest TEXT NOT NULL,
+          artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+          version_id TEXT NOT NULL REFERENCES versions(id),
+          operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access')),
+          access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
+          created_at TEXT NOT NULL
+        ) STRICT;
+        INSERT INTO idempotency_records_previous
+          SELECT * FROM idempotency_records;
+        DROP TABLE idempotency_records;
+        ALTER TABLE idempotency_records_previous RENAME TO idempotency_records;
+        COMMIT;
+      `);
+    } finally {
+      database.close();
+    }
+
+    server = await startTestServer(installation);
+    const deleted = await fetch(
+      `${server.baseUrl}/api/v1/artifacts/${published.body.artifact.id}`,
+      {
+        body: JSON.stringify({
+          expectedCurrentVersionId: published.body.version.id,
+        }),
+        headers: apiHeaders(installation, "previous-management-schema-delete"),
+        method: "DELETE",
+      },
+    );
+    expect(deleted.status).toBe(200);
+    await expect(deleted.json()).resolves.toMatchObject({
+      replayed: false,
+      retainedVersionCount: 1,
+    });
   });
 });

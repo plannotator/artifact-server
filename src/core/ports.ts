@@ -1,11 +1,15 @@
 import type {
   AccessSetting,
+  ArtifactActionPage,
+  ArtifactDeletion,
+  ArtifactPage,
   ArtifactState,
   ArtifactVersion,
   ArtifactRecord,
   CanonicalManifest,
   ContentBootstrapRecord,
   ContentSessionRecord,
+  PageCursor,
   PublishedVersion,
   StagedUpload,
   VersionRecord,
@@ -108,6 +112,31 @@ export interface ChangeArtifactAccessSetting {
   readonly principalId: string;
 }
 
+/** Values used to atomically tombstone one artifact. */
+export interface DeleteArtifact {
+  readonly artifactId: string;
+  readonly authorizedByPrincipalId: string | null;
+  readonly createdAt: string;
+  readonly expectedCurrentVersionId: string;
+  readonly idempotencyKey: string;
+  readonly inputDigest: string;
+  readonly principalId: string;
+}
+
+/** Values used to read one bounded page of active artifacts. */
+export interface ListArtifacts {
+  readonly cursor: PageCursor | null;
+  readonly limit: number;
+  readonly ownerPrincipalId: string | null;
+}
+
+/** Values used to read one bounded page of artifact actions. */
+export interface ListArtifactActions {
+  readonly artifactId: string;
+  readonly cursor: PageCursor | null;
+  readonly limit: number;
+}
+
 /** Values persisted when issuing a one-time private-content bootstrap. */
 export type CreateContentBootstrap = ContentBootstrapRecord;
 
@@ -145,7 +174,9 @@ export interface ArtifactRepository {
   commitNewArtifact(command: CommitNewArtifact): Promise<PublishedVersion>;
   commitVersion(command: CommitArtifactVersion): Promise<PublishedVersion>;
   changeAccessSetting(command: ChangeArtifactAccessSetting): Promise<ArtifactState>;
+  deleteArtifact(command: DeleteArtifact): Promise<ArtifactDeletion>;
   findArtifact(artifactId: string): Promise<ArtifactRecord | null>;
+  findArtifactForAdministration(artifactId: string): Promise<ArtifactRecord | null>;
   findArtifactVersion(
     artifactId: string,
     versionId: string,
@@ -156,6 +187,8 @@ export interface ArtifactRepository {
     inputDigest: string,
   ): Promise<PublishedVersion | null>;
   findVersionContent(contentToken: string, path: string): Promise<VersionContent | null>;
+  listArtifactActions(command: ListArtifactActions): Promise<ArtifactActionPage>;
+  listArtifacts(command: ListArtifacts): Promise<ArtifactPage>;
   listArtifactVersions(artifactId: string): Promise<readonly VersionRecord[]>;
   restoreVersion(command: RestoreArtifactVersion): Promise<ArtifactState>;
 }
