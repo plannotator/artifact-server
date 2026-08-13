@@ -3,11 +3,17 @@ import {mkdtemp, rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 
-import {Effect, ManagedRuntime, Result} from "effect";
+import {Effect, ManagedRuntime, Redacted, Result} from "effect";
 import {afterEach, beforeEach, describe, expect, test} from "vitest";
 
 import type {ApplicationRuntime} from "../../src/application/application-runtime.js";
 import {StagedUploadService} from "../../src/application/staged-upload.js";
+import {
+  membershipRoles,
+  principalCapabilities,
+  principalKinds,
+  type Principal,
+} from "../../src/core/identity.js";
 import type {Clock} from "../../src/core/ports.js";
 import {SystemIdGenerator} from "../../src/core/system.js";
 import {createLocalApplicationLayer} from "../../src/local/create-local-application-layer.js";
@@ -28,9 +34,11 @@ describe("staged upload lifecycle", () => {
       path.join(dataDirectory, "artifact-server.db"),
     );
     runtime = ManagedRuntime.make(createLocalApplicationLayer({
+      apiToken: Redacted.make("test-api-token"),
       blobs: new LocalBlobStore(path.join(dataDirectory, "blobs")),
       clock,
       ids: new SystemIdGenerator(),
+      installationId: "test-installation",
       repository,
       staging: new LocalStagingStore(path.join(dataDirectory, "staging")),
     }));
@@ -56,7 +64,7 @@ describe("staged upload lifecycle", () => {
       service.createUpload({
         entryPath: file.path,
         files: [file],
-        principalId: "principal-a",
+        principal: testPrincipal("principal-a"),
       })
     );
     const slot = upload.files[0];
@@ -65,7 +73,7 @@ describe("staged upload lifecycle", () => {
     await expectStagedFailure(runtime, "UploadNotFound", (service) =>
       service.uploadFile({
         body: byteStream(bytes),
-        principalId: "principal-b",
+        principal: testPrincipal("principal-b"),
         storageToken: slot.storageToken,
         uploadId: upload.id,
       })
@@ -73,7 +81,7 @@ describe("staged upload lifecycle", () => {
     await expectStagedFailure(runtime, "UploadNotFound", (service) =>
       service.commitUpload({
         idempotencyKey: "other-principal-cannot-commit",
-        principalId: "principal-b",
+        principal: testPrincipal("principal-b"),
         target: {
           accessSetting: "public_link",
           kind: "new_artifact",
@@ -89,11 +97,13 @@ describe("staged upload lifecycle", () => {
     try {
       const foreignRuntime: ApplicationRuntime = ManagedRuntime.make(
         createLocalApplicationLayer({
-        blobs: new LocalBlobStore(path.join(dataDirectory, "foreign-blobs")),
-        clock,
-        ids: new SystemIdGenerator(),
-        repository: foreignRepository,
-        staging: new LocalStagingStore(path.join(dataDirectory, "foreign-staging")),
+          apiToken: Redacted.make("foreign-api-token"),
+          blobs: new LocalBlobStore(path.join(dataDirectory, "foreign-blobs")),
+          clock,
+          ids: new SystemIdGenerator(),
+          installationId: "foreign-installation",
+          repository: foreignRepository,
+          staging: new LocalStagingStore(path.join(dataDirectory, "foreign-staging")),
         }),
       );
       await foreignRuntime.context();
@@ -103,7 +113,10 @@ describe("staged upload lifecycle", () => {
           "UploadNotFound",
           (service) => service.uploadFile({
             body: byteStream(bytes),
-            principalId: upload.principalId,
+            principal: testPrincipal(
+              upload.principalId,
+              "foreign-installation",
+            ),
             storageToken: slot.storageToken,
             uploadId: upload.id,
           }),
@@ -113,7 +126,10 @@ describe("staged upload lifecycle", () => {
           "UploadNotFound",
           (service) => service.commitUpload({
             idempotencyKey: "foreign-installation-cannot-commit",
-            principalId: upload.principalId,
+            principal: testPrincipal(
+              upload.principalId,
+              "foreign-installation",
+            ),
             target: {
               accessSetting: "public_link",
               kind: "new_artifact",
@@ -143,7 +159,7 @@ describe("staged upload lifecycle", () => {
       service.createUpload({
         entryPath: file.path,
         files: [file],
-        principalId: "principal-a",
+        principal: testPrincipal("principal-a"),
       })
     );
     const expiredSlot = expired.files[0];
@@ -153,7 +169,7 @@ describe("staged upload lifecycle", () => {
     await expectStagedFailure(runtime, "UploadExpired", (service) =>
       service.uploadFile({
         body: byteStream(bytes),
-        principalId: expired.principalId,
+        principal: testPrincipal(expired.principalId),
         storageToken: expiredSlot.storageToken,
         uploadId: expired.id,
       })
@@ -161,7 +177,7 @@ describe("staged upload lifecycle", () => {
     await expectStagedFailure(runtime, "UploadExpired", (service) =>
       service.commitUpload({
         idempotencyKey: "expired-upload-cannot-commit",
-        principalId: expired.principalId,
+        principal: testPrincipal(expired.principalId),
         target: {
           accessSetting: "public_link",
           kind: "new_artifact",
@@ -176,14 +192,14 @@ describe("staged upload lifecycle", () => {
       service.createUpload({
         entryPath: file.path,
         files: [file],
-        principalId: "principal-a",
+        principal: testPrincipal("principal-a"),
       })
     );
     const liveSlot = live.files[0];
     if (liveSlot === undefined) throw new Error("The commit fixture has no file slot.");
     await runStaged(runtime, (service) => service.uploadFile({
       body: byteStream(bytes),
-      principalId: live.principalId,
+      principal: testPrincipal(live.principalId),
       storageToken: liveSlot.storageToken,
       uploadId: live.id,
     }));
@@ -194,7 +210,7 @@ describe("staged upload lifecycle", () => {
     };
     const committed = await runStaged(runtime, (service) => service.commitUpload({
       idempotencyKey: "committed-upload-stable-retry",
-      principalId: live.principalId,
+      principal: testPrincipal(live.principalId),
       target,
       uploadId: live.id,
     }));
@@ -206,7 +222,7 @@ describe("staged upload lifecycle", () => {
     });
     const replay = await runStaged(runtime, (service) => service.commitUpload({
       idempotencyKey: "committed-upload-stable-retry",
-      principalId: live.principalId,
+      principal: testPrincipal(live.principalId),
       target,
       uploadId: live.id,
     }));
@@ -216,13 +232,31 @@ describe("staged upload lifecycle", () => {
     await expectStagedFailure(runtime, "UploadClosed", (service) =>
       service.commitUpload({
         idempotencyKey: "committed-upload-new-command",
-        principalId: live.principalId,
+        principal: testPrincipal(live.principalId),
         target,
         uploadId: live.id,
       })
     );
   });
 });
+
+function testPrincipal(
+  id: string,
+  installationId = "test-installation",
+): Principal {
+  return {
+    authorizedByPrincipalId: null,
+    capabilities: [
+      principalCapabilities.createArtifact,
+      principalCapabilities.issueContentSession,
+      principalCapabilities.publishAnyArtifact,
+    ],
+    id,
+    installationId,
+    kind: principalKinds.service,
+    membershipRole: membershipRoles.member,
+  };
+}
 
 class ControlledClock implements Clock {
   #current: Date;

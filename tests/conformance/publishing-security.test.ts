@@ -15,7 +15,10 @@ import {
   type RunningTestServer,
   type TestInstallation,
 } from "../support/runtime-harness.js";
-import { publishNew } from "../support/publishing.js";
+import {
+  parsePublishResponse,
+  publishNew,
+} from "../support/publishing.js";
 
 describe("local publishing security boundaries", () => {
   let installation: TestInstallation;
@@ -119,6 +122,8 @@ describe("local publishing security boundaries", () => {
       method: "POST",
     });
     expect(authorized.status).toBe(201);
+    const published = parsePublishResponse(await authorized.json());
+    expect(published.artifact.ownerPrincipalId).toBe("local-api-token");
   });
 
   test("foundation: malformed and oversized API requests fail as client errors without destabilizing the server", async () => {

@@ -1,6 +1,8 @@
 import type {
   AccessSetting,
   CanonicalManifest,
+  ContentBootstrapRecord,
+  ContentSessionRecord,
   PublishedVersion,
   StagedUpload,
   VersionContent,
@@ -57,6 +59,8 @@ export interface CommitNewArtifact {
   readonly inputDigest: string;
   readonly manifest: CanonicalManifest;
   readonly name: string;
+  readonly ownerPrincipalId: string;
+  readonly principalId: string;
   readonly source: PublicationSource;
   readonly versionId: string;
 }
@@ -69,8 +73,24 @@ export interface CommitArtifactVersion {
   readonly idempotencyKey: string;
   readonly inputDigest: string;
   readonly manifest: CanonicalManifest;
+  readonly principalId: string;
   readonly source: PublicationSource;
   readonly versionId: string;
+}
+
+/** Values persisted when issuing a one-time private-content bootstrap. */
+export type CreateContentBootstrap = ContentBootstrapRecord;
+
+/** Values used to atomically exchange a bootstrap for a browser session. */
+export interface ExchangeContentBootstrap {
+  readonly bootstrapTokenDigest: string;
+  readonly contentToken: string;
+  readonly exchangedAt: string;
+  readonly session: {
+    readonly createdAt: string;
+    readonly expiresAt: string;
+    readonly tokenDigest: string;
+  };
 }
 
 export interface CreateStagedUpload {
@@ -100,6 +120,21 @@ export interface ArtifactRepository {
     inputDigest: string,
   ): Promise<PublishedVersion | null>;
   findVersionContent(contentToken: string, path: string): Promise<VersionContent | null>;
+}
+
+/** Persistent capabilities required by private browser content sessions. */
+export interface ContentSessionRepository {
+  createContentBootstrap(
+    command: CreateContentBootstrap,
+  ): Promise<ContentBootstrapRecord>;
+  exchangeContentBootstrap(
+    command: ExchangeContentBootstrap,
+  ): Promise<ContentSessionRecord | null>;
+  findContentSession(
+    tokenDigest: string,
+    contentToken: string,
+    requestTime: string,
+  ): Promise<ContentSessionRecord | null>;
 }
 
 export interface StagedUploadRepository {

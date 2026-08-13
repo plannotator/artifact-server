@@ -1,4 +1,13 @@
-import { DateTime, Effect, Layer } from "effect";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+
+import { DateTime, Effect, Layer, Redacted } from "effect";
+
+import { AuthenticationService } from "../application/authentication.js";
+import { AuthorizationService } from "../application/authorization.js";
+import {
+  type ContentAccessDependencies,
+  ContentAccessService,
+} from "../application/content-access.js";
 
 import {
   type PublishArtifactDependencies,
@@ -11,6 +20,7 @@ import {
 import {
   ArtifactNotFound,
   ArtifactRepositoryFailure,
+  AuthenticationRequired,
   BlobStorageFailure,
   IdempotencyConflict,
   PublishConflict,
@@ -22,6 +32,12 @@ import {
   UploadNotFound,
   UploadedFileMismatch,
 } from "../core/errors.js";
+import {
+  membershipRoles,
+  principalCapabilities,
+  principalKinds,
+  type Principal,
+} from "../core/identity.js";
 import type {
   BlobStore,
   Clock,
@@ -33,9 +49,11 @@ import type { SqliteArtifactRepository } from "../storage/sqlite-artifact-reposi
 
 /** Concrete local adapters reused by the Effect application layer. */
 export interface LocalApplicationAdapters {
+  readonly apiToken: Redacted.Redacted;
   readonly blobs: BlobStore;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  readonly installationId: string;
   readonly repository: SqliteArtifactRepository;
   readonly staging: StagingStore;
 }
@@ -43,7 +61,13 @@ export interface LocalApplicationAdapters {
 /** Build the local publication services without changing their storage adapters. */
 export function createLocalApplicationLayer(
   adapters: LocalApplicationAdapters,
-): Layer.Layer<PublishArtifactService | StagedUploadService> {
+): Layer.Layer<
+  | AuthenticationService
+  | AuthorizationService
+  | ContentAccessService
+  | PublishArtifactService
+  | StagedUploadService
+> {
   const clock = {
     now: Effect.sync(() => DateTime.makeUnsafe(adapters.clock.now())),
   };
@@ -90,6 +114,11 @@ export function createLocalApplicationLayer(
             cause instanceof IdempotencyConflict
               ? cause
               : repositoryFailure("findIdempotentPublication", cause),
+        }),
+      findCurrentVersion: (artifactId) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.findCurrentVersion(artifactId),
+          catch: (cause) => repositoryFailure("findCurrentVersion", cause),
         }),
     },
   };
@@ -155,10 +184,101 @@ export function createLocalApplicationLayer(
     },
   };
 
-  const publishLayer = PublishArtifactService.layer(publishDependencies);
-  return StagedUploadService.layer(stagedDependencies).pipe(
+  const contentDependencies: ContentAccessDependencies = {
+    clock,
+    repository: {
+      createContentBootstrap: (command) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.createContentBootstrap(command),
+          catch: (cause) => repositoryFailure("createContentBootstrap", cause),
+        }),
+      exchangeContentBootstrap: (command) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.exchangeContentBootstrap(command),
+          catch: (cause) => repositoryFailure("exchangeContentBootstrap", cause),
+        }),
+      findContentSession: (tokenDigest, contentToken, requestTime) =>
+        Effect.tryPromise({
+          try: () =>
+            adapters.repository.findContentSession(
+              tokenDigest,
+              contentToken,
+              requestTime,
+            ),
+          catch: (cause) => repositoryFailure("findContentSession", cause),
+        }),
+      findCurrentVersion: (artifactId) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.findCurrentVersion(artifactId),
+          catch: (cause) => repositoryFailure("findCurrentVersion", cause),
+        }),
+      findVersionContent: (contentToken, requestedPath) =>
+        Effect.tryPromise({
+          try: () =>
+            adapters.repository.findVersionContent(contentToken, requestedPath),
+          catch: (cause) => repositoryFailure("findVersionContent", cause),
+        }),
+    },
+    secrets: {
+      digest: (token) =>
+        createHash("sha256").update(Redacted.value(token)).digest("hex"),
+      issue: () => {
+        const raw = randomBytes(32).toString("base64url");
+        return {
+          digest: createHash("sha256").update(raw).digest("hex"),
+          token: Redacted.make(raw, {label: "content-session-token"}),
+        };
+      },
+    },
+  };
+
+  const localPrincipal: Principal = {
+    authorizedByPrincipalId: null,
+    capabilities: [
+      principalCapabilities.createArtifact,
+      principalCapabilities.issueContentSession,
+      principalCapabilities.publishAnyArtifact,
+      principalCapabilities.publishOwnedArtifact,
+    ],
+    id: "local-api-token",
+    installationId: adapters.installationId,
+    kind: principalKinds.service,
+    membershipRole: membershipRoles.member,
+  };
+  const authenticationLayer = AuthenticationService.layer({
+    bearerCredentials: {
+      verify: (credential) =>
+        credentialsEqual(
+          Redacted.value(credential),
+          Redacted.value(adapters.apiToken),
+        )
+          ? Effect.succeed(localPrincipal)
+          : Effect.fail(new AuthenticationRequired({
+            message: "A valid local API token is required.",
+          })),
+    },
+  });
+  const authorizationLayer = AuthorizationService.layer({
+    installationId: adapters.installationId,
+  });
+
+  const publishLayer = PublishArtifactService.layer(publishDependencies).pipe(
+    Layer.provideMerge(authorizationLayer),
+  );
+  const stagedLayer = StagedUploadService.layer(stagedDependencies).pipe(
     Layer.provideMerge(publishLayer),
   );
+  const contentLayer = ContentAccessService.layer(contentDependencies).pipe(
+    Layer.provideMerge(authorizationLayer),
+  );
+  return Layer.mergeAll(authenticationLayer, stagedLayer, contentLayer);
+}
+
+function credentialsEqual(actualToken: string, expectedToken: string): boolean {
+  const actual = Buffer.from(actualToken);
+  const expected = Buffer.from(expectedToken);
+  return actual.byteLength === expected.byteLength &&
+    timingSafeEqual(actual, expected);
 }
 
 function classifySourceReadinessFailure(cause: unknown) {

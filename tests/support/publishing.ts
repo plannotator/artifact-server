@@ -14,6 +14,7 @@ const publishResponseSchema = z.object({
     currentVersionId: z.string(),
     id: z.string(),
     name: z.string(),
+    ownerPrincipalId: z.string(),
   }),
   links: z.object({artifact: z.url(), version: z.url()}),
   replayed: z.boolean(),

@@ -15,14 +15,16 @@ This repository contains the local publication foundation. It is not the complet
 - stable artifact links and unique `*.localhost` version hosts;
 - intentional version publication with stale-write protection;
 - idempotent retries;
-- public-link delivery and fail-closed account-required delivery;
+- provider-neutral principals with ownership and explicit capability policy;
+- public-link delivery and version-scoped account-required browser sessions;
+- single-use private-content bootstraps and host-only, HttpOnly content cookies;
 - persistence of committed versions and in-progress uploads across a full server restart.
 
-Private browser sessions, SPA routing, comparisons, restore, MCP, Agent Skills, optional Git, expired-staging cleanup, and non-local deployments remain to be implemented in the order defined by the specification.
+Human browser login, API-key management, SPA routing, comparisons, restore, MCP, Agent Skills, optional Git, expired-staging cleanup, and non-local deployments remain to be implemented in the order defined by the specification.
 
 ## Run locally
 
-Requirements: Node.js 24.15 or newer, pnpm 10.34.3, and Ruby for validating the conformance ledger.
+Requirements: Node.js 24.12 or newer, pnpm 10.34.3, and Ruby for validating the conformance ledger.
 
 ```sh
 pnpm install
@@ -52,7 +54,12 @@ curl --fail-with-body http://localhost:8787/api/v1/artifacts \
   }'
 ```
 
-The response contains a stable artifact link and an immutable version link. Account-required artifacts can be stored now but intentionally return `401` until the version-scoped private-content session is implemented and tested.
+The response contains a stable artifact link and an immutable version link.
+For an account-required artifact, create a private browser bootstrap with an
+authenticated `POST` to
+`/api/v1/artifacts/{artifactId}/content-sessions`, then open the returned
+`bootstrapUrl`. The content host exchanges it once and redirects to the clean
+version URL. The resulting cookie can read only that immutable version.
 
 ## Publish a complete site
 
@@ -90,7 +97,7 @@ The readable proposal and executable checklist are in [`spec/`](./spec/):
 ```text
 src/core          product records, errors, and provider ports
 src/manifest      portable path validation and canonical manifests
-src/application   Effect services for publication and staged-upload use cases
+src/application   Effect services for identity, authorization, content access, and publication
 src/storage       SQLite, local staging, and immutable-blob adapters
 src/http          HTTP authentication, publication, links, and delivery
 src/local         local adapters, Effect layers, and composition root
@@ -104,4 +111,6 @@ One managed Effect runtime owns the application services and installation
 resources. Hono is an inbound adapter over those services; future MCP and CLI
 entry points use the same operations and failure values. See
 [`Decision 0001`](./spec/decisions/0001-effect-application-core.md) for the
-migration boundary and deliberate exclusions.
+migration boundary and deliberate exclusions. See
+[`Decision 0002`](./spec/decisions/0002-shared-identity-and-private-content.md)
+for the provider-neutral principal and private-content session model.

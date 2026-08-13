@@ -1,9 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { Effect, Layer, ManagedRuntime } from "effect";
-import type { Hono } from "hono";
-
+import { Effect, Layer, ManagedRuntime, Redacted } from "effect";
 import type { ApplicationRuntime } from "../application/application-runtime.js";
 import { SystemClock, SystemIdGenerator } from "../core/system.js";
 import { createHttpApp } from "../http/create-http-app.js";
@@ -19,7 +17,7 @@ export interface LocalRuntimeConfig {
 }
 
 export interface LocalRuntime {
-  readonly app: Hono;
+  readonly app: ReturnType<typeof createHttpApp>;
   close(): Promise<void>;
 }
 
@@ -39,9 +37,11 @@ export async function createLocalRuntime(
     ),
   );
   const applicationLayer = createLocalApplicationLayer({
+    apiToken: Redacted.make(config.apiToken, {label: "local-api-token"}),
     blobs,
     clock: new SystemClock(),
     ids: new SystemIdGenerator(),
+    installationId: "local",
     repository,
     staging,
   });
@@ -51,11 +51,9 @@ export async function createLocalRuntime(
   try {
     await applicationRuntime.context();
     const app = createHttpApp({
-      apiToken: config.apiToken,
       applicationRuntime,
       blobs,
       contentDomain: config.contentDomain,
-      repository,
     });
 
     return {

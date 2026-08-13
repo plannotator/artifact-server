@@ -2,9 +2,15 @@ import { Effect, type ManagedRuntime, Result } from "effect";
 
 import type { PublishArtifactService } from "./publish-artifact.js";
 import type { StagedUploadService } from "./staged-upload.js";
+import type { AuthenticationService } from "./authentication.js";
+import type { AuthorizationService } from "./authorization.js";
+import type { ContentAccessService } from "./content-access.js";
 
 /** Application services shared by every Artifact Server entry point. */
 export type ApplicationServices =
+  | AuthenticationService
+  | AuthorizationService
+  | ContentAccessService
   | PublishArtifactService
   | StagedUploadService;
 

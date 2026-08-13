@@ -3,8 +3,9 @@ import { createHash } from "node:crypto";
 import { Context, DateTime, Effect, Layer, Schema } from "effect";
 
 import {
-  type ArtifactNotFound,
+  ArtifactNotFound,
   type ArtifactRepositoryFailure,
+  type AuthorizationDenied,
   type BlobStorageFailure,
   type IdempotencyConflict,
   InvalidArtifactName,
@@ -16,6 +17,7 @@ import {
   type UploadIncomplete,
   type UploadNotFound,
 } from "../core/errors.js";
+import type { Principal } from "../core/identity.js";
 import type {
   AccessSetting,
   CanonicalManifest,
@@ -33,6 +35,10 @@ import {
   type ManifestFailure,
   parseSingleFileManifest,
 } from "./parse-manifest.js";
+import {
+  type AuthorizationOperations,
+  AuthorizationService,
+} from "./authorization.js";
 
 /** Input for publishing one inline file as a new artifact. */
 export interface PublishNewArtifactCommand {
@@ -42,6 +48,7 @@ export interface PublishNewArtifactCommand {
   readonly mediaType: string;
   readonly name: string;
   readonly path: string;
+  readonly principal: Principal;
 }
 
 /** Input for publishing one inline file as the next artifact version. */
@@ -52,6 +59,7 @@ export interface PublishVersionCommand {
   readonly idempotencyKey: string;
   readonly mediaType: string;
   readonly path: string;
+  readonly principal: Principal;
 }
 
 /** An immutable file source that can be opened during publication. */
@@ -69,6 +77,7 @@ export interface PublishPreparedNewArtifactCommand {
   readonly idempotencyKey: string;
   readonly manifest: CanonicalManifest;
   readonly name: string;
+  readonly principal: Principal;
   readonly source: PublicationSource;
 }
 
@@ -79,6 +88,7 @@ export interface PublishPreparedVersionCommand {
   readonly files: readonly PublicationFileSource[];
   readonly idempotencyKey: string;
   readonly manifest: CanonicalManifest;
+  readonly principal: Principal;
   readonly source: PublicationSource;
 }
 
@@ -116,6 +126,9 @@ export interface PublishArtifactRepository {
     idempotencyKey: string,
     inputDigest: string,
   ): Effect.Effect<PublishedVersion | null, IdempotencyConflict | ArtifactRepositoryFailure>;
+  findCurrentVersion(
+    artifactId: string,
+  ): Effect.Effect<PublishedVersion | null, ArtifactRepositoryFailure>;
 }
 
 /** Immutable blob capability required by publication. */
@@ -146,7 +159,8 @@ export type PublishArtifactFailure =
   | ArtifactNotFound
   | PublishConflict
   | BlobStorageFailure
-  | StagingStorageFailure;
+  | StagingStorageFailure
+  | AuthorizationDenied;
 
 interface PublishArtifactOperations {
   readonly publishNew: (
@@ -171,8 +185,14 @@ export class PublishArtifactService extends Context.Service<
   /** Construct the service from application-owned publication ports. */
   static readonly layer = (
     dependencies: PublishArtifactDependencies,
-  ): Layer.Layer<PublishArtifactService> =>
-    Layer.succeed(PublishArtifactService, makePublishArtifactService(dependencies));
+  ): Layer.Layer<PublishArtifactService, never, AuthorizationService> =>
+    Layer.effect(
+      PublishArtifactService,
+      Effect.gen(function*() {
+        const authorization = yield* AuthorizationService;
+        return makePublishArtifactService(dependencies, authorization);
+      }),
+    );
 }
 
 const artifactNameSchema = Schema.Trim.check(Schema.isLengthBetween(1, 200));
@@ -184,6 +204,7 @@ const decodeIdempotencyKey = Schema.decodeUnknownEffect(idempotencyKeySchema);
 
 function makePublishArtifactService(
   dependencies: PublishArtifactDependencies,
+  authorization: AuthorizationOperations,
 ): PublishArtifactOperations {
   const storeFiles = Effect.fn("PublishArtifactService.storeFiles")(
     function*(
@@ -220,6 +241,7 @@ function makePublishArtifactService(
   )(function*(
     command: PublishPreparedNewArtifactCommand,
   ): Effect.fn.Return<PublishedVersion, PublishArtifactFailure> {
+    yield* authorization.requireArtifactCreation(command.principal);
     const name = yield* decodeArtifactName(command.name).pipe(
       Effect.mapError(() =>
         new InvalidArtifactName({
@@ -232,6 +254,7 @@ function makePublishArtifactService(
       accessSetting: command.accessSetting,
       manifest: command.manifest,
       name,
+      principalId: command.principal.id,
       source: command.source,
     });
     const replayed = yield* dependencies.repository.findIdempotentPublication(
@@ -259,6 +282,8 @@ function makePublishArtifactService(
       inputDigest,
       manifest: command.manifest,
       name,
+      ownerPrincipalId: command.principal.id,
+      principalId: command.principal.id,
       source: command.source,
       versionId: dependencies.ids.versionId(),
     });
@@ -269,11 +294,24 @@ function makePublishArtifactService(
   )(function*(
     command: PublishPreparedVersionCommand,
   ): Effect.fn.Return<PublishedVersion, PublishArtifactFailure> {
+    const current = yield* dependencies.repository.findCurrentVersion(
+      command.artifactId,
+    );
+    if (current === null) {
+      return yield* Effect.fail(
+        new ArtifactNotFound({message: "The artifact does not exist."}),
+      );
+    }
+    yield* authorization.requireVersionPublication(
+      command.principal,
+      current.artifact,
+    );
     const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
     const inputDigest = artifactVersionInputDigest({
       artifactId: command.artifactId,
       expectedCurrentVersionId: command.expectedCurrentVersionId,
       manifest: command.manifest,
+      principalId: command.principal.id,
       source: command.source,
     });
     const replayed = yield* dependencies.repository.findIdempotentPublication(
@@ -300,6 +338,7 @@ function makePublishArtifactService(
       idempotencyKey,
       inputDigest,
       manifest: command.manifest,
+      principalId: command.principal.id,
       source: command.source,
       versionId: dependencies.ids.versionId(),
     });
@@ -317,6 +356,7 @@ function makePublishArtifactService(
         idempotencyKey: command.idempotencyKey,
         manifest,
         name: command.name,
+        principal: command.principal,
         source: {kind: "inline"},
       });
     },
@@ -334,6 +374,7 @@ function makePublishArtifactService(
         files: [inlineFileSource(command.bytes, entry)],
         idempotencyKey: command.idempotencyKey,
         manifest,
+        principal: command.principal,
         source: {kind: "inline"},
       });
     },
@@ -363,6 +404,7 @@ interface NewArtifactDigestInput {
   readonly accessSetting: AccessSetting;
   readonly manifest: CanonicalManifest;
   readonly name: string;
+  readonly principalId: string;
   readonly source: PublicationSource;
 }
 
@@ -370,6 +412,7 @@ interface ArtifactVersionDigestInput {
   readonly artifactId: string;
   readonly expectedCurrentVersionId: string;
   readonly manifest: CanonicalManifest;
+  readonly principalId: string;
   readonly source: PublicationSource;
 }
 
@@ -378,6 +421,7 @@ function newArtifactInputDigest(input: NewArtifactDigestInput): string {
     accessSetting: input.accessSetting,
     manifestDigest: input.manifest.digest,
     name: input.name,
+    principalId: input.principalId,
     source: sourceDigestValue(input.source),
   });
   return createHash("sha256").update(canonicalInput).digest("hex");
@@ -388,6 +432,7 @@ function artifactVersionInputDigest(input: ArtifactVersionDigestInput): string {
     artifactId: input.artifactId,
     expectedCurrentVersionId: input.expectedCurrentVersionId,
     manifestDigest: input.manifest.digest,
+    principalId: input.principalId,
     source: sourceDigestValue(input.source),
   });
   return createHash("sha256").update(canonicalInput).digest("hex");

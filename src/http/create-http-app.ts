@@ -1,5 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
-
+import { Redacted } from "effect";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
@@ -10,21 +9,24 @@ import {
 } from "../application/application-runtime.js";
 import { PublishArtifactService } from "../application/publish-artifact.js";
 import { StagedUploadService } from "../application/staged-upload.js";
+import { AuthenticationService } from "../application/authentication.js";
+import { ContentAccessService } from "../application/content-access.js";
 import {
-  ArtifactNotFound,
+  AuthenticationRequired,
   type ArtifactServerFailure,
-  ContentNotPublic,
+  ContentBootstrapRejected,
   errorCodes,
   type ErrorCode,
   InlineContentTooLarge,
   isArtifactServerFailure,
 } from "../core/errors.js";
+import type { Principal } from "../core/identity.js";
 import {
   accessSettings,
   type ManifestEntry,
   type PublishedVersion,
 } from "../core/model.js";
-import type { ArtifactRepository, BlobStore } from "../core/ports.js";
+import type { BlobStore } from "../core/ports.js";
 import { manifestPathFromUrl } from "../manifest/create-manifest.js";
 
 const maximumInlineBytes = 1_048_576;
@@ -80,17 +82,30 @@ const bearerSchema = z
   .string()
   .regex(/^Bearer [A-Za-z0-9._~-]+$/u)
   .transform((value) => value.slice("Bearer ".length));
+const contentSessionTokenSchema = z
+  .string()
+  .min(32)
+  .max(200)
+  .regex(/^[A-Za-z0-9_-]+$/u);
+const contentBootstrapQueryParameter = "__artifact_bootstrap";
+const contentSessionCookieName = "__Host-artifact_content";
+
+interface HttpEnvironment {
+  readonly Variables: {
+    readonly principal: Principal;
+  };
+}
 
 export interface HttpAppDependencies {
-  readonly apiToken: string;
   readonly applicationRuntime: ApplicationRuntime;
   readonly blobs: BlobStore;
   readonly contentDomain: string;
-  readonly repository: ArtifactRepository;
 }
 
-export function createHttpApp(dependencies: HttpAppDependencies): Hono {
-  const app = new Hono();
+export function createHttpApp(
+  dependencies: HttpAppDependencies,
+): Hono<HttpEnvironment> {
+  const app = new Hono<HttpEnvironment>();
   const boundedJsonBody = bodyLimit({
     maxSize: maximumInlineRequestBytes,
     onError: (context) =>
@@ -112,10 +127,19 @@ export function createHttpApp(dependencies: HttpAppDependencies): Hono {
       dependencies.contentDomain,
     );
     if (contentToken !== null) {
+      if (isContentBootstrapRequest(requestUrl)) {
+        return exchangeContentBootstrap(
+          context.req.method,
+          requestUrl,
+          contentToken,
+          dependencies,
+        );
+      }
       return serveVersionContent(
         context.req.method,
         requestUrl,
         contentToken,
+        context.req.header("cookie"),
         dependencies,
       );
     }
@@ -123,18 +147,21 @@ export function createHttpApp(dependencies: HttpAppDependencies): Hono {
   });
 
   app.use("/api/*", async (context, next) => {
-    if (!authorized(context.req.header("authorization"), dependencies.apiToken)) {
-      return context.json(
-        {
-          error: {
-            code: errorCodes.authenticationRequired,
-            message: "A valid local API token is required.",
-          },
-        },
-        401,
-        {"WWW-Authenticate": "Bearer"},
-      );
+    const parsed = bearerSchema.safeParse(context.req.header("authorization"));
+    if (!parsed.success) {
+      throw new AuthenticationRequired({
+        message: "A valid local API token is required.",
+      });
     }
+    const principal = await runApplicationEffect(
+      dependencies.applicationRuntime,
+      AuthenticationService.use((authentication) =>
+        authentication.authenticateBearer(
+          Redacted.make(parsed.data, {label: "bearer-credential"}),
+        )
+      ),
+    );
+    context.set("principal", principal);
     return next();
   });
 
@@ -157,6 +184,7 @@ export function createHttpApp(dependencies: HttpAppDependencies): Hono {
           mediaType: body.file.mediaType,
           name: body.name,
           path: body.file.path,
+          principal: context.get("principal"),
         })
       ),
     );
@@ -181,6 +209,7 @@ export function createHttpApp(dependencies: HttpAppDependencies): Hono {
           ),
           mediaType: body.file.mediaType,
           path: body.file.path,
+          principal: context.get("principal"),
         })
       ),
     );
@@ -198,7 +227,7 @@ export function createHttpApp(dependencies: HttpAppDependencies): Hono {
         stagedUploads.createUpload({
           entryPath: body.entryPath,
           files: body.files,
-          principalId: "local-api-token",
+          principal: context.get("principal"),
         })
       ),
     );
@@ -227,7 +256,7 @@ export function createHttpApp(dependencies: HttpAppDependencies): Hono {
       StagedUploadService.use((stagedUploads) =>
         stagedUploads.uploadFile({
           body,
-          principalId: "local-api-token",
+          principal: context.get("principal"),
           storageToken: context.req.param("storageToken"),
           uploadId: context.req.param("uploadId"),
         })
@@ -258,7 +287,7 @@ export function createHttpApp(dependencies: HttpAppDependencies): Hono {
             idempotencyKey: requiredIdempotencyKey(
               context.req.header("idempotency-key"),
             ),
-            principalId: "local-api-token",
+            principal: context.get("principal"),
             target: body.target,
             uploadId: context.req.param("uploadId"),
           })
@@ -275,18 +304,35 @@ export function createHttpApp(dependencies: HttpAppDependencies): Hono {
     },
   );
 
-  app.get("/artifacts/:artifactId", async (context) => {
-    const current = await dependencies.repository.findCurrentVersion(
-      context.req.param("artifactId"),
+  app.post("/api/v1/artifacts/:artifactId/content-sessions", async (context) => {
+    const issued = await runApplicationEffect(
+      dependencies.applicationRuntime,
+      ContentAccessService.use((contentAccess) =>
+        contentAccess.issueContentBootstrap({
+          artifactId: context.req.param("artifactId"),
+          principal: context.get("principal"),
+        })
+      ),
     );
-    if (current === null) {
-      throw new ArtifactNotFound({message: "The artifact does not exist."});
-    }
-    if (current.artifact.accessSetting !== accessSettings.publicLink) {
-      throw new ContentNotPublic({
-        message: "This first implementation slice opens public-link artifacts only.",
-      });
-    }
+    return context.json({
+      bootstrapUrl: buildContentBootstrapUrl(
+        new URL(context.req.url),
+        dependencies.contentDomain,
+        issued.contentToken,
+        Redacted.value(issued.token),
+      ),
+      expiresAt: issued.expiresAt,
+      versionId: issued.versionId,
+    }, 201);
+  });
+
+  app.get("/artifacts/:artifactId", async (context) => {
+    const current = await runApplicationEffect(
+      dependencies.applicationRuntime,
+      ContentAccessService.use((contentAccess) =>
+        contentAccess.resolvePublicArtifact(context.req.param("artifactId"))
+      ),
+    );
     const versionUrl = buildVersionUrl(
       new URL(context.req.url),
       dependencies.contentDomain,
@@ -305,9 +351,19 @@ export function createHttpApp(dependencies: HttpAppDependencies): Hono {
   app.onError((error, context) => {
     if (isArtifactServerFailure(error)) {
       const response = httpFailure(error);
+      const headers = new Headers();
+      if (response.status === 401) {
+        headers.set("Cache-Control", "private, no-store");
+      }
+      if (error._tag === "AuthenticationRequired") {
+        headers.set("WWW-Authenticate", "Bearer");
+      }
       return Response.json(
         {error: {code: response.code, message: response.message}},
-        {status: response.status},
+        {
+          headers,
+          status: response.status,
+        },
       );
     }
     if (error instanceof z.ZodError) {
@@ -365,6 +421,30 @@ function httpFailure(failure: ArtifactServerFailure): HttpFailure {
         code: errorCodes.artifactNotFound,
         message: failure.message,
         status: 404,
+      };
+    case "AuthenticationRequired":
+      return {
+        code: errorCodes.authenticationRequired,
+        message: failure.message,
+        status: 401,
+      };
+    case "AuthorizationDenied":
+      return {
+        code: errorCodes.authorizationDenied,
+        message: failure.message,
+        status: 403,
+      };
+    case "ContentBootstrapRejected":
+      return {
+        code: errorCodes.contentBootstrapRejected,
+        message: failure.message,
+        status: 401,
+      };
+    case "ContentSessionRequired":
+      return {
+        code: errorCodes.contentNotPublic,
+        message: failure.message,
+        status: 401,
       };
     case "InvalidArtifactName":
     case "InvalidIdempotencyKey":
@@ -476,6 +556,7 @@ async function serveVersionContent(
   method: string,
   requestUrl: URL,
   contentToken: string,
+  cookieHeader: string | undefined,
   dependencies: HttpAppDependencies,
 ): Promise<Response> {
   if (method !== "GET" && method !== "HEAD") {
@@ -489,33 +570,27 @@ async function serveVersionContent(
   if (requestedPath === null) {
     return versionNotFoundResponse();
   }
-  const content = await dependencies.repository.findVersionContent(
-    contentToken,
-    requestedPath,
+  const content = await runApplicationEffect(
+    dependencies.applicationRuntime,
+    ContentAccessService.use((contentAccess) =>
+      contentAccess.authorizeVersionContent({
+        contentToken,
+        path: requestedPath,
+        sessionToken: contentSessionToken(cookieHeader),
+      })
+    ),
   );
   if (content === null) {
     return versionNotFoundResponse();
   }
-  if (
-    content.accessSetting !== accessSettings.publicLink ||
-    !content.isCurrent
-  ) {
-    return Response.json(
-      {
-        error: {
-          code: errorCodes.contentNotPublic,
-          message: "This artifact version requires an authorized content session.",
-        },
-      },
-      {status: 401, headers: {"Cache-Control": "private, no-store"}},
-    );
-  }
+  const publiclyCacheable = content.accessSetting === accessSettings.publicLink &&
+    content.isCurrent;
 
   if (method === "HEAD") {
     const blob = await dependencies.blobs.inspect(content.entry.sha256);
     assertBlobSize(blob.size, content.entry.size, content.entry.sha256);
     return new Response(null, {
-      headers: contentHeaders(content.entry, blob.size),
+      headers: contentHeaders(content.entry, blob.size, publiclyCacheable),
       status: 200,
     });
   }
@@ -526,7 +601,7 @@ async function serveVersionContent(
     assertBlobSize(blob.size, content.entry.size, content.entry.sha256);
   }
   return new Response(blob.body, {
-    headers: contentHeaders(content.entry, blob.size),
+    headers: contentHeaders(content.entry, blob.size, publiclyCacheable),
     status: 200,
   });
 }
@@ -534,14 +609,18 @@ async function serveVersionContent(
 function contentHeaders(
   entry: ManifestEntry,
   size: number,
+  publiclyCacheable: boolean,
 ): Headers {
   return new Headers({
-    "Cache-Control": "public, max-age=31536000, immutable",
+    "Cache-Control": publiclyCacheable
+      ? "public, max-age=31536000, immutable"
+      : "private, no-store",
     "Content-Disposition": entry.disposition,
     "Content-Length": String(size),
     "Content-Type": entry.mediaType,
     ETag: `"${entry.sha256}"`,
     "X-Content-Type-Options": "nosniff",
+    "X-Robots-Tag": "noindex, nofollow",
   });
 }
 
@@ -560,19 +639,78 @@ function versionNotFoundResponse(): Response {
   );
 }
 
-function authorized(
-  authorizationHeader: string | undefined,
-  expectedToken: string,
-): boolean {
-  const parsed = bearerSchema.safeParse(authorizationHeader);
-  if (!parsed.success) return false;
-  const actual = Buffer.from(parsed.data);
-  const expected = Buffer.from(expectedToken);
-  return actual.byteLength === expected.byteLength && timingSafeEqual(actual, expected);
-}
-
 function requiredIdempotencyKey(header: string | undefined): string {
   return z.string().min(16).max(200).parse(header);
+}
+
+async function exchangeContentBootstrap(
+  method: string,
+  requestUrl: URL,
+  contentToken: string,
+  dependencies: HttpAppDependencies,
+): Promise<Response> {
+  if (method !== "GET") {
+    return Response.json(
+      {error: {code: errorCodes.methodNotAllowed, message: "Only GET is supported."}},
+      {status: 405, headers: {Allow: "GET"}},
+    );
+  }
+  const parsed = contentSessionTokenSchema.safeParse(
+    requestUrl.searchParams.get(contentBootstrapQueryParameter),
+  );
+  if (!parsed.success) {
+    throw new ContentBootstrapRejected({
+      message: "The private-content bootstrap is invalid or no longer available.",
+    });
+  }
+  const issued = await runApplicationEffect(
+    dependencies.applicationRuntime,
+    ContentAccessService.use((contentAccess) =>
+      contentAccess.exchangeContentBootstrap({
+        contentToken,
+        token: Redacted.make(parsed.data, {label: "content-bootstrap-token"}),
+      })
+    ),
+  );
+  const cleanUrl = new URL(requestUrl);
+  cleanUrl.pathname = "/";
+  cleanUrl.search = "";
+  cleanUrl.hash = "";
+  return new Response(null, {
+    headers: {
+      "Cache-Control": "private, no-store",
+      Location: cleanUrl.toString(),
+      "Referrer-Policy": "no-referrer",
+      "Set-Cookie": contentSessionCookie(
+        Redacted.value(issued.token),
+        issued.expiresAt,
+      ),
+    },
+    status: 303,
+  });
+}
+
+function contentSessionCookie(token: string, expiresAt: string): string {
+  return `${contentSessionCookieName}=${token}; Path=/; Expires=${new Date(expiresAt).toUTCString()}; HttpOnly; Secure; SameSite=Strict`;
+}
+
+function contentSessionToken(
+  cookieHeader: string | undefined,
+): Redacted.Redacted | null {
+  if (cookieHeader === undefined) return null;
+  for (const pair of cookieHeader.split(";")) {
+    const separator = pair.indexOf("=");
+    if (separator < 0) continue;
+    const name = pair.slice(0, separator).trim();
+    if (name !== contentSessionCookieName) continue;
+    const parsed = contentSessionTokenSchema.safeParse(
+      pair.slice(separator + 1).trim(),
+    );
+    return parsed.success
+      ? Redacted.make(parsed.data, {label: "content-session-token"})
+      : null;
+  }
+  return null;
 }
 
 function decodeInlineBytes(contentBase64: string): Uint8Array {
@@ -616,6 +754,27 @@ function buildVersionUrl(
   versionUrl.search = "";
   versionUrl.hash = "";
   return versionUrl.toString();
+}
+
+function buildContentBootstrapUrl(
+  requestUrl: URL,
+  contentDomain: string,
+  contentToken: string,
+  bootstrapToken: string,
+): string {
+  const bootstrapUrl = new URL(requestUrl);
+  bootstrapUrl.hostname = `${contentToken}.${contentDomain}`;
+  bootstrapUrl.pathname = "/";
+  bootstrapUrl.search = new URLSearchParams({
+    [contentBootstrapQueryParameter]: bootstrapToken,
+  }).toString();
+  bootstrapUrl.hash = "";
+  return bootstrapUrl.toString();
+}
+
+function isContentBootstrapRequest(requestUrl: URL): boolean {
+  return requestUrl.pathname === "/" &&
+    requestUrl.searchParams.has(contentBootstrapQueryParameter);
 }
 
 function casesHandled(value: never): never {

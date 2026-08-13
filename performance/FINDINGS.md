@@ -13,6 +13,14 @@ Machine: Apple M5 Max, Node.js 24.15.0, local APFS storage.
 
 Both runs passed health, restart persistence, current-version delivery, and denial of anonymous access to a previous version. Neither produced an investigation warning. The default machine-readable result is in [`evidence/local-performance-baseline.json`](../evidence/local-performance-baseline.json); the bounded 1 MiB diagnostic is in [`evidence/local-performance-1mib.json`](../evidence/local-performance-1mib.json).
 
+The shared-authorization and private-content iteration repeated the default
+workload three times. Publish p95 ranged from 10.21 to 12.17 ms and public-read
+p95 ranged from 3.04 to 5.35 ms. Throughput, restart, event-loop delay, and
+memory remained inside the existing variance and produced no investigation
+warning. The final machine-readable run is the current baseline file; the
+range is recorded here so one unusually fast or slow laptop run is not treated
+as a regression budget.
+
 ## What the pre-phase review changed
 
 - Blob reads now stream from disk with backpressure. Normal GET requests do not load or fingerprint the complete file.

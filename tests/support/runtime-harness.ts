@@ -55,12 +55,17 @@ export async function fetchVersion(
   server: RunningTestServer,
   versionUrl: string,
   method = "GET",
+  headers?: HeadersInit,
 ): Promise<Response> {
   const target = new URL(versionUrl);
+  const requestHeaders = ["Host", `${target.hostname}:${server.port}`];
+  for (const [name, value] of new Headers(headers)) {
+    requestHeaders.push(name, value);
+  }
   return new Promise<Response>((resolve, reject) => {
     const outgoing = request(
       {
-        headers: {Host: `${target.hostname}:${server.port}`},
+        headers: requestHeaders,
         hostname: "127.0.0.1",
         method,
         path: `${target.pathname}${target.search}`,
@@ -70,18 +75,20 @@ export async function fetchVersion(
         const chunks: Uint8Array[] = [];
         incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
         incoming.on("end", () => {
-          const headers = new Headers();
+          const responseHeaders = new Headers();
           for (let index = 0; index < incoming.rawHeaders.length; index += 2) {
             const name = incoming.rawHeaders[index];
             const value = incoming.rawHeaders[index + 1];
-            if (name !== undefined && value !== undefined) headers.append(name, value);
+            if (name !== undefined && value !== undefined) {
+              responseHeaders.append(name, value);
+            }
           }
           const bytes = Buffer.concat(chunks);
           const body = new Uint8Array(bytes.byteLength);
           body.set(bytes);
           resolve(
             new Response(body.buffer, {
-              headers,
+              headers: responseHeaders,
               status: incoming.statusCode ?? 500,
             }),
           );

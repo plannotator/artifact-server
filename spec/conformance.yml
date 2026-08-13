@@ -1006,9 +1006,14 @@ requirements:
       behavior: {id: AUTH-014-B, description: Authorize one exact version and exchange its bootstrap token once on the bound content host.}
       failure: {id: AUTH-014-F, description: Reject replay, expiry, another viewer, another version, another host, tampering, and use before application authorization.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [AUTH-002, CNT-004]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [AUTH-014-B]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T06:49:35Z"
 
   - id: AUTH-015
     kind: security
@@ -1019,9 +1024,14 @@ requirements:
       behavior: {id: AUTH-015-B, description: Load account-required HTML and all relative assets through the clean URL using the version-scoped content session.}
       failure: {id: AUTH-015-F, description: The session cannot write, access another version, survive beyond expiry, cross hosts, or expose its value to artifact JavaScript.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [AUTH-014]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [AUTH-015-B]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T06:49:35Z"
 
   - id: AUTH-016
     kind: security

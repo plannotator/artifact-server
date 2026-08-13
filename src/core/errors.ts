@@ -3,7 +3,9 @@ import { Schema } from "effect";
 /** Stable error codes exposed by Artifact Server protocols. */
 export const errorCodes = {
   artifactNotFound: "ARTIFACT_NOT_FOUND",
+  authorizationDenied: "AUTHORIZATION_DENIED",
   authenticationRequired: "AUTHENTICATION_REQUIRED",
+  contentBootstrapRejected: "CONTENT_BOOTSTRAP_REJECTED",
   contentNotPublic: "CONTENT_NOT_PUBLIC",
   idempotencyConflict: "IDEMPOTENCY_CONFLICT",
   invalidInput: "INVALID_INPUT",
@@ -26,6 +28,30 @@ const messageField = {message: Schema.String};
 /** The requested artifact does not exist in the installation. */
 export class ArtifactNotFound extends Schema.TaggedError<ArtifactNotFound>()(
   "ArtifactNotFound",
+  messageField,
+) {}
+
+/** The request did not contain a valid supported credential. */
+export class AuthenticationRequired extends Schema.TaggedError<AuthenticationRequired>()(
+  "AuthenticationRequired",
+  messageField,
+) {}
+
+/** The authenticated principal is not permitted to perform the operation. */
+export class AuthorizationDenied extends Schema.TaggedError<AuthorizationDenied>()(
+  "AuthorizationDenied",
+  messageField,
+) {}
+
+/** A private-content bootstrap cannot be exchanged. */
+export class ContentBootstrapRejected extends Schema.TaggedError<ContentBootstrapRejected>()(
+  "ContentBootstrapRejected",
+  messageField,
+) {}
+
+/** A private version request lacks its exact version-scoped browser session. */
+export class ContentSessionRequired extends Schema.TaggedError<ContentSessionRequired>()(
+  "ContentSessionRequired",
   messageField,
 ) {}
 
@@ -134,9 +160,14 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
       "assertPublicationSourceReady",
       "commitNewArtifact",
       "commitVersion",
+      "createContentBootstrap",
       "createStagedUpload",
+      "exchangeContentBootstrap",
+      "findContentSession",
+      "findCurrentVersion",
       "findIdempotentPublication",
       "findStagedUpload",
+      "findVersionContent",
       "markStagedFileUploaded",
     ]),
   },
@@ -147,7 +178,7 @@ export class BlobStorageFailure extends Schema.TaggedError<BlobStorageFailure>()
   "BlobStorageFailure",
   {
     cause: Schema.Defect(),
-    operation: Schema.Literal("put"),
+    operation: Schema.Literals(["inspect", "open", "put"]),
   },
 ) {}
 
@@ -162,6 +193,10 @@ export class StagingStorageFailure extends Schema.TaggedError<StagingStorageFail
 
 const artifactServerFailureSchema = Schema.Union([
   ArtifactNotFound,
+  AuthenticationRequired,
+  AuthorizationDenied,
+  ContentBootstrapRejected,
+  ContentSessionRequired,
   InvalidArtifactName,
   InvalidIdempotencyKey,
   EmptyManifest,

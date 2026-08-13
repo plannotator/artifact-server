@@ -18,6 +18,8 @@ import {
   routingModes,
   uploadStatuses,
   type ArtifactRecord,
+  type ContentBootstrapRecord,
+  type ContentSessionRecord,
   type ManifestEntry,
   type PublishedVersion,
   type StagedUpload,
@@ -29,7 +31,10 @@ import type {
   ArtifactRepository,
   CommitArtifactVersion,
   CommitNewArtifact,
+  ContentSessionRepository,
+  CreateContentBootstrap,
   CreateStagedUpload,
+  ExchangeContentBootstrap,
   PublicationSource,
   StagedUploadRepository,
 } from "../core/ports.js";
@@ -56,10 +61,21 @@ const publishedRowSchema = z.object({
   contentToken: z.string(),
   currentVersionId: z.string(),
   manifestDigest: z.string(),
+  ownerPrincipalId: z.string(),
   versionCreatedAt: z.string(),
   versionId: z.string(),
   versionNumber: z.number().int().positive(),
 });
+const contentBootstrapRowSchema = z.object({
+  artifactId: z.string(),
+  contentToken: z.string(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  principalId: z.string(),
+  tokenDigest: z.string(),
+  versionId: z.string(),
+});
+const contentSessionRowSchema = contentBootstrapRowSchema;
 const idempotencyRowSchema = z.object({
   inputDigest: z.string(),
   versionId: z.string(),
@@ -112,7 +128,11 @@ const stagedUploadCommitRowSchema = z.object({
   status: uploadStatusSchema,
 });
 
-export class SqliteArtifactRepository implements ArtifactRepository, StagedUploadRepository {
+export class SqliteArtifactRepository implements
+  ArtifactRepository,
+  ContentSessionRepository,
+  StagedUploadRepository
+{
   readonly #database: DatabaseSync;
 
   constructor(databasePath: string) {
@@ -159,12 +179,14 @@ export class SqliteArtifactRepository implements ArtifactRepository, StagedUploa
         this.#database
           .prepare(
             `INSERT INTO artifacts (
-              id, name, access_setting, current_version_id, created_at, deleted_at
-            ) VALUES (?, ?, ?, NULL, ?, NULL)`,
+              id, name, owner_principal_id, access_setting,
+              current_version_id, created_at, deleted_at
+            ) VALUES (?, ?, ?, ?, NULL, ?, NULL)`,
           )
           .run(
             command.artifactId,
             command.name,
+            command.ownerPrincipalId,
             command.accessSetting,
             command.createdAt,
           );
@@ -186,6 +208,7 @@ export class SqliteArtifactRepository implements ArtifactRepository, StagedUploa
           command.idempotencyKey,
           command.createdAt,
           "publish",
+          command.principalId,
         );
         this.#insertIdempotency(
           command.idempotencyKey,
@@ -277,6 +300,7 @@ export class SqliteArtifactRepository implements ArtifactRepository, StagedUploa
           command.idempotencyKey,
           command.createdAt,
           "publish",
+          command.principalId,
         );
         this.#insertIdempotency(
           command.idempotencyKey,
@@ -363,6 +387,124 @@ export class SqliteArtifactRepository implements ArtifactRepository, StagedUploa
         isCurrent: parsed.isCurrent,
         versionId: parsed.versionId,
       };
+    });
+  }
+
+  createContentBootstrap(
+    command: CreateContentBootstrap,
+  ): Promise<ContentBootstrapRecord> {
+    return Promise.resolve().then(() => {
+      this.#database
+        .prepare(
+          `INSERT INTO content_bootstraps (
+            token_digest, principal_id, artifact_id, version_id,
+            content_token, created_at, expires_at, consumed_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`,
+        )
+        .run(
+          command.tokenDigest,
+          command.principalId,
+          command.artifactId,
+          command.versionId,
+          command.contentToken,
+          command.createdAt,
+          command.expiresAt,
+        );
+      return command;
+    });
+  }
+
+  exchangeContentBootstrap(
+    command: ExchangeContentBootstrap,
+  ): Promise<ContentSessionRecord | null> {
+    return Promise.resolve().then(() =>
+      this.#transaction(() => {
+        const row = this.#database
+          .prepare(
+            `SELECT
+              token_digest AS tokenDigest,
+              principal_id AS principalId,
+              artifact_id AS artifactId,
+              version_id AS versionId,
+              content_token AS contentToken,
+              created_at AS createdAt,
+              expires_at AS expiresAt
+            FROM content_bootstraps
+            WHERE token_digest = ?
+              AND content_token = ?
+              AND consumed_at IS NULL
+              AND expires_at > ?`,
+          )
+          .get(
+            command.bootstrapTokenDigest,
+            command.contentToken,
+            command.exchangedAt,
+          );
+        const bootstrap = contentBootstrapRowSchema.nullable().parse(row ?? null);
+        if (bootstrap === null) return null;
+
+        const consumed = this.#database
+          .prepare(
+            `UPDATE content_bootstraps
+             SET consumed_at = ?
+             WHERE token_digest = ? AND consumed_at IS NULL`,
+          )
+          .run(command.exchangedAt, command.bootstrapTokenDigest);
+        if (consumed.changes !== 1) return null;
+
+        const session: ContentSessionRecord = {
+          artifactId: bootstrap.artifactId,
+          contentToken: bootstrap.contentToken,
+          createdAt: command.session.createdAt,
+          expiresAt: command.session.expiresAt,
+          principalId: bootstrap.principalId,
+          tokenDigest: command.session.tokenDigest,
+          versionId: bootstrap.versionId,
+        };
+        this.#database
+          .prepare(
+            `INSERT INTO content_sessions (
+              token_digest, principal_id, artifact_id, version_id,
+              content_token, created_at, expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            session.tokenDigest,
+            session.principalId,
+            session.artifactId,
+            session.versionId,
+            session.contentToken,
+            session.createdAt,
+            session.expiresAt,
+          );
+        return session;
+      }),
+    );
+  }
+
+  findContentSession(
+    tokenDigest: string,
+    contentToken: string,
+    requestTime: string,
+  ): Promise<ContentSessionRecord | null> {
+    return Promise.resolve().then(() => {
+      const row = this.#database
+        .prepare(
+          `SELECT
+            token_digest AS tokenDigest,
+            principal_id AS principalId,
+            artifact_id AS artifactId,
+            version_id AS versionId,
+            content_token AS contentToken,
+            created_at AS createdAt,
+            expires_at AS expiresAt
+          FROM content_sessions
+          WHERE token_digest = ?
+            AND content_token = ?
+            AND expires_at > ?`,
+        )
+        .get(tokenDigest, contentToken, requestTime);
+      return contentSessionRowSchema.nullable().parse(row ?? null);
     });
   }
 
@@ -487,14 +629,22 @@ export class SqliteArtifactRepository implements ArtifactRepository, StagedUploa
     idempotencyKey: string,
     createdAt: string,
     action: string,
+    principalId: string,
   ): void {
     this.#database
       .prepare(
         `INSERT INTO actions (
           id, artifact_id, version_id, action, principal_id, idempotency_key, created_at
-        ) VALUES (lower(hex(randomblob(16))), ?, ?, ?, 'local-api-token', ?, ?)`,
+        ) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?)`,
       )
-      .run(artifactId, versionId, action, idempotencyKey, createdAt);
+      .run(
+        artifactId,
+        versionId,
+        action,
+        principalId,
+        idempotencyKey,
+        createdAt,
+      );
   }
 
   #assertStagedUploadReady(
@@ -620,6 +770,7 @@ export class SqliteArtifactRepository implements ArtifactRepository, StagedUploa
       CREATE TABLE IF NOT EXISTS artifacts (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
+        owner_principal_id TEXT NOT NULL,
         access_setting TEXT NOT NULL CHECK (access_setting IN ('account_required', 'public_link')),
         current_version_id TEXT,
         created_at TEXT NOT NULL,
@@ -694,13 +845,48 @@ export class SqliteArtifactRepository implements ArtifactRepository, StagedUploa
         PRIMARY KEY (upload_id, path)
       ) STRICT;
 
+      CREATE TABLE IF NOT EXISTS content_bootstraps (
+        token_digest TEXT PRIMARY KEY,
+        principal_id TEXT NOT NULL,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+        version_id TEXT NOT NULL REFERENCES versions(id),
+        content_token TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        consumed_at TEXT
+      ) STRICT;
+
+      CREATE TABLE IF NOT EXISTS content_sessions (
+        token_digest TEXT PRIMARY KEY,
+        principal_id TEXT NOT NULL,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+        version_id TEXT NOT NULL REFERENCES versions(id),
+        content_token TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      ) STRICT;
+
       CREATE INDEX IF NOT EXISTS versions_artifact_id
         ON versions (artifact_id, number);
       CREATE INDEX IF NOT EXISTS manifest_entries_sha256
         ON manifest_entries (sha256);
       CREATE INDEX IF NOT EXISTS staged_uploads_expiry
         ON staged_uploads (status, expires_at);
+      CREATE INDEX IF NOT EXISTS content_bootstraps_expiry
+        ON content_bootstraps (expires_at, consumed_at);
+      CREATE INDEX IF NOT EXISTS content_sessions_expiry
+        ON content_sessions (expires_at);
     `);
+    this.#addArtifactOwnerColumnIfMissing();
+  }
+
+  #addArtifactOwnerColumnIfMissing(): void {
+    const rows = this.#database.prepare("PRAGMA table_info(artifacts)").all();
+    const columns = z.array(z.object({name: z.string()})).parse(rows);
+    if (columns.some((column) => column.name === "owner_principal_id")) return;
+    this.#database.exec(
+      "ALTER TABLE artifacts ADD COLUMN owner_principal_id TEXT NOT NULL DEFAULT 'local-api-token'",
+    );
   }
 
   #readStagedUpload(uploadId: string, principalId: string): StagedUpload {
@@ -805,6 +991,7 @@ export class SqliteArtifactRepository implements ArtifactRepository, StagedUploa
         `SELECT
           a.id AS artifactId,
           a.name AS artifactName,
+          a.owner_principal_id AS ownerPrincipalId,
           a.access_setting AS accessSetting,
           a.current_version_id AS currentVersionId,
           a.created_at AS artifactCreatedAt,
@@ -825,6 +1012,7 @@ export class SqliteArtifactRepository implements ArtifactRepository, StagedUploa
       currentVersionId: parsed.currentVersionId,
       id: parsed.artifactId,
       name: parsed.artifactName,
+      ownerPrincipalId: parsed.ownerPrincipalId,
     };
     const version: VersionRecord = {
       artifactId: parsed.artifactId,

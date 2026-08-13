@@ -33,6 +33,7 @@ export interface ArtifactRecord {
   readonly currentVersionId: string;
   readonly id: string;
   readonly name: string;
+  readonly ownerPrincipalId: string;
 }
 
 export interface ManifestEntry {
@@ -72,6 +73,28 @@ export interface VersionContent {
   readonly contentToken: string;
   readonly entry: ManifestEntry;
   readonly isCurrent: boolean;
+  readonly versionId: string;
+}
+
+/** A one-time authorization to create one version-scoped browser session. */
+export interface ContentBootstrapRecord {
+  readonly artifactId: string;
+  readonly contentToken: string;
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly principalId: string;
+  readonly tokenDigest: string;
+  readonly versionId: string;
+}
+
+/** A read-only browser session scoped to one immutable version origin. */
+export interface ContentSessionRecord {
+  readonly artifactId: string;
+  readonly contentToken: string;
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly principalId: string;
+  readonly tokenDigest: string;
   readonly versionId: string;
 }
 

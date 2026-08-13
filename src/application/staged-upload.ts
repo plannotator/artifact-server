@@ -2,6 +2,7 @@ import { Context, DateTime, Effect, Layer } from "effect";
 
 import {
   type ArtifactRepositoryFailure,
+  type AuthorizationDenied,
   StagingStorageFailure,
   UploadClosed,
   UploadExpired,
@@ -10,6 +11,7 @@ import {
   UploadNotFound,
   type UploadedFileMismatch,
 } from "../core/errors.js";
+import type { Principal } from "../core/identity.js";
 import {
   uploadStatuses,
   type AccessSetting,
@@ -31,6 +33,10 @@ import {
   type PublishingClock,
 } from "./publish-artifact.js";
 import {type ManifestFailure, parseManifest} from "./parse-manifest.js";
+import {
+  type AuthorizationOperations,
+  AuthorizationService,
+} from "./authorization.js";
 
 const uploadLifetimeMilliseconds = 60 * 60 * 1_000;
 
@@ -38,13 +44,13 @@ const uploadLifetimeMilliseconds = 60 * 60 * 1_000;
 export interface CreateStagedUploadCommand {
   readonly entryPath: string;
   readonly files: readonly DeclaredManifestFile[];
-  readonly principalId: string;
+  readonly principal: Principal;
 }
 
 /** Input for streaming one file into a staged upload slot. */
 export interface UploadStagedFileCommand {
   readonly body: ReadableStream<Uint8Array>;
-  readonly principalId: string;
+  readonly principal: Principal;
   readonly storageToken: string;
   readonly uploadId: string;
 }
@@ -65,7 +71,7 @@ export type CommitStagedUploadTarget =
 /** Input for committing a complete staged upload. */
 export interface CommitStagedUploadCommand {
   readonly idempotencyKey: string;
-  readonly principalId: string;
+  readonly principal: Principal;
   readonly target: CommitStagedUploadTarget;
   readonly uploadId: string;
 }
@@ -123,7 +129,8 @@ export type StagedUploadFailure =
   | UploadedFileMismatch
   | ArtifactRepositoryFailure
   | StagingStorageFailure
-  | PublishArtifactFailure;
+  | PublishArtifactFailure
+  | AuthorizationDenied;
 
 interface StagedUploadOperations {
   readonly commitUpload: (
@@ -145,18 +152,25 @@ export class StagedUploadService extends Context.Service<
   /** Construct the service using the shared publication service and staged ports. */
   static readonly layer = (
     dependencies: StagedUploadDependencies,
-  ): Layer.Layer<StagedUploadService, never, PublishArtifactService> =>
+  ): Layer.Layer<
+    StagedUploadService,
+    never,
+    PublishArtifactService | AuthorizationService
+  > =>
     Layer.effect(
       StagedUploadService,
-      PublishArtifactService.use((publish) =>
-        Effect.succeed(makeStagedUploadService(dependencies, publish))
-      ),
+      Effect.gen(function*() {
+        const authorization = yield* AuthorizationService;
+        const publish = yield* PublishArtifactService;
+        return makeStagedUploadService(dependencies, publish, authorization);
+      }),
     );
 }
 
 function makeStagedUploadService(
   dependencies: StagedUploadDependencies,
   publish: PublishArtifactService["Service"],
+  authorization: AuthorizationOperations,
 ): StagedUploadOperations {
   const requiredUpload = Effect.fn("StagedUploadService.requiredUpload")(
     function*(uploadId: string, principalId: string) {
@@ -175,8 +189,9 @@ function makeStagedUploadService(
 
   const createUpload = Effect.fn("StagedUploadService.createUpload")(
     function*(
-      command: CreateStagedUploadCommand,
-    ): Effect.fn.Return<StagedUpload, StagedUploadFailure> {
+    command: CreateStagedUploadCommand,
+  ): Effect.fn.Return<StagedUpload, StagedUploadFailure> {
+      yield* authorization.requirePublicationPreparation(command.principal);
       const manifest = yield* parseManifest({
         entryPath: command.entryPath,
         files: command.files,
@@ -194,16 +209,17 @@ function makeStagedUploadService(
         })),
         id: dependencies.ids.uploadId(),
         manifest,
-        principalId: command.principalId,
+        principalId: command.principal.id,
       });
     },
   );
 
   const uploadFile = Effect.fn("StagedUploadService.uploadFile")(
     function*(
-      command: UploadStagedFileCommand,
-    ): Effect.fn.Return<StagedUpload, StagedUploadFailure> {
-      const upload = yield* requiredUpload(command.uploadId, command.principalId);
+    command: UploadStagedFileCommand,
+  ): Effect.fn.Return<StagedUpload, StagedUploadFailure> {
+      yield* authorization.requirePublicationPreparation(command.principal);
+      const upload = yield* requiredUpload(command.uploadId, command.principal.id);
       yield* ensureUploadAcceptsFiles(upload, yield* dependencies.clock.now);
       const file = upload.files.find(
         (candidate) => candidate.storageToken === command.storageToken,
@@ -224,7 +240,7 @@ function makeStagedUploadService(
       const uploadedAt = DateTime.formatIso(yield* dependencies.clock.now);
       return yield* dependencies.uploads.markStagedFileUploaded(
         upload.id,
-        command.principalId,
+        command.principal.id,
         file.storageToken,
         uploadedAt,
       );
@@ -267,9 +283,10 @@ function makeStagedUploadService(
 
   const commitUpload = Effect.fn("StagedUploadService.commitUpload")(
     function*(
-      command: CommitStagedUploadCommand,
-    ): Effect.fn.Return<PublishedVersion, StagedUploadFailure> {
-      const upload = yield* requiredUpload(command.uploadId, command.principalId);
+    command: CommitStagedUploadCommand,
+  ): Effect.fn.Return<PublishedVersion, StagedUploadFailure> {
+      yield* authorization.requirePublicationPreparation(command.principal);
+      const upload = yield* requiredUpload(command.uploadId, command.principal.id);
       if (upload.status === uploadStatuses.open) {
         yield* ensureUploadNotExpired(upload, yield* dependencies.clock.now);
       }
@@ -281,7 +298,7 @@ function makeStagedUploadService(
       const files = upload.files.map((file) => publicationSource(upload, file));
       const source = {
         kind: "staged_upload" as const,
-        principalId: command.principalId,
+        principalId: command.principal.id,
         uploadId: upload.id,
       };
       switch (command.target.kind) {
@@ -292,6 +309,7 @@ function makeStagedUploadService(
             idempotencyKey: command.idempotencyKey,
             manifest: upload.manifest,
             name: command.target.name,
+            principal: command.principal,
             source,
           });
         case "new_version":
@@ -301,6 +319,7 @@ function makeStagedUploadService(
             files,
             idempotencyKey: command.idempotencyKey,
             manifest: upload.manifest,
+            principal: command.principal,
             source,
           });
       }
