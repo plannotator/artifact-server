@@ -3,7 +3,15 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { DateTime, Effect, Layer, Redacted } from "effect";
 
 import { AuthenticationService } from "../application/authentication.js";
+import {
+  type ArtifactManagementDependencies,
+  ArtifactManagementService,
+} from "../application/artifact-management.js";
 import { AuthorizationService } from "../application/authorization.js";
+import {
+  type CompareArtifactDependencies,
+  CompareArtifactService,
+} from "../application/compare-artifact.js";
 import {
   type ContentAccessDependencies,
   ContentAccessService,
@@ -19,6 +27,7 @@ import {
 } from "../application/staged-upload.js";
 import {
   ArtifactNotFound,
+  ArtifactMutationConflict,
   ArtifactRepositoryFailure,
   AuthenticationRequired,
   BlobStorageFailure,
@@ -31,6 +40,7 @@ import {
   UploadIncomplete,
   UploadNotFound,
   UploadedFileMismatch,
+  VersionNotFound,
 } from "../core/errors.js";
 import {
   membershipRoles,
@@ -44,6 +54,7 @@ import type {
   IdGenerator,
   StagingStore,
 } from "../core/ports.js";
+import type { ManifestEntry } from "../core/model.js";
 import { FileVerificationError } from "../storage/verified-file.js";
 import type { SqliteArtifactRepository } from "../storage/sqlite-artifact-repository.js";
 
@@ -63,7 +74,9 @@ export function createLocalApplicationLayer(
   adapters: LocalApplicationAdapters,
 ): Layer.Layer<
   | AuthenticationService
+  | ArtifactManagementService
   | AuthorizationService
+  | CompareArtifactService
   | ContentAccessService
   | PublishArtifactService
   | StagedUploadService
@@ -183,6 +196,51 @@ export function createLocalApplicationLayer(
         }),
     },
   };
+  const managementDependencies: ArtifactManagementDependencies = {
+    clock,
+    repository: {
+      changeAccessSetting: (command) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.changeAccessSetting(command),
+          catch: classifyChangeAccessFailure,
+        }),
+      findArtifact: (artifactId) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.findArtifact(artifactId),
+          catch: (cause) => repositoryFailure("findArtifact", cause),
+        }),
+      findArtifactVersion: (artifactId, versionId) =>
+        Effect.tryPromise({
+          try: () =>
+            adapters.repository.findArtifactVersion(artifactId, versionId),
+          catch: (cause) => repositoryFailure("findArtifactVersion", cause),
+        }),
+      listArtifactVersions: (artifactId) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.listArtifactVersions(artifactId),
+          catch: (cause) => repositoryFailure("listArtifactVersions", cause),
+        }),
+      restoreVersion: (command) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.restoreVersion(command),
+          catch: classifyRestoreFailure,
+        }),
+    },
+  };
+  const comparisonDependencies: CompareArtifactDependencies = {
+    blobs: {
+      readBytes: (entry) =>
+        Effect.tryPromise({
+          try: () => readBlobBytes(adapters.blobs, entry),
+          catch: (cause) =>
+            new BlobStorageFailure({cause, operation: "open"}),
+        }),
+    },
+    repository: {
+      findArtifact: managementDependencies.repository.findArtifact,
+      findArtifactVersion: managementDependencies.repository.findArtifactVersion,
+    },
+  };
 
   const contentDependencies: ContentAccessDependencies = {
     clock,
@@ -212,6 +270,12 @@ export function createLocalApplicationLayer(
           try: () => adapters.repository.findCurrentVersion(artifactId),
           catch: (cause) => repositoryFailure("findCurrentVersion", cause),
         }),
+      findArtifactVersion: (artifactId, versionId) =>
+        Effect.tryPromise({
+          try: () =>
+            adapters.repository.findArtifactVersion(artifactId, versionId),
+          catch: (cause) => repositoryFailure("findArtifactVersion", cause),
+        }),
       findVersionContent: (contentToken, requestedPath) =>
         Effect.tryPromise({
           try: () =>
@@ -237,8 +301,11 @@ export function createLocalApplicationLayer(
     capabilities: [
       principalCapabilities.createArtifact,
       principalCapabilities.issueContentSession,
+      principalCapabilities.manageAnyArtifact,
+      principalCapabilities.manageOwnedArtifact,
       principalCapabilities.publishAnyArtifact,
       principalCapabilities.publishOwnedArtifact,
+      principalCapabilities.readArtifacts,
     ],
     id: "local-api-token",
     installationId: adapters.installationId,
@@ -271,7 +338,39 @@ export function createLocalApplicationLayer(
   const contentLayer = ContentAccessService.layer(contentDependencies).pipe(
     Layer.provideMerge(authorizationLayer),
   );
-  return Layer.mergeAll(authenticationLayer, stagedLayer, contentLayer);
+  const managementLayer = ArtifactManagementService.layer(
+    managementDependencies,
+  ).pipe(Layer.provideMerge(authorizationLayer));
+  const comparisonLayer = CompareArtifactService.layer(
+    comparisonDependencies,
+  ).pipe(Layer.provideMerge(authorizationLayer));
+  return Layer.mergeAll(
+    authenticationLayer,
+    stagedLayer,
+    contentLayer,
+    managementLayer,
+    comparisonLayer,
+  );
+}
+
+async function readBlobBytes(
+  blobs: BlobStore,
+  entry: ManifestEntry,
+): Promise<Uint8Array> {
+  const opened = await blobs.open(entry.sha256);
+  if (opened.size !== entry.size) {
+    await opened.body.cancel();
+    throw new Error(
+      `Stored blob ${entry.sha256} is ${opened.size} bytes but its manifest records ${entry.size}.`,
+    );
+  }
+  const bytes = new Uint8Array(await new Response(opened.body).arrayBuffer());
+  if (bytes.byteLength !== entry.size) {
+    throw new Error(
+      `Stored blob ${entry.sha256} yielded ${bytes.byteLength} bytes but its manifest records ${entry.size}.`,
+    );
+  }
+  return bytes;
 }
 
 function credentialsEqual(actualToken: string, expectedToken: string): boolean {
@@ -323,6 +422,38 @@ function classifyCommitVersionFailure(cause: unknown) {
     return cause;
   }
   return repositoryFailure("commitVersion", cause);
+}
+
+function classifyChangeAccessFailure(cause: unknown):
+  | ArtifactNotFound
+  | ArtifactMutationConflict
+  | IdempotencyConflict
+  | ArtifactRepositoryFailure {
+  if (
+    cause instanceof ArtifactNotFound ||
+    cause instanceof ArtifactMutationConflict ||
+    cause instanceof IdempotencyConflict
+  ) {
+    return cause;
+  }
+  return repositoryFailure("changeAccessSetting", cause);
+}
+
+function classifyRestoreFailure(cause: unknown):
+  | ArtifactNotFound
+  | ArtifactMutationConflict
+  | IdempotencyConflict
+  | VersionNotFound
+  | ArtifactRepositoryFailure {
+  if (
+    cause instanceof ArtifactNotFound ||
+    cause instanceof ArtifactMutationConflict ||
+    cause instanceof IdempotencyConflict ||
+    cause instanceof VersionNotFound
+  ) {
+    return cause;
+  }
+  return repositoryFailure("restoreVersion", cause);
 }
 
 function repositoryFailure(

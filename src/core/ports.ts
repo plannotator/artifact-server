@@ -1,10 +1,14 @@
 import type {
   AccessSetting,
+  ArtifactState,
+  ArtifactVersion,
+  ArtifactRecord,
   CanonicalManifest,
   ContentBootstrapRecord,
   ContentSessionRecord,
   PublishedVersion,
   StagedUpload,
+  VersionRecord,
   VersionContent,
 } from "./model.js";
 
@@ -61,6 +65,7 @@ export interface CommitNewArtifact {
   readonly name: string;
   readonly ownerPrincipalId: string;
   readonly principalId: string;
+  readonly authorizedByPrincipalId: string | null;
   readonly source: PublicationSource;
   readonly versionId: string;
 }
@@ -74,8 +79,33 @@ export interface CommitArtifactVersion {
   readonly inputDigest: string;
   readonly manifest: CanonicalManifest;
   readonly principalId: string;
+  readonly authorizedByPrincipalId: string | null;
   readonly source: PublicationSource;
   readonly versionId: string;
+}
+
+/** Values used to atomically restore one existing saved version. */
+export interface RestoreArtifactVersion {
+  readonly artifactId: string;
+  readonly authorizedByPrincipalId: string | null;
+  readonly createdAt: string;
+  readonly expectedCurrentVersionId: string;
+  readonly idempotencyKey: string;
+  readonly inputDigest: string;
+  readonly principalId: string;
+  readonly versionId: string;
+}
+
+/** Values used to atomically change one artifact's read setting. */
+export interface ChangeArtifactAccessSetting {
+  readonly accessSetting: AccessSetting;
+  readonly artifactId: string;
+  readonly authorizedByPrincipalId: string | null;
+  readonly createdAt: string;
+  readonly expectedCurrentVersionId: string;
+  readonly idempotencyKey: string;
+  readonly inputDigest: string;
+  readonly principalId: string;
 }
 
 /** Values persisted when issuing a one-time private-content bootstrap. */
@@ -114,12 +144,20 @@ export interface ArtifactRepository {
   close(): void;
   commitNewArtifact(command: CommitNewArtifact): Promise<PublishedVersion>;
   commitVersion(command: CommitArtifactVersion): Promise<PublishedVersion>;
+  changeAccessSetting(command: ChangeArtifactAccessSetting): Promise<ArtifactState>;
+  findArtifact(artifactId: string): Promise<ArtifactRecord | null>;
+  findArtifactVersion(
+    artifactId: string,
+    versionId: string,
+  ): Promise<ArtifactVersion | null>;
   findCurrentVersion(artifactId: string): Promise<PublishedVersion | null>;
   findIdempotentPublication(
     idempotencyKey: string,
     inputDigest: string,
   ): Promise<PublishedVersion | null>;
   findVersionContent(contentToken: string, path: string): Promise<VersionContent | null>;
+  listArtifactVersions(artifactId: string): Promise<readonly VersionRecord[]>;
+  restoreVersion(command: RestoreArtifactVersion): Promise<ArtifactState>;
 }
 
 /** Persistent capabilities required by private browser content sessions. */

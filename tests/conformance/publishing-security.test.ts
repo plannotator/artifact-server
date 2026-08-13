@@ -5,6 +5,7 @@ import {
   expect,
   test,
 } from "vitest";
+import { z } from "zod";
 
 import {
   apiHeaders,
@@ -95,7 +96,7 @@ describe("local publishing security boundaries", () => {
     expect(response.status).toBe(404);
   });
 
-  test("foundation: API publication requires the configured token and creates nothing on rejection", async () => {
+  test("ART-002-F: API publication requires a trusted principal and creates nothing on rejection", async () => {
     const idempotencyKey = "authentication-rejection-does-not-write";
     const requestBody = JSON.stringify({
       accessSetting: "public_link",
@@ -124,6 +125,47 @@ describe("local publishing security boundaries", () => {
     expect(authorized.status).toBe(201);
     const published = parsePublishResponse(await authorized.json());
     expect(published.artifact.ownerPrincipalId).toBe("local-api-token");
+  });
+
+  test("AUTH-002-B: account-required is the default and an admitted principal can open it", async () => {
+    const response = await fetch(`${server.baseUrl}/api/v1/artifacts`, {
+      body: JSON.stringify({
+        file: {
+          contentBase64: Buffer.from("<title>Private by default</title>")
+            .toString("base64"),
+          mediaType: "text/html",
+          path: "index.html",
+        },
+        name: "Default private artifact",
+      }),
+      headers: apiHeaders(installation, "default-account-required-setting"),
+      method: "POST",
+    });
+    expect(response.status).toBe(201);
+    const published = parsePublishResponse(await response.json());
+    expect(published.artifact.accessSetting).toBe("account_required");
+    expect((await fetchVersion(server, published.links.version)).status).toBe(401);
+
+    const bootstrapResponse = await fetch(
+      `${server.baseUrl}/api/v1/artifacts/${published.artifact.id}/content-sessions`,
+      {
+        headers: {Authorization: `Bearer ${installation.apiToken}`},
+        method: "POST",
+      },
+    );
+    const bootstrap = z.object({bootstrapUrl: z.url()}).parse(
+      await bootstrapResponse.json(),
+    );
+    const exchange = await fetchVersion(server, bootstrap.bootstrapUrl);
+    const cookie = exchange.headers.get("set-cookie");
+    expect(cookie).not.toBeNull();
+    const opened = await fetchVersion(
+      server,
+      published.links.version,
+      "GET",
+      {Cookie: cookie ?? ""},
+    );
+    expect(await opened.text()).toContain("Private by default");
   });
 
   test("foundation: malformed and oversized API requests fail as client errors without destabilizing the server", async () => {

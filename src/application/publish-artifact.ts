@@ -9,7 +9,7 @@ import {
   type BlobStorageFailure,
   type IdempotencyConflict,
   InvalidArtifactName,
-  InvalidIdempotencyKey,
+  type InvalidIdempotencyKey,
   type PublishConflict,
   type StagingStorageFailure,
   type UploadClosed,
@@ -39,6 +39,8 @@ import {
   type AuthorizationOperations,
   AuthorizationService,
 } from "./authorization.js";
+import type { ApplicationClock } from "./application-clock.js";
+import { parseIdempotencyKey } from "./idempotency-key.js";
 
 /** Input for publishing one inline file as a new artifact. */
 export interface PublishNewArtifactCommand {
@@ -136,15 +138,10 @@ export interface PublishBlobStorage {
   put(write: BlobWrite): Effect.Effect<StoredBlob, BlobStorageFailure>;
 }
 
-/** Testable current-time capability used by publishing operations. */
-export interface PublishingClock {
-  readonly now: Effect.Effect<DateTime.Utc>;
-}
-
 /** Dependencies used to construct the publication application service. */
 export interface PublishArtifactDependencies {
   readonly blobs: PublishBlobStorage;
-  readonly clock: PublishingClock;
+  readonly clock: ApplicationClock;
   readonly ids: IdGenerator;
   readonly repository: PublishArtifactRepository;
 }
@@ -196,11 +193,7 @@ export class PublishArtifactService extends Context.Service<
 }
 
 const artifactNameSchema = Schema.Trim.check(Schema.isLengthBetween(1, 200));
-const idempotencyKeySchema = Schema.String.check(
-  Schema.isLengthBetween(16, 200),
-);
 const decodeArtifactName = Schema.decodeUnknownEffect(artifactNameSchema);
-const decodeIdempotencyKey = Schema.decodeUnknownEffect(idempotencyKeySchema);
 
 function makePublishArtifactService(
   dependencies: PublishArtifactDependencies,
@@ -284,6 +277,7 @@ function makePublishArtifactService(
       name,
       ownerPrincipalId: command.principal.id,
       principalId: command.principal.id,
+      authorizedByPrincipalId: command.principal.authorizedByPrincipalId,
       source: command.source,
       versionId: dependencies.ids.versionId(),
     });
@@ -339,6 +333,7 @@ function makePublishArtifactService(
       inputDigest,
       manifest: command.manifest,
       principalId: command.principal.id,
+      authorizedByPrincipalId: command.principal.authorizedByPrincipalId,
       source: command.source,
       versionId: dependencies.ids.versionId(),
     });
@@ -386,18 +381,6 @@ function makePublishArtifactService(
     publishPreparedVersion,
     publishVersion,
   });
-}
-
-function parseIdempotencyKey(
-  candidate: string,
-): Effect.Effect<string, InvalidIdempotencyKey> {
-  return decodeIdempotencyKey(candidate).pipe(
-    Effect.mapError(() =>
-      new InvalidIdempotencyKey({
-        message: "Idempotency keys must contain between 16 and 200 characters.",
-      })
-    ),
-  );
 }
 
 interface NewArtifactDigestInput {

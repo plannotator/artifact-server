@@ -20,7 +20,7 @@ describe("local immutable blob storage", () => {
     await rm(directory, {force: true, recursive: true});
   });
 
-  test("PUB-004-F: a conflicting stream cannot replace an existing fingerprint", async () => {
+  test("ART-004-F PUB-004-F: a conflicting stream cannot replace an existing fingerprint", async () => {
     const original = Buffer.from("the original immutable bytes");
     const digest = createHash("sha256").update(original).digest("hex");
     await store.put({

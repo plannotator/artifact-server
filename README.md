@@ -16,11 +16,17 @@ This repository contains the local publication foundation. It is not the complet
 - intentional version publication with stale-write protection;
 - idempotent retries;
 - provider-neutral principals with ownership and explicit capability policy;
+- authenticated artifact metadata, saved-version history, and canonical manifests;
+- manifest-based file comparisons with unambiguous rename detection;
+- bounded line comparisons for text and metadata-only binary comparisons;
+- pointer-only restore of an existing immutable version;
+- atomic changes between account-required and public-link access;
 - public-link delivery and version-scoped account-required browser sessions;
 - single-use private-content bootstraps and host-only, HttpOnly content cookies;
+- authenticated browser sessions for current or earlier exact versions;
 - persistence of committed versions and in-progress uploads across a full server restart.
 
-Human browser login, API-key management, SPA routing, comparisons, restore, MCP, Agent Skills, optional Git, expired-staging cleanup, and non-local deployments remain to be implemented in the order defined by the specification.
+Human browser login, API-key management, SPA routing, deletion, ownership changes, MCP, Agent Skills, optional Git, expired-staging cleanup, and non-local deployments remain to be implemented in the order defined by the specification.
 
 ## Run locally
 
@@ -61,6 +67,13 @@ authenticated `POST` to
 `bootstrapUrl`. The content host exchanges it once and redirects to the clean
 version URL. The resulting cookie can read only that immutable version.
 
+Authenticated management routes are available beneath
+`/api/v1/artifacts/{artifactId}`. They return the current artifact record,
+canonical manifests, and saved-version history; compare any two saved versions;
+move the current pointer back to an existing version; and change the artifact's
+access setting. Restore and access changes require an idempotency key and the
+current version ID observed by the caller.
+
 ## Publish a complete site
 
 Complete sites use the staged-upload contract instead of placing every file inside one JSON request:
@@ -97,7 +110,8 @@ The readable proposal and executable checklist are in [`spec/`](./spec/):
 ```text
 src/core          product records, errors, and provider ports
 src/manifest      portable path validation and canonical manifests
-src/application   Effect services for identity, authorization, content access, and publication
+src/comparison    pure canonical-manifest comparison rules
+src/application   Effect services for identity, authorization, publication, management, comparison, and content access
 src/storage       SQLite, local staging, and immutable-blob adapters
 src/http          HTTP authentication, publication, links, and delivery
 src/local         local adapters, Effect layers, and composition root

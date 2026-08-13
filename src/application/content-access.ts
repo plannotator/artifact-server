@@ -12,12 +12,14 @@ import {
   type AuthorizationDenied,
   ContentBootstrapRejected,
   ContentSessionRequired,
+  VersionNotFound,
 } from "../core/errors.js";
 import type { Principal } from "../core/identity.js";
 import {
   accessSettings,
   type ContentBootstrapRecord,
   type ContentSessionRecord,
+  type ArtifactVersion,
   type PublishedVersion,
   type VersionContent,
 } from "../core/model.js";
@@ -29,7 +31,7 @@ import {
   type AuthorizationOperations,
   AuthorizationService,
 } from "./authorization.js";
-import type { PublishingClock } from "./publish-artifact.js";
+import type { ApplicationClock } from "./application-clock.js";
 
 const bootstrapLifetimeMilliseconds = 2 * 60 * 1_000;
 const contentSessionLifetimeMilliseconds = 15 * 60 * 1_000;
@@ -62,6 +64,10 @@ export interface ContentAccessRepository {
   readonly findCurrentVersion: (
     artifactId: string,
   ) => Effect.Effect<PublishedVersion | null, ArtifactRepositoryFailure>;
+  readonly findArtifactVersion: (
+    artifactId: string,
+    versionId: string,
+  ) => Effect.Effect<ArtifactVersion | null, ArtifactRepositoryFailure>;
   readonly findVersionContent: (
     contentToken: string,
     path: string,
@@ -70,7 +76,7 @@ export interface ContentAccessRepository {
 
 /** Dependencies used to construct private and public content access. */
 export interface ContentAccessDependencies {
-  readonly clock: PublishingClock;
+  readonly clock: ApplicationClock;
   readonly repository: ContentAccessRepository;
   readonly secrets: ContentSecretProvider;
 }
@@ -93,6 +99,9 @@ export interface IssuedContentSession {
 export interface IssueContentBootstrapCommand {
   readonly artifactId: string;
   readonly principal: Principal;
+  readonly target:
+    | {readonly kind: "current"}
+    | {readonly kind: "version"; readonly versionId: string};
 }
 
 /** Input for exchanging a one-time bootstrap on its bound content host. */
@@ -114,6 +123,7 @@ export type ContentAccessFailure =
   | AuthorizationDenied
   | ContentBootstrapRejected
   | ContentSessionRequired
+  | VersionNotFound
   | ArtifactRepositoryFailure;
 
 interface ContentAccessOperations {
@@ -168,6 +178,17 @@ function makeContentAccessService(
       command.principal,
       current.artifact,
     );
+    const target = command.target.kind === "current"
+      ? current.version
+      : (yield* dependencies.repository.findArtifactVersion(
+        current.artifact.id,
+        command.target.versionId,
+      ))?.version;
+    if (target === undefined) {
+      return yield* Effect.fail(
+        new VersionNotFound({message: "The saved version does not exist on this artifact."}),
+      );
+    }
 
     const now = yield* dependencies.clock.now;
     const secret = dependencies.secrets.issue();
@@ -176,18 +197,18 @@ function makeContentAccessService(
     );
     yield* dependencies.repository.createContentBootstrap({
       artifactId: current.artifact.id,
-      contentToken: current.version.contentToken,
+      contentToken: target.contentToken,
       createdAt: DateTime.formatIso(now),
       expiresAt,
       principalId: command.principal.id,
       tokenDigest: secret.digest,
-      versionId: current.version.id,
+      versionId: target.id,
     });
     return {
-      contentToken: current.version.contentToken,
+      contentToken: target.contentToken,
       expiresAt,
       token: secret.token,
-      versionId: current.version.id,
+      versionId: target.id,
     };
   });
 

@@ -20,6 +20,14 @@ export interface AuthorizationOperations {
   readonly requireArtifactCreation: (
     principal: Principal,
   ) => Effect.Effect<void, AuthorizationDenied>;
+  readonly requireArtifactManagement: (
+    principal: Principal,
+    artifact: ArtifactRecord,
+  ) => Effect.Effect<void, AuthorizationDenied>;
+  readonly requireArtifactRead: (
+    principal: Principal,
+    artifact: ArtifactRecord,
+  ) => Effect.Effect<void, AuthorizationDenied>;
   readonly requireContentSession: (
     principal: Principal,
     artifact: ArtifactRecord,
@@ -84,6 +92,47 @@ function makeAuthorizationService(
     yield* denied();
   });
 
+  const requireArtifactRead = Effect.fn(
+    "AuthorizationService.requireArtifactRead",
+  )(function*(principal: Principal, artifact: ArtifactRecord) {
+    yield* requireInstallation(principal);
+    if (
+      principal.kind === principalKinds.human ||
+      hasCapability(principal, principalCapabilities.readArtifacts) ||
+      hasCapability(principal, principalCapabilities.manageAnyArtifact) ||
+      (
+        principal.id === artifact.ownerPrincipalId &&
+        hasCapability(principal, principalCapabilities.manageOwnedArtifact)
+      )
+    ) {
+      return;
+    }
+    yield* denied();
+  });
+
+  const requireArtifactManagement = Effect.fn(
+    "AuthorizationService.requireArtifactManagement",
+  )(function*(principal: Principal, artifact: ArtifactRecord) {
+    yield* requireInstallation(principal);
+    if (isHumanAdministrator(principal)) return;
+    if (
+      principal.kind === principalKinds.human &&
+      principal.id === artifact.ownerPrincipalId
+    ) {
+      return;
+    }
+    if (
+      hasCapability(principal, principalCapabilities.manageAnyArtifact) ||
+      (
+        principal.id === artifact.ownerPrincipalId &&
+        hasCapability(principal, principalCapabilities.manageOwnedArtifact)
+      )
+    ) {
+      return;
+    }
+    yield* denied();
+  });
+
   const requirePublicationPreparation = Effect.fn(
     "AuthorizationService.requirePublicationPreparation",
   )(function*(principal: Principal) {
@@ -124,6 +173,8 @@ function makeAuthorizationService(
 
   return AuthorizationService.of({
     requireArtifactCreation,
+    requireArtifactManagement,
+    requireArtifactRead,
     requireContentSession,
     requirePublicationPreparation,
     requireVersionPublication,

@@ -83,6 +83,7 @@ export interface OperationSummary {
 
 export interface LocalBaselineReport {
   readonly checks: {
+    readonly comparisonEndpoint: "passed";
     readonly healthEndpoint: "passed";
     readonly previousVersionDeniedAfterRestart: "passed";
     readonly restartPersistence: "passed";
@@ -115,6 +116,7 @@ export interface LocalBaselineReport {
     readonly systemMilliseconds: number;
     readonly userMilliseconds: number;
   };
+  readonly comparison: OperationSummary;
   readonly publish: OperationSummary;
   readonly read: OperationSummary;
   readonly restartMilliseconds: number;
@@ -177,6 +179,14 @@ export async function runLocalBaseline(
     await assertHealthy(server);
     await assertStableVersion(server, updated.body, configuration.payloadBytes);
     await assertDeniedVersion(server, previousVersionUrl);
+    const comparisons = await measureComparisons(
+      server,
+      installation.apiToken,
+      anchor,
+      updated.body,
+      Math.min(configuration.publications, 20),
+      configuration.concurrency,
+    );
 
     const storage = await measureStorage(installation.dataDirectory);
     const memoryAfter = process.memoryUsage();
@@ -187,6 +197,7 @@ export async function runLocalBaseline(
 
     const reportWithoutWarnings = {
       checks: {
+        comparisonEndpoint: "passed" as const,
         healthEndpoint: "passed" as const,
         previousVersionDeniedAfterRestart: "passed" as const,
         restartPersistence: "passed" as const,
@@ -213,6 +224,7 @@ export async function runLocalBaseline(
         systemMilliseconds: round(cpu.system / 1_000),
         userMilliseconds: round(cpu.user / 1_000),
       },
+      comparison: comparisons,
       publish: publications.summary,
       read: reads,
       restartMilliseconds,
@@ -229,6 +241,48 @@ export async function runLocalBaseline(
     if (server !== null) await server.stop();
     await removeTestInstallation(installation);
   }
+}
+
+async function measureComparisons(
+  server: RunningTestServer,
+  apiToken: string,
+  from: PublishResponse,
+  to: PublishResponse,
+  count: number,
+  concurrency: number,
+): Promise<OperationSummary> {
+  const latencies = Array.from<number>({length: count});
+  const query = new URLSearchParams({
+    fromVersionId: from.version.id,
+    toVersionId: to.version.id,
+  });
+  const url = `${server.baseUrl}/api/v1/artifacts/${from.artifact.id}/comparisons?${query}`;
+  const phaseStartedAt = performance.now();
+  await runBounded(count, concurrency, async (index) => {
+    const startedAt = performance.now();
+    const response = await fetch(url, {
+      headers: {Authorization: `Bearer ${apiToken}`},
+    });
+    if (response.status !== 200) {
+      throw new Error(`A comparison request returned ${response.status}.`);
+    }
+    const comparison = z.object({
+      changed: z.array(z.object({detail: z.unknown()})).min(1),
+      from: z.object({id: z.string()}),
+      to: z.object({id: z.string()}),
+    }).parse(await response.json());
+    if (
+      comparison.from.id !== from.version.id ||
+      comparison.to.id !== to.version.id
+    ) {
+      throw new Error("A comparison response referenced the wrong versions.");
+    }
+    latencies[index] = performance.now() - startedAt;
+  });
+  return summarizeOperations(
+    z.array(z.number()).length(count).parse(latencies),
+    performance.now() - phaseStartedAt,
+  );
 }
 
 async function assertHealthy(server: RunningTestServer): Promise<void> {
@@ -518,12 +572,16 @@ function environmentSummary(): LocalBaselineReport["environment"] {
 }
 
 function baselineWarnings(report: {
+  readonly comparison: OperationSummary;
   readonly eventLoop: LocalBaselineReport["eventLoop"];
   readonly memory: LocalBaselineReport["memory"];
   readonly publish: OperationSummary;
   readonly read: OperationSummary;
 }): readonly string[] {
   const warnings: string[] = [];
+  if (report.comparison.latency.p95Milliseconds > 250) {
+    warnings.push("Comparison p95 exceeded the local investigation threshold of 250 ms.");
+  }
   if (report.publish.latency.p95Milliseconds > 250) {
     warnings.push("Publish p95 exceeded the local investigation threshold of 250 ms.");
   }

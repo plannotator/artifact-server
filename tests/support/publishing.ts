@@ -12,6 +12,7 @@ const publishResponseSchema = z.object({
     accessSetting: z.enum(["account_required", "public_link"]),
     createdAt: z.string(),
     currentVersionId: z.string(),
+    deletedAt: z.string().nullable(),
     id: z.string(),
     name: z.string(),
     ownerPrincipalId: z.string(),
@@ -22,9 +23,12 @@ const publishResponseSchema = z.object({
     artifactId: z.string(),
     contentToken: z.string(),
     createdAt: z.string(),
+    entryPath: z.string(),
     id: z.string(),
     manifestDigest: z.string(),
     number: z.number().int().positive(),
+    publisherPrincipalId: z.string(),
+    routingMode: z.literal("static"),
   }),
 });
 

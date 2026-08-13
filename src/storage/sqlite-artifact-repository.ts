@@ -3,6 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 
 import {
+  ArtifactMutationConflict,
   ArtifactNotFound,
   IdempotencyConflict,
   PublishConflict,
@@ -11,6 +12,7 @@ import {
   UploadFileNotFound,
   UploadIncomplete,
   UploadNotFound,
+  VersionNotFound,
 } from "../core/errors.js";
 import {
   accessSettings,
@@ -18,6 +20,8 @@ import {
   routingModes,
   uploadStatuses,
   type ArtifactRecord,
+  type ArtifactState,
+  type ArtifactVersion,
   type ContentBootstrapRecord,
   type ContentSessionRecord,
   type ManifestEntry,
@@ -29,6 +33,7 @@ import {
 } from "../core/model.js";
 import type {
   ArtifactRepository,
+  ChangeArtifactAccessSetting,
   CommitArtifactVersion,
   CommitNewArtifact,
   ContentSessionRepository,
@@ -36,6 +41,7 @@ import type {
   CreateStagedUpload,
   ExchangeContentBootstrap,
   PublicationSource,
+  RestoreArtifactVersion,
   StagedUploadRepository,
 } from "../core/ports.js";
 import { createManifest } from "../manifest/create-manifest.js";
@@ -56,12 +62,16 @@ const routingModeSchema = z.enum([routingModes.static]);
 const publishedRowSchema = z.object({
   accessSetting: accessSettingSchema,
   artifactCreatedAt: z.string(),
+  artifactDeletedAt: z.string().nullable(),
   artifactId: z.string(),
   artifactName: z.string(),
   contentToken: z.string(),
   currentVersionId: z.string(),
+  entryPath: z.string(),
   manifestDigest: z.string(),
   ownerPrincipalId: z.string(),
+  publisherPrincipalId: z.string(),
+  routingMode: routingModeSchema,
   versionCreatedAt: z.string(),
   versionId: z.string(),
   versionNumber: z.number().int().positive(),
@@ -77,8 +87,38 @@ const contentBootstrapRowSchema = z.object({
 });
 const contentSessionRowSchema = contentBootstrapRowSchema;
 const idempotencyRowSchema = z.object({
+  accessSetting: accessSettingSchema.nullable(),
+  artifactId: z.string(),
   inputDigest: z.string(),
+  operation: z.enum(["change_access", "publish", "restore"]),
   versionId: z.string(),
+});
+const artifactRowSchema = z.object({
+  accessSetting: accessSettingSchema,
+  createdAt: z.string(),
+  currentVersionId: z.string(),
+  deletedAt: z.string().nullable(),
+  id: z.string(),
+  name: z.string(),
+  ownerPrincipalId: z.string(),
+});
+const versionRowSchema = z.object({
+  artifactId: z.string(),
+  contentToken: z.string(),
+  createdAt: z.string(),
+  entryPath: z.string(),
+  id: z.string(),
+  manifestDigest: z.string(),
+  number: z.number().int().positive(),
+  publisherPrincipalId: z.string(),
+  routingMode: routingModeSchema,
+});
+const storedManifestEntryRowSchema = z.object({
+  disposition: dispositionSchema,
+  mediaType: z.string(),
+  path: z.string(),
+  sha256: z.string(),
+  size: z.number().int().nonnegative(),
 });
 const versionContentRowSchema = z.object({
   accessSetting: accessSettingSchema,
@@ -198,6 +238,7 @@ export class SqliteArtifactRepository implements
           command.createdAt,
           1,
           command.manifest,
+          command.principalId,
         );
         this.#database
           .prepare("UPDATE artifacts SET current_version_id = ? WHERE id = ?")
@@ -209,6 +250,7 @@ export class SqliteArtifactRepository implements
           command.createdAt,
           "publish",
           command.principalId,
+          command.authorizedByPrincipalId,
         );
         this.#insertIdempotency(
           command.idempotencyKey,
@@ -276,6 +318,7 @@ export class SqliteArtifactRepository implements
           command.createdAt,
           nextNumber,
           command.manifest,
+          command.principalId,
         );
         const update = this.#database
           .prepare(
@@ -301,6 +344,7 @@ export class SqliteArtifactRepository implements
           command.createdAt,
           "publish",
           command.principalId,
+          command.authorizedByPrincipalId,
         );
         this.#insertIdempotency(
           command.idempotencyKey,
@@ -314,6 +358,83 @@ export class SqliteArtifactRepository implements
         return this.#readPublishedVersion(command.versionId, false);
       }),
     );
+  }
+
+  changeAccessSetting(
+    command: ChangeArtifactAccessSetting,
+  ): Promise<ArtifactState> {
+    return Promise.resolve().then(() =>
+      this.#transaction(() => {
+        const replayed = this.#findIdempotentManagementResult(
+          "change_access",
+          command.idempotencyKey,
+          command.inputDigest,
+        );
+        if (replayed !== null) return replayed;
+        const artifact = this.#readArtifact(command.artifactId);
+        this.#assertExpectedCurrentVersion(
+          artifact,
+          command.expectedCurrentVersionId,
+        );
+        const update = this.#database
+          .prepare(
+            `UPDATE artifacts
+             SET access_setting = ?
+             WHERE id = ? AND current_version_id = ? AND deleted_at IS NULL`,
+          )
+          .run(
+            command.accessSetting,
+            command.artifactId,
+            command.expectedCurrentVersionId,
+          );
+        if (update.changes !== 1) {
+          throw changedDuringManagement();
+        }
+        this.#insertAction(
+          command.artifactId,
+          command.expectedCurrentVersionId,
+          command.idempotencyKey,
+          command.createdAt,
+          "change_access",
+          command.principalId,
+          command.authorizedByPrincipalId,
+        );
+        this.#insertIdempotency(
+          command.idempotencyKey,
+          command.inputDigest,
+          command.artifactId,
+          command.expectedCurrentVersionId,
+          command.createdAt,
+          "change_access",
+          command.accessSetting,
+        );
+        return this.#readArtifactState(
+          command.artifactId,
+          command.expectedCurrentVersionId,
+          command.accessSetting,
+          false,
+        );
+      }),
+    );
+  }
+
+  findArtifact(artifactId: string): Promise<ArtifactRecord | null> {
+    return Promise.resolve().then(() => this.#readArtifactOrNull(artifactId));
+  }
+
+  findArtifactVersion(
+    artifactId: string,
+    versionId: string,
+  ): Promise<ArtifactVersion | null> {
+    return Promise.resolve().then(() => {
+      if (this.#readArtifactOrNull(artifactId) === null) return null;
+      const version = this.#readVersionOrNull(versionId, artifactId);
+      if (version === null) return null;
+      return {
+        manifest: this.#readManifest(version),
+        version,
+      };
+    });
   }
 
   findCurrentVersion(artifactId: string): Promise<PublishedVersion | null> {
@@ -333,6 +454,91 @@ export class SqliteArtifactRepository implements
         ? null
         : this.#readPublishedVersion(result.currentVersionId, false);
     });
+  }
+
+  listArtifactVersions(artifactId: string): Promise<readonly VersionRecord[]> {
+    return Promise.resolve().then(() => {
+      if (this.#readArtifactOrNull(artifactId) === null) return [];
+      const rows = this.#database
+        .prepare(
+          `SELECT
+            id,
+            artifact_id AS artifactId,
+            number,
+            manifest_digest AS manifestDigest,
+            entry_path AS entryPath,
+            routing_mode AS routingMode,
+            content_token AS contentToken,
+            publisher_principal_id AS publisherPrincipalId,
+            created_at AS createdAt
+           FROM versions
+           WHERE artifact_id = ?
+           ORDER BY number DESC`,
+        )
+        .all(artifactId);
+      return z.array(versionRowSchema).parse(rows);
+    });
+  }
+
+  restoreVersion(command: RestoreArtifactVersion): Promise<ArtifactState> {
+    return Promise.resolve().then(() =>
+      this.#transaction(() => {
+        const replayed = this.#findIdempotentManagementResult(
+          "restore",
+          command.idempotencyKey,
+          command.inputDigest,
+        );
+        if (replayed !== null) return replayed;
+        const artifact = this.#readArtifact(command.artifactId);
+        this.#assertExpectedCurrentVersion(
+          artifact,
+          command.expectedCurrentVersionId,
+        );
+        if (this.#readVersionOrNull(command.versionId, command.artifactId) === null) {
+          throw new VersionNotFound({
+            message: "The saved version does not exist on this artifact.",
+          });
+        }
+        const update = this.#database
+          .prepare(
+            `UPDATE artifacts
+             SET current_version_id = ?
+             WHERE id = ? AND current_version_id = ? AND deleted_at IS NULL`,
+          )
+          .run(
+            command.versionId,
+            command.artifactId,
+            command.expectedCurrentVersionId,
+          );
+        if (update.changes !== 1) {
+          throw changedDuringManagement();
+        }
+        this.#insertAction(
+          command.artifactId,
+          command.versionId,
+          command.idempotencyKey,
+          command.createdAt,
+          "restore",
+          command.principalId,
+          command.authorizedByPrincipalId,
+        );
+        this.#insertIdempotency(
+          command.idempotencyKey,
+          command.inputDigest,
+          command.artifactId,
+          command.versionId,
+          command.createdAt,
+          "restore",
+          artifact.accessSetting,
+        );
+        return this.#readArtifactState(
+          command.artifactId,
+          command.versionId,
+          artifact.accessSetting,
+          false,
+        );
+      }),
+    );
   }
 
   findIdempotentPublication(
@@ -602,20 +808,183 @@ export class SqliteArtifactRepository implements
     );
   }
 
-  #findIdempotentResult(
+  #assertExpectedCurrentVersion(
+    artifact: ArtifactRecord,
+    expectedCurrentVersionId: string,
+  ): void {
+    if (artifact.currentVersionId !== expectedCurrentVersionId) {
+      throw new ArtifactMutationConflict({
+        message: `The artifact moved to version ${artifact.currentVersionId}.`,
+      });
+    }
+  }
+
+  #findIdempotentManagementResult(
+    operation: "change_access" | "restore",
     idempotencyKey: string,
     inputDigest: string,
-  ): PublishedVersion | null {
+  ): ArtifactState | null {
     const row = this.#database
       .prepare(
-        `SELECT input_digest AS inputDigest, version_id AS versionId
+        `SELECT
+          access_setting AS accessSetting,
+          artifact_id AS artifactId,
+          input_digest AS inputDigest,
+          operation,
+          version_id AS versionId
          FROM idempotency_records
          WHERE idempotency_key = ?`,
       )
       .get(idempotencyKey);
     const parsed = idempotencyRowSchema.nullable().parse(row ?? null);
     if (parsed === null) return null;
-    if (parsed.inputDigest !== inputDigest) {
+    if (
+      parsed.inputDigest !== inputDigest ||
+      parsed.operation !== operation ||
+      parsed.accessSetting === null
+    ) {
+      throw new IdempotencyConflict({
+        message: "The idempotency key was already used with different input.",
+      });
+    }
+    return this.#readArtifactState(
+      parsed.artifactId,
+      parsed.versionId,
+      parsed.accessSetting,
+      true,
+    );
+  }
+
+  #readArtifact(artifactId: string): ArtifactRecord {
+    const artifact = this.#readArtifactOrNull(artifactId);
+    if (artifact === null) {
+      throw new ArtifactNotFound({message: "The artifact does not exist."});
+    }
+    return artifact;
+  }
+
+  #readArtifactOrNull(artifactId: string): ArtifactRecord | null {
+    const row = this.#database
+      .prepare(
+        `SELECT
+          id,
+          name,
+          owner_principal_id AS ownerPrincipalId,
+          access_setting AS accessSetting,
+          current_version_id AS currentVersionId,
+          created_at AS createdAt,
+          deleted_at AS deletedAt
+         FROM artifacts
+         WHERE id = ? AND deleted_at IS NULL`,
+      )
+      .get(artifactId);
+    return artifactRowSchema.nullable().parse(row ?? null);
+  }
+
+  #readArtifactState(
+    artifactId: string,
+    versionId: string,
+    accessSetting: ArtifactRecord["accessSetting"],
+    replayed: boolean,
+  ): ArtifactState {
+    const artifact = this.#readArtifact(artifactId);
+    const version = this.#readVersionOrNull(versionId, artifactId);
+    if (version === null) {
+      throw new Error(`Artifact state references missing version ${versionId}.`);
+    }
+    return {
+      artifact: {
+        ...artifact,
+        accessSetting,
+        currentVersionId: versionId,
+      },
+      replayed,
+      version,
+    };
+  }
+
+  #readManifest(version: VersionRecord) {
+    const rows = this.#database
+      .prepare(
+        `SELECT
+          path,
+          size,
+          media_type AS mediaType,
+          sha256,
+          disposition
+         FROM manifest_entries
+         WHERE version_id = ?
+         ORDER BY path`,
+      )
+      .all(version.id);
+    const storedEntries = z.array(storedManifestEntryRowSchema).parse(rows);
+    const manifest = createManifest({
+      entryPath: version.entryPath,
+      files: storedEntries.map((entry) => ({
+        mediaType: entry.mediaType,
+        path: entry.path,
+        sha256: entry.sha256,
+        size: entry.size,
+      })),
+      routingMode: version.routingMode,
+    });
+    if (manifest.digest !== version.manifestDigest) {
+      throw new Error(`Saved version ${version.id} has an invalid manifest digest.`);
+    }
+    const canonicalByPath = new Map(
+      manifest.entries.map((entry) => [entry.path, entry] as const),
+    );
+    for (const stored of storedEntries) {
+      const canonical = canonicalByPath.get(stored.path);
+      if (canonical?.disposition !== stored.disposition) {
+        throw new Error(`Saved version ${version.id} has invalid serving metadata.`);
+      }
+    }
+    return manifest;
+  }
+
+  #readVersionOrNull(
+    versionId: string,
+    artifactId: string,
+  ): VersionRecord | null {
+    const row = this.#database
+      .prepare(
+        `SELECT
+          id,
+          artifact_id AS artifactId,
+          number,
+          manifest_digest AS manifestDigest,
+          entry_path AS entryPath,
+          routing_mode AS routingMode,
+          content_token AS contentToken,
+          publisher_principal_id AS publisherPrincipalId,
+          created_at AS createdAt
+         FROM versions
+         WHERE id = ? AND artifact_id = ?`,
+      )
+      .get(versionId, artifactId);
+    return versionRowSchema.nullable().parse(row ?? null);
+  }
+
+  #findIdempotentResult(
+    idempotencyKey: string,
+    inputDigest: string,
+  ): PublishedVersion | null {
+    const row = this.#database
+      .prepare(
+        `SELECT
+          access_setting AS accessSetting,
+          artifact_id AS artifactId,
+          input_digest AS inputDigest,
+          operation,
+          version_id AS versionId
+         FROM idempotency_records
+         WHERE idempotency_key = ?`,
+      )
+      .get(idempotencyKey);
+    const parsed = idempotencyRowSchema.nullable().parse(row ?? null);
+    if (parsed === null) return null;
+    if (parsed.inputDigest !== inputDigest || parsed.operation !== "publish") {
       throw new IdempotencyConflict({
         message: "The idempotency key was already used with different input.",
       });
@@ -630,18 +999,21 @@ export class SqliteArtifactRepository implements
     createdAt: string,
     action: string,
     principalId: string,
+    authorizedByPrincipalId: string | null,
   ): void {
     this.#database
       .prepare(
         `INSERT INTO actions (
-          id, artifact_id, version_id, action, principal_id, idempotency_key, created_at
-        ) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?)`,
+          id, artifact_id, version_id, action, principal_id,
+          authorized_by_principal_id, idempotency_key, created_at
+        ) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         artifactId,
         versionId,
         action,
         principalId,
+        authorizedByPrincipalId,
         idempotencyKey,
         createdAt,
       );
@@ -712,14 +1084,25 @@ export class SqliteArtifactRepository implements
     artifactId: string,
     versionId: string,
     createdAt: string,
+    operation: "change_access" | "publish" | "restore" = "publish",
+    accessSetting: ArtifactRecord["accessSetting"] | null = null,
   ): void {
     this.#database
       .prepare(
         `INSERT INTO idempotency_records (
-          idempotency_key, input_digest, artifact_id, version_id, created_at
-        ) VALUES (?, ?, ?, ?, ?)`,
+          idempotency_key, input_digest, artifact_id, version_id,
+          operation, access_setting, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(idempotencyKey, inputDigest, artifactId, versionId, createdAt);
+      .run(
+        idempotencyKey,
+        inputDigest,
+        artifactId,
+        versionId,
+        operation,
+        accessSetting,
+        createdAt,
+      );
   }
 
   #insertVersion(
@@ -729,13 +1112,14 @@ export class SqliteArtifactRepository implements
     createdAt: string,
     number: number,
     manifest: CommitNewArtifact["manifest"],
+    publisherPrincipalId: string,
   ): void {
     this.#database
       .prepare(
         `INSERT INTO versions (
           id, artifact_id, number, manifest_digest, entry_path,
-          routing_mode, content_token, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          routing_mode, content_token, publisher_principal_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         versionId,
@@ -745,6 +1129,7 @@ export class SqliteArtifactRepository implements
         manifest.entryPath,
         manifest.routingMode,
         contentToken,
+        publisherPrincipalId,
         createdAt,
       );
 
@@ -785,6 +1170,7 @@ export class SqliteArtifactRepository implements
         entry_path TEXT NOT NULL,
         routing_mode TEXT NOT NULL CHECK (routing_mode = 'static'),
         content_token TEXT NOT NULL UNIQUE,
+        publisher_principal_id TEXT NOT NULL,
         created_at TEXT NOT NULL,
         UNIQUE (artifact_id, number)
       ) STRICT;
@@ -804,6 +1190,8 @@ export class SqliteArtifactRepository implements
         input_digest TEXT NOT NULL,
         artifact_id TEXT NOT NULL REFERENCES artifacts(id),
         version_id TEXT NOT NULL REFERENCES versions(id),
+        operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access')),
+        access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
         created_at TEXT NOT NULL
       ) STRICT;
 
@@ -813,6 +1201,7 @@ export class SqliteArtifactRepository implements
         version_id TEXT NOT NULL REFERENCES versions(id),
         action TEXT NOT NULL,
         principal_id TEXT NOT NULL,
+        authorized_by_principal_id TEXT,
         idempotency_key TEXT NOT NULL,
         created_at TEXT NOT NULL
       ) STRICT;
@@ -878,15 +1267,53 @@ export class SqliteArtifactRepository implements
         ON content_sessions (expires_at);
     `);
     this.#addArtifactOwnerColumnIfMissing();
+    this.#addVersionPublisherColumnIfMissing();
+    this.#addActionAuthorizerColumnIfMissing();
+    this.#addIdempotencyOperationColumnsIfMissing();
+  }
+
+  #addActionAuthorizerColumnIfMissing(): void {
+    const columns = this.#tableColumns("actions");
+    if (columns.includes("authorized_by_principal_id")) return;
+    this.#database.exec(
+      "ALTER TABLE actions ADD COLUMN authorized_by_principal_id TEXT",
+    );
   }
 
   #addArtifactOwnerColumnIfMissing(): void {
-    const rows = this.#database.prepare("PRAGMA table_info(artifacts)").all();
-    const columns = z.array(z.object({name: z.string()})).parse(rows);
-    if (columns.some((column) => column.name === "owner_principal_id")) return;
+    const columns = this.#tableColumns("artifacts");
+    if (columns.includes("owner_principal_id")) return;
     this.#database.exec(
       "ALTER TABLE artifacts ADD COLUMN owner_principal_id TEXT NOT NULL DEFAULT 'local-api-token'",
     );
+  }
+
+  #addIdempotencyOperationColumnsIfMissing(): void {
+    const columns = this.#tableColumns("idempotency_records");
+    if (!columns.includes("operation")) {
+      this.#database.exec(
+        "ALTER TABLE idempotency_records ADD COLUMN operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access'))",
+      );
+    }
+    if (!columns.includes("access_setting")) {
+      this.#database.exec(
+        "ALTER TABLE idempotency_records ADD COLUMN access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link'))",
+      );
+    }
+  }
+
+  #addVersionPublisherColumnIfMissing(): void {
+    const columns = this.#tableColumns("versions");
+    if (columns.includes("publisher_principal_id")) return;
+    this.#database.exec(
+      "ALTER TABLE versions ADD COLUMN publisher_principal_id TEXT NOT NULL DEFAULT 'local-api-token'",
+    );
+  }
+
+  #tableColumns(table: "actions" | "artifacts" | "idempotency_records" | "versions"): readonly string[] {
+    const rows = this.#database.prepare(`PRAGMA table_info(${table})`).all();
+    const columns = z.array(z.object({name: z.string()})).parse(rows);
+    return columns.map((column) => column.name);
   }
 
   #readStagedUpload(uploadId: string, principalId: string): StagedUpload {
@@ -995,10 +1422,14 @@ export class SqliteArtifactRepository implements
           a.access_setting AS accessSetting,
           a.current_version_id AS currentVersionId,
           a.created_at AS artifactCreatedAt,
+          a.deleted_at AS artifactDeletedAt,
           v.id AS versionId,
           v.number AS versionNumber,
           v.manifest_digest AS manifestDigest,
+          v.entry_path AS entryPath,
+          v.routing_mode AS routingMode,
           v.content_token AS contentToken,
+          v.publisher_principal_id AS publisherPrincipalId,
           v.created_at AS versionCreatedAt
         FROM versions v
         JOIN artifacts a ON a.id = v.artifact_id
@@ -1010,6 +1441,7 @@ export class SqliteArtifactRepository implements
       accessSetting: parsed.accessSetting,
       createdAt: parsed.artifactCreatedAt,
       currentVersionId: parsed.currentVersionId,
+      deletedAt: parsed.artifactDeletedAt,
       id: parsed.artifactId,
       name: parsed.artifactName,
       ownerPrincipalId: parsed.ownerPrincipalId,
@@ -1018,9 +1450,12 @@ export class SqliteArtifactRepository implements
       artifactId: parsed.artifactId,
       contentToken: parsed.contentToken,
       createdAt: parsed.versionCreatedAt,
+      entryPath: parsed.entryPath,
       id: parsed.versionId,
       manifestDigest: parsed.manifestDigest,
       number: parsed.versionNumber,
+      publisherPrincipalId: parsed.publisherPrincipalId,
+      routingMode: parsed.routingMode,
     };
     return {artifact, replayed, version};
   }
@@ -1036,4 +1471,10 @@ export class SqliteArtifactRepository implements
       throw error;
     }
   }
+}
+
+function changedDuringManagement(): ArtifactMutationConflict {
+  return new ArtifactMutationConflict({
+    message: "The artifact changed during the management operation.",
+  });
 }

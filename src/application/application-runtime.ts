@@ -5,11 +5,15 @@ import type { StagedUploadService } from "./staged-upload.js";
 import type { AuthenticationService } from "./authentication.js";
 import type { AuthorizationService } from "./authorization.js";
 import type { ContentAccessService } from "./content-access.js";
+import type { ArtifactManagementService } from "./artifact-management.js";
+import type { CompareArtifactService } from "./compare-artifact.js";
 
 /** Application services shared by every Artifact Server entry point. */
 export type ApplicationServices =
+  | ArtifactManagementService
   | AuthenticationService
   | AuthorizationService
+  | CompareArtifactService
   | ContentAccessService
   | PublishArtifactService
   | StagedUploadService;

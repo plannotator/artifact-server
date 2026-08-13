@@ -169,9 +169,14 @@ requirements:
       behavior: {id: ART-002-B, description: Create an artifact and retrieve every required field with stable types and values.}
       failure: {id: ART-002-F, description: Reject creation when required identity or ownership data is missing or refers to another installation.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [ART-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [ART-002-B, ART-002-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T07:16:37Z"
 
   - id: ART-003
     kind: behavior
@@ -182,9 +187,14 @@ requirements:
       behavior: {id: ART-003-B, description: Publish a version and retrieve all required version fields and their referenced artifact.}
       failure: {id: ART-003-F, description: Reject a version whose artifact, manifest, entry file, publisher, or routing mode is invalid.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [ART-001, MAN-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [ART-003-B]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T07:16:37Z"
 
   - id: ART-004
     kind: behavior
@@ -195,9 +205,14 @@ requirements:
       behavior: {id: ART-004-B, description: Read a committed version repeatedly and confirm that its manifest and file fingerprints never change.}
       failure: {id: ART-004-F, description: Reject attempts to edit a committed version or replace any referenced blob.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [PUB-005]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [ART-004-B, ART-004-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T07:16:37Z"
 
   - id: ART-005
     kind: behavior
@@ -208,9 +223,14 @@ requirements:
       behavior: {id: ART-005-B, description: Restore an earlier version and confirm that existing version IDs, manifests, and files remain unchanged.}
       failure: {id: ART-005-F, description: Reject restoring a version from another artifact or installation.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [ART-004, AUD-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [ART-005-B, ART-005-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T07:16:37Z"
 
   - id: ART-006
     kind: behavior
@@ -265,7 +285,7 @@ requirements:
       behavior: {id: MAN-002-B, description: Publish representative files and confirm each manifest entry matches the exact stored bytes and serving metadata.}
       failure: {id: MAN-002-F, description: Reject a claimed size or fingerprint that differs from the uploaded bytes.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [MAN-001]
     evidence:
       - deployment: local
@@ -332,7 +352,7 @@ requirements:
       behavior: {id: MAN-006-B, description: Serve every committed file through its manifest entry.}
       failure: {id: MAN-006-F, description: Traversal, alternate encoding, storage-key, and unlisted-file requests never read bytes outside the manifest.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [MAN-001, MAN-003]
     evidence:
       - deployment: local
@@ -350,7 +370,7 @@ requirements:
       behavior: {id: PUB-001-B, description: Create an upload and verify its principal, installation, unique staging location, and expiration.}
       failure: {id: PUB-001-F, description: Another principal or installation cannot read, append, commit, or renew the staged upload.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [AUTH-008]
     evidence:
       - deployment: local
@@ -588,7 +608,7 @@ requirements:
       behavior: {id: CNT-005-B, description: Open a site whose HTML, CSS, and JavaScript use root-relative assets and confirm that every request resolves within that version.}
       failure: {id: CNT-005-F, description: A root-relative asset cannot resolve against the application origin, another version, or another artifact.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [CNT-004]
     evidence:
       - deployment: local
@@ -658,9 +678,14 @@ requirements:
       behavior: {id: VER-001-B, description: Publish two versions and confirm current-link movement, fixed exact-version links, and unmodified earlier bytes.}
       failure: {id: VER-001-F, description: Current-link changes cannot alter an exact version's origin, manifest, or files.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [ART-001, ART-004, CNT-004]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [VER-001-B, VER-001-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T07:16:37Z"
 
   - id: DIF-001
     kind: behavior
@@ -671,9 +696,14 @@ requirements:
       behavior: {id: DIF-001-B, description: Disable Git and compare two versions from primary records and blobs.}
       failure: {id: DIF-001-F, description: A missing or failed Git provider does not remove, change, or block comparison results.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [MAN-001, VER-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [DIF-001-B, DIF-001-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T07:16:37Z"
 
   - id: DIF-002
     kind: behavior
@@ -684,9 +714,14 @@ requirements:
       behavior: {id: DIF-002-B, description: Compare a fixture containing one added, one removed, one unchanged, and one changed file and verify the result.}
       failure: {id: DIF-002-F, description: Path encoding and normalization differences cannot hide or invent file changes.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [DIF-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [DIF-002-B, DIF-002-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T07:16:37Z"
 
   - id: DIF-003
     kind: behavior
@@ -697,9 +732,14 @@ requirements:
       behavior: {id: DIF-003-B, description: Move unchanged bytes to a new path and report the change as a rename.}
       failure: {id: DIF-003-F, description: Changed bytes or ambiguous same-fingerprint candidates are not reported as a certain rename.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [DIF-002]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [DIF-003-B, DIF-003-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T07:16:37Z"
 
   - id: DIF-004
     kind: behavior
@@ -710,9 +750,14 @@ requirements:
       behavior: {id: DIF-004-B, description: Compare bounded text and representative binary fixtures and verify their different result shapes.}
       failure: {id: DIF-004-F, description: Oversized, invalidly encoded, or binary input cannot exhaust the text-diff path or be misrepresented as a text diff.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [DIF-002, CNT-008]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [DIF-004-B, DIF-004-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T07:16:37Z"
 
   - id: DIF-005
     kind: exclusion
@@ -723,9 +768,14 @@ requirements:
       behavior: {id: DIF-005-B, description: Binary comparison returns metadata and exact-version links only.}
       failure: {id: DIF-005-F, description: No interface claims or invokes specialized binary analysis or conversion.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [DIF-004]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [DIF-005-B, DIF-005-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T07:16:37Z"
 
   - id: GIT-001
     kind: constraint
@@ -840,14 +890,14 @@ requirements:
       behavior: {id: AUTH-002-B, description: Create an artifact and confirm that admitted members can read it while unauthenticated and outside users cannot.}
       failure: {id: AUTH-002-F, description: An account-required link, asset, or exact-version address cannot be read without an authorized content session.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [AUTH-001]
     evidence:
       - deployment: local
-        tests: [AUTH-002-F]
+        tests: [AUTH-002-B, AUTH-002-F]
         result: pass
         run: evidence/local-foundation.json
-        recorded_at: "2026-08-13T03:54:41Z"
+        recorded_at: "2026-08-13T07:16:37Z"
 
   - id: AUTH-003
     kind: behavior
@@ -871,14 +921,14 @@ requirements:
       behavior: {id: AUTH-004-B, description: Open the public current version and confirm that no authenticated history or mutation surface is exposed.}
       failure: {id: AUTH-004-F, description: Probe earlier version hosts, comparison endpoints, mutation routes, and Git using only public access and receive no access.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [AUTH-003]
     evidence:
       - deployment: local
-        tests: [AUTH-004-F]
+        tests: [AUTH-004-B, AUTH-004-F]
         result: pass
         run: evidence/local-foundation.json
-        recorded_at: "2026-08-13T05:09:40Z"
+        recorded_at: "2026-08-13T07:16:37Z"
 
   - id: AUTH-005
     kind: behavior
@@ -1010,10 +1060,10 @@ requirements:
     depends_on: [AUTH-002, CNT-004]
     evidence:
       - deployment: local
-        tests: [AUTH-014-B]
+        tests: [AUTH-014-B, AUTH-014-F]
         result: pass
         run: evidence/local-foundation.json
-        recorded_at: "2026-08-13T06:49:35Z"
+        recorded_at: "2026-08-13T07:16:37Z"
 
   - id: AUTH-015
     kind: security
@@ -1028,10 +1078,10 @@ requirements:
     depends_on: [AUTH-014]
     evidence:
       - deployment: local
-        tests: [AUTH-015-B]
+        tests: [AUTH-015-B, AUTH-015-F]
         result: pass
         run: evidence/local-foundation.json
-        recorded_at: "2026-08-13T06:49:35Z"
+        recorded_at: "2026-08-13T07:16:37Z"
 
   - id: AUTH-016
     kind: security

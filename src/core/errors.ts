@@ -3,6 +3,7 @@ import { Schema } from "effect";
 /** Stable error codes exposed by Artifact Server protocols. */
 export const errorCodes = {
   artifactNotFound: "ARTIFACT_NOT_FOUND",
+  artifactMutationConflict: "ARTIFACT_MUTATION_CONFLICT",
   authorizationDenied: "AUTHORIZATION_DENIED",
   authenticationRequired: "AUTHENTICATION_REQUIRED",
   contentBootstrapRejected: "CONTENT_BOOTSTRAP_REJECTED",
@@ -31,6 +32,12 @@ export class ArtifactNotFound extends Schema.TaggedError<ArtifactNotFound>()(
   messageField,
 ) {}
 
+/** The artifact changed after a management client read its current state. */
+export class ArtifactMutationConflict extends Schema.TaggedError<ArtifactMutationConflict>()(
+  "ArtifactMutationConflict",
+  messageField,
+) {}
+
 /** The request did not contain a valid supported credential. */
 export class AuthenticationRequired extends Schema.TaggedError<AuthenticationRequired>()(
   "AuthenticationRequired",
@@ -52,6 +59,12 @@ export class ContentBootstrapRejected extends Schema.TaggedError<ContentBootstra
 /** A private version request lacks its exact version-scoped browser session. */
 export class ContentSessionRequired extends Schema.TaggedError<ContentSessionRequired>()(
   "ContentSessionRequired",
+  messageField,
+) {}
+
+/** The requested saved version does not exist on the named artifact. */
+export class VersionNotFound extends Schema.TaggedError<VersionNotFound>()(
+  "VersionNotFound",
   messageField,
 ) {}
 
@@ -158,17 +171,22 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
     cause: Schema.Defect(),
     operation: Schema.Literals([
       "assertPublicationSourceReady",
+      "changeAccessSetting",
       "commitNewArtifact",
       "commitVersion",
       "createContentBootstrap",
       "createStagedUpload",
       "exchangeContentBootstrap",
+      "findArtifact",
+      "findArtifactVersion",
       "findContentSession",
       "findCurrentVersion",
       "findIdempotentPublication",
       "findStagedUpload",
       "findVersionContent",
+      "listArtifactVersions",
       "markStagedFileUploaded",
+      "restoreVersion",
     ]),
   },
 ) {}
@@ -193,6 +211,7 @@ export class StagingStorageFailure extends Schema.TaggedError<StagingStorageFail
 
 const artifactServerFailureSchema = Schema.Union([
   ArtifactNotFound,
+  ArtifactMutationConflict,
   AuthenticationRequired,
   AuthorizationDenied,
   ContentBootstrapRejected,
@@ -212,6 +231,7 @@ const artifactServerFailureSchema = Schema.Union([
   UploadFileNotFound,
   UploadIncomplete,
   UploadNotFound,
+  VersionNotFound,
   ContentNotPublic,
   ArtifactRepositoryFailure,
   BlobStorageFailure,

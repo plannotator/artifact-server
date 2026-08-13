@@ -30,8 +30,8 @@ import {
   type PublicationFileSource,
   type PublishArtifactFailure,
   PublishArtifactService,
-  type PublishingClock,
 } from "./publish-artifact.js";
+import type { ApplicationClock } from "./application-clock.js";
 import {type ManifestFailure, parseManifest} from "./parse-manifest.js";
 import {
   type AuthorizationOperations,
@@ -112,7 +112,7 @@ export interface StagingStoragePort {
 
 /** Dependencies used to construct the staged upload application service. */
 export interface StagedUploadDependencies {
-  readonly clock: PublishingClock;
+  readonly clock: ApplicationClock;
   readonly ids: IdGenerator;
   readonly staging: StagingStoragePort;
   readonly uploads: StagedUploadRepositoryPort;

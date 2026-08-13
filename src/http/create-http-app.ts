@@ -10,6 +10,14 @@ import {
 import { PublishArtifactService } from "../application/publish-artifact.js";
 import { StagedUploadService } from "../application/staged-upload.js";
 import { AuthenticationService } from "../application/authentication.js";
+import {
+  type ArtifactDetails,
+  ArtifactManagementService,
+} from "../application/artifact-management.js";
+import {
+  type ArtifactComparison,
+  CompareArtifactService,
+} from "../application/compare-artifact.js";
 import { ContentAccessService } from "../application/content-access.js";
 import {
   AuthenticationRequired,
@@ -23,8 +31,11 @@ import {
 import type { Principal } from "../core/identity.js";
 import {
   accessSettings,
+  type ArtifactState,
+  type ArtifactVersion,
   type ManifestEntry,
   type PublishedVersion,
+  type VersionRecord,
 } from "../core/model.js";
 import type { BlobStore } from "../core/ports.js";
 import { manifestPathFromUrl } from "../manifest/create-manifest.js";
@@ -41,7 +52,7 @@ const inlineFileSchema = z.object({
   path: z.string().min(1).max(1_024),
 });
 const publishNewSchema = z.object({
-  accessSetting: accessSettingSchema,
+  accessSetting: accessSettingSchema.default(accessSettings.accountRequired),
   file: inlineFileSchema,
   name: z.string().min(1).max(200),
 });
@@ -62,7 +73,7 @@ const createUploadSchema = z.object({
 const commitUploadSchema = z.object({
   target: z.discriminatedUnion("kind", [
     z.object({
-      accessSetting: accessSettingSchema,
+      accessSetting: accessSettingSchema.default(accessSettings.accountRequired),
       kind: z.literal("new_artifact"),
       name: z.string().min(1).max(200),
     }),
@@ -89,6 +100,18 @@ const contentSessionTokenSchema = z
   .regex(/^[A-Za-z0-9_-]+$/u);
 const contentBootstrapQueryParameter = "__artifact_bootstrap";
 const contentSessionCookieName = "__Host-artifact_content";
+const restoreVersionSchema = z.object({
+  expectedCurrentVersionId: z.string().min(1).max(200),
+  versionId: z.string().min(1).max(200),
+});
+const changeAccessSchema = z.object({
+  accessSetting: accessSettingSchema,
+  expectedCurrentVersionId: z.string().min(1).max(200),
+});
+const comparisonQuerySchema = z.object({
+  fromVersionId: z.string().min(1).max(200),
+  toVersionId: z.string().min(1).max(200),
+});
 
 interface HttpEnvironment {
   readonly Variables: {
@@ -193,6 +216,144 @@ export function createHttpApp(
       result.replayed ? 200 : 201,
     );
   });
+
+  app.get("/api/v1/artifacts/:artifactId", async (context) => {
+    const details = await runApplicationEffect(
+      dependencies.applicationRuntime,
+      ArtifactManagementService.use((management) =>
+        management.getArtifact({
+          artifactId: context.req.param("artifactId"),
+          principal: context.get("principal"),
+        })
+      ),
+    );
+    return context.json(artifactDetailsResponse(
+      new URL(context.req.url),
+      dependencies.contentDomain,
+      details,
+    ));
+  });
+
+  app.get("/api/v1/artifacts/:artifactId/versions", async (context) => {
+    const versions = await runApplicationEffect(
+      dependencies.applicationRuntime,
+      ArtifactManagementService.use((management) =>
+        management.listVersions({
+          artifactId: context.req.param("artifactId"),
+          principal: context.get("principal"),
+        })
+      ),
+    );
+    const requestUrl = new URL(context.req.url);
+    return context.json({
+      artifactId: context.req.param("artifactId"),
+      versions: versions.map((version) => versionResponse(
+        requestUrl,
+        dependencies.contentDomain,
+        version,
+      )),
+    });
+  });
+
+  app.get(
+    "/api/v1/artifacts/:artifactId/versions/:versionId",
+    async (context) => {
+      const saved = await runApplicationEffect(
+        dependencies.applicationRuntime,
+        ArtifactManagementService.use((management) =>
+          management.getVersion({
+            artifactId: context.req.param("artifactId"),
+            principal: context.get("principal"),
+            versionId: context.req.param("versionId"),
+          })
+        ),
+      );
+      return context.json(artifactVersionResponse(
+        new URL(context.req.url),
+        dependencies.contentDomain,
+        saved,
+      ));
+    },
+  );
+
+  app.get("/api/v1/artifacts/:artifactId/comparisons", async (context) => {
+    const query = comparisonQuerySchema.parse(context.req.query());
+    const comparison = await runApplicationEffect(
+      dependencies.applicationRuntime,
+      CompareArtifactService.use((comparisons) =>
+        comparisons.compareVersions({
+          artifactId: context.req.param("artifactId"),
+          fromVersionId: query.fromVersionId,
+          principal: context.get("principal"),
+          toVersionId: query.toVersionId,
+        })
+      ),
+    );
+    return context.json(comparisonResponse(
+      new URL(context.req.url),
+      dependencies.contentDomain,
+      comparison,
+    ));
+  });
+
+  app.post(
+    "/api/v1/artifacts/:artifactId/restore",
+    boundedJsonBody,
+    async (context) => {
+      const body = restoreVersionSchema.parse(await context.req.json());
+      const state = await runApplicationEffect(
+        dependencies.applicationRuntime,
+        ArtifactManagementService.use((management) =>
+          management.restoreVersion({
+            artifactId: context.req.param("artifactId"),
+            expectedCurrentVersionId: body.expectedCurrentVersionId,
+            idempotencyKey: requiredIdempotencyKey(
+              context.req.header("idempotency-key"),
+            ),
+            principal: context.get("principal"),
+            versionId: body.versionId,
+          })
+        ),
+      );
+      return context.json(artifactStateResponse(
+        new URL(context.req.url),
+        dependencies.contentDomain,
+        state,
+      ));
+    },
+  );
+
+  app.patch(
+    "/api/v1/artifacts/:artifactId/access",
+    boundedJsonBody,
+    async (context) => {
+      const body = changeAccessSchema.parse(await context.req.json());
+      const state = await runApplicationEffect(
+        dependencies.applicationRuntime,
+        ArtifactManagementService.use((management) =>
+          management.changeAccess({
+            accessSetting: body.accessSetting,
+            artifactId: context.req.param("artifactId"),
+            expectedCurrentVersionId: body.expectedCurrentVersionId,
+            idempotencyKey: requiredIdempotencyKey(
+              context.req.header("idempotency-key"),
+            ),
+            principal: context.get("principal"),
+          })
+        ),
+      );
+      return context.json({
+        ...artifactStateResponse(
+          new URL(context.req.url),
+          dependencies.contentDomain,
+          state,
+        ),
+        warning: body.accessSetting === accessSettings.accountRequired
+          ? "New public requests are blocked. Copies already downloaded or cached outside Artifact Server cannot be recalled."
+          : null,
+      });
+    },
+  );
 
   app.post("/api/v1/artifacts/:artifactId/versions", boundedJsonBody, async (context) => {
     const body = publishVersionSchema.parse(await context.req.json());
@@ -311,6 +472,7 @@ export function createHttpApp(
         contentAccess.issueContentBootstrap({
           artifactId: context.req.param("artifactId"),
           principal: context.get("principal"),
+          target: {kind: "current"},
         })
       ),
     );
@@ -325,6 +487,35 @@ export function createHttpApp(
       versionId: issued.versionId,
     }, 201);
   });
+
+  app.post(
+    "/api/v1/artifacts/:artifactId/versions/:versionId/content-sessions",
+    async (context) => {
+      const issued = await runApplicationEffect(
+        dependencies.applicationRuntime,
+        ContentAccessService.use((contentAccess) =>
+          contentAccess.issueContentBootstrap({
+            artifactId: context.req.param("artifactId"),
+            principal: context.get("principal"),
+            target: {
+              kind: "version",
+              versionId: context.req.param("versionId"),
+            },
+          })
+        ),
+      );
+      return context.json({
+        bootstrapUrl: buildContentBootstrapUrl(
+          new URL(context.req.url),
+          dependencies.contentDomain,
+          issued.contentToken,
+          Redacted.value(issued.token),
+        ),
+        expiresAt: issued.expiresAt,
+        versionId: issued.versionId,
+      }, 201);
+    },
+  );
 
   app.get("/artifacts/:artifactId", async (context) => {
     const current = await runApplicationEffect(
@@ -422,6 +613,12 @@ function httpFailure(failure: ArtifactServerFailure): HttpFailure {
         message: failure.message,
         status: 404,
       };
+    case "ArtifactMutationConflict":
+      return {
+        code: errorCodes.artifactMutationConflict,
+        message: failure.message,
+        status: 409,
+      };
     case "AuthenticationRequired":
       return {
         code: errorCodes.authenticationRequired,
@@ -511,6 +708,12 @@ function httpFailure(failure: ArtifactServerFailure): HttpFailure {
         message: failure.message,
         status: 404,
       };
+    case "VersionNotFound":
+      return {
+        code: errorCodes.versionNotFound,
+        message: failure.message,
+        status: 404,
+      };
     case "ContentNotPublic":
       return {
         code: errorCodes.contentNotPublic,
@@ -549,6 +752,116 @@ function publishResponse(
     },
     replayed: published.replayed,
     version: published.version,
+  };
+}
+
+function artifactDetailsResponse(
+  requestUrl: URL,
+  contentDomain: string,
+  details: ArtifactDetails,
+) {
+  return {
+    artifact: details.artifact,
+    current: artifactVersionResponse(requestUrl, contentDomain, details.current),
+    links: {
+      artifact: new URL(`/artifacts/${details.artifact.id}`, requestUrl).toString(),
+      management: new URL(
+        `/api/v1/artifacts/${details.artifact.id}`,
+        requestUrl,
+      ).toString(),
+    },
+  };
+}
+
+function artifactVersionResponse(
+  requestUrl: URL,
+  contentDomain: string,
+  saved: ArtifactVersion,
+) {
+  return {
+    manifest: {
+      digest: saved.manifest.digest,
+      entries: saved.manifest.entries,
+      entryPath: saved.manifest.entryPath,
+      routingMode: saved.manifest.routingMode,
+    },
+    ...versionResponse(requestUrl, contentDomain, saved.version),
+  };
+}
+
+function versionResponse(
+  requestUrl: URL,
+  contentDomain: string,
+  version: VersionRecord,
+) {
+  return {
+    links: {
+      version: buildVersionUrl(
+        requestUrl,
+        contentDomain,
+        version.contentToken,
+      ),
+    },
+    version,
+  };
+}
+
+function artifactStateResponse(
+  requestUrl: URL,
+  contentDomain: string,
+  state: ArtifactState,
+) {
+  return {
+    artifact: state.artifact,
+    links: {
+      artifact: new URL(`/artifacts/${state.artifact.id}`, requestUrl).toString(),
+      version: buildVersionUrl(
+        requestUrl,
+        contentDomain,
+        state.version.contentToken,
+      ),
+    },
+    replayed: state.replayed,
+    version: state.version,
+  };
+}
+
+function comparisonResponse(
+  requestUrl: URL,
+  contentDomain: string,
+  comparison: ArtifactComparison,
+) {
+  return {
+    ...comparison,
+    changed: comparison.changed.map((change) => ({
+      ...change,
+      links: {
+        after: buildVersionFileUrl(
+          requestUrl,
+          contentDomain,
+          comparison.to.contentToken,
+          change.after.path,
+        ),
+        before: buildVersionFileUrl(
+          requestUrl,
+          contentDomain,
+          comparison.from.contentToken,
+          change.before.path,
+        ),
+      },
+    })),
+    links: {
+      from: buildVersionUrl(
+        requestUrl,
+        contentDomain,
+        comparison.from.contentToken,
+      ),
+      to: buildVersionUrl(
+        requestUrl,
+        contentDomain,
+        comparison.to.contentToken,
+      ),
+    },
   };
 }
 
@@ -753,6 +1066,19 @@ function buildVersionUrl(
   versionUrl.pathname = "/";
   versionUrl.search = "";
   versionUrl.hash = "";
+  return versionUrl.toString();
+}
+
+function buildVersionFileUrl(
+  requestUrl: URL,
+  contentDomain: string,
+  contentToken: string,
+  manifestPath: string,
+): string {
+  const versionUrl = new URL(
+    buildVersionUrl(requestUrl, contentDomain, contentToken),
+  );
+  versionUrl.pathname = `/${manifestPath.split("/").map(encodeURIComponent).join("/")}`;
   return versionUrl.toString();
 }
 

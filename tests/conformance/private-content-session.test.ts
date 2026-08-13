@@ -140,7 +140,7 @@ describe("private content sessions", () => {
     expect(await stylesheet.text()).toContain("rebeccapurple");
   });
 
-  test("foundation: content sessions cannot cross version hosts or authorize writes", async () => {
+  test("AUTH-015-F: content sessions cannot cross version hosts or authorize writes", async () => {
     const first = await publishNew(server, installation, {
       accessSetting: "account_required",
       content: "<!doctype html><title>First private artifact</title>",

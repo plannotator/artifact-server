@@ -5,7 +5,7 @@ import {
   expect,
   test,
 } from "vitest";
-import {readdir} from "node:fs/promises";
+import {access, readdir} from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -70,6 +70,48 @@ describe("local publishing runtime", () => {
     expect(oldVersion.headers.get("cache-control")).toBe("private, no-store");
     await oldVersion.arrayBuffer();
     expect(await newVersion.text()).toBe(secondHtml);
+
+    const publicOnlyResponses = await Promise.all([
+      fetch(
+        `${server.baseUrl}/api/v1/artifacts/${first.body.artifact.id}/comparisons?${new URLSearchParams({
+          fromVersionId: first.body.version.id,
+          toVersionId: second.body.version.id,
+        })}`,
+      ),
+      fetch(
+        `${server.baseUrl}/api/v1/artifacts/${first.body.artifact.id}/versions`,
+      ),
+      fetch(`${server.baseUrl}/api/v1/artifacts/${first.body.artifact.id}/restore`, {
+        body: JSON.stringify({
+          expectedCurrentVersionId: second.body.version.id,
+          versionId: first.body.version.id,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "unauthenticated-restore-probe",
+        },
+        method: "POST",
+      }),
+      fetch(`${server.baseUrl}/api/v1/artifacts/${first.body.artifact.id}/access`, {
+        body: JSON.stringify({
+          accessSetting: "account_required",
+          expectedCurrentVersionId: second.body.version.id,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "unauthenticated-access-probe",
+        },
+        method: "PATCH",
+      }),
+    ]);
+    expect(publicOnlyResponses.map(({status}) => status)).toEqual([
+      401,
+      401,
+      401,
+      401,
+    ]);
+    await expect(access(path.join(installation.dataDirectory, ".git")))
+      .rejects.toMatchObject({code: "ENOENT"});
 
     await server.stop();
     server = await startTestServer(installation);

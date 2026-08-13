@@ -39,6 +39,36 @@ describe("local storage migration", () => {
         created_at TEXT NOT NULL,
         deleted_at TEXT
       ) STRICT;
+
+      CREATE TABLE versions (
+        id TEXT PRIMARY KEY,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+        number INTEGER NOT NULL CHECK (number > 0),
+        manifest_digest TEXT NOT NULL,
+        entry_path TEXT NOT NULL,
+        routing_mode TEXT NOT NULL CHECK (routing_mode = 'static'),
+        content_token TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        UNIQUE (artifact_id, number)
+      ) STRICT;
+
+      CREATE TABLE idempotency_records (
+        idempotency_key TEXT PRIMARY KEY,
+        input_digest TEXT NOT NULL,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+        version_id TEXT NOT NULL REFERENCES versions(id),
+        created_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE actions (
+        id TEXT PRIMARY KEY,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+        version_id TEXT NOT NULL REFERENCES versions(id),
+        action TEXT NOT NULL,
+        principal_id TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      ) STRICT;
     `);
     database.close();
 
@@ -50,5 +80,6 @@ describe("local storage migration", () => {
     });
     expect(published.response.status).toBe(201);
     expect(published.body.artifact.ownerPrincipalId).toBe("local-api-token");
+    expect(published.body.version.publisherPrincipalId).toBe("local-api-token");
   });
 });

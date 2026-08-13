@@ -38,8 +38,42 @@ describe("authorization policy", () => {
       "publisher",
       [principalCapabilities.publishAnyArtifact],
     );
+    const readerService = servicePrincipal(
+      "reader",
+      [principalCapabilities.readArtifacts],
+    );
+    const managerService = servicePrincipal(
+      "manager",
+      [principalCapabilities.manageAnyArtifact],
+    );
+    const ownerManagerService = servicePrincipal(
+      "owner",
+      [principalCapabilities.manageOwnedArtifact],
+    );
+    const foreignOwnerManagerService = servicePrincipal(
+      "not-owner",
+      [principalCapabilities.manageOwnedArtifact],
+    );
     const unscopedService = servicePrincipal("reader", []);
 
+    await expectAllowed((authorization) =>
+      authorization.requireArtifactRead(otherMember, artifact)
+    );
+    await expectAllowed((authorization) =>
+      authorization.requireArtifactRead(readerService, artifact)
+    );
+    await expectAllowed((authorization) =>
+      authorization.requireArtifactManagement(owner, artifact)
+    );
+    await expectAllowed((authorization) =>
+      authorization.requireArtifactManagement(administrator, artifact)
+    );
+    await expectAllowed((authorization) =>
+      authorization.requireArtifactManagement(managerService, artifact)
+    );
+    await expectAllowed((authorization) =>
+      authorization.requireArtifactRead(ownerManagerService, artifact)
+    );
     await expectAllowed((authorization) =>
       authorization.requireContentSession(otherMember, artifact)
     );
@@ -56,7 +90,16 @@ describe("authorization policy", () => {
       authorization.requireVersionPublication(otherMember, artifact)
     );
     await expectDenied((authorization) =>
+      authorization.requireArtifactManagement(otherMember, artifact)
+    );
+    await expectDenied((authorization) =>
       authorization.requireVersionPublication(unscopedService, artifact)
+    );
+    await expectDenied((authorization) =>
+      authorization.requireArtifactRead(unscopedService, artifact)
+    );
+    await expectDenied((authorization) =>
+      authorization.requireArtifactRead(foreignOwnerManagerService, artifact)
     );
   });
 
@@ -106,6 +149,7 @@ function artifactOwnedBy(ownerPrincipalId: string): ArtifactRecord {
     accessSetting: "account_required",
     createdAt: "2026-08-13T00:00:00.000Z",
     currentVersionId: "version-1",
+    deletedAt: null,
     id: "artifact-1",
     name: "Authorization fixture",
     ownerPrincipalId,

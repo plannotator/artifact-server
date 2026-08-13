@@ -31,6 +31,7 @@ export interface ArtifactRecord {
   readonly accessSetting: AccessSetting;
   readonly createdAt: string;
   readonly currentVersionId: string;
+  readonly deletedAt: string | null;
   readonly id: string;
   readonly name: string;
   readonly ownerPrincipalId: string;
@@ -56,9 +57,25 @@ export interface VersionRecord {
   readonly artifactId: string;
   readonly contentToken: string;
   readonly createdAt: string;
+  readonly entryPath: string;
   readonly id: string;
   readonly manifestDigest: string;
   readonly number: number;
+  readonly publisherPrincipalId: string;
+  readonly routingMode: RoutingMode;
+}
+
+/** One saved version together with the canonical manifest it references. */
+export interface ArtifactVersion {
+  readonly manifest: CanonicalManifest;
+  readonly version: VersionRecord;
+}
+
+/** The current persisted state returned by an artifact management mutation. */
+export interface ArtifactState {
+  readonly artifact: ArtifactRecord;
+  readonly replayed: boolean;
+  readonly version: VersionRecord;
 }
 
 export interface PublishedVersion {

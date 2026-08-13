@@ -22,8 +22,11 @@ export type MembershipRole =
 export const principalCapabilities = {
   createArtifact: "artifact:create",
   issueContentSession: "content-session:issue",
+  manageAnyArtifact: "artifact:manage:any",
+  manageOwnedArtifact: "artifact:manage:owned",
   publishAnyArtifact: "artifact:publish:any",
   publishOwnedArtifact: "artifact:publish:owned",
+  readArtifacts: "artifact:read",
 } as const;
 
 /** One explicit capability granted to a principal. */
