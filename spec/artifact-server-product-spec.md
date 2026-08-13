@@ -94,7 +94,7 @@ https://app.example.com/artifacts/ARTIFACT_ID
 https://VERSION_TOKEN.content.example.net/
 ```
 
-The stable application link resolves the current version, checks access, and opens the exact version origin. A local installation uses a unique `*.localhost` hostname. Hosted and shared installations require wildcard DNS and a wildcard certificate for the content domain.
+The stable application link resolves the current version, checks access, and opens the exact version origin. A local installation uses a unique `*.localhost` hostname. Hosted and external-storage installations require wildcard DNS and a wildcard certificate for the content domain.
 
 One origin per version provides four properties:
 
@@ -134,7 +134,7 @@ Published code is untrusted.
 - Published responses set explicit media types and `X-Content-Type-Options: nosniff`.
 - Tests include a malicious artifact that attempts forms, fetches, frames, service workers, and cross-origin requests against the application.
 
-A separate registrable content domain is required for hosted and shared deployments. Local development uses isolated `*.localhost` hosts. A same-site subdomain of the application domain is not the supported security boundary.
+A separate registrable content domain is required for hosted and external-storage deployments. Local development uses isolated `*.localhost` hosts. A same-site subdomain of the application domain is not the supported security boundary.
 
 ## Access and mutation policy
 
@@ -272,7 +272,7 @@ The portable product is the container or local process, database schema, blob-st
 
 Every deployed process records request counts, handling time, and spans. It writes a configurable sample of normal request logs and always logs server failures and requests that take at least one second. It creates a server request ID, returns it in `X-Request-Id`, and uses it to connect HTTP or MCP work to Effect spans. Operators can export logs, metrics, and traces to any standard OTLP collector with OpenTelemetry environment variables. Telemetry records HTTP method, matched route pattern, status, protocol, deployment mode, and installation identity. It does not record authorization values, cookies, query strings, file contents, raw artifact IDs, or raw unbounded paths.
 
-`/health` answers only whether the process is alive. `/ready` answers whether a shared process can use its validated configuration, completed migrations, database, and object storage. A dependency failure changes `/ready` to HTTP 503 but does not make `/health` fail.
+`/health` answers only whether the process is alive. `/ready` answers whether an external-storage process can use its validated configuration, completed migrations, database, and object storage. A dependency failure changes `/ready` to HTTP 503 but does not make `/health` fail.
 
 | Target | Runtime and records | Blob storage | Official deployment surface |
 | --- | --- | --- | --- |
@@ -309,7 +309,7 @@ matrix are defined in
 [`phase-6-packaging.md`](./phase-6-packaging.md).
 
 The blob interface can accept any provider for which a tested adapter exists.
-The first shared package supports AWS S3 and Cloudflare R2 through its S3
+The first external-storage package supports AWS S3 and Cloudflare R2 through its S3
 adapter. Another S3-compatible service is supported only after it passes the
 same contract tests. Native Google Cloud Storage and Azure Blob drivers ship
 with their cloud packages; GCP and Azure do not depend on an S3 compatibility

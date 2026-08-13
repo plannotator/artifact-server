@@ -5,9 +5,9 @@ import {Command} from "commander";
 import {z} from "zod";
 
 import {
-  defaultSharedBaselineConfig,
-  runSharedBaseline,
-} from "./shared-baseline.js";
+  defaultExternalStorageBaselineConfig,
+  runExternalStorageBaseline,
+} from "./external-storage-baseline.js";
 
 const optionsSchema = z.object({
   concurrency: z.coerce.number().int(),
@@ -17,34 +17,34 @@ const optionsSchema = z.object({
 });
 
 const program = new Command()
-  .name("shared-performance-baseline")
+  .name("external-storage-performance-baseline")
   .description("Run a bounded compiled-server baseline against Postgres and S3-compatible storage.")
   .option(
     "--publications <count>",
     "measured concurrent publications (maximum 100)",
-    String(defaultSharedBaselineConfig.concurrentPublications),
+    String(defaultExternalStorageBaselineConfig.concurrentPublications),
   )
   .option(
     "--reads <count>",
     "measured cross-process content reads (maximum 1000)",
-    String(defaultSharedBaselineConfig.reads),
+    String(defaultExternalStorageBaselineConfig.reads),
   )
   .option(
     "--concurrency <count>",
     "publication concurrency (maximum 16; reads use twice this value)",
-    String(defaultSharedBaselineConfig.operationConcurrency),
+    String(defaultExternalStorageBaselineConfig.operationConcurrency),
   )
   .option(
     "--output <path>",
     "JSON report path",
-    "evidence/shared-performance-baseline.json",
+    "evidence/external-storage-performance-baseline.json",
   );
 
 async function main(): Promise<void> {
   program.parse();
   const options = optionsSchema.parse(program.opts());
-  const report = await runSharedBaseline({
-    ...defaultSharedBaselineConfig,
+  const report = await runExternalStorageBaseline({
+    ...defaultExternalStorageBaselineConfig,
     concurrentPublications: options.publications,
     operationConcurrency: options.concurrency,
     reads: options.reads,
@@ -56,13 +56,13 @@ async function main(): Promise<void> {
 }
 
 function formatSummary(
-  report: Awaited<ReturnType<typeof runSharedBaseline>>,
+  report: Awaited<ReturnType<typeof runExternalStorageBaseline>>,
 ): string {
   const warnings = report.warnings.length === 0
     ? "none"
     : report.warnings.join(" ");
   return [
-    "Shared Artifact Server baseline complete.",
+    "External-storage Artifact Server baseline complete.",
     `Providers ready: ${report.providerReadyMilliseconds} ms (excluded from application latency).`,
     `Server ready: ${report.serverReadyMilliseconds.initialProcesses.join(" / ")} ms; replacement ${report.serverReadyMilliseconds.replacementProcess} ms.`,
     `Concurrent publish: ${report.concurrentPublish.operationsPerSecond} ops/s, p95 ${report.concurrentPublish.latency.p95Milliseconds} ms.`,
@@ -79,7 +79,9 @@ function formatMib(bytes: number): string {
 }
 
 void main().catch((cause: unknown) => {
-  const message = cause instanceof Error ? cause.message : "The shared baseline failed.";
+  const message = cause instanceof Error
+    ? cause.message
+    : "The external-storage baseline failed.";
   process.stderr.write(`${message}\n`);
   process.exitCode = 1;
 });

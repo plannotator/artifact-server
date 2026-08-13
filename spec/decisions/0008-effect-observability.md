@@ -1,6 +1,6 @@
 # Decision 0008: Use one Effect-native observability boundary
 
-Status: accepted for the shared-runtime foundation
+Status: accepted for the external-storage-runtime foundation
 
 ## Decision
 
@@ -22,7 +22,7 @@ spans through OTLP by setting a standard OTLP endpoint. The OTLP exporter is an
 adapter selected by the composition root; application services do not depend on
 a telemetry vendor.
 
-Shared deployments expose separate process-health and dependency-readiness
+External-storage deployments expose separate process-health and dependency-readiness
 routes. Process health proves only that the process can answer HTTP. Readiness
 reports already-validated configuration and migrations, checks Postgres and
 object storage at request time, and returns stable,
@@ -80,8 +80,8 @@ The boundary is accepted when:
   outcomes;
 - JSON logs contain the request ID and safe operational fields but no supplied
   bearer credential or query string;
-- shared readiness reports configuration, migrations, Postgres, and object
+- external-storage readiness reports configuration, migrations, Postgres, and object
   storage separately and changes
   to 503 when either dependency cannot be reached; and
-- correctness, lint, type, build, smoke, bounded performance, and shared-runtime
+- correctness, lint, type, build, smoke, bounded performance, and external-storage-runtime
   gates continue to pass.

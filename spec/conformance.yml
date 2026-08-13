@@ -14,7 +14,7 @@ source:
 deployment_sets:
   all: &all
     [local, single_server, kubernetes, cloudflare, aws, gcp, azure]
-  shared: &shared
+  external_storage: &external_storage
     [single_server, kubernetes, cloudflare, aws, gcp, azure]
   replicated: &replicated
     [kubernetes, cloudflare, aws, gcp, azure]
@@ -562,14 +562,14 @@ requirements:
     acceptance:
       behavior: {id: PUB-011-B, description: Publish remote input only through a server-issued file-upload plan.}
       failure: {id: PUB-011-F, description: Reject client paths and arbitrary URLs, including private-network and cloud-metadata targets.}
-    deployments: *shared
+    deployments: *external_storage
     status: behavior_verified
     depends_on: [PUB-001]
     evidence:
       - deployment: single_server
         tests: [PUB-011-B, PUB-011-F]
         result: pass
-        run: evidence/shared-runtime.json
+        run: evidence/external-storage-runtime.json
         recorded_at: "2026-08-13T16:56:38Z"
 
   - id: AUD-001
@@ -613,13 +613,13 @@ requirements:
 
   - id: CNT-003
     kind: security
-    behavior: The application origin and published content use separate registrable domains on hosted and shared deployments.
+    behavior: The application origin and published content use separate registrable domains on hosted and external-storage deployments.
     owner: content-delivery
     source: {file: artifact-server-product-spec.html, anchor: architecture}
     acceptance:
       behavior: {id: CNT-003-B, description: Confirm that application and content origins have different registrable domains and cookies do not cross the boundary.}
-      failure: {id: CNT-003-F, description: Deployment validation rejects a shared-domain configuration that would make artifact JavaScript same-site with the application.}
-    deployments: *shared
+      failure: {id: CNT-003-F, description: Deployment validation rejects an external-storage domain configuration that would make artifact JavaScript same-site with the application.}
+    deployments: *external_storage
     status: specified
     depends_on: []
     evidence: []
@@ -1033,7 +1033,7 @@ requirements:
     acceptance:
       behavior: {id: AUTH-009-B, description: Issue, constrain, rotate, expire, and revoke human and service API keys and observe the documented principal.}
       failure: {id: AUTH-009-F, description: Cross-installation, over-scoped, expired, revoked, malformed, and JWT-like API keys are rejected without parser confusion.}
-    deployments: *shared
+    deployments: *external_storage
     status: specified
     depends_on: [AUTH-008]
     evidence: []
@@ -1149,7 +1149,7 @@ requirements:
     acceptance:
       behavior: {id: AUTH-016-B, description: Inspect cache behavior for private and public fixtures and observe private no-store or private handling and immutable public keys.}
       failure: {id: AUTH-016-F, description: An unauthenticated viewer cannot receive private bytes from a shared cache populated by another viewer.}
-    deployments: *shared
+    deployments: *external_storage
     status: specified
     depends_on: [AUTH-015]
     evidence: []
@@ -1214,7 +1214,7 @@ requirements:
     acceptance:
       behavior: {id: SEC-004-B, description: Exercise each lifecycle operation with two installations and run the blob-reference integrity check afterward.}
       failure: {id: SEC-004-F, description: Interrupted, replayed, partial, cross-tenant, and stale lifecycle operations fail without exposing or losing committed versions.}
-    deployments: *shared
+    deployments: *external_storage
     status: specified
     depends_on: [SEC-002, OPS-003]
     evidence: []
@@ -1821,7 +1821,7 @@ requirements:
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: deployment}
     acceptance:
-      behavior: {id: DEP-001-B, description: Run the shared conformance suite without product-contract changes on every advertised deployment.}
+      behavior: {id: DEP-001-B, description: Run the external-storage conformance suite without product-contract changes on every advertised deployment.}
       failure: {id: DEP-001-F, description: A target cannot be marked supported when it changes an ID, manifest, visibility, authorization, HTTP, or MCP behavior.}
     deployments: *all
     status: specified
@@ -1979,14 +1979,14 @@ requirements:
     acceptance:
       behavior: {id: DEP-013-B, description: Resolve requests through trusted host and identity data and prove correct database, bucket, key, and prefix selection.}
       failure: {id: DEP-013-F, description: Host headers, paths, query parameters, tokens from another installation, and guessed IDs cannot redirect a request into another storage assignment.}
-    deployments: *shared
+    deployments: *external_storage
     status: specified
     depends_on: [AUTH-014]
     evidence: []
 
   - id: DEP-014
     kind: deployment
-    behavior: Shared and hosted deployments provide a separate registrable content domain, wildcard DNS, and wildcard certificates; local deployment provides isolated wildcard localhost hosts.
+    behavior: External-storage and hosted deployments provide a separate registrable content domain, wildcard DNS, and wildcard certificates; local deployment provides isolated wildcard localhost hosts.
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: deployment}
     acceptance:
@@ -2003,7 +2003,7 @@ requirements:
     owner: deployment
     source: {file: phase-6-packaging.md, anchor: image-contract}
     acceptance:
-      behavior: {id: DEP-015-B, description: Build and run both architectures, execute compact and shared workflows from the released image, replace the container, and verify the image digest and secret-free support manifest.}
+      behavior: {id: DEP-015-B, description: Build and run both architectures, execute compact and external-storage workflows from the released image, replace the container, and verify the image digest and secret-free support manifest.}
       failure: {id: DEP-015-F, description: The image cannot require root, a writable root filesystem, source files, development packages, floating tags, or undeclared container-local durable state.}
     deployments: [single_server, kubernetes, aws, gcp, azure]
     status: specified
@@ -2057,14 +2057,14 @@ requirements:
     acceptance:
       behavior: {id: OPS-001-B, description: Probe a healthy instance and each declared dependency and receive stable machine-readable readiness reasons.}
       failure: {id: OPS-001-F, description: A process with a missing migration, unavailable database, inaccessible blob store, or invalid content-domain configuration cannot report ready.}
-    deployments: *shared
+    deployments: *external_storage
     status: behavior_verified
     depends_on: [ARC-002]
     evidence:
       - deployment: single_server
         tests: [OPS-001-B, OPS-001-F]
         result: pass
-        run: evidence/shared-runtime.json
+        run: evidence/external-storage-runtime.json
         recorded_at: "2026-08-13T21:05:57Z"
 
   - id: OPS-002
@@ -2075,7 +2075,7 @@ requirements:
     acceptance:
       behavior: {id: OPS-002-B, description: Upgrade from every supported prior version with live artifacts, verify all contracts, and complete the documented recovery path.}
       failure: {id: OPS-002-F, description: Interrupted migration, old replica, incompatible schema, and failed infrastructure update cannot silently corrupt data or report success.}
-    deployments: *shared
+    deployments: *external_storage
     status: specified
     depends_on: [ARC-003, OPS-003]
     evidence: []
@@ -2114,7 +2114,7 @@ requirements:
     acceptance:
       behavior: {id: OPS-005-B, description: Follow only the published operator procedure on a populated deployment and obtain a verified clean restore.}
       failure: {id: OPS-005-F, description: A target lacking repeatable backup, restore, integrity, and recovery evidence cannot be marked team-ready or supported.}
-    deployments: *shared
+    deployments: *external_storage
     status: specified
     depends_on: [OPS-003, OPS-004]
     evidence: []
@@ -2191,11 +2191,11 @@ requirements:
 
   - id: OPS-011
     kind: deployment
-    behavior: Compact installations move to shared Postgres and object storage through a verified export and import that preserves installation, artifact, version, action, manifest, access, audit, pointer, and byte identity.
+    behavior: Compact installations move to external-storage Postgres and object storage through a verified export and import that preserves installation, artifact, version, action, manifest, access, audit, pointer, and byte identity.
     owner: operations
-    source: {file: phase-6-packaging.md, anchor: compact-to-shared-transfer}
+    source: {file: phase-6-packaging.md, anchor: compact-to-external-storage-transfer}
     acceptance:
-      behavior: {id: OPS-011-B, description: Freeze a populated compact installation, export it, import it into empty shared providers, pass integrity checks, and continue publishing with every prior ID, link contract, and byte preserved.}
+      behavior: {id: OPS-011-B, description: Freeze a populated compact installation, export it, import it into empty external providers, pass integrity checks, and continue publishing with every prior ID, link contract, and byte preserved.}
       failure: {id: OPS-011-F, description: A partial, mismatched, concurrently changing, cross-installation, or already-populated import target fails closed and cannot report ready.}
     deployments: [single_server, kubernetes]
     status: specified
@@ -2221,7 +2221,7 @@ requirements:
     owner: product-core
     source: {file: artifact-server-product-spec.html, anchor: implementation}
     acceptance:
-      behavior: {id: REL-002-B, description: Pass every shared requirement on one server and every replicated requirement with multi-replica Kubernetes and record deployment evidence.}
+      behavior: {id: REL-002-B, description: Pass every external-storage requirement on one server and every replicated requirement with multi-replica Kubernetes and record deployment evidence.}
       failure: {id: REL-002-F, description: A private-team target cannot be called supported when private delivery, backup, restore, upgrade, health, authorization, or its advertised availability evidence is missing; compact single-server mode explicitly makes no failover claim.}
     deployments: [single_server, kubernetes]
     status: specified
@@ -2243,7 +2243,7 @@ requirements:
 
   - id: REL-004
     kind: release_gate
-    behavior: Each major-cloud release includes its official installer, native object storage, private-network option, upgrades, rollback, state recovery, backup, restore, deletion, and the shared Helm alternative.
+    behavior: Each major-cloud release includes its official installer, native object storage, private-network option, upgrades, rollback, state recovery, backup, restore, deletion, and the external-storage Helm alternative.
     owner: product-core
     source: {file: artifact-server-product-spec.html, anchor: implementation}
     acceptance:
@@ -2353,7 +2353,7 @@ requirements:
     acceptance:
       behavior: {id: SCP-006-B, description: Keep network reachability as explicit customer deployment configuration and limit any optional connector to the paired Artifact Server service.}
       failure: {id: SCP-006-F, description: Install, public-link, MCP, and Plannotator flows cannot silently open ingress, modify a firewall, proxy arbitrary hosts, or expose another service.}
-    deployments: *shared
+    deployments: *external_storage
     status: specified
     depends_on: [AUTH-004, PLN-014]
     evidence: []
@@ -2436,14 +2436,14 @@ requirements:
     acceptance:
       behavior: {id: GATE-001-B, description: Complete the full private HTML, asset, navigation, expiry, logout, version, and browser compatibility prototype with recorded results.}
       failure: {id: GATE-001-F, description: Third-party cookie assumptions, reusable URL credentials, application cookies on content hosts, asset authorization gaps, or cross-version cookie reach block the team release.}
-    deployments: *shared
+    deployments: *external_storage
     status: specified
     depends_on: [AUTH-015, AUTH-016, AUTH-017]
     evidence: []
 
   - id: GATE-002
     kind: release_gate
-    behavior: Wildcard DNS, certificates, localhost hosts, proxies, forwarded-host validation, and private-network requirements must be documented and tested before each shared deployment is supported.
+    behavior: Wildcard DNS, certificates, localhost hosts, proxies, forwarded-host validation, and private-network requirements must be documented and tested before each external-storage deployment is supported.
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: decisions}
     acceptance:
@@ -2501,7 +2501,7 @@ requirements:
     acceptance:
       behavior: {id: GATE-006-B, description: Run the complete hosted OAuth matrix against the embedded provider and document operational ownership and upgrade behavior.}
       failure: {id: GATE-006-F, description: Beta incompatibility, lost client or consent state, weak audience binding, refresh replay, failed migration, or missing revocation keeps the option disabled.}
-    deployments: *shared
+    deployments: *external_storage
     status: specified
     depends_on: [MCP-014]
     evidence: []
@@ -2553,7 +2553,7 @@ requirements:
     acceptance:
       behavior: {id: GATE-010-B, description: Exercise dependency failure, backup, point-in-time recovery, region or node loss, and operator response against each proposed reliability target.}
       failure: {id: GATE-010-F, description: A recovery or availability promise cannot exceed measured end-to-end evidence or omit database, blob, DNS, identity, and integration dependencies.}
-    deployments: *shared
+    deployments: *external_storage
     status: specified
     depends_on: [OPS-003, OPS-005]
     evidence: []
@@ -2566,7 +2566,7 @@ requirements:
     acceptance:
       behavior: {id: GATE-011-B, description: Trace each enterprise control through configuration, enforcement, storage, backup, export, deletion, monitoring, and customer-visible evidence.}
       failure: {id: GATE-011-F, description: Backups, replicas, CDN copies, Git history, logs, or integration references cannot be omitted from a claimed regional, hold, encryption, export, or deletion boundary.}
-    deployments: *shared
+    deployments: *external_storage
     status: specified
     depends_on: [OPS-003, GIT-001, AUD-001]
     evidence: []
@@ -2579,7 +2579,7 @@ requirements:
     acceptance:
       behavior: {id: GATE-012-B, description: Prove the complete domain lifecycle and browser security model without weakening application and version origin isolation.}
       failure: {id: GATE-012-F, description: Domain takeover, stale certificate, unsafe cookie scope, shared version origin, broken purge, or unresolved abuse ownership keeps custom domains disabled.}
-    deployments: *shared
+    deployments: *external_storage
     status: specified
     depends_on: [CNT-003, DEP-014]
     evidence: []

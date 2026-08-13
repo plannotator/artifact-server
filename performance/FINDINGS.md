@@ -65,7 +65,7 @@ which is inside normal laptop variance. The older approximately 10 ms baseline
 predates the file-first, MCP, shared-policy, and observability work, so this phase
 does not claim a single cause for that broader difference.
 
-The first two shared-runtime baselines used two independent compiled server
+The first two external-storage-runtime baselines used two independent compiled server
 processes, one Postgres database, and one MinIO S3-compatible bucket. Providers
 became ready in 1,044–1,144 ms; initial server processes became ready in
 265–347 ms, and replacements became ready in 187–193 ms. Sixteen 16 KiB
@@ -125,7 +125,7 @@ explicit settling period.
 
 ### Managed-provider and sustained capacity are not measured yet
 
-The shared baseline now measures multiple processes against pinned Postgres and
+The external-storage baseline now measures multiple processes against pinned Postgres and
 MinIO, but it is deliberately short and bounded. It does not establish a
 sustained connection-pool limit, managed-provider tail latency, provider request
 cost, multi-node network behavior, or failure behavior under dependency
@@ -138,7 +138,7 @@ capacity is advertised.
 - `pnpm verify:iteration` is the required end-of-iteration gate. It includes correctness, a coverage report, conformance checks, and the default bounded baseline. Coverage percentage is not a test-design target.
 - `pnpm smoke` catches broken behavior and gross regressions with deliberately loose machine-timing limits.
 - `pnpm perf:baseline` records diagnostics and reports investigation warnings without failing on normal laptop variance.
-- `pnpm verify:shared-performance` runs the real compiled two-process Postgres and S3-compatible path and records provider startup separately from application latency.
+- `pnpm verify:external-storage-performance` runs the real compiled two-process Postgres and S3-compatible path and records provider startup separately from application latency.
 - Aggregate workload limits prevent command-line flags from accidentally creating a stress test.
 - Set tighter regression budgets only after repeated runs on a controlled runner establish normal variance.
 - Run the same behavior on local disk, every blob driver, Postgres, Kubernetes, and Cloudflare as those adapters are implemented.

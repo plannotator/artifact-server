@@ -5,33 +5,33 @@ import {getRequestListener} from "@hono/node-server";
 import {z} from "zod";
 
 import {
-  createSharedRuntime,
-  type SharedRuntimeConfig,
-} from "./create-shared-runtime.js";
+  createExternalStorageRuntime,
+  type ExternalStorageRuntimeConfig,
+} from "./create-external-storage-runtime.js";
 
 const serverAddressSchema = z.object({
   address: z.string().min(1),
   port: z.number().int().positive(),
 });
 
-/** Shared server settings for one process. */
-export interface SharedServerConfig extends SharedRuntimeConfig {
+/** External-storage server settings for one process. */
+export interface ExternalStorageServerConfig extends ExternalStorageRuntimeConfig {
   readonly hostname: string;
   readonly port: number;
 }
 
-/** One running stateless shared-server process. */
-export interface RunningSharedServer {
+/** One running stateless external-storage process. */
+export interface RunningExternalStorageServer {
   readonly hostname: string;
   readonly port: number;
   close(): Promise<void>;
 }
 
-/** Start one shared-server process after provider readiness succeeds. */
-export async function startSharedServer(
-  config: SharedServerConfig,
-): Promise<RunningSharedServer> {
-  const runtime = await createSharedRuntime(config);
+/** Start one external-storage process after provider readiness succeeds. */
+export async function startExternalStorageServer(
+  config: ExternalStorageServerConfig,
+): Promise<RunningExternalStorageServer> {
+  const runtime = await createExternalStorageRuntime(config);
   const server = createServer(
     getRequestListener(runtime.app.fetch, {hostname: config.hostname}),
   );

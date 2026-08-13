@@ -2,7 +2,7 @@
 
 Status: proposed
 
-This phase turns the working local and shared runtimes into installable,
+This phase turns the working local and external-storage runtimes into installable,
 upgradable, recoverable release packages. It does not change artifact, version,
 HTTP, MCP, authentication, or authorization behavior.
 
@@ -30,7 +30,7 @@ and object storage. The official Helm chart uses only the external-storage
 profile.
 
 The packages will not bundle a production object-storage server. Storage is
-replaceable through a narrow adapter contract. The first shared package includes
+replaceable through a narrow adapter contract. The first external-storage package includes
 the S3 adapter used for AWS S3 and Cloudflare R2. Another S3-compatible service
 is supported only after it passes the same contract tests; an S3-compatible
 label by itself is not a support guarantee. Native Google Cloud Storage and
@@ -50,7 +50,7 @@ are not mature enough to become an invisible Artifact Server dependency.
 | Runtime image | Compiled JavaScript, production dependencies, the Artifact Server CLI, a fixed non-root user, health support, and no source tree or development tools. |
 | Compose package | A Compact Compose `compose.yaml`, an External-storage Compose `compose.external-storage.yaml` override, secret-file examples, persistent-volume declarations, and operating instructions. |
 | Helm chart | Artifact Server Deployment, Service, migration Job, probes, disruption controls, optional Ingress templates, secret references, and a chart test. |
-| Operator commands | Configuration validation, migration status and apply, support manifest, integrity check, backup verification, and compact-to-shared transfer. |
+| Operator commands | Configuration validation, migration status and apply, support manifest, integrity check, backup verification, and compact-to-external-storage transfer. |
 | Release evidence | Image, Compose, and Kubernetes conformance reports, bounded performance reports, an SBOM, provenance, and signatures. |
 
 The low-level Docker and Helm surfaces ship first. The common Artifact Server
@@ -66,14 +66,14 @@ changes:
 | --- | --- |
 | `artifactserver start` | Run the default direct local mode on loopback with SQLite and one local data directory. It may print the newly generated local bootstrap link. Docker is not required. |
 | `artifactserver start-compact` | Bind to the configured interface, use a generated stable installation ID, use the configured application and content origins, require an initialized data directory, and never print a credential or login link. |
-| `artifactserver start-shared` | Keep the current Postgres and object-storage composition, but validate rather than apply migrations before serving. |
+| `artifactserver start-external-storage` | Keep the current Postgres and object-storage composition, but validate rather than apply migrations before serving. |
 | `artifactserver init` | Create the compact data directory, installation identity, and initial secret files with restrictive permissions. Return the bootstrap credential once to the invoking terminal, never to later server logs. |
 | `artifactserver config check` | Parse the exact runtime configuration, inspect required paths and providers, print only redacted results, and exit without serving. |
 | `artifactserver migrate status` | Report the database schema and application compatibility without changing it. |
-| `artifactserver migrate apply` | Apply shared Postgres migrations under the existing advisory lock and exit. |
+| `artifactserver migrate apply` | Apply external-storage Postgres migrations under the existing advisory lock and exit. |
 | `artifactserver support manifest` | Emit the product, image, schema, provider, installation, and configuration-health versions without secrets. |
 | `artifactserver integrity check` | Verify committed manifests, pointers, records, and referenced bytes without repairing them. |
-| `artifactserver transfer export` and `import` | Move one compact installation to empty shared providers while preserving identity. |
+| `artifactserver transfer export` and `import` | Move one compact installation to empty external providers while preserving identity. |
 
 The command names are one CLI surface for people, automation, and the future
 operator skill. Compose and Helm run these commands directly instead of adding
@@ -87,7 +87,7 @@ The production image must:
 - run as a fixed non-root user and group;
 - work with a read-only root filesystem and a writable temporary directory;
 - store compact-profile state only below `/var/lib/artifact-server`;
-- store no shared-profile state on the container filesystem;
+- store no external-storage-profile state on the container filesystem;
 - accept `SIGTERM`, stop reporting ready, drain accepted requests, close
   providers, and exit before the configured termination deadline;
 - expose the product version, schema version, image revision, runtime version,
@@ -124,7 +124,7 @@ state model is different:
 | Records | SQLite in the persistent data directory | Existing Postgres |
 | Artifact bytes | The same persistent data directory | Existing object storage through a supported adapter |
 | Backup unit | Stop the process and copy the complete data directory | Back up Postgres and object storage as one coordinated installation |
-| Intended use | The shortest one-server team install | A server that already has shared providers or a step toward Kubernetes |
+| Intended use | The shortest one-server team install | A server that already has external providers or a step toward Kubernetes |
 
 `compose.external-storage.yaml` is a Compose override file. It changes the
 runtime command and provider configuration; it does not start Postgres or an
@@ -221,7 +221,7 @@ Startup rejects:
 - a credential that is present in both direct and file form;
 - an unreadable secret file;
 - a schema newer or older than the serving process allows; and
-- a shared process configured to use container-local durable storage.
+- an external-storage process configured to use container-local durable storage.
 
 Configuration changes require a process restart. No package claims dynamic
 configuration reload in this phase.
@@ -231,12 +231,12 @@ configuration reload in this phase.
 Compact mode runs SQLite migrations before it opens the HTTP listener because
 one process owns the database.
 
-Shared mode separates migration from serving:
+External-storage mode separates migration from serving:
 
 1. `artifactserver migrate status` reports the current and required schema.
 2. `artifactserver migrate apply` acquires the existing Postgres advisory lock
    and applies each migration exactly once.
-3. Shared serving processes use migration validation and do not alter the
+3. External-storage serving processes use migration validation and do not alter the
    schema.
 4. The Helm chart runs `migrate apply` in a blocking pre-install and pre-upgrade
    Job. A failed Job fails the release. Hook cleanup is explicit.
@@ -284,9 +284,9 @@ The first supported compact backup is deliberately simple and consistent:
 An online SQLite backup can replace the stop-and-copy procedure only after it
 has equivalent crash and restore evidence.
 
-### Shared recovery
+### External-storage recovery
 
-The first supported shared procedure favors correctness over online backup:
+The first supported external-storage procedure favors correctness over online backup:
 
 1. stop every Artifact Server process for the installation;
 2. create a transaction-consistent logical Postgres backup and copy the complete
@@ -307,7 +307,7 @@ Kubernetes does not pretend Helm backs up external state. The operator uses the
 supported Postgres and object-storage backup mechanisms, while Artifact Server
 produces and validates the support and integrity manifests.
 
-### Compact-to-shared transfer
+### Compact-to-external-storage transfer
 
 Moving from one-server compact mode to Postgres and object storage is an
 explicit export and import, not a change of environment variables. The transfer
@@ -343,7 +343,7 @@ runtime image.
 - Build and run both architectures.
 - Prove the image runs as non-root with a read-only root filesystem.
 - Prove compact data survives container replacement.
-- Prove shared mode writes no durable pod or container-local state.
+- Prove external-storage mode writes no durable pod or container-local state.
 - Send `SIGTERM` during idle, read, upload, and commit work and verify the
   declared outcomes.
 - Scan the final filesystem and dependency graph, then verify the SBOM,
@@ -370,7 +370,7 @@ runtime image.
 - Prove migration serialization, old/new compatibility, failed migration,
   readiness withdrawal, graceful drain, provider outage, node drain, and
   PodDisruptionBudget behavior.
-- Run the bounded shared performance workload through the Service and record
+- Run the bounded external-storage performance workload through the Service and record
   container, provider, and rollout measurements separately.
 
 Timing thresholds remain regression warnings on developer and CI machines.
@@ -416,7 +416,7 @@ fail the packaging gate.
 1. Add the runtime lifecycle commands and behavior: migration apply and
    validate, configuration check, secret files, support manifest, integrity
    check, readiness drain, and version injection.
-2. Build and verify the OCI image against the existing local, shared, MCP,
+2. Build and verify the OCI image against the existing local, external-storage, MCP,
    observability, smoke, and bounded performance suites.
 3. Ship the compact Compose package and complete its install, restart, upgrade,
    backup, restore, and hostile-configuration evidence.
@@ -424,7 +424,7 @@ fail the packaging gate.
    and S3 suite through containers.
 5. Ship the Helm chart and pass the multi-replica migration, rollout, failure,
    recovery, observability, and performance gates in a disposable cluster.
-6. Add compact-to-shared export and import, then prove one installation can move
+6. Add compact-to-external-storage export and import, then prove one installation can move
    from the Compose package to the Helm package without changing IDs or bytes.
 7. Publish signed release artifacts and add the common CLI wrapper around the
    verified Compose and Helm operations.

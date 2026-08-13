@@ -227,7 +227,7 @@ export interface ReadinessReport {
   readonly status: "ready" | "not_ready";
 }
 
-/** Probe shared runtime dependencies without changing application state. */
+/** Probe external-storage dependencies without changing application state. */
 export type ReadinessProbe = () => Promise<ReadinessReport>;
 
 export function createHttpApp(

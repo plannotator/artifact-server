@@ -30,7 +30,7 @@ export interface HttpRequestObservation {
 
 /** Resource identity shared by structured logs, metrics, and exported spans. */
 export interface ObservabilityResource {
-  readonly deploymentMode: "local" | "shared";
+  readonly deploymentMode: "external-storage" | "local";
   readonly installationId: string;
   readonly serviceVersion: string;
 }

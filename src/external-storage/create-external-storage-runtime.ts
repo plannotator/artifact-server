@@ -22,8 +22,8 @@ import {PostgresDatabase} from "../storage/postgres-database.js";
 import {PostgresIdentityRepository} from "../storage/postgres-identity-repository.js";
 import {createS3ObjectStorageAdapters} from "../storage/s3-object-storage.js";
 
-/** S3-compatible provider settings parsed by the shared composition root. */
-export interface SharedObjectStorageConfig {
+/** S3-compatible provider settings parsed by the external-storage composition root. */
+export interface ExternalObjectStorageConfig {
   readonly accessKeyId: string;
   readonly bucket: string;
   readonly endpoint?: string;
@@ -33,7 +33,7 @@ export interface SharedObjectStorageConfig {
 }
 
 /** Configuration for one stateless Artifact Server process. */
-export interface SharedRuntimeConfig {
+export interface ExternalStorageRuntimeConfig {
   readonly apiToken: Redacted.Redacted;
   readonly applicationOrigin?: string;
   readonly bootstrapAdministratorEmail: string;
@@ -45,19 +45,19 @@ export interface SharedRuntimeConfig {
   readonly installationId: string;
   readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
   readonly localBootstrapCredential?: Redacted.Redacted;
-  readonly objectStorage: SharedObjectStorageConfig;
+  readonly objectStorage: ExternalObjectStorageConfig;
 }
 
-/** One ready shared runtime and its protocol adapter. */
-export interface SharedRuntime {
+/** One ready external-storage runtime and its protocol adapter. */
+export interface ExternalStorageRuntime {
   readonly app: ReturnType<typeof createHttpApp>;
   close(): Promise<void>;
 }
 
-/** Connect shared providers, run migrations, verify readiness, and build the app. */
-export async function createSharedRuntime(
-  config: SharedRuntimeConfig,
-): Promise<SharedRuntime> {
+/** Connect external providers, run migrations, verify readiness, and build the app. */
+export async function createExternalStorageRuntime(
+  config: ExternalStorageRuntimeConfig,
+): Promise<ExternalStorageRuntime> {
   const database = await PostgresDatabase.open({
     applicationName: `artifact-server:${config.installationId}`,
     maxConnections: 10,
@@ -105,7 +105,7 @@ export async function createSharedRuntime(
       }),
     ));
     const telemetry = otlpLayer({
-      deploymentMode: "shared",
+      deploymentMode: "external-storage",
       installationId: config.installationId,
       serviceVersion: "0.0.0",
     }).pipe(Layer.provideMerge(structuredLoggingLayer));
@@ -122,7 +122,7 @@ export async function createSharedRuntime(
           config.completedRequestLogSampleRate ??
             defaultCompletedRequestLogSampleRate,
         contentDomain: config.contentDomain,
-        readiness: () => sharedReadiness(database, client, config.objectStorage.bucket),
+        readiness: () => externalStorageReadiness(database, client, config.objectStorage.bucket),
         trustedApplicationOrigin: config.applicationOrigin ?? null,
       }),
       close: () => readyRuntime.dispose(),
@@ -138,7 +138,7 @@ export async function createSharedRuntime(
   }
 }
 
-async function sharedReadiness(
+async function externalStorageReadiness(
   database: PostgresDatabase,
   client: S3Client,
   bucket: string,
@@ -203,7 +203,7 @@ async function readinessComponent(
 }
 
 function s3ClientConfig(
-  config: SharedObjectStorageConfig,
+  config: ExternalObjectStorageConfig,
 ): S3ClientConfig {
   const base = {
     credentials: {

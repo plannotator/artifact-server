@@ -32,12 +32,12 @@ import {
 } from "../src/client/file-publication-client.js";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
-const sharedCli = path.join(repositoryRoot, "dist/cli/main.js");
+const externalStorageCli = path.join(repositoryRoot, "dist/cli/main.js");
 const region = "us-east-1";
 const maximumMeasuredPublishBytes = 67_108_864;
 const maximumMeasuredReadBytes = 134_217_728;
 
-const sharedBaselineConfigSchema = z.object({
+const externalStorageBaselineConfigSchema = z.object({
   concurrentFileBytes: z.number().int().min(1_024).max(1_048_576),
   concurrentPublications: z.number().int().min(2).max(100),
   directoryFileBytes: z.number().int().min(1_024).max(65_536),
@@ -58,14 +58,14 @@ const sharedBaselineConfigSchema = z.object({
   if (publicationBytes > maximumMeasuredPublishBytes) {
     context.addIssue({
       code: "custom",
-      message: "The measured shared publication workload must stay at or below 64 MiB.",
+      message: "The measured external-storage publication workload must stay at or below 64 MiB.",
       path: ["concurrentPublications"],
     });
   }
   if (configuration.concurrentFileBytes * configuration.reads > maximumMeasuredReadBytes) {
     context.addIssue({
       code: "custom",
-      message: "The measured shared read workload must stay at or below 128 MiB.",
+      message: "The measured external-storage read workload must stay at or below 128 MiB.",
       path: ["reads"],
     });
   }
@@ -87,11 +87,11 @@ const artifactListSchema = z.object({
   })),
 });
 
-/** Safe workload configuration for the shared Postgres and S3 baseline. */
-export type SharedBaselineConfig = z.infer<typeof sharedBaselineConfigSchema>;
+/** Safe workload configuration for the external-storage Postgres and S3 baseline. */
+export type ExternalStorageBaselineConfig = z.infer<typeof externalStorageBaselineConfigSchema>;
 
 /** Default diagnostic workload for one developer machine. */
-export const defaultSharedBaselineConfig: SharedBaselineConfig = {
+export const defaultExternalStorageBaselineConfig: ExternalStorageBaselineConfig = {
   concurrentFileBytes: 16_384,
   concurrentPublications: 16,
   directoryFileBytes: 4_096,
@@ -105,7 +105,7 @@ export const defaultSharedBaselineConfig: SharedBaselineConfig = {
 };
 
 /** Latency distribution for one measured operation. */
-export interface SharedLatencySummary {
+export interface ExternalStorageLatencySummary {
   readonly count: number;
   readonly maximumMilliseconds: number;
   readonly meanMilliseconds: number;
@@ -116,15 +116,15 @@ export interface SharedLatencySummary {
 }
 
 /** Latency and throughput for one bounded phase. */
-export interface SharedOperationSummary {
-  readonly latency: SharedLatencySummary;
+export interface ExternalStorageOperationSummary {
+  readonly latency: ExternalStorageLatencySummary;
   readonly operationsPerSecond: number;
   readonly totalMilliseconds: number;
 }
 
-/** Durable diagnostic evidence from one real shared-runtime baseline. */
-export interface SharedBaselineReport {
-  readonly artifactList: SharedOperationSummary;
+/** Durable diagnostic evidence from one real external-storage-runtime baseline. */
+export interface ExternalStorageBaselineReport {
+  readonly artifactList: ExternalStorageOperationSummary;
   readonly checks: {
     readonly compiledProcesses: "passed";
     readonly crossProcessDirectoryRead: "passed";
@@ -133,9 +133,9 @@ export interface SharedBaselineReport {
     readonly processReplacement: "passed";
     readonly providerBackedPublication: "passed";
   };
-  readonly concurrentPublish: SharedOperationSummary;
-  readonly concurrentRead: SharedOperationSummary;
-  readonly configuration: SharedBaselineConfig;
+  readonly concurrentPublish: ExternalStorageOperationSummary;
+  readonly concurrentRead: ExternalStorageOperationSummary;
+  readonly configuration: ExternalStorageBaselineConfig;
   readonly environment: {
     readonly availableParallelism: number;
     readonly cpu: string;
@@ -146,8 +146,8 @@ export interface SharedBaselineReport {
     readonly postgresImage: string;
   };
   readonly fileClient: {
-    readonly directory: SharedOperationSummary;
-    readonly singleFile: SharedOperationSummary;
+    readonly directory: ExternalStorageOperationSummary;
+    readonly singleFile: ExternalStorageOperationSummary;
   };
   readonly generatedAt: string;
   readonly providerReadyMilliseconds: number;
@@ -159,7 +159,7 @@ export interface SharedBaselineReport {
   readonly warnings: readonly string[];
 }
 
-interface SharedEnvironment {
+interface ExternalStorageEnvironment {
   readonly accessKey: string;
   readonly databaseUrl: string;
   readonly minioImage: string;
@@ -169,7 +169,7 @@ interface SharedEnvironment {
   readonly secretKey: string;
 }
 
-interface SharedProcess {
+interface ExternalStorageProcess {
   readonly baseUrl: string;
   readonly child: ChildProcessWithoutNullStreams;
   readonly readyMilliseconds: number;
@@ -184,10 +184,10 @@ interface MeasuredRecord<Value> {
 
 interface MeasuredPhase<Value> {
   readonly results: readonly Value[];
-  readonly summary: SharedOperationSummary;
+  readonly summary: ExternalStorageOperationSummary;
 }
 
-interface SharedFixtures {
+interface ExternalStorageFixtures {
   readonly concurrentFilePath: string;
   readonly directoryPath: string;
   readonly lastDirectoryAssetPath: string;
@@ -195,25 +195,25 @@ interface SharedFixtures {
   readonly singleFilePath: string;
 }
 
-/** Run the bounded shared-runtime baseline against disposable configured providers. */
-export async function runSharedBaseline(
-  input: SharedBaselineConfig,
-): Promise<SharedBaselineReport> {
-  const configuration = sharedBaselineConfigSchema.parse(input);
-  const environment = readSharedEnvironment();
+/** Run the bounded external-storage-runtime baseline against disposable configured providers. */
+export async function runExternalStorageBaseline(
+  input: ExternalStorageBaselineConfig,
+): Promise<ExternalStorageBaselineReport> {
+  const configuration = externalStorageBaselineConfigSchema.parse(input);
+  const environment = readExternalStorageEnvironment();
   const installationId = `performance-${randomUUID()}`;
-  const apiToken = `shared-performance-${randomUUID()}-${randomUUID()}`;
+  const apiToken = `external-storage-performance-${randomUUID()}-${randomUUID()}`;
   const bucket = `artifact-perf-${randomUUID().replaceAll("-", "").slice(0, 24)}`;
   const s3Client = createS3Client(environment);
-  const runningProcesses = new Set<SharedProcess>();
+  const runningProcesses = new Set<ExternalStorageProcess>();
   const fixtures = await createFixtures(configuration);
   const totalStartedAt = performance.now();
 
   try {
     await s3Client.send(new CreateBucketCommand({Bucket: bucket}));
     const [first, second] = await Promise.all([
-      startSharedProcess(environment, {apiToken, bucket, installationId}),
-      startSharedProcess(environment, {apiToken, bucket, installationId}),
+      startExternalStorageProcess(environment, {apiToken, bucket, installationId}),
+      startExternalStorageProcess(environment, {apiToken, bucket, installationId}),
     ]);
     runningProcesses.add(first);
     runningProcesses.add(second);
@@ -227,7 +227,7 @@ export async function runSharedBaseline(
         initialProcesses[index % initialProcesses.length] ?? first,
         apiToken,
         fixtures.concurrentFilePath,
-        `Shared warmup ${index}`,
+        `External-storage warmup ${index}`,
       ),
     );
 
@@ -241,7 +241,7 @@ export async function runSharedBaseline(
           writer,
           apiToken,
           fixtures.singleFilePath,
-          `Shared single file ${index}`,
+          `External-storage single file ${index}`,
         );
         await assertExactContent(
           reader,
@@ -262,7 +262,7 @@ export async function runSharedBaseline(
           writer,
           apiToken,
           fixtures.directoryPath,
-          `Shared directory ${index}`,
+          `External-storage directory ${index}`,
         );
         const assetUrl = new URL(
           fixtures.lastDirectoryAssetPath,
@@ -284,7 +284,7 @@ export async function runSharedBaseline(
         initialProcesses[index % initialProcesses.length] ?? first,
         apiToken,
         fixtures.concurrentFilePath,
-        `Shared concurrent publication ${index}`,
+        `External-storage concurrent publication ${index}`,
       ),
     );
 
@@ -294,7 +294,7 @@ export async function runSharedBaseline(
       async (index) => {
         const publication = publications.results[index % publications.results.length];
         if (publication === undefined) {
-          throw new Error("The shared read phase could not select a publication.");
+          throw new Error("The external-storage read phase could not select a publication.");
         }
         const reader = initialProcesses[(index + 1) % initialProcesses.length] ?? second;
         await assertExactContent(
@@ -316,7 +316,7 @@ export async function runSharedBaseline(
 
     await second.stop();
     runningProcesses.delete(second);
-    const replacement = await startSharedProcess(
+    const replacement = await startExternalStorageProcess(
       environment,
       {apiToken, bucket, installationId},
     );
@@ -324,7 +324,7 @@ export async function runSharedBaseline(
     await assertHealthy(replacement);
     const restartAnchor = singleFiles.results[0] ?? directories.results[0];
     if (restartAnchor === undefined) {
-      throw new Error("The shared baseline did not produce a replacement-read anchor.");
+      throw new Error("The external-storage baseline did not produce a replacement-read anchor.");
     }
     await assertExactContent(
       replacement,
@@ -372,11 +372,11 @@ export async function runSharedBaseline(
   }
 }
 
-function readSharedEnvironment(): SharedEnvironment {
+function readExternalStorageEnvironment(): ExternalStorageEnvironment {
   const parsed = environmentSchema.safeParse(process.env);
   if (!parsed.success) {
     throw new Error(
-      "Run the shared performance baseline through pnpm perf:shared-baseline.",
+      "Run the external-storage performance baseline through pnpm perf:external-storage-baseline.",
     );
   }
   return {
@@ -391,7 +391,7 @@ function readSharedEnvironment(): SharedEnvironment {
   };
 }
 
-function createS3Client(environment: SharedEnvironment): S3Client {
+function createS3Client(environment: ExternalStorageEnvironment): S3Client {
   return new S3Client({
     credentials: {
       accessKeyId: environment.accessKey,
@@ -404,15 +404,15 @@ function createS3Client(environment: SharedEnvironment): S3Client {
 }
 
 async function createFixtures(
-  configuration: SharedBaselineConfig,
-): Promise<SharedFixtures> {
-  const root = await mkdtemp(path.join(tmpdir(), "artifact-shared-performance-"));
+  configuration: ExternalStorageBaselineConfig,
+): Promise<ExternalStorageFixtures> {
+  const root = await mkdtemp(path.join(tmpdir(), "artifact-external-storage-performance-"));
   const directoryPath = path.join(root, "site");
   const assetDirectory = path.join(directoryPath, "assets");
   await mkdir(assetDirectory, {recursive: true});
   await writeFile(
     path.join(directoryPath, "index.html"),
-    sizedBuffer(configuration.directoryFileBytes, "shared-directory-entry"),
+    sizedBuffer(configuration.directoryFileBytes, "external-storage-directory-entry"),
   );
   const assetCount = configuration.directoryFiles - 1;
   await Promise.all(Array.from({length: assetCount}, async (_, index) => {
@@ -430,11 +430,11 @@ async function createFixtures(
   await Promise.all([
     writeFile(
       singleFilePath,
-      sizedBuffer(configuration.singleFileBytes, "shared-single-file"),
+      sizedBuffer(configuration.singleFileBytes, "external-storage-single-file"),
     ),
     writeFile(
       concurrentFilePath,
-      sizedBuffer(configuration.concurrentFileBytes, "shared-concurrent-file"),
+      sizedBuffer(configuration.concurrentFileBytes, "external-storage-concurrent-file"),
     ),
   ]);
   return {
@@ -446,18 +446,18 @@ async function createFixtures(
   };
 }
 
-function startSharedProcess(
-  environment: SharedEnvironment,
+function startExternalStorageProcess(
+  environment: ExternalStorageEnvironment,
   identity: {
     readonly apiToken: string;
     readonly bucket: string;
     readonly installationId: string;
   },
-): Promise<SharedProcess> {
+): Promise<ExternalStorageProcess> {
   const startedAt = performance.now();
   const child = spawn(
     process.execPath,
-    [sharedCli, "start-shared", "--host", "127.0.0.1", "--port", "0"],
+    [externalStorageCli, "start-external-storage", "--host", "127.0.0.1", "--port", "0"],
     {
       cwd: repositoryRoot,
       env: {
@@ -477,23 +477,23 @@ function startSharedProcess(
       stdio: ["pipe", "pipe", "pipe"],
     },
   );
-  return waitForSharedProcess(child, startedAt);
+  return waitForExternalStorageProcess(child, startedAt);
 }
 
-function waitForSharedProcess(
+function waitForExternalStorageProcess(
   child: ChildProcessWithoutNullStreams,
   startedAt: number,
-): Promise<SharedProcess> {
+): Promise<ExternalStorageProcess> {
   return new Promise((resolve, reject) => {
     let output = "";
     const timeout = setTimeout(() => {
       cleanup();
       child.kill("SIGTERM");
-      reject(new Error("A shared process did not become ready within 20 seconds."));
+      reject(new Error("An external-storage process did not become ready within 20 seconds."));
     }, 20_000);
     const receive = (chunk: Buffer) => {
       output += chunk.toString("utf8");
-      const match = /Shared Artifact Server: (http:\/\/127\.0\.0\.1:\d+)/u.exec(
+      const match = /Artifact Server \(external-storage\): (http:\/\/127\.0\.0\.1:\d+)/u.exec(
         output,
       );
       const baseUrl = match?.[1];
@@ -515,7 +515,7 @@ function waitForSharedProcess(
     };
     const exit = () => {
       cleanup();
-      reject(new Error("A shared process exited before readiness."));
+      reject(new Error("An external-storage process exited before readiness."));
     };
     const cleanup = () => {
       clearTimeout(timeout);
@@ -539,15 +539,15 @@ async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
   await exited;
 }
 
-async function assertHealthy(server: SharedProcess): Promise<void> {
+async function assertHealthy(server: ExternalStorageProcess): Promise<void> {
   const response = await fetch(`${server.baseUrl}/health`);
   if (response.status !== 200) {
-    throw new Error(`A shared health endpoint returned ${response.status}.`);
+    throw new Error(`An external-storage health endpoint returned ${response.status}.`);
   }
 }
 
 function publishFile(
-  server: SharedProcess,
+  server: ExternalStorageProcess,
   apiToken: string,
   inputPath: string,
   name: string,
@@ -555,7 +555,7 @@ function publishFile(
   return Effect.runPromise(
     publishPath(
       {
-        apiToken: Redacted.make(apiToken, {label: "shared-performance-token"}),
+        apiToken: Redacted.make(apiToken, {label: "external-storage-performance-token"}),
         serverOrigin: server.baseUrl,
       },
       {
@@ -565,7 +565,7 @@ function publishFile(
           accessSetting: "public_link",
           kind: "new_artifact",
           name,
-          tags: ["performance", "shared-runtime"],
+          tags: ["performance", "external-storage-runtime"],
         },
       },
     ).pipe(
@@ -576,27 +576,27 @@ function publishFile(
 }
 
 async function assertArtifactList(
-  server: SharedProcess,
+  server: ExternalStorageProcess,
   apiToken: string,
   expected: FilePublicationResult | undefined,
 ): Promise<void> {
   if (expected === undefined) {
-    throw new Error("The shared list phase did not receive an expected artifact.");
+    throw new Error("The external-storage list phase did not receive an expected artifact.");
   }
   const response = await fetch(`${server.baseUrl}/api/v1/artifacts?limit=50`, {
     headers: {Authorization: `Bearer ${apiToken}`},
   });
   if (response.status !== 200) {
-    throw new Error(`A shared artifact list returned ${response.status}.`);
+    throw new Error(`An external-storage artifact list returned ${response.status}.`);
   }
   const body = artifactListSchema.parse(await response.json());
   if (!body.artifacts.some(({artifact}) => artifact.id === expected.artifact.id)) {
-    throw new Error("A shared artifact list omitted a cross-process publication.");
+    throw new Error("An external-storage artifact list omitted a cross-process publication.");
   }
 }
 
 function assertExactContent(
-  server: SharedProcess,
+  server: ExternalStorageProcess,
   versionUrl: string,
   expectedBytes: number,
 ): Promise<void> {
@@ -619,13 +619,13 @@ function assertExactContent(
         incoming.on("end", () => {
           if (incoming.statusCode !== 200) {
             reject(new Error(
-              `A shared version read returned ${incoming.statusCode ?? 500}.`,
+              `An external-storage version read returned ${incoming.statusCode ?? 500}.`,
             ));
             return;
           }
           if (receivedBytes !== expectedBytes) {
             reject(new Error(
-              `A shared version returned ${receivedBytes} bytes instead of ${expectedBytes}.`,
+              `An external-storage version returned ${receivedBytes} bytes instead of ${expectedBytes}.`,
             ));
             return;
           }
@@ -679,12 +679,12 @@ async function runMeasured<Value>(
 function summarizeOperations(
   samples: readonly number[],
   totalMilliseconds: number,
-): SharedOperationSummary {
+): ExternalStorageOperationSummary {
   const sorted = samples.toSorted((left, right) => left - right);
   const first = sorted[0];
   const last = sorted.at(-1);
   if (first === undefined || last === undefined) {
-    throw new Error("A shared operation summary requires at least one sample.");
+    throw new Error("An external-storage operation summary requires at least one sample.");
   }
   const mean = sorted.reduce((sum, sample) => sum + sample, 0) / sorted.length;
   return {
@@ -706,7 +706,7 @@ function percentile(sorted: readonly number[], requested: number): number {
   const index = Math.max(0, Math.ceil((requested / 100) * sorted.length) - 1);
   const value = sorted[index];
   if (value === undefined) {
-    throw new Error("A shared percentile requires a populated sample.");
+    throw new Error("An external-storage percentile requires a populated sample.");
   }
   return value;
 }
@@ -718,8 +718,8 @@ function sizedBuffer(bytes: number, label: string): Buffer {
 }
 
 function environmentSummary(
-  environment: SharedEnvironment,
-): SharedBaselineReport["environment"] {
+  environment: ExternalStorageEnvironment,
+): ExternalStorageBaselineReport["environment"] {
   return {
     availableParallelism: availableParallelism(),
     cpu: cpus()[0]?.model ?? "unreported",
@@ -732,34 +732,34 @@ function environmentSummary(
 }
 
 function baselineWarnings(report: {
-  readonly artifactList: SharedOperationSummary;
-  readonly concurrentPublish: SharedOperationSummary;
-  readonly concurrentRead: SharedOperationSummary;
-  readonly fileClient: SharedBaselineReport["fileClient"];
-  readonly serverReadyMilliseconds: SharedBaselineReport["serverReadyMilliseconds"];
+  readonly artifactList: ExternalStorageOperationSummary;
+  readonly concurrentPublish: ExternalStorageOperationSummary;
+  readonly concurrentRead: ExternalStorageOperationSummary;
+  readonly fileClient: ExternalStorageBaselineReport["fileClient"];
+  readonly serverReadyMilliseconds: ExternalStorageBaselineReport["serverReadyMilliseconds"];
 }): readonly string[] {
   const warnings: string[] = [];
   if (report.artifactList.latency.p95Milliseconds > 250) {
-    warnings.push("Artifact-list p95 exceeded the shared investigation threshold of 250 ms.");
+    warnings.push("Artifact-list p95 exceeded the external-storage investigation threshold of 250 ms.");
   }
   if (report.concurrentPublish.latency.p95Milliseconds > 1_000) {
-    warnings.push("Concurrent publication p95 exceeded the shared investigation threshold of 1,000 ms.");
+    warnings.push("Concurrent publication p95 exceeded the external-storage investigation threshold of 1,000 ms.");
   }
   if (report.concurrentRead.latency.p95Milliseconds > 250) {
-    warnings.push("Concurrent content-read p95 exceeded the shared investigation threshold of 250 ms.");
+    warnings.push("Concurrent content-read p95 exceeded the external-storage investigation threshold of 250 ms.");
   }
   if (report.fileClient.directory.latency.p95Milliseconds > 10_000) {
-    warnings.push("Shared directory publication p95 exceeded 10,000 ms.");
+    warnings.push("External-storage directory publication p95 exceeded 10,000 ms.");
   }
   if (report.fileClient.singleFile.latency.p95Milliseconds > 5_000) {
-    warnings.push("Shared single-file publication p95 exceeded 5,000 ms.");
+    warnings.push("External-storage single-file publication p95 exceeded 5,000 ms.");
   }
   const startupTimes = [
     ...report.serverReadyMilliseconds.initialProcesses,
     report.serverReadyMilliseconds.replacementProcess,
   ];
   if (Math.max(...startupTimes) > 10_000) {
-    warnings.push("A compiled shared process took more than 10,000 ms to become ready.");
+    warnings.push("A compiled external-storage process took more than 10,000 ms to become ready.");
   }
   return warnings;
 }

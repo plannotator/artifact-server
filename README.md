@@ -2,7 +2,7 @@
 
 Artifact Server stores finished browser files as immutable versions and serves each version from its own hostname.
 
-This repository contains the local publication foundation and the first shared-server runtime. It is not the complete product yet. The current implementation proves:
+This repository contains the local publication foundation and the first external-storage runtime. It is not the complete product yet. The current implementation proves:
 
 - a file-first CLI backed by token-protected HTTP upload and commit operations;
 - single-file publication through the same verified upload contract used by complete sites;
@@ -34,17 +34,17 @@ This repository contains the local publication foundation and the first shared-s
 - single-use private-content bootstraps and host-only, HttpOnly content cookies;
 - authenticated browser sessions for current or earlier exact versions;
 - persistence of committed versions and in-progress uploads across a full server restart;
-- a stateless shared process backed by Postgres and S3-compatible storage;
+- a stateless external-storage process backed by Postgres and S3-compatible storage;
 - concurrent startup with serialized Postgres migrations;
 - cross-process publication, browser sessions, managed keys, and staged uploads;
 - replacement of every application process without losing committed state;
-- installation isolation in one shared database and bucket;
+- installation isolation when several installations use one Postgres database and bucket;
 - logical Postgres and object-storage backup and restore with stable IDs and bytes;
 - a bounded two-process Postgres and S3-compatible performance baseline using the real file-first client.
 
 ## Remaining implementation
 
-The next implementation block packages the compiled local and shared runtimes.
+The next implementation block packages the compiled local and external-storage runtimes.
 The executable scope is in
 [`spec/phase-6-packaging.md`](./spec/phase-6-packaging.md). It defines a native
 local package that does not require Docker, one optional OCI image, Compact
@@ -151,19 +151,19 @@ instead of placing file contents inside JSON or MCP messages:
 
 The upload record survives restart. The commit is rejected until every declared file matches its size and fingerprint. A successful commit creates one canonical manifest and one immutable version containing every file. Root-relative asset requests remain on that version's unique content hostname.
 
-## Run the shared server
+## Run with external storage
 
-Shared mode runs the same HTTP product behavior with no committed artifact data
+The external-storage runtime runs the same HTTP product behavior with no committed artifact data
 on application-process disk. Each process uses Postgres for records and one
 S3-compatible bucket for staged and immutable bytes. Local mode remains the
 default and still uses SQLite plus local files.
 
-Set the shared values documented in `.env.example`, create the configured
+Set the external-storage values documented in `.env.example`, create the configured
 bucket, and run:
 
 ```sh
 pnpm build
-node dist/cli/main.js start-shared --host 0.0.0.0 --port 8787
+node dist/cli/main.js start-external-storage --host 0.0.0.0 --port 8787
 ```
 
 Every replica for one installation must use the same installation ID, database,
@@ -188,7 +188,7 @@ pnpm verify:iteration
 Remote storage changes additionally finish with:
 
 ```sh
-pnpm verify:shared-storage
+pnpm verify:object-storage
 ```
 
 That command requires Docker. It starts a digest-pinned MinIO container and
@@ -197,10 +197,10 @@ It deletes and replaces the provider container over the same durable volume as
 part of the test. This provider proof does not make Docker a local-product
 runtime requirement.
 
-Shared-runtime changes also finish with:
+External-storage runtime changes also finish with:
 
 ```sh
-pnpm verify:shared-runtime
+pnpm verify:external-storage-runtime
 ```
 
 That Docker-backed gate starts digest-pinned Postgres and MinIO providers and
@@ -210,7 +210,7 @@ uploads, restart, installation isolation, logical backup and restore, and
 provider-credential failures. It is a subprocess behavior gate; the local
 in-process suite remains the source-coverage diagnostic.
 
-Deployed local and shared processes write sampled one-line JSON request logs and
+Deployed local and external-storage processes write sampled one-line JSON request logs and
 return a server-generated `X-Request-Id`. Server failures and requests taking at
 least one second are always logged. Set
 `ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE` from `0` through `1` to change the
@@ -223,16 +223,16 @@ object-storage readiness; a failed dependency returns 503 without making
 `/health` fail. Telemetry excludes bearer values, cookies, query strings, file
 contents, raw artifact IDs, and raw paths.
 
-Performance-sensitive shared-runtime changes additionally finish with:
+Performance-sensitive external-storage-runtime changes additionally finish with:
 
 ```sh
-pnpm verify:shared-performance
+pnpm verify:external-storage-performance
 ```
 
 That bounded diagnostic reuses the same pinned disposable providers, starts two
 compiled processes, publishes through the real file-first client, reads across
 processes, and replaces one process. It writes
-`evidence/shared-performance-baseline.json`. It is a same-environment regression
+`evidence/external-storage-performance-baseline.json`. It is a same-environment regression
 baseline, not a cloud-capacity claim.
 
 Tests use temporary real SQLite databases, real disk blobs, and a real HTTP server. Module mocking is forbidden. Coverage is reported as a diagnostic for unexercised code; conformance behavior and hostile tests are the release proof.
@@ -251,17 +251,17 @@ The readable proposal and executable checklist are in [`spec/`](./spec/):
 ## Code boundaries
 
 ```text
-src/core          product records, errors, and provider ports
-src/manifest      portable path validation and canonical manifests
-src/comparison    pure canonical-manifest comparison rules
-src/application   Effect services for identity, authorization, publication, management, comparison, and content access
-src/storage       SQLite, Postgres, local-file, and S3-compatible adapters
-src/http          HTTP authentication, publication, links, and delivery
-src/local         local adapters, Effect layers, and composition root
-src/shared        stateless Postgres and object-storage composition root
-src/observability structured logs, bounded metrics, Effect spans, and OTLP layers
-src/cli           local and shared process entry point
-tests/conformance observable product and hostile behavior
+src/core              product records, errors, and provider ports
+src/manifest          portable path validation and canonical manifests
+src/comparison        pure canonical-manifest comparison rules
+src/application       Effect services for identity, authorization, publication, management, comparison, and content access
+src/storage           SQLite, Postgres, local-file, and S3-compatible adapters
+src/http              HTTP authentication, publication, links, and delivery
+src/local             local adapters, Effect layers, and composition root
+src/external-storage  stateless Postgres and object-storage composition root
+src/observability     structured logs, bounded metrics, Effect spans, and OTLP layers
+src/cli               local and external-storage process entry point
+tests/conformance     observable product and hostile behavior
 ```
 
 Concrete storage and transport code depends on the core. The core does not depend on SQLite, disk, Hono, MCP, Cloudflare, or another deployment provider.
@@ -281,8 +281,8 @@ adapter boundary.
 See [`Decision 0005`](./spec/decisions/0005-effect-native-object-storage.md) for
 the Effect-owned object-storage boundary, direct-provider strategy, and Phase
 3A acceptance scope.
-See [`Decision 0006`](./spec/decisions/0006-postgres-shared-runtime.md) for the
-Postgres transaction, migration, process, and shared-provider boundary.
+See [`Decision 0006`](./spec/decisions/0006-postgres-external-storage-runtime.md) for the
+Postgres transaction, migration, process, and external-provider boundary.
 See [`Decision 0007`](./spec/decisions/0007-file-and-directory-publishing.md) for
 the public file and directory input contract and the removal of raw-content
 publishing from HTTP and MCP.

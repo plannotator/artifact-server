@@ -9,10 +9,11 @@ import { z } from "zod";
 import { WorkOsIdentityProvider } from "../identity/workos-identity-provider.js";
 import {startLocalServer} from "../local/start-local-server.js";
 import {
-  startSharedServer,
-  type SharedServerConfig,
-} from "../shared/start-shared-server.js";
-import type {SharedObjectStorageConfig} from "../shared/create-shared-runtime.js";
+  startExternalStorageServer,
+  type ExternalStorageServerConfig,
+} from "../external-storage/start-external-storage-server.js";
+import type {ExternalObjectStorageConfig} from
+  "../external-storage/create-external-storage-runtime.js";
 import {defaultCompletedRequestLogSampleRate} from
   "../observability/application-observability.js";
 import {configurePublishCommand} from "./publish-command.js";
@@ -22,7 +23,7 @@ interface StartOptions {
   readonly port: string;
 }
 
-interface StartSharedOptions {
+interface StartExternalStorageOptions {
   readonly host: string;
   readonly port: string;
 }
@@ -51,7 +52,7 @@ const workOsEnvironmentSchema = z.object({
   ARTIFACT_SERVER_WORKOS_API_KEY: z.string().min(1).optional(),
   ARTIFACT_SERVER_WORKOS_CLIENT_ID: z.string().min(1).optional(),
 });
-const sharedEnvironmentSchema = z.object({
+const externalStorageEnvironmentSchema = z.object({
   ARTIFACT_SERVER_API_TOKEN: bearerCredentialSchema,
   ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL: z.email(),
   ARTIFACT_SERVER_CONTENT_DOMAIN: z.hostname().default("localhost"),
@@ -151,7 +152,7 @@ program
   });
 
 program
-  .command("start-shared")
+  .command("start-external-storage")
   .description("Start one stateless Postgres and object-storage server process.")
   .addOption(
     new Option("--host <hostname>", "HTTP bind hostname")
@@ -163,10 +164,10 @@ program
       .default("8787")
       .env("ARTIFACT_SERVER_PORT"),
   )
-  .action(async (options: StartSharedOptions) => {
-    const environment = sharedEnvironmentSchema.parse(process.env);
+  .action(async (options: StartExternalStorageOptions) => {
+    const environment = externalStorageEnvironmentSchema.parse(process.env);
     const workOs = workOsConfiguration(process.env);
-    let objectStorage: SharedObjectStorageConfig = {
+    let objectStorage: ExternalObjectStorageConfig = {
       accessKeyId: environment.ARTIFACT_SERVER_S3_ACCESS_KEY_ID,
       bucket: environment.ARTIFACT_SERVER_S3_BUCKET,
       forcePathStyle: environment.ARTIFACT_SERVER_S3_FORCE_PATH_STYLE,
@@ -182,9 +183,9 @@ program
         endpoint: environment.ARTIFACT_SERVER_S3_ENDPOINT,
       };
     }
-    let serverConfig: SharedServerConfig = {
+    let serverConfig: ExternalStorageServerConfig = {
       apiToken: Redacted.make(environment.ARTIFACT_SERVER_API_TOKEN, {
-        label: "shared-api-token",
+        label: "external-storage-api-token",
       }),
       bootstrapAdministratorEmail:
         environment.ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL,
@@ -223,16 +224,16 @@ program
         ...serverConfig,
         localBootstrapCredential: Redacted.make(
           environment.ARTIFACT_SERVER_LOCAL_BOOTSTRAP_TOKEN,
-          {label: "shared-browser-bootstrap"},
+          {label: "external-storage-browser-bootstrap"},
         ),
       };
     }
-    const server = await startSharedServer(serverConfig);
+    const server = await startExternalStorageServer(serverConfig);
     const displayHostname = options.host === "0.0.0.0"
       ? "localhost"
       : server.hostname;
     console.log(
-      `Shared Artifact Server: http://${displayHostname}:${server.port}`,
+      `Artifact Server (external-storage): http://${displayHostname}:${server.port}`,
     );
 
     await new Promise<void>((resolve, reject) => {

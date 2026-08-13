@@ -1,4 +1,4 @@
-# Decision 0006: Postgres-backed shared runtime
+# Decision 0006: Postgres-backed external-storage runtime
 
 Status: accepted for Phase 3B
 
@@ -7,18 +7,18 @@ Status: accepted for Phase 3B
 Artifact Server will keep two explicit runtime compositions:
 
 - Local mode uses one process, SQLite, and local files.
-- Shared mode uses stateless application processes, Postgres, and one configured object-storage driver.
+- External-storage mode uses stateless application processes, Postgres, and one configured object-storage driver.
 
-Shared mode will use the existing application services and product ports. It will not add a second set of product rules. Postgres receives its own migrations, indexes, queries, and transaction behavior. S3-compatible storage continues to implement the existing immutable blob and staging ports.
+External-storage mode will use the existing application services and product ports. It will not add a second set of product rules. Postgres receives its own migrations, indexes, queries, and transaction behavior. S3-compatible storage continues to implement the existing immutable blob and staging ports.
 
 The Postgres adapter is scoped by a trusted installation ID supplied when the server starts. Every table and every query carries that scope. Request input cannot choose a database, installation ID, bucket, or object prefix.
 
-The first shared composition uses:
+The first external-storage composition uses:
 
 - `@effect/sql-pg` at the Postgres boundary;
 - the official AWS SDK at the S3-compatible boundary;
-- one shared Postgres connection pool per process;
-- one shared S3 client per process;
+- one Postgres connection pool per process;
+- one S3 client per process;
 - database migrations before the process reports ready;
 - no committed data on application-process disk.
 
@@ -56,7 +56,7 @@ Phase 3B is complete only when a pinned local integration environment proves:
 
 ## Not proved by Phase 3B
 
-This phase does not mark Kubernetes, AWS, Cloudflare, GCP, Azure, or the private-team release supported. It does not prove native AWS S3 or Cloudflare R2 behavior. Those targets must run their own provider and deployment checks after the shared runtime exists.
+This phase does not mark Kubernetes, AWS, Cloudflare, GCP, Azure, or the private-team release supported. It does not prove native AWS S3 or Cloudflare R2 behavior. Those targets must run their own provider and deployment checks after the external-storage runtime exists.
 
 ## Alternatives considered
 

@@ -230,7 +230,7 @@ export class PostgresArtifactRepository implements
     return new PostgresArtifactRepository(database, installationId);
   }
 
-  /** The owning shared database closes the process pool. */
+  /** The owning Postgres database closes the process pool. */
   close(): void {}
 
   async assertPublicationSourceReady(

@@ -1,10 +1,10 @@
-# Shared Postgres and S3 performance baseline
+# External-storage Postgres and S3 performance baseline
 
 Status: complete
 
 ## Purpose
 
-Detect obvious regressions in the shared publication and content-delivery path
+Detect obvious regressions in the external-storage publication and content-delivery path
 before cloud packaging begins. This is a bounded engineering diagnostic. It is
 not a load test, hosting-cost model, or capacity promise.
 
@@ -18,7 +18,7 @@ not a load test, hosting-cost model, or capacity promise.
   upload-plan creation, streaming file uploads, and commit;
 - one replacement server process after the measured phases.
 
-The shared correctness suite and this baseline use the same disposable-provider
+The external-storage correctness suite and this baseline use the same disposable-provider
 wrapper so provider versions, credentials, readiness checks, and cleanup cannot
 drift.
 
@@ -61,9 +61,9 @@ based on one developer machine. Correctness checks do fail the run.
 - [x] Provider provisioning is excluded from request-latency summaries.
 - [x] The JSON evidence records environment, workload, percentiles, throughput,
       readiness, checks, and warnings.
-- [x] `pnpm verify:shared-performance` passes.
+- [x] `pnpm verify:external-storage-performance` passes.
 
-Evidence: `evidence/shared-performance-baseline.json`.
+Evidence: `evidence/external-storage-performance-baseline.json`.
 
 ## Still unproved
 

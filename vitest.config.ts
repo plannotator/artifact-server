@@ -5,7 +5,7 @@ export default defineConfig({
     coverage: {
       include: ["src/**/*.ts"],
       exclude: [
-        "src/shared/**/*.ts",
+        "src/external-storage/**/*.ts",
         "src/storage/postgres-*.ts",
         "src/storage/s3-object-storage.ts",
       ],

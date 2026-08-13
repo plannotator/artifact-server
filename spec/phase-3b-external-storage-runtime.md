@@ -1,4 +1,4 @@
-# Phase 3B: shared runtime acceptance plan
+# Phase 3B: external-storage runtime acceptance plan
 
 This file is the implementation checklist for Decision 0006. The conformance ledger remains authoritative for product requirements.
 
@@ -12,8 +12,8 @@ This file is the implementation checklist for Decision 0006. The conformance led
 
 ## Runtime
 
-- [x] Shared configuration is parsed once at startup.
-- [x] The shared runtime selects Postgres plus S3-compatible storage without changing application services.
+- [x] External-storage configuration is parsed once at startup.
+- [x] The external-storage runtime selects Postgres plus S3-compatible storage without changing application services.
 - [x] Local SQLite plus local files remains the default local runtime.
 - [x] Health does not report ready before migrations and provider checks finish.
 - [x] Shutdown drains HTTP and disposes the database pool and S3 client.
@@ -29,9 +29,9 @@ This file is the implementation checklist for Decision 0006. The conformance led
 
 ## Gates
 
-- [x] Shared-runtime integration has its own required real-provider behavior matrix. Line coverage is measured by in-process tests, not inferred from uninstrumented child processes.
-- [x] `pnpm verify:shared-runtime` passes.
-- [x] `pnpm verify:shared-storage` still passes.
+- [x] External-storage runtime integration has its own required real-provider behavior matrix. Line coverage is measured by in-process tests, not inferred from uninstrumented child processes.
+- [x] `pnpm verify:external-storage-runtime` passes.
+- [x] `pnpm verify:object-storage` still passes.
 - [x] `pnpm smoke` passes.
 - [x] `pnpm verify:iteration` passes.
 - [x] `pnpm audit --prod` reports no known production vulnerability.
@@ -39,7 +39,7 @@ This file is the implementation checklist for Decision 0006. The conformance led
 
 ## Evidence
 
-- `evidence/shared-runtime.json`: seven real-provider tests, including compiled child processes and in-process coverage against the same Postgres and MinIO providers.
+- `evidence/external-storage-runtime.json`: nine real-provider tests, including compiled child processes and in-process coverage against the same Postgres and MinIO providers.
 - `evidence/s3-minio.json`: the dedicated immutable and staged S3-compatible storage contract.
 - `evidence/local-foundation.json`: the unchanged local SQLite and filesystem behavior suite.
 

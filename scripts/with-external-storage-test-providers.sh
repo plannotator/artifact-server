@@ -3,7 +3,7 @@
 set -euo pipefail
 
 if [[ "$#" -eq 0 ]]; then
-  echo "Usage: scripts/with-shared-test-providers.sh <command> [arguments...]" >&2
+  echo "Usage: scripts/with-external-storage-test-providers.sh <command> [arguments...]" >&2
   exit 64
 fi
 
@@ -12,7 +12,7 @@ readonly minio_image="minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321
 readonly run_id="${$}-${RANDOM}"
 readonly postgres_container="artifact-server-postgres-${run_id}"
 readonly postgres_volume="${postgres_container}-data"
-readonly minio_container="artifact-server-minio-shared-${run_id}"
+readonly minio_container="artifact-server-minio-external-storage-${run_id}"
 readonly minio_volume="${minio_container}-data"
 readonly postgres_user="artifactserver"
 readonly postgres_password="artifactserver-postgres-integration-only"
@@ -51,7 +51,7 @@ docker run --detach \
 postgres_port="$(docker port "${postgres_container}" 5432/tcp | sed -n 's/^127\.0\.0\.1://p' | head -n 1)"
 minio_port="$(docker port "${minio_container}" 9000/tcp | sed -n 's/^127\.0\.0\.1://p' | head -n 1)"
 if [[ -z "${postgres_port}" || -z "${minio_port}" ]]; then
-  echo "A shared-runtime provider did not publish an IPv4 test port." >&2
+  echo "An external-storage provider did not publish an IPv4 test port." >&2
   exit 1
 fi
 

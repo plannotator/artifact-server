@@ -21,21 +21,21 @@ import {
   PROTOCOL_VERSION_META_KEY,
 } from "@modelcontextprotocol/server";
 
-import {startSharedServer} from "../../src/shared/start-shared-server.js";
+import {startExternalStorageServer} from "../../src/external-storage/start-external-storage-server.js";
 import {PostgresDatabase} from "../../src/storage/postgres-database.js";
 import {PostgresArtifactRepository} from "../../src/storage/postgres-artifact-repository.js";
 import {PostgresIdentityRepository} from "../../src/storage/postgres-identity-repository.js";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
-const sharedCli = path.join(repositoryRoot, "dist/cli/main.js");
+const externalStorageCli = path.join(repositoryRoot, "dist/cli/main.js");
 const region = "us-east-1";
-const bucket = "artifact-server-shared-integration";
-const installationId = "shared-integration-installation";
-const apiToken = "shared-integration-api-token-with-sufficient-entropy";
+const bucket = "artifact-server-external-storage-integration";
+const installationId = "external-storage-integration-installation";
+const apiToken = "external-storage-integration-api-token-with-sufficient-entropy";
 const browserBootstrapToken =
-  "shared-browser-bootstrap-token-with-sufficient-entropy";
+  "external-storage-browser-bootstrap-token-with-sufficient-entropy";
 const runningProcesses = new Set<ChildProcessWithoutNullStreams>();
-const runningInProcessServers = new Set<InProcessSharedServer>();
+const runningInProcessServers = new Set<InProcessExternalStorageServer>();
 
 const publishResponseSchema = z.object({
   artifact: z.object({
@@ -100,18 +100,18 @@ interface BackedUpObject {
   readonly metadata: Readonly<Record<string, string>> | undefined;
 }
 
-interface SharedProcess {
+interface ExternalStorageProcess {
   readonly baseUrl: string;
   readonly child: ChildProcessWithoutNullStreams;
   stop(): Promise<void>;
 }
 
-interface InProcessSharedServer {
+interface InProcessExternalStorageServer {
   readonly baseUrl: string;
   stop(): Promise<void>;
 }
 
-describe.sequential("shared Postgres and S3 runtime", () => {
+describe.sequential("external-storage Postgres and S3 runtime", () => {
   let environment: IntegrationEnvironment;
   let s3Client: S3Client;
 
@@ -140,11 +140,11 @@ describe.sequential("shared Postgres and S3 runtime", () => {
     s3Client.destroy();
   });
 
-  test("PUB-011-B PUB-011-F: independent shared processes accept uploaded bytes, reject remote sources, serialize writes, restart, and isolate installations", async () => {
+  test("PUB-011-B PUB-011-F: independent external-storage processes accept uploaded bytes, reject remote sources, serialize writes, restart, and isolate installations", async () => {
     expect.hasAssertions();
     const [first, second] = await Promise.all([
-      startSharedProcess(environment, {apiToken, installationId}),
-      startSharedProcess(environment, {apiToken, installationId}),
+      startExternalStorageProcess(environment, {apiToken, installationId}),
+      startExternalStorageProcess(environment, {apiToken, installationId}),
     ]);
 
     const remoteSource = await fetch(`${first.baseUrl}/api/v1/uploads`, {
@@ -167,9 +167,9 @@ describe.sequential("shared Postgres and S3 runtime", () => {
     expect(remoteSource.status).toBe(422);
 
     const initial = await publishNew(first.baseUrl, apiToken, {
-      content: "<h1>shared version one</h1>",
-      idempotencyKey: `shared-create-${randomUUID()}`,
-      name: "Shared process proof",
+      content: "<h1>external-storage version one</h1>",
+      idempotencyKey: `external-storage-create-${randomUUID()}`,
+      name: "External-storage process proof",
     });
     expect(initial.response.status).toBe(201);
 
@@ -180,7 +180,7 @@ describe.sequential("shared Postgres and S3 runtime", () => {
         artifact: expect.objectContaining({
           currentVersionId: initial.body.version.id,
           id: initial.body.artifact.id,
-          name: "Shared process proof",
+          name: "External-storage process proof",
         }),
       }),
     ]);
@@ -208,7 +208,7 @@ describe.sequential("shared Postgres and S3 runtime", () => {
     const winnerBody = publishResponseSchema.parse(winner.body);
 
     await Promise.all([first.stop(), second.stop()]);
-    const restarted = await startSharedProcess(environment, {apiToken, installationId});
+    const restarted = await startExternalStorageProcess(environment, {apiToken, installationId});
     const afterRestart = await listArtifacts(restarted.baseUrl, apiToken);
     expect(afterRestart.body.artifacts).toEqual([
       expect.objectContaining({
@@ -219,9 +219,9 @@ describe.sequential("shared Postgres and S3 runtime", () => {
       }),
     ]);
 
-    const isolated = await startSharedProcess(environment, {
+    const isolated = await startExternalStorageProcess(environment, {
       apiToken: "isolated-api-token-with-sufficient-entropy-000000",
-      installationId: "isolated-shared-installation",
+      installationId: "isolated-external-storage-installation",
     });
     const isolatedList = await listArtifacts(
       isolated.baseUrl,
@@ -241,24 +241,24 @@ describe.sequential("shared Postgres and S3 runtime", () => {
     expect(guessed.status).toBe(404);
   });
 
-  test("foundation: independent shared processes expose the same stateless MCP installation", async () => {
+  test("foundation: independent external-storage processes expose the same stateless MCP installation", async () => {
     expect.hasAssertions();
     const identity = {
-      apiToken: "shared-mcp-api-token-with-sufficient-entropy-000000",
-      installationId: `shared-mcp-${randomUUID()}`,
+      apiToken: "external-storage-mcp-api-token-with-sufficient-entropy-000000",
+      installationId: `external-storage-mcp-${randomUUID()}`,
     };
     const [first, second] = await Promise.all([
-      startSharedProcess(environment, identity),
-      startSharedProcess(environment, identity),
+      startExternalStorageProcess(environment, identity),
+      startExternalStorageProcess(environment, identity),
     ]);
     const published = await publishNew(first.baseUrl, identity.apiToken, {
-      content: "<main>shared MCP visibility</main>",
-      idempotencyKey: `shared-mcp-create-${randomUUID()}`,
-      name: "Shared MCP proof",
+      content: "<main>external-storage MCP visibility</main>",
+      idempotencyKey: `external-storage-mcp-create-${randomUUID()}`,
+      name: "External-storage MCP proof",
     });
     expect(published.response.status).toBe(201);
 
-    const discovery = await sharedMcpRequest(
+    const discovery = await externalStorageMcpRequest(
       second.baseUrl,
       identity.apiToken,
       "server/discover",
@@ -273,7 +273,7 @@ describe.sequential("shared Postgres and S3 runtime", () => {
       },
     });
 
-    const listed = await sharedMcpRequest(
+    const listed = await externalStorageMcpRequest(
       second.baseUrl,
       identity.apiToken,
       "tools/call",
@@ -299,7 +299,7 @@ describe.sequential("shared Postgres and S3 runtime", () => {
     );
   });
 
-  test("shared foundation: a scoped identity adapter rejects a caller-selected installation", async () => {
+  test("external-storage foundation: a scoped identity adapter rejects a caller-selected installation", async () => {
     const database = await PostgresDatabase.open({
       maxConnections: 2,
       url: Redacted.make(environment.databaseUrl),
@@ -318,7 +318,7 @@ describe.sequential("shared Postgres and S3 runtime", () => {
     }
   });
 
-  test("shared foundation: concurrent replicas cannot deactivate the last two administrators", async () => {
+  test("external-storage foundation: concurrent replicas cannot deactivate the last two administrators", async () => {
     const database = await PostgresDatabase.open({
       maxConnections: 2,
       url: Redacted.make(environment.databaseUrl),
@@ -381,15 +381,15 @@ describe.sequential("shared Postgres and S3 runtime", () => {
     }
   });
 
-  test("shared foundation: browser sessions, managed keys, and staged uploads cross process boundaries", async () => {
+  test("external-storage foundation: browser sessions, managed keys, and staged uploads cross process boundaries", async () => {
     expect.hasAssertions();
-    const sharedIdentity = {
+    const externalStorageIdentity = {
       apiToken: "identity-api-token-with-sufficient-entropy-000000",
-      installationId: "shared-identity-installation",
+      installationId: "external-storage-identity-installation",
     };
     const [first, second] = await Promise.all([
-      startSharedProcess(environment, sharedIdentity),
-      startInProcessSharedServer(environment, sharedIdentity),
+      startExternalStorageProcess(environment, externalStorageIdentity),
+      startInProcessExternalStorageServer(environment, externalStorageIdentity),
     ]);
 
     const login = await fetch(
@@ -407,8 +407,8 @@ describe.sequential("shared Postgres and S3 runtime", () => {
 
     const memberResponse = await fetch(`${second.baseUrl}/api/v1/members`, {
       body: JSON.stringify({
-        displayName: "Shared team member",
-        email: "shared-member@example.test",
+        displayName: "External-storage team member",
+        email: "external-storage-member@example.test",
       }),
       headers: browserMutationHeaders(second.baseUrl, cookies),
       method: "POST",
@@ -420,7 +420,7 @@ describe.sequential("shared Postgres and S3 runtime", () => {
     const duplicateMember = await fetch(`${second.baseUrl}/api/v1/members`, {
       body: JSON.stringify({
         displayName: "Duplicate team member",
-        email: "SHARED-MEMBER@example.test",
+        email: "EXTERNAL-STORAGE-MEMBER@example.test",
       }),
       headers: browserMutationHeaders(second.baseUrl, cookies),
       method: "POST",
@@ -497,7 +497,7 @@ describe.sequential("shared Postgres and S3 runtime", () => {
         }],
       }),
       headers: {
-        Authorization: `Bearer ${sharedIdentity.apiToken}`,
+        Authorization: `Bearer ${externalStorageIdentity.apiToken}`,
         "Content-Type": "application/json",
       },
       method: "POST",
@@ -510,7 +510,7 @@ describe.sequential("shared Postgres and S3 runtime", () => {
     const uploadToSecond = replaceOrigin(plannedFile.uploadUrl, second.baseUrl);
     const uploaded = await fetch(uploadToSecond, {
       body: copiedArrayBuffer(fileBytes),
-      headers: {Authorization: `Bearer ${sharedIdentity.apiToken}`},
+      headers: {Authorization: `Bearer ${externalStorageIdentity.apiToken}`},
       method: "PUT",
     });
     expect(uploaded.status).toBe(200);
@@ -521,11 +521,11 @@ describe.sequential("shared Postgres and S3 runtime", () => {
           accessSetting: "public_link",
           kind: "new_artifact",
           name: "Cross-process staged site",
-          tags: ["staged", "shared"],
+          tags: ["staged", "external-storage"],
         },
       }),
       headers: mutationHeaders(
-        sharedIdentity.apiToken,
+        externalStorageIdentity.apiToken,
         `staged-commit-${randomUUID()}`,
       ),
       method: "POST",
@@ -549,13 +549,13 @@ describe.sequential("shared Postgres and S3 runtime", () => {
     })).status).toBe(401);
   });
 
-  test("shared foundation: Postgres serves management, history, comparison, idempotency, and private content", async () => {
+  test("external-storage foundation: Postgres serves management, history, comparison, idempotency, and private content", async () => {
     expect.hasAssertions();
     const repositoryIdentity = {
       apiToken: "repository-api-token-with-sufficient-entropy-000000",
       installationId: "postgres-repository-surface",
     };
-    let server = await startInProcessSharedServer(environment, repositoryIdentity);
+    let server = await startInProcessExternalStorageServer(environment, repositoryIdentity);
     const first = await publishNew(server.baseUrl, repositoryIdentity.apiToken, {
       content: "<p>repository version one</p>",
       idempotencyKey: `surface-create-${randomUUID()}`,
@@ -639,7 +639,7 @@ describe.sequential("shared Postgres and S3 runtime", () => {
       await bootstrapResponse.json(),
     );
     await server.stop();
-    server = await startInProcessSharedServer(environment, repositoryIdentity);
+    server = await startInProcessExternalStorageServer(environment, repositoryIdentity);
     const exchange = await fetchContentThroughServer(
       server.baseUrl,
       bootstrap.bootstrapUrl,
@@ -751,13 +751,13 @@ describe.sequential("shared Postgres and S3 runtime", () => {
     )).status).toBe(404);
   });
 
-  test("shared foundation: logical Postgres and object backups restore stable IDs and bytes", async () => {
+  test("external-storage foundation: logical Postgres and object backups restore stable IDs and bytes", async () => {
     expect.hasAssertions();
     const backupIdentity = {
       apiToken: "backup-api-token-with-sufficient-entropy-00000000",
       installationId: "backup-restore-installation",
     };
-    const source = await startSharedProcess(environment, backupIdentity);
+    const source = await startExternalStorageProcess(environment, backupIdentity);
     const published = await publishNew(source.baseUrl, backupIdentity.apiToken, {
       content: "<article>logical backup survives</article>",
       idempotencyKey: `backup-create-${randomUUID()}`,
@@ -815,7 +815,7 @@ describe.sequential("shared Postgres and S3 runtime", () => {
       ...environment,
       databaseUrl: databaseUrlFor(environment.databaseUrl, restoreDatabase),
     };
-    const restored = await startSharedProcess(restoredEnvironment, {
+    const restored = await startExternalStorageProcess(restoredEnvironment, {
       ...backupIdentity,
       storageBucket: restoreBucket,
     });
@@ -854,13 +854,13 @@ describe.sequential("shared Postgres and S3 runtime", () => {
     expect(await rendered.text()).toBe("<article>logical backup survives</article>");
   });
 
-  test("shared foundation: invalid database and object-store credentials fail before readiness", async () => {
+  test("external-storage foundation: invalid database and object-store credentials fail before readiness", async () => {
     expect.hasAssertions();
     const invalidStorage = {
       ...environment,
       secretKey: "wrong-object-store-secret",
     };
-    await expect(startSharedProcess(invalidStorage, {
+    await expect(startExternalStorageProcess(invalidStorage, {
       apiToken: "invalid-storage-api-token-with-sufficient-entropy",
       installationId: "invalid-storage-installation",
     })).rejects.toThrow(/exited before readiness/u);
@@ -868,7 +868,7 @@ describe.sequential("shared Postgres and S3 runtime", () => {
     const databaseUrl = new URL(environment.databaseUrl);
     databaseUrl.password = "wrong-postgres-password";
     const invalidDatabase = {...environment, databaseUrl: databaseUrl.toString()};
-    await expect(startSharedProcess(invalidDatabase, {
+    await expect(startExternalStorageProcess(invalidDatabase, {
       apiToken: "invalid-database-api-token-with-sufficient-entropy",
       installationId: "invalid-database-installation",
     })).rejects.toThrow(/exited before readiness/u);
@@ -877,7 +877,7 @@ describe.sequential("shared Postgres and S3 runtime", () => {
       ...environment,
       endpoint: "http://127.0.0.1:1",
     };
-    await expect(startSharedProcess(unavailableStorage, {
+    await expect(startExternalStorageProcess(unavailableStorage, {
       apiToken: "unavailable-storage-api-token-with-sufficient-entropy",
       installationId: "unavailable-storage-installation",
     })).rejects.toThrow(/exited before readiness/u);
@@ -887,7 +887,7 @@ describe.sequential("shared Postgres and S3 runtime", () => {
     expect.hasAssertions();
     const readinessBucket = `artifact-server-readiness-${randomUUID()}`;
     await s3Client.send(new CreateBucketCommand({Bucket: readinessBucket}));
-    const server = await startSharedProcess(environment, {
+    const server = await startExternalStorageProcess(environment, {
       apiToken: "readiness-api-token-with-sufficient-entropy-000000",
       installationId: `readiness-${randomUUID()}`,
       storageBucket: readinessBucket,
@@ -952,7 +952,7 @@ function readIntegrationEnvironment(): IntegrationEnvironment {
     endpoint === undefined || postgresContainer === undefined ||
     postgresUser === undefined || secretKey === undefined
   ) {
-    throw new Error("Run this test through pnpm test:shared-runtime.");
+    throw new Error("Run this test through pnpm test:external-storage-runtime.");
   }
   return {
     accessKey,
@@ -964,17 +964,17 @@ function readIntegrationEnvironment(): IntegrationEnvironment {
   };
 }
 
-function startSharedProcess(
+function startExternalStorageProcess(
   environment: IntegrationEnvironment,
   identity: {
     readonly apiToken: string;
     readonly installationId: string;
     readonly storageBucket?: string;
   },
-): Promise<SharedProcess> {
+): Promise<ExternalStorageProcess> {
   const child = spawn(
     process.execPath,
-    [sharedCli, "start-shared", "--host", "127.0.0.1", "--port", "0"],
+    [externalStorageCli, "start-external-storage", "--host", "127.0.0.1", "--port", "0"],
     {
       cwd: repositoryRoot,
       env: {
@@ -996,14 +996,14 @@ function startSharedProcess(
     },
   );
   runningProcesses.add(child);
-  return waitForSharedProcess(child);
+  return waitForExternalStorageProcess(child);
 }
 
-async function startInProcessSharedServer(
+async function startInProcessExternalStorageServer(
   environment: IntegrationEnvironment,
   identity: {readonly apiToken: string; readonly installationId: string},
-): Promise<InProcessSharedServer> {
-  const server = await startSharedServer({
+): Promise<InProcessExternalStorageServer> {
+  const server = await startExternalStorageServer({
     apiToken: Redacted.make(identity.apiToken),
     bootstrapAdministratorEmail: "admin@example.test",
     contentDomain: "localhost",
@@ -1022,7 +1022,7 @@ async function startInProcessSharedServer(
     port: 0,
   });
   let stopped = false;
-  const running: InProcessSharedServer = {
+  const running: InProcessExternalStorageServer = {
     baseUrl: `http://${server.hostname}:${server.port}`,
     stop: async () => {
       if (stopped) return;
@@ -1035,18 +1035,18 @@ async function startInProcessSharedServer(
   return running;
 }
 
-function waitForSharedProcess(
+function waitForExternalStorageProcess(
   child: ChildProcessWithoutNullStreams,
-): Promise<SharedProcess> {
+): Promise<ExternalStorageProcess> {
   return new Promise((resolve, reject) => {
     let output = "";
     const timeout = setTimeout(() => {
       cleanup();
-      reject(new Error(`Shared process did not become ready: ${output}`));
+      reject(new Error(`External-storage process did not become ready: ${output}`));
     }, 20_000);
     const receive = (chunk: Buffer) => {
       output += chunk.toString("utf8");
-      const match = /Shared Artifact Server: (http:\/\/127\.0\.0\.1:\d+)/u.exec(
+      const match = /Artifact Server \(external-storage\): (http:\/\/127\.0\.0\.1:\d+)/u.exec(
         output,
       );
       if (match?.[1] === undefined) return;
@@ -1056,7 +1056,7 @@ function waitForSharedProcess(
     };
     const exit = () => {
       cleanup();
-      reject(new Error(`Shared process exited before readiness: ${output}`));
+      reject(new Error(`External-storage process exited before readiness: ${output}`));
     };
     const cleanup = () => {
       clearTimeout(timeout);
@@ -1091,13 +1091,13 @@ async function publishNew(
     readonly name: string;
   },
 ) {
-  const upload = await stageSharedFile(baseUrl, token, input.content);
+  const upload = await stageExternalStorageFile(baseUrl, token, input.content);
   const response = await fetch(upload.commitUrl, {
     body: JSON.stringify({target: {
       accessSetting: "public_link",
       kind: "new_artifact",
       name: input.name,
-      tags: ["shared-runtime"],
+      tags: ["external-storage-runtime"],
     }}),
     headers: mutationHeaders(token, input.idempotencyKey),
     method: "POST",
@@ -1116,7 +1116,7 @@ async function publishVersion(
     readonly idempotencyKey: string;
   },
 ) {
-  const upload = await stageSharedFile(baseUrl, token, input.content);
+  const upload = await stageExternalStorageFile(baseUrl, token, input.content);
   const response = await fetch(upload.commitUrl, {
       body: JSON.stringify({target: {
         artifactId: input.artifactId,
@@ -1130,7 +1130,7 @@ async function publishVersion(
   return {body, response};
 }
 
-async function stageSharedFile(
+async function stageExternalStorageFile(
   baseUrl: string,
   token: string,
   content: string,
@@ -1155,7 +1155,7 @@ async function stageSharedFile(
   const upload = uploadResponseSchema.parse(await createUpload.json());
   const plannedFile = upload.files[0];
   if (plannedFile === undefined) {
-    throw new Error("The shared upload plan did not contain its declared file.");
+    throw new Error("The external-storage upload plan did not contain its declared file.");
   }
   const uploaded = await fetch(plannedFile.uploadUrl, {
     body: bytes,
@@ -1163,7 +1163,7 @@ async function stageSharedFile(
     method: "PUT",
   });
   if (!uploaded.ok) {
-    throw new Error(`The shared staged upload failed with HTTP ${uploaded.status}.`);
+    throw new Error(`The external-storage staged upload failed with HTTP ${uploaded.status}.`);
   }
   return upload;
 }
@@ -1176,7 +1176,7 @@ async function listArtifacts(baseUrl: string, token: string) {
   return {body: artifactListSchema.parse(body), response};
 }
 
-function sharedMcpRequest(
+function externalStorageMcpRequest(
   baseUrl: string,
   token: string,
   method: string,
@@ -1200,7 +1200,7 @@ function sharedMcpRequest(
         ...parameters,
         _meta: {
           [CLIENT_CAPABILITIES_META_KEY]: {},
-          [CLIENT_INFO_META_KEY]: {name: "shared-runtime-test", version: "1"},
+          [CLIENT_INFO_META_KEY]: {name: "external-storage-runtime-test", version: "1"},
           [PROTOCOL_VERSION_META_KEY]: "2026-07-28",
         },
       },

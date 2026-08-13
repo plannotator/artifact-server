@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light dark" />
   <meta
     name="description"
-    content="A product and architecture proposal for an artifact server that can run locally or on shared infrastructure."
+    content="A product and architecture proposal for an artifact server that can run locally or on external infrastructure."
   />
   <title>artifactserver.com | Product proposal</title>
   <script>
@@ -2252,7 +2252,7 @@
         <section class="section" id="architecture" aria-labelledby="architecture-section-title">
           <div class="section-heading">
             <span class="section-label">Architecture</span>
-            <h2 id="architecture-section-title">Shared product logic with deployment-specific storage</h2>
+            <h2 id="architecture-section-title">One product core with deployment-specific storage</h2>
             <p>
               The browser, MCP, and normal web requests from software follow the same rules for sign-in, sharing, versions,
               comparisons, and publishing. Small pieces of code connect those rules to the database,
@@ -2610,7 +2610,7 @@ v12-7f3a.content.example.net</code></pre>
             <span class="section-label">AI agent access</span>
             <h2 id="mcp-title">MCP connection, sign-in, and publishing</h2>
             <p>
-              A remote AI client connects to one address: <code>/mcp</code>. On a shared server, its
+              A remote AI client connects to one address: <code>/mcp</code>. On an external-storage server, its
               first request opens browser sign-in and approval. After approval, the client receives
               a short-lived credential that works only with this Artifact Server. On a laptop, a
               local helper uses a local credential instead. MCP sends publishing instructions and
@@ -2997,7 +2997,7 @@ v12-7f3a.content.example.net</code></pre>
                   <code>artifact_capabilities</code> for deployment-specific limits and publishing behavior.
                 </p>
                 <ul>
-                  <li>Remote and shared installations use HTTP <code>POST /mcp</code>.</li>
+                  <li>Remote external-storage installations use HTTP <code>POST /mcp</code>.</li>
                   <li>Normal results use JSON. Request-scoped server-sent events are reserved for useful progress.</li>
                   <li>The first release rejects <code>subscriptions/listen</code>. It is enabled only after the deployment has a real shared event service.</li>
                   <li>Modern <code>GET /mcp</code> and <code>DELETE /mcp</code> return 405. Older MCP behavior is an isolated, optional compatibility path.</li>
@@ -3205,7 +3205,7 @@ artifact_delete</code></pre>
                   <text class="svg-copy" x="566" y="269">Multiple containers</text>
                   <rect class="svg-node-store" x="548" y="300" width="196" height="68" rx="7"></rect>
                   <text class="svg-title" x="566" y="328">Postgres + S3-compatible</text>
-                  <text class="svg-copy" x="566" y="349">Shared records and files</text>
+                  <text class="svg-copy" x="566" y="349">External records and files</text>
                   <rect class="svg-boundary-optional" x="548" y="386" width="196" height="68" rx="7"></rect>
                   <text class="svg-title" x="566" y="414">Git history service</text>
                   <text class="svg-copy" x="566" y="435">Persistent or private remote</text>
@@ -3341,7 +3341,7 @@ artifact_delete</code></pre>
                 <p>
                   The product rules do not know which database or file storage is in use. Each
                   deployment supplies small pieces of code for saving records, saving files, signing
-                  users in, and running cleanup work. The shared rules do not call Node.js file
+                  users in, and running cleanup work. The product rules do not call Node.js file
                   functions or a specific database library directly. Optional Git history follows
                   the same rule through one small provider interface.
                 </p>
@@ -3357,11 +3357,11 @@ artifact_delete</code></pre>
                   The storage boundary uses product operations such as “publish this version only
                   if the current version has not changed,” not a generic function that sends raw SQL
                   to any database. SQLite/D1 and Postgres keep their own migrations, indexes,
-                  transactions, and optimized queries. Shared tests prove that publishing, access,
+                  transactions, and optimized queries. External-storage tests prove that publishing, access,
                   versions, and cleanup behave the same.
                 </p>
                 <p>
-                  The first shared package supports AWS S3 and Cloudflare R2 through its S3 adapter.
+                  The first external-storage package supports AWS S3 and Cloudflare R2 through its S3 adapter.
                   Another S3-compatible service is supported only after it passes the same storage
                   contract tests. Native Google Cloud Storage and Azure Blob adapters ship with
                   their cloud packages. Adding an adapter does not change artifact or version rules.
@@ -3449,7 +3449,7 @@ artifact_delete</code></pre>
                       <rect class="svg-boundary" x="812" y="98" width="200" height="202" rx="12"></rect>
                       <text class="svg-label" x="836" y="128">ARTIFACT FILES</text>
                       <rect class="svg-node-store" x="836" y="152" width="152" height="112" rx="8"></rect>
-                      <text class="svg-title" x="856" y="184">Shared R2 bucket</text>
+                      <text class="svg-title" x="856" y="184">R2 bucket</text>
                       <text class="svg-copy" x="856" y="208">Immutable files</text>
                       <text class="svg-small" x="856" y="232">Key begins with</text>
                       <text class="svg-small" x="856" y="248">installations/{id}/</text>
@@ -3649,7 +3649,7 @@ artifact_delete</code></pre>
             <article class="roadmap-item">
               <span class="roadmap-stage">Next</span>
               <div class="roadmap-copy">
-                <h3>The shared server</h3>
+                <h3>The external-storage server</h3>
                 <p>
                   Keep SQLite for a single-server installation. Add Postgres and cloud file storage
                   for Kubernetes or any deployment with multiple application replicas. Support S3,
@@ -3751,7 +3751,7 @@ artifact_delete</code></pre>
             <article class="decision-item"><p>Uploads stage, verify, then write content-addressed blobs without overwrite before the database commit. The first release deletes expired staging only and does not garbage-collect committed blobs.</p></article>
             <article class="decision-item"><p>Browser, normal software requests, and MCP share the same product and authorization rules. Hosted MCP uses WorkOS AuthKit; local and self-hosted modes retain scoped API keys.</p></article>
             <article class="decision-item"><p>Artifact Server ships a routine publishing skill and a separately installed operator skill. Stored references include the server and artifact, so agents open local or team artifacts at the correct origin.</p></article>
-            <article class="decision-item"><p>The shared core uses narrow database, blob, login, background-work, and optional Git interfaces. Official deployment packages are Compose, Helm, Alchemy for Cloudflare, and Pulumi for AWS, GCP, and Azure.</p></article>
+            <article class="decision-item"><p>The product core uses narrow database, blob, login, background-work, and optional Git interfaces. Official deployment packages are Compose, Helm, Alchemy for Cloudflare, and Pulumi for AWS, GCP, and Azure.</p></article>
             <article class="decision-item"><p>Support is phased: local, private team and Kubernetes, hosted Cloudflare, then AWS, GCP, and Azure. A target is not supported until its install, upgrade, rollback, backup, restore, and isolation tests pass.</p></article>
             <article class="decision-item"><p>Committed versions cannot be edited or deleted individually. Deleting an artifact creates a tombstone and stops access; physical reclamation waits for a proven retention and garbage-collection design.</p></article>
           </div>

@@ -6,7 +6,7 @@ These are bounded diagnostics, not capacity or stress tests. They exercise the s
 pnpm verify:iteration
 pnpm smoke
 pnpm perf:baseline
-pnpm verify:shared-performance
+pnpm verify:external-storage-performance
 ```
 
 `pnpm verify:iteration` is the required end-of-iteration command and includes the other verification layers plus the default baseline. Coverage is reported as a diagnostic; percentage movement is not a reason to add a test. `pnpm smoke` runs a very small CI-safe scenario and fails on broken behavior or only gross performance failures. `pnpm perf:baseline` runs 40 sequential 16 KiB publications, 120 content reads at concurrency 6, bounded version comparisons, HTTP artifact-list reads, modern MCP discovery and MCP `artifact_list` calls, the real file-first client against representative single-file and directory inputs, and one restart. The default run remains bounded and deletes its temporary server data when finished.
@@ -42,9 +42,9 @@ pnpm perf:baseline --publications 100 --reads 500 --concurrency 8 --payload-kib 
 
 Publications are capped at 500, reads at 5,000, concurrency at 16, and payload size at 1 MiB. In addition, the measured publication payload is capped at 128 MiB, the measured read payload at 256 MiB, and the real file-client workload at 32 MiB, so combining maximum settings cannot accidentally create a stress test.
 
-## Shared Postgres and S3 baseline
+## External-storage Postgres and S3 baseline
 
-`pnpm verify:shared-performance` builds the production CLI, creates disposable pinned Postgres and MinIO containers, and starts two independent compiled Artifact Server processes against one installation and bucket. The harness uses the real file-first client and records:
+`pnpm verify:external-storage-performance` builds the production CLI, creates disposable pinned Postgres and MinIO containers, and starts two independent compiled Artifact Server processes against one installation and bucket. The harness uses the real file-first client and records:
 
 - readiness time for the providers, both initial server processes, and one replacement process;
 - repeated 2 MiB single-file and 48-file directory publications, including cross-process content reads;
@@ -54,4 +54,4 @@ Publications are capped at 500, reads at 5,000, concurrency at 16, and payload s
 
 Provider provisioning is measured separately and excluded from application-operation latency. The default run caps publication concurrency at 4, read concurrency at 8, aggregate measured publication data at 64 MiB, and aggregate measured read data at 128 MiB. Command-line settings cannot raise publication concurrency above 16 or the bounded operation counts above their configured caps.
 
-The shared report is written to `evidence/shared-performance-baseline.json`. It is a regression baseline for the same machine, container runtime, Node version, workload, and storage class. MinIO on a laptop proves the S3-compatible application path; it does not claim production AWS S3 or Cloudflare R2 latency or capacity.
+The external-storage report is written to `evidence/external-storage-performance-baseline.json`. It is a regression baseline for the same machine, container runtime, Node version, workload, and storage class. MinIO on a laptop proves the S3-compatible application path; it does not claim production AWS S3 or Cloudflare R2 latency or capacity.

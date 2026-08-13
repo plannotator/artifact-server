@@ -101,7 +101,7 @@ local and remote deployments.
 
 The tests use a real SQLite/local-files runtime and HTTP server. They do not
 mock the MCP SDK, application services, upload path, repository, or file store.
-The shared integration also starts two independent compiled processes over one
+The external-storage integration also starts two independent compiled processes over one
 Postgres/S3 installation, publishes through one process, then discovers and
 lists the artifact through MCP on the other.
 
@@ -111,7 +111,7 @@ lists the artifact through MCP on the other.
   phase because they require a real WorkOS environment and real-client proof.
 - Codex, Claude Code, claude.ai, and Cursor compatibility runs remain release
   gates, including fresh and stale credential state.
-- The shared Postgres/S3 MCP matrix must run before claiming the MCP behavior on
+- The external-storage Postgres/S3 MCP matrix must run before claiming the MCP behavior on
   one-server or replicated deployments.
 - Legacy MCP compatibility is disabled until a named required client proves it
   needs the isolated SDK compatibility path.
