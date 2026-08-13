@@ -12,28 +12,60 @@ export class FileVerificationError extends Error {
   }
 }
 
+/**
+ * Passes an incoming blob through while verifying its declared size and digest.
+ *
+ * The returned stream preserves backpressure and fails before its consumer can
+ * observe a successful end-of-stream when the declaration is false.
+ */
+export function verifiedBlobStream(
+  write: BlobWrite,
+  expectedDigest: string,
+): ReadableStream<Uint8Array> {
+  const fingerprint = createHash("sha256");
+  let size = 0;
+
+  return write.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    flush: (controller) => {
+      if (size !== write.size) {
+        controller.error(new FileVerificationError(
+          `Incoming blob ${expectedDigest} is ${size} bytes but ${write.size} were declared.`,
+        ));
+        return;
+      }
+      if (fingerprint.digest("hex") !== expectedDigest) {
+        controller.error(new FileVerificationError(
+          `Incoming blob does not match fingerprint ${expectedDigest}.`,
+        ));
+      }
+    },
+    transform: (chunk, controller) => {
+      size += chunk.byteLength;
+      if (size > write.size) {
+        controller.error(new FileVerificationError(
+          `Incoming blob ${expectedDigest} exceeds its declared ${write.size} bytes.`,
+        ));
+        return;
+      }
+      fingerprint.update(chunk);
+      controller.enqueue(chunk);
+    },
+  }));
+}
+
 /** Writes and verifies one incoming stream without buffering the complete file. */
 export async function writeVerifiedStream(
   file: FileHandle,
   write: BlobWrite,
   expectedDigest: string,
 ): Promise<void> {
-  const fingerprint = createHash("sha256");
-  const reader = write.body.getReader();
-  let size = 0;
+  const reader = verifiedBlobStream(write, expectedDigest).getReader();
   try {
     while (true) {
       // Stream reads must remain ordered so hashing and file offsets describe identical bytes.
       // eslint-disable-next-line no-await-in-loop
       const result = await reader.read();
       if (result.done) break;
-      size += result.value.byteLength;
-      if (size > write.size) {
-        throw new FileVerificationError(
-          `Incoming blob ${expectedDigest} exceeds its declared ${write.size} bytes.`,
-        );
-      }
-      fingerprint.update(result.value);
       // A later chunk cannot be written until this chunk is complete.
       // eslint-disable-next-line no-await-in-loop
       await writeAll(file, result.value);
@@ -43,17 +75,6 @@ export async function writeVerifiedStream(
     throw error;
   } finally {
     reader.releaseLock();
-  }
-
-  if (size !== write.size) {
-    throw new FileVerificationError(
-      `Incoming blob ${expectedDigest} is ${size} bytes but ${write.size} were declared.`,
-    );
-  }
-  if (fingerprint.digest("hex") !== expectedDigest) {
-    throw new FileVerificationError(
-      `Incoming blob does not match fingerprint ${expectedDigest}.`,
-    );
   }
 }
 

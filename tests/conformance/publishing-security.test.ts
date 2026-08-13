@@ -17,8 +17,10 @@ import {
   type TestInstallation,
 } from "../support/runtime-harness.js";
 import {
+  createStagedUpload,
   parsePublishResponse,
   publishNew,
+  uploadEveryStagedFile,
 } from "../support/publishing.js";
 
 describe("local publishing security boundaries", () => {
@@ -50,15 +52,15 @@ describe("local publishing security boundaries", () => {
 
     const rejected = await Promise.all(
       unsafePaths.map(async (unsafePath, index) => {
-        const response = await fetch(`${server.baseUrl}/api/v1/artifacts`, {
+        const response = await fetch(`${server.baseUrl}/api/v1/uploads`, {
           body: JSON.stringify({
-            accessSetting: "public_link",
-            file: {
-              contentBase64: Buffer.from("unsafe").toString("base64"),
+            entryPath: unsafePath,
+            files: [{
               mediaType: "text/html",
               path: unsafePath,
-            },
-            name: "Unsafe path",
+              sha256: "0".repeat(64),
+              size: 0,
+            }],
           }),
           headers: apiHeaders(installation, `unsafe-manifest-path-${index}-key`),
           method: "POST",
@@ -97,52 +99,60 @@ describe("local publishing security boundaries", () => {
   });
 
   test("ART-002-F: API publication requires a trusted principal and creates nothing on rejection", async () => {
-    const idempotencyKey = "authentication-rejection-does-not-write";
     const requestBody = JSON.stringify({
-      accessSetting: "public_link",
-      file: {
-        contentBase64: Buffer.from("<title>Protected mutation</title>").toString("base64"),
+      entryPath: "index.html",
+      files: [{
         mediaType: "text/html",
         path: "index.html",
-      },
-      name: "Protected mutation",
+        sha256: "0".repeat(64),
+        size: 0,
+      }],
     });
-    const unauthorized = await fetch(`${server.baseUrl}/api/v1/artifacts`, {
+    const unauthorized = await fetch(`${server.baseUrl}/api/v1/uploads`, {
       body: requestBody,
-      headers: {
-        "Content-Type": "application/json",
-        "Idempotency-Key": idempotencyKey,
-      },
+      headers: {"Content-Type": "application/json"},
       method: "POST",
     });
     expect(unauthorized.status).toBe(401);
 
-    const authorized = await fetch(`${server.baseUrl}/api/v1/artifacts`, {
-      body: requestBody,
-      headers: apiHeaders(installation, idempotencyKey),
-      method: "POST",
+    const afterRejection = await fetch(`${server.baseUrl}/api/v1/artifacts`, {
+      headers: {Authorization: `Bearer ${installation.apiToken}`},
     });
-    expect(authorized.status).toBe(201);
-    const published = parsePublishResponse(await authorized.json());
-    expect(published.artifact.ownerPrincipalId).toBe("local-api-token");
+    await expect(afterRejection.json()).resolves.toMatchObject({artifacts: []});
+
+    const authorized = await publishNew(server, installation, {
+      accessSetting: "public_link",
+      content: "<title>Protected mutation</title>",
+      idempotencyKey: "authentication-rejection-does-not-write",
+      name: "Protected mutation",
+    });
+    expect(authorized.response.status).toBe(201);
+    expect(authorized.body.artifact.ownerPrincipalId).toBe("local-api-token");
   });
 
   test("AUTH-002-B: account-required is the default and an admitted principal can open it", async () => {
-    const response = await fetch(`${server.baseUrl}/api/v1/artifacts`, {
-      body: JSON.stringify({
-        file: {
-          contentBase64: Buffer.from("<title>Private by default</title>")
-            .toString("base64"),
-          mediaType: "text/html",
-          path: "index.html",
-        },
+    const file = {
+      bytes: new TextEncoder().encode("<title>Private by default</title>"),
+      mediaType: "text/html; charset=utf-8",
+      path: "index.html",
+    };
+    const upload = await createStagedUpload(
+      server,
+      installation,
+      file.path,
+      [file],
+    );
+    await uploadEveryStagedFile(installation, upload.body, [file]);
+    const response = await fetch(upload.body.commitUrl, {
+      body: JSON.stringify({target: {
+        kind: "new_artifact",
         name: "Default private artifact",
-      }),
+      }}),
       headers: apiHeaders(installation, "default-account-required-setting"),
       method: "POST",
     });
-    expect(response.status).toBe(201);
     const published = parsePublishResponse(await response.json());
+    expect(response.status).toBe(201);
     expect(published.artifact.accessSetting).toBe("account_required");
     expect((await fetchVersion(server, published.links.version)).status).toBe(401);
 
@@ -168,10 +178,64 @@ describe("local publishing security boundaries", () => {
     expect(await opened.text()).toContain("Private by default");
   });
 
-  test("foundation: malformed and oversized API requests fail as client errors without destabilizing the server", async () => {
-    const malformed = await fetch(`${server.baseUrl}/api/v1/artifacts`, {
+  test("PUB-002-F SCP-007-F: public APIs reject raw contents, paths, and source URLs", async () => {
+    const rawBodies = [
+      {content: "<h1>raw source</h1>"},
+      {contentBase64: Buffer.from("raw bytes").toString("base64")},
+    ];
+    const rawResponses = await Promise.all(rawBodies.map(async (body) => {
+      const response = await fetch(`${server.baseUrl}/api/v1/artifacts`, {
+        body: JSON.stringify(body),
+        headers: apiHeaders(installation, "raw-publication-is-not-supported"),
+        method: "POST",
+      });
+      return {body: await response.json(), status: response.status};
+    }));
+    for (const response of rawResponses) {
+      expect(response.status).toBe(405);
+      expect(response.body).toMatchObject({
+        error: {
+          code: "METHOD_NOT_ALLOWED",
+          message: expect.stringContaining("/api/v1/uploads"),
+        },
+      });
+    }
+
+    const remoteInputs = [
+      {path: "/Users/example/private.html"},
+      {sourceUrl: "http://169.254.169.254/latest/meta-data/"},
+      {sourceUrl: "file:///etc/passwd"},
+    ];
+    const remoteStatuses = await Promise.all(remoteInputs.map(async (body) => {
+      const response = await fetch(`${server.baseUrl}/api/v1/uploads`, {
+        body: JSON.stringify({
+          ...body,
+          entryPath: "index.html",
+          files: [{
+            mediaType: "text/html",
+            path: "index.html",
+            sha256: "0".repeat(64),
+            size: 0,
+          }],
+        }),
+        headers: {
+          Authorization: `Bearer ${installation.apiToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      return response.status;
+    }));
+    expect(remoteStatuses).toEqual([422, 422, 422]);
+  });
+
+  test("foundation: malformed and oversized file-upload plans fail without destabilizing the server", async () => {
+    const malformed = await fetch(`${server.baseUrl}/api/v1/uploads`, {
       body: "{",
-      headers: apiHeaders(installation, "malformed-json-request-key"),
+      headers: {
+        Authorization: `Bearer ${installation.apiToken}`,
+        "Content-Type": "application/json",
+      },
       method: "POST",
     });
     expect(malformed.status).toBe(400);
@@ -179,9 +243,12 @@ describe("local publishing security boundaries", () => {
       error: {code: "INVALID_INPUT"},
     });
 
-    const oversized = await fetch(`${server.baseUrl}/api/v1/artifacts`, {
-      body: "x".repeat(1_500_001),
-      headers: apiHeaders(installation, "oversized-json-request-key"),
+    const oversized = await fetch(`${server.baseUrl}/api/v1/uploads`, {
+      body: "x".repeat(16 * 1_024 * 1_024 + 1),
+      headers: {
+        Authorization: `Bearer ${installation.apiToken}`,
+        "Content-Type": "application/json",
+      },
       method: "POST",
     });
     expect(oversized.status).toBe(413);

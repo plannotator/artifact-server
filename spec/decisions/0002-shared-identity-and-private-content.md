@@ -64,9 +64,9 @@ Application routes are unavailable on content hostnames. Application cookies
 are not used for content delivery. Content JavaScript cannot read the HttpOnly
 session or use it to call a mutation route.
 
-## Deliberate exclusions
+## Historical exclusions
 
-This iteration does not add:
+When this foundation decision was accepted, that iteration did not add:
 
 - human account storage or browser login;
 - WorkOS, OIDC, or MCP OAuth token verification;
@@ -75,6 +75,12 @@ This iteration does not add:
 - earlier-version browsing or session issuance; or
 - a claim that the private-content flow has passed the required major-browser
   compatibility gate.
+
+Decisions 0003 and 0004 subsequently implemented human membership, browser
+login, managed API keys, access-setting changes, and earlier-version sessions.
+The remaining exclusions are MCP OAuth verification and the major-browser
+compatibility gate. This section records the original boundary; it is not the
+current implementation status.
 
 The bootstrap URL is a short-lived, single-use bearer credential. Its database
 record retains the authorizing principal, but possession of the unredeemed URL

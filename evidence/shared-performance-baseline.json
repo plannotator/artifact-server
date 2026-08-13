@@ -1,0 +1,109 @@
+{
+  "artifactList": {
+    "latency": {
+      "count": 16,
+      "maximumMilliseconds": 3.547,
+      "meanMilliseconds": 2.152,
+      "minimumMilliseconds": 1.408,
+      "p50Milliseconds": 1.856,
+      "p95Milliseconds": 3.547,
+      "p99Milliseconds": 3.547
+    },
+    "operationsPerSecond": 1772.452,
+    "totalMilliseconds": 9.027
+  },
+  "checks": {
+    "compiledProcesses": "passed",
+    "crossProcessDirectoryRead": "passed",
+    "crossProcessSingleFileRead": "passed",
+    "healthEndpoints": "passed",
+    "processReplacement": "passed",
+    "providerBackedPublication": "passed"
+  },
+  "concurrentPublish": {
+    "latency": {
+      "count": 16,
+      "maximumMilliseconds": 112.408,
+      "meanMilliseconds": 44.14,
+      "minimumMilliseconds": 23.99,
+      "p50Milliseconds": 30.134,
+      "p95Milliseconds": 112.408,
+      "p99Milliseconds": 112.408
+    },
+    "operationsPerSecond": 83.521,
+    "totalMilliseconds": 191.568
+  },
+  "concurrentRead": {
+    "latency": {
+      "count": 80,
+      "maximumMilliseconds": 5.126,
+      "meanMilliseconds": 3.471,
+      "minimumMilliseconds": 2.05,
+      "p50Milliseconds": 3.405,
+      "p95Milliseconds": 4.66,
+      "p99Milliseconds": 5.126
+    },
+    "operationsPerSecond": 2212.621,
+    "totalMilliseconds": 36.156
+  },
+  "configuration": {
+    "concurrentFileBytes": 16384,
+    "concurrentPublications": 16,
+    "directoryFileBytes": 4096,
+    "directoryFiles": 48,
+    "fileIterations": 3,
+    "listReads": 16,
+    "operationConcurrency": 4,
+    "reads": 80,
+    "singleFileBytes": 2097152,
+    "warmupPublications": 2
+  },
+  "environment": {
+    "availableParallelism": 18,
+    "cpu": "Apple M5 Max",
+    "minioImage": "minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
+    "node": "v24.15.0",
+    "operatingSystem": "darwin 25.3.0",
+    "platform": "darwin",
+    "postgresImage": "postgres@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94"
+  },
+  "fileClient": {
+    "directory": {
+      "latency": {
+        "count": 3,
+        "maximumMilliseconds": 368.133,
+        "meanMilliseconds": 350.511,
+        "minimumMilliseconds": 329.441,
+        "p50Milliseconds": 353.958,
+        "p95Milliseconds": 368.133,
+        "p99Milliseconds": 368.133
+      },
+      "operationsPerSecond": 2.853,
+      "totalMilliseconds": 1051.561
+    },
+    "singleFile": {
+      "latency": {
+        "count": 3,
+        "maximumMilliseconds": 101.283,
+        "meanMilliseconds": 94.117,
+        "minimumMilliseconds": 86.54,
+        "p50Milliseconds": 94.529,
+        "p95Milliseconds": 101.283,
+        "p99Milliseconds": 101.283
+      },
+      "operationsPerSecond": 10.624,
+      "totalMilliseconds": 282.368
+    }
+  },
+  "generatedAt": "2026-08-13T19:58:22.290Z",
+  "providerReadyMilliseconds": 2044,
+  "serverReadyMilliseconds": {
+    "initialProcesses": [
+      284.588,
+      279.204
+    ],
+    "replacementProcess": 249.953
+  },
+  "totalHarnessMilliseconds": 2262.247,
+  "warnings": []
+}

@@ -3,10 +3,19 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import {startLocalServer} from "../../src/local/start-local-server.js";
+import {
+  type LocalServerConfig,
+  startLocalServer,
+} from "../../src/local/start-local-server.js";
+import type {BearerCredentialVerifier} from "../../src/application/authentication.js";
+import type {InteractiveIdentityProvider} from "../../src/application/interactive-login.js";
+import type {Clock} from "../../src/core/ports.js";
+import {defaultCompletedRequestLogSampleRate} from
+  "../../src/observability/application-observability.js";
 
 export interface TestInstallation {
   readonly apiToken: string;
+  readonly browserBootstrapToken: string;
   readonly dataDirectory: string;
 }
 
@@ -23,6 +32,7 @@ export async function createTestInstallation(): Promise<TestInstallation> {
   );
   return {
     apiToken: "test-local-api-token-with-sufficient-entropy",
+    browserBootstrapToken: "test-local-browser-token-with-sufficient-entropy",
     dataDirectory,
   };
 }
@@ -35,13 +45,42 @@ export async function removeTestInstallation(
 
 export async function startTestServer(
   installation: TestInstallation,
+  options: {
+    readonly bootstrapAdministratorEmail?: string;
+    readonly clock?: Clock;
+    readonly completedRequestLogSampleRate?: number;
+    readonly externalBearerVerifier?: BearerCredentialVerifier;
+    readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
+    readonly observability?: boolean;
+  } = {},
 ): Promise<RunningTestServer> {
-  const server = await startLocalServer({
+  const baseConfig: LocalServerConfig = {
     apiToken: installation.apiToken,
+    bootstrapAdministratorEmail: options.bootstrapAdministratorEmail ??
+      "administrator@example.test",
     contentDomain: "localhost",
+    completedRequestLogSampleRate:
+      options.completedRequestLogSampleRate ??
+        defaultCompletedRequestLogSampleRate,
     dataDirectory: installation.dataDirectory,
+    localBootstrapToken: installation.browserBootstrapToken,
+    observability: options.observability ?? false,
     port: 0,
-  });
+  };
+  let config: LocalServerConfig = baseConfig;
+  if (options.clock !== undefined) {
+    config = {...config, clock: options.clock};
+  }
+  if (options.externalBearerVerifier !== undefined) {
+    config = {...config, externalBearerVerifier: options.externalBearerVerifier};
+  }
+  if (options.interactiveIdentityProvider !== undefined) {
+    config = {
+      ...config,
+      interactiveIdentityProvider: options.interactiveIdentityProvider,
+    };
+  }
+  const server = await startLocalServer(config);
 
   return {
     baseUrl: `http://${server.hostname}:${server.port}`,

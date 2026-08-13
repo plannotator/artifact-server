@@ -50,13 +50,11 @@ export interface StagingStore {
   put(write: StagedFileWrite): Promise<StoredBlob>;
 }
 
-export type PublicationSource =
-  | {readonly kind: "inline"}
-  | {
-    readonly kind: "staged_upload";
-    readonly principalId: string;
-    readonly uploadId: string;
-  };
+export interface PublicationSource {
+  readonly kind: "staged_upload";
+  readonly principalId: string;
+  readonly uploadId: string;
+}
 
 export interface CommitNewArtifact {
   readonly accessSetting: AccessSetting;

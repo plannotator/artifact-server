@@ -1,4 +1,4 @@
-import { Effect, type ManagedRuntime, Result } from "effect";
+import { Effect, type ManagedRuntime, Result, type Tracer } from "effect";
 
 import type { PublishArtifactService } from "./publish-artifact.js";
 import type { StagedUploadService } from "./staged-upload.js";
@@ -7,6 +7,8 @@ import type { AuthorizationService } from "./authorization.js";
 import type { ContentAccessService } from "./content-access.js";
 import type { ArtifactManagementService } from "./artifact-management.js";
 import type { CompareArtifactService } from "./compare-artifact.js";
+import type { InstallationAccessService } from "./installation-access.js";
+import type { InteractiveLoginService } from "./interactive-login.js";
 
 /** Application services shared by every Artifact Server entry point. */
 export type ApplicationServices =
@@ -15,6 +17,8 @@ export type ApplicationServices =
   | AuthorizationService
   | CompareArtifactService
   | ContentAccessService
+  | InstallationAccessService
+  | InteractiveLoginService
   | PublishArtifactService
   | StagedUploadService;
 
@@ -28,8 +32,27 @@ export type ApplicationRuntime = ManagedRuntime.ManagedRuntime<
 export async function runApplicationEffect<A, E>(
   runtime: ApplicationRuntime,
   effect: Effect.Effect<A, E, ApplicationServices>,
+  observation?: ApplicationEffectObservation,
 ): Promise<A> {
-  const result = await runtime.runPromise(Effect.result(effect));
+  const observed = observation === undefined
+    ? effect
+    : effect.pipe(
+      Effect.annotateLogs({request_id: observation.requestId}),
+      Effect.withSpan(observation.spanName, {
+        attributes: {"request.id": observation.requestId},
+        ...(observation.parent === undefined
+          ? {root: true as const}
+          : {parent: observation.parent}),
+      }),
+    );
+  const result = await runtime.runPromise(Effect.result(observed));
   if (Result.isFailure(result)) throw result.failure;
   return result.success;
+}
+
+/** Request context attached to a root application Effect span. */
+export interface ApplicationEffectObservation {
+  readonly parent?: Tracer.AnySpan;
+  readonly requestId: string;
+  readonly spanName: string;
 }

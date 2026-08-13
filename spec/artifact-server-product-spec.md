@@ -13,6 +13,7 @@ The first release runs locally. Later releases add one-server, Kubernetes, Cloud
 | Question | Decision |
 | --- | --- |
 | What does it publish? | Finished HTML, CSS, JavaScript, images, fonts, and other files needed by a client-side site, or one ordinary file such as an image, PDF, audio recording, video, text file, or ZIP archive. |
+| What does a user or agent select? | One actual file or one finished directory. Public API and MCP arguments do not contain raw HTML, CSS, JavaScript, Markdown, or base64-wrapped file contents. The publishing client handles the upload details. |
 | What does it execute? | Only code that a browser can run. Artifact Server does not install packages, compile source code, run Node.js or Python for an artifact, connect an artifact to a database, execute server functions, or perform server-side rendering. |
 | How are files displayed? | Artifact Server sends the correct HTTP headers and lets the browser handle formats it already understands. The first release has no custom document viewer, media converter, thumbnail service, ZIP extractor, Markdown renderer, or syntax-highlighting interface. |
 | What is an artifact? | One published item with a stable ID, owner, access setting, optional tags, current version, and immutable saved versions. |
@@ -236,16 +237,27 @@ artifact_capabilities
 artifact_list
 artifact_get
 artifact_open
-artifact_publish_inline
 artifact_create_upload
 artifact_commit_upload
-artifact_link_local
 artifact_set_visibility
+artifact_set_tags
 artifact_version_list
 artifact_diff
+artifact_restore_version
+artifact_delete
 ```
 
-`artifact_link_local` is available only to the local helper and only for files beneath administrator-approved import roots. The helper resolves and verifies the path, rejects symlinks and special files, and copies the bytes immediately. The server never accepts an arbitrary client filesystem path. Server-side download from an arbitrary URL is not part of the initial release.
+The MCP server never accepts an arbitrary client filesystem path. The bundled
+publishing client or skill reads a local file or directory, rejects symlinks and
+special files, computes its portable manifest, and sends the actual bytes
+through the server-issued upload plan. Server-side download from an arbitrary
+URL is not part of the initial release.
+
+Publishing starts from one actual file or one finished directory on the client's
+filesystem. MCP does not accept raw HTML, CSS, JavaScript, Markdown, or base64
+file contents as arguments. The publishing skill or client helper uploads the
+selected bytes through the server-issued upload plan and commits the result. It
+hides upload IDs, fingerprints, manifests, and size thresholds from the user.
 
 Artifact Server ships two portable Agent Skills:
 
@@ -258,10 +270,15 @@ The publishing skill resolves its target in this order: an explicit address or l
 
 The portable product is the container or local process, database schema, blob-storage interface, URL and manifest contract, API, MCP tools, migrations, health checks, backup format, and conformance tests. Infrastructure tools are replaceable deployment adapters.
 
+Every deployed process records request counts, handling time, and spans. It writes a configurable sample of normal request logs and always logs server failures and requests that take at least one second. It creates a server request ID, returns it in `X-Request-Id`, and uses it to connect HTTP or MCP work to Effect spans. Operators can export logs, metrics, and traces to any standard OTLP collector with OpenTelemetry environment variables. Telemetry records HTTP method, matched route pattern, status, protocol, deployment mode, and installation identity. It does not record authorization values, cookies, query strings, file contents, raw artifact IDs, or raw unbounded paths.
+
+`/health` answers only whether the process is alive. `/ready` answers whether a shared process can use its validated configuration, completed migrations, database, and object storage. A dependency failure changes `/ready` to HTTP 503 but does not make `/health` fail.
+
 | Target | Runtime and records | Blob storage | Official deployment surface |
 | --- | --- | --- | --- |
-| Laptop | One process and SQLite | Local disk | `artifactserver local` |
-| One server | One container and SQLite by default; Postgres optional | Attached disk or configured blob store | Docker Compose |
+| Laptop | One process running directly on the host and SQLite. A local container is optional. | Local disk | Downloadable package and `artifactserver start` |
+| One server, compact | One container and SQLite | One persistent data directory | Compact Docker Compose |
+| One server, shared | One or more stateless containers and Postgres | Object storage through a supported adapter | Shared Docker Compose profile |
 | Kubernetes | Stateless containers and Postgres | S3, GCS, Azure Blob, or compatible store | Helm chart |
 | Cloudflare | Workers and D1 | R2 | Alchemy-backed Artifact Server installer |
 | AWS | Container service or managed Kubernetes and Postgres | S3 | Pulumi-backed Artifact Server installer |
@@ -270,7 +287,33 @@ The portable product is the container or local process, database schema, blob-st
 
 Customers use one Artifact Server CLI. They choose a target, not an infrastructure framework. Pulumi, Alchemy, Helm, and Docker Compose remain internal or optional customization surfaces. Artifact Server does not require Pulumi Cloud; a Pulumi-backed installer can keep state in the customer's cloud.
 
-The blob interface has first-party drivers for local disk, S3-compatible storage, Google Cloud Storage, Azure Blob Storage, and R2. GCP and Azure do not depend on an S3 compatibility layer.
+Local use runs directly on the host by default and does not require Docker. The
+one-server Compose package has two explicit profiles. Compact Compose runs one
+application container with SQLite and one persistent data directory. It does
+not claim failover or support multiple application writers. Shared Compose uses
+the same image but connects it to existing Postgres and object storage through
+a supported adapter; it can run multiple application processes. Kubernetes
+uses the shared profile and never stores artifact data on pod-local
+filesystems. The packages do not bundle a production database, object-storage
+server, ingress controller, DNS server, or certificate authority.
+
+Local use on the same computer uses loopback and `*.localhost`; it needs no
+reverse proxy, DNS setup, wildcard certificate, or Caddy. A one-server
+installation opened from other devices needs HTTPS routing for the application
+origin and wildcard content origin. Caddy is the reference only when the team
+does not already have a conforming reverse proxy. Kubernetes uses its Ingress
+or Gateway, and managed-cloud packages use their provider edge.
+
+The executable packaging scope, upgrade rules, recovery procedures, and test
+matrix are defined in
+[`phase-6-packaging.md`](./phase-6-packaging.md).
+
+The blob interface can accept any provider for which a tested adapter exists.
+The first shared package supports AWS S3 and Cloudflare R2 through its S3
+adapter. Another S3-compatible service is supported only after it passes the
+same contract tests. Native Google Cloud Storage and Azure Blob drivers ship
+with their cloud packages; GCP and Azure do not depend on an S3 compatibility
+layer.
 
 ## Executable conformance checklist
 
@@ -293,10 +336,14 @@ A requirement is complete only when both tests pass on every applicable deployme
 
 ### Release 2: private teams
 
-- Docker image and Docker Compose for one server.
+- One digest-pinned Docker image for compact and shared storage profiles.
+- Docker Compose for a compact one-server install plus a shared profile that
+  connects to existing Postgres and object storage.
 - Browser login, scoped API keys, Postgres and native blob drivers.
-- Helm chart for Kubernetes.
-- Private multi-file content bootstrap, backup and restore, upgrades, health checks, and `operate-artifact-server` skill.
+- Helm chart for Kubernetes. The chart deploys Artifact Server and connects to
+  existing Postgres and object storage; it does not hide durable providers
+  inside the application release.
+- Private multi-file content bootstrap, backup and restore, upgrades, separate health and readiness checks, structured logs, OTLP export, and `operate-artifact-server` skill.
 - Conformance tests on one server and multi-replica Kubernetes.
 
 The optional Plannotator connection builds on this release. Public or already reachable servers support browser approval, signed operation requests, and top-level private opening first. The review bridge and private outbound connector have their own security and compatibility gates.

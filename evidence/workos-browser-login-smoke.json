@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-13T08:57:27Z",
+  "scope": "interactive browser-login adapter smoke test; not a hosted deployment conformance claim",
+  "workos": {
+    "project": "Artifact Server",
+    "environment": "Staging",
+    "environmentId": "environment_01KZX4K46TQD6VDGQSW0D8E5G9",
+    "application": "Artifact Server",
+    "applicationId": "app_01KZX4K4SQ5A9YE5AMGECTKTWB",
+    "clientId": "client_01KZX4K4JQDM70TRRXPYXCSDNS",
+    "redirectUri": "http://localhost:8787/auth/callback",
+    "selfSignup": "disabled"
+  },
+  "identity": {
+    "provider": "Google",
+    "email": "ramos@plannotator.ai",
+    "workosEvent": "authentication.oauth_succeeded"
+  },
+  "artifactServer": {
+    "authorizationCodeConsumed": true,
+    "externalIdentityBound": true,
+    "administratorAdmitted": true,
+    "applicationSessionIssued": true,
+    "providerTokensPersisted": false
+  },
+  "isolation": {
+    "newArtifactServerProjectCreated": true,
+    "artifactServerProductionConfigured": false,
+    "plannotatorWorkspacesProjectModified": false
+  }
+}

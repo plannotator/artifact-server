@@ -1589,7 +1589,7 @@
           </article>
           <article class="answer">
             <span class="answer-label">Agents</span>
-            <p class="answer-value">AI agents publish through normal web requests or MCP. A hosted MCP connection opens browser sign-in and approval the first time. Local and private installations can use local or server API keys. A publish returns an ID, version number, and link.</p>
+            <p class="answer-value">An agent publishes one actual file or one finished directory through normal web requests or MCP. It does not put raw HTML, CSS, JavaScript, or base64 file contents in an MCP or JSON argument. The publishing client handles the upload and returns an ID, version number, and link. A hosted MCP connection opens browser sign-in and approval the first time. Local and private installations can use local or server API keys.</p>
           </article>
           <article class="answer">
             <span class="answer-label">Deployment</span>
@@ -1964,6 +1964,21 @@
               the server. If Artifact Server runs inside a private company network, a public link
               still works only for people who can connect to that network. An administrator can
               disable public links.
+            </p>
+          </aside>
+
+          <aside class="network-note">
+            <strong>Deployed processes expose one operational contract.</strong>
+            <p>
+              Every HTTP and MCP response receives a server-generated request ID. Artifact Server
+              records request counts, handling time, and Effect spans. It samples normal request
+              logs and always logs server failures and requests that take at least one second.
+              Standard OpenTelemetry environment variables can send all three signals to an
+              OTLP collector. Telemetry uses matched route patterns and never records authorization
+              values, cookies, query strings, file contents, raw artifact IDs, or raw unbounded
+              paths. <code>/health</code> reports whether the process is alive. <code>/ready</code>
+              separately checks validated configuration, completed migrations, the database, and
+              file storage; a dependency failure returns HTTP 503 without changing process health.
             </p>
           </aside>
 
@@ -2720,11 +2735,11 @@ v12-7f3a.content.example.net</code></pre>
           <div class="mcp-sequence" aria-label="Normal steps an agent uses to publish">
             <article class="mcp-step">
               <code>available options</code>
-              <p>Learn whether direct text, file upload, public links, and local file linking are available.</p>
+              <p>Learn which file-upload methods, public links, and local file linking are available.</p>
             </article>
             <article class="mcp-step">
               <code>publish</code>
-              <p>Send small text directly or upload a complete client-side output directory or large file.</p>
+              <p>Select one actual file or one finished directory. The publishing client handles the upload method.</p>
             </article>
             <article class="mcp-step">
               <code>finish upload</code>
@@ -2762,7 +2777,8 @@ v12-7f3a.content.example.net</code></pre>
               <ul>
                 <li>Resolve which local or team server the user means before reading, publishing, or opening an artifact.</li>
                 <li>Ask the server what it supports before choosing an upload method.</li>
-                <li>Use direct text for small files, direct upload for large files or sites, and local file linking only when available.</li>
+                <li>Publish one actual file or one finished directory. Do not place raw source text or base64 file contents in MCP arguments.</li>
+                <li>Choose the supported upload method without asking the user to construct a manifest, fingerprint, or upload session.</li>
                 <li>Return the artifact link and exact saved version after publishing.</li>
                 <li>Never install, upgrade, reconfigure, back up, or delete an Artifact Server installation.</li>
               </ul>
@@ -2913,8 +2929,8 @@ v12-7f3a.content.example.net</code></pre>
                 <p>
                   The publishing skill does not contain a cloud-specific configuration. It calls
                   <code>artifact_capabilities</code> at the start of a publishing task. That response
-                  reports the server version, supported upload methods, size limits, sharing
-                  settings, comparison support, and optional Git history. The same installed skill
+                  reports whether the server is local or remote, the file-count and upload-request
+                  limits, the exact upload workflow, supported sharing settings, and the text-comparison bound. The same installed skill
                   therefore works with a laptop, private server, Kubernetes, or hosted service.
                 </p>
                 <p>
@@ -2975,15 +2991,17 @@ v12-7f3a.content.example.net</code></pre>
                   The primary endpoint uses MCP revision <code>2026-07-28</code> and the official
                   TypeScript SDK version 2. Every request is independent. There is no initialization
                   handshake, MCP session identifier, sticky load-balancer route, or permanent event
-                  stream. The client may call <code>server/discover</code> to learn versions,
-                  tools, resources, instructions, and limits.
+                  stream. The client calls <code>server/discover</code> to learn supported protocol
+                  versions and server instructions, then uses <code>tools/list</code> and
+                  <code>resources/templates/list</code> for the current catalog. It calls
+                  <code>artifact_capabilities</code> for deployment-specific limits and publishing behavior.
                 </p>
                 <ul>
                   <li>Remote and shared installations use HTTP <code>POST /mcp</code>.</li>
                   <li>Normal results use JSON. Request-scoped server-sent events are reserved for useful progress.</li>
                   <li>The first release rejects <code>subscriptions/listen</code>. It is enabled only after the deployment has a real shared event service.</li>
                   <li>Modern <code>GET /mcp</code> and <code>DELETE /mcp</code> return 405. Older MCP behavior is an isolated, optional compatibility path.</li>
-                  <li>Every write has an application idempotency key and the version the caller started from. A broken connection cannot silently publish twice or overwrite newer work.</li>
+                  <li>Every durable change has an application idempotency key. A change to an existing artifact also includes the version the caller started from. A broken connection cannot silently publish twice or overwrite newer work.</li>
                 </ul>
               </div>
             </details>
@@ -3023,23 +3041,22 @@ v12-7f3a.content.example.net</code></pre>
 artifact_list
 artifact_get
 artifact_open
-artifact_publish_inline
 artifact_create_upload
 artifact_commit_upload
-artifact_link_local
 artifact_set_visibility
+artifact_set_tags
 artifact_version_list
-artifact_diff</code></pre>
+artifact_diff
+artifact_restore_version
+artifact_delete</code></pre>
                 <p>
-                  These names may change. Read tools return small responses in a predictable
-                  structure. Results from changes return the artifact ID, version ID, SHA-256
-                  manifest digest, access setting, main link, link to the saved version, and optional
-                  Git commit identifier. The capabilities tool reports whether Git history is enabled
-                  and which provider the installation uses.
+                  Each tool has a strict input and output schema. Publishing returns the artifact,
+                  immutable version, canonical manifest digest, and browser links. Management tools
+                  return the exact artifact or deletion state they changed. Git is not part of the MCP result contract.
                 </p>
                 <p>
-                  Version manifests and bounded text files may also be readable MCP resources. Full
-                  websites, large files, and complete comparison reports return ordinary HTTPS links
+                  One read-only MCP resource returns the canonical manifest for a selected version.
+                  Full websites and file bytes return ordinary HTTPS links
                   instead of being copied into the AI conversation.
                 </p>
               </div>
@@ -3057,6 +3074,8 @@ artifact_diff</code></pre>
                   exists, the server returns the actual current version and tells the agent what to read before trying again.
                   Retrying the same idempotency key returns the same result. Starting a new publish
                   with a new key creates a new version even when the bytes match an earlier version.
+                  Creating a brand-new artifact has no earlier version. Creating an uncommitted upload
+                  is temporary preparation and does not alter an artifact.
                 </p>
               </div>
             </details>
@@ -3085,7 +3104,7 @@ artifact_diff</code></pre>
             <span class="section-label">Deployment</span>
             <h2 id="deployment-title">Supported deployment targets</h2>
             <p>
-              A local installation starts as one process with one data folder. A team deployment may
+              A local installation starts as one process running directly on the host with one data folder and does not require Docker. A team deployment may
               run several copies of the application, all using the same database and file storage.
               The product defines runtime and storage interfaces; official infrastructure packages
               select the provider-specific services.
@@ -3095,11 +3114,11 @@ artifact_diff</code></pre>
           <div class="deployment-summary">
             <article class="deployment-item">
               <h3>Local first</h3>
-              <p>One running application, one SQLite database file, local disk, optional links to local files, and optional Git history in the same data folder.</p>
+              <p>One process runs directly on the host with one SQLite database file and local disk. Docker is optional. Local browser addresses use <code>*.localhost</code>, so no DNS or certificate setup is required.</p>
             </article>
             <article class="deployment-item">
               <h3>Private team</h3>
-              <p>One server uses SQLite and local or attached disk. Kubernetes or multiple application replicas use Postgres and S3, Google Cloud Storage, Azure Blob, R2, or compatible object storage.</p>
+              <p>Compact Compose runs one container with SQLite and attached disk. Shared Compose uses the same image with existing Postgres and object storage, and it can run multiple application processes.</p>
             </article>
             <article class="deployment-item">
               <h3>Cloudflare</h3>
@@ -3155,7 +3174,8 @@ artifact_diff</code></pre>
                   <rect class="svg-boundary" x="22" y="174" width="240" height="318" rx="12"></rect>
                   <text class="svg-label" x="44" y="204">LAPTOP</text>
                   <rect class="svg-node" x="44" y="226" width="196" height="56" rx="7"></rect>
-                  <text class="svg-title" x="62" y="259">One Node.js process</text>
+                  <text class="svg-title" x="62" y="251">Direct host process</text>
+                  <text class="svg-copy" x="62" y="269">Docker optional</text>
                   <rect class="svg-node-store" x="44" y="300" width="196" height="68" rx="7"></rect>
                   <text class="svg-title" x="62" y="328">SQLite</text>
                   <text class="svg-copy" x="62" y="349">Artifact records</text>
@@ -3168,13 +3188,13 @@ artifact_diff</code></pre>
                   <rect class="svg-boundary" x="274" y="174" width="240" height="318" rx="12"></rect>
                   <text class="svg-label" x="296" y="204">ONE SERVER</text>
                   <rect class="svg-node" x="296" y="226" width="196" height="56" rx="7"></rect>
-                  <text class="svg-title" x="314" y="259">Application or container</text>
+                  <text class="svg-title" x="314" y="259">Artifact Server container</text>
                   <rect class="svg-node-store" x="296" y="300" width="196" height="68" rx="7"></rect>
-                  <text class="svg-title" x="314" y="328">SQLite</text>
-                  <text class="svg-copy" x="314" y="349">Artifact records</text>
+                  <text class="svg-title" x="314" y="328">Compact profile</text>
+                  <text class="svg-copy" x="314" y="349">SQLite + persistent disk</text>
                   <rect class="svg-node-store" x="296" y="386" width="196" height="68" rx="7"></rect>
-                  <text class="svg-title" x="314" y="414">Disk or S3-compatible</text>
-                  <text class="svg-copy" x="314" y="435">Files + optional Git repos</text>
+                  <text class="svg-title" x="314" y="414">Shared profile</text>
+                  <text class="svg-copy" x="314" y="435">Postgres + S3-compatible</text>
                   <path class="svg-line" d="M364 282 V300" marker-end="url(#deployment-arrow)"></path>
                   <path class="svg-line" d="M424 282 H500 V420 H492" marker-end="url(#deployment-arrow)"></path>
 
@@ -3228,19 +3248,27 @@ artifact_diff</code></pre>
               <tbody>
                 <tr>
                   <td>Laptop</td>
-                  <td>Node.js</td>
+                  <td>Artifact Server runs directly on the host. A local container is optional.</td>
                   <td>SQLite</td>
                   <td>Local disk</td>
                   <td>Git repositories in the data folder</td>
-                  <td>Only through the local helper and approved roots</td>
+                  <td>Yes. The local publishing client reads a user-selected path with that user's operating-system permissions, validates it, and uploads bytes immediately.</td>
                 </tr>
                 <tr>
-                  <td>One server</td>
-                  <td>Installed application or software container</td>
-                  <td>SQLite by default</td>
-                  <td>Local or attached disk</td>
+                  <td>One server, compact</td>
+                  <td>One software container</td>
+                  <td>SQLite</td>
+                  <td>One persistent local or attached data directory</td>
                   <td>Git repositories on persistent disk</td>
-                  <td>Disabled by default; an administrator may run the local helper against approved roots on that server</td>
+                  <td>Only when a publishing client runs on that server. Artifact Server itself never accepts a filesystem path through HTTP or MCP.</td>
+                </tr>
+                <tr>
+                  <td>One server, shared</td>
+                  <td>One or more stateless software containers</td>
+                  <td>Existing Postgres</td>
+                  <td>Existing S3-compatible object storage</td>
+                  <td>Configured private Git server</td>
+                  <td>Only when a publishing client runs on that server. Artifact Server itself never accepts a filesystem path through HTTP or MCP.</td>
                 </tr>
                 <tr>
                   <td>Kubernetes</td>
@@ -3291,8 +3319,9 @@ artifact_diff</code></pre>
               <summary>How it is installed and how people sign in</summary>
               <div class="detail-body">
                 <p>
-                  The product ships as a downloadable local package, one Docker image, a Compose
-                  file for one server, a Helm chart for Kubernetes, an Alchemy-backed Cloudflare
+                  The product ships as a downloadable local package that does not require Docker,
+                  one optional container image, compact and shared Compose profiles for one server,
+                  a Helm chart for Kubernetes, an Alchemy-backed Cloudflare
                   package, and Pulumi-backed packages for AWS, GCP, and Azure. Each package pins its
                   tool version and emits a deployment manifest for support. These are install paths
                   for one product, not separate editions.
@@ -3317,8 +3346,9 @@ artifact_diff</code></pre>
                   the same rule through one small provider interface.
                 </p>
                 <ul>
-                  <li><strong>Laptop:</strong> SQLite for records, files stored on disk by their SHA-256 fingerprints, optional local file links, and optional Git repositories in the same data folder.</li>
-                  <li><strong>One server:</strong> SQLite in write-ahead logging mode for records, local or attached disk for files, and optional Git repositories on persistent disk. Postgres is not required while one application process owns writes.</li>
+                  <li><strong>Laptop:</strong> one process runs directly on the host by default, with SQLite for records, files stored on disk by their SHA-256 fingerprints, optional local file links, and optional Git repositories in the same data folder. Docker is optional.</li>
+                  <li><strong>One server, compact:</strong> one process, SQLite in write-ahead logging mode, one persistent data directory, and optional Git repositories in that directory. This profile does not support multiple application writers or claim failover.</li>
+                  <li><strong>One server, shared:</strong> the same image connected to existing Postgres and object storage through a supported adapter. The Compose package does not bundle those providers.</li>
                   <li><strong>Kubernetes:</strong> Postgres plus S3, Google Cloud Storage, Azure Blob, R2, or compatible object storage, with an optional internal Git history service or private Git server.</li>
                   <li><strong>Cloudflare:</strong> Workers for the application, D1 for records, R2 for files, and optional Cloudflare Artifacts history. External Postgres is supported through a separate adapter but is not the default.</li>
                   <li><strong>AWS, GCP, and Azure:</strong> the same container or Kubernetes runtime, managed Postgres, and the provider's native object store. Pulumi supplies the official infrastructure package.</li>
@@ -3329,6 +3359,30 @@ artifact_diff</code></pre>
                   to any database. SQLite/D1 and Postgres keep their own migrations, indexes,
                   transactions, and optimized queries. Shared tests prove that publishing, access,
                   versions, and cleanup behave the same.
+                </p>
+                <p>
+                  The first shared package supports AWS S3 and Cloudflare R2 through its S3 adapter.
+                  Another S3-compatible service is supported only after it passes the same storage
+                  contract tests. Native Google Cloud Storage and Azure Blob adapters ship with
+                  their cloud packages. Adding an adapter does not change artifact or version rules.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>When Caddy, DNS, and certificates are needed</summary>
+              <div class="detail-body">
+                <p>
+                  Local use on the same computer needs none of them. Artifact Server binds to
+                  loopback and uses <code>*.localhost</code>. The same rule applies to an optional
+                  local container reached only from that computer.
+                </p>
+                <p>
+                  A one-server installation opened from other devices needs HTTPS routing for the
+                  application address and the wildcard content address. Caddy is the documented
+                  example only when the team has no existing reverse proxy. Nginx, Traefik, HAProxy,
+                  or a company gateway can be used when it passes the same routing, upload, and TLS
+                  tests. Kubernetes uses its Ingress or Gateway. Cloudflare and managed-cloud
+                  packages use their provider edge. Those deployments do not run Caddy.
                 </p>
               </div>
             </details>
@@ -3483,7 +3537,7 @@ artifact_diff</code></pre>
             <article class="feature-row">
               <h3>Safe upload inputs</h3>
               <div class="feature-copy">
-                <p>Portable manifest rules reject path traversal, absolute paths, symlinks, special files, duplicate normalized names, and case or Unicode collisions. Remote publishing uploads bytes; the server does not fetch arbitrary URLs. Local imports are limited to administrator-approved roots.</p>
+                <p>Portable manifest rules reject path traversal, absolute paths, symlinks, special files, duplicate normalized names, and case or Unicode collisions. A local publishing client reads only files allowed by its operating-system identity and uploads their bytes immediately. HTTP and MCP never accept a client filesystem path or fetch an arbitrary URL.</p>
               </div>
             </article>
             <article class="feature-row">
@@ -3603,6 +3657,8 @@ artifact_diff</code></pre>
                   narrow interface. Add browser login, API-key and external-issuer modes for private
                   deployments, staged direct uploads, expired-staging cleanup, a Docker image, a
                   Compose file, a Helm chart, backup and restore, and optional private Git history.
+                  Add structured request logs, standard OTLP export for logs, metrics, and traces,
+                  and separate process-health and dependency-readiness checks.
                   Ship the optional <code>operate-artifact-server</code> skill after install,
                   upgrade, backup, restore, and health-check commands are stable and tested.
                 </p>
@@ -3691,7 +3747,7 @@ artifact_diff</code></pre>
             <article class="decision-item"><p>A private connected server uses a customer-provided route or an outbound-only connector limited to Artifact Server. Connecting never changes firewall rules or exposes the rest of the private network.</p></article>
             <article class="decision-item"><p>Every saved version uses a unique host on a content domain separate from the application domain. Private subresources use a version-scoped content session; public content may use immutable CDN caching.</p></article>
             <article class="decision-item"><p>Changing public content back to account required stops future public access and purges supported caches, but cannot recall downloaded or externally cached copies.</p></article>
-            <article class="decision-item"><p>Manifest paths follow one portable safety contract. Remote clients upload bytes. Local imports use approved roots. The server does not fetch arbitrary source URLs.</p></article>
+            <article class="decision-item"><p>Manifest paths follow one portable safety contract. Publishing clients upload bytes. A local client may read a user-selected path with its operating-system permissions, but HTTP and MCP never receive that path. The server does not fetch arbitrary source URLs.</p></article>
             <article class="decision-item"><p>Uploads stage, verify, then write content-addressed blobs without overwrite before the database commit. The first release deletes expired staging only and does not garbage-collect committed blobs.</p></article>
             <article class="decision-item"><p>Browser, normal software requests, and MCP share the same product and authorization rules. Hosted MCP uses WorkOS AuthKit; local and self-hosted modes retain scoped API keys.</p></article>
             <article class="decision-item"><p>Artifact Server ships a routine publishing skill and a separately installed operator skill. Stored references include the server and artifact, so agents open local or team artifacts at the correct origin.</p></article>

@@ -1,29 +1,38 @@
-# Local performance baseline
+# Performance baselines
 
-This directory contains a bounded diagnostic, not a capacity or stress test. It starts a real local server with a temporary SQLite database and real disk blobs, then exercises the same HTTP routes a client uses.
+These are bounded diagnostics, not capacity or stress tests. They exercise the same publication and browser-content paths used by real clients.
 
 ```sh
 pnpm verify:iteration
 pnpm smoke
 pnpm perf:baseline
+pnpm verify:shared-performance
 ```
 
-`pnpm verify:iteration` is the required end-of-iteration command and includes the other verification layers plus the default baseline. `pnpm smoke` runs a very small CI-safe scenario and fails on broken behavior or only gross performance failures. `pnpm perf:baseline` runs 40 sequential 16 KiB publications, 120 content reads at concurrency 6, bounded version comparisons and artifact-list reads, and one restart. The default run moves only a few megabytes and deletes its temporary server data when finished.
+`pnpm verify:iteration` is the required end-of-iteration command and includes the other verification layers plus the default baseline. Coverage is reported as a diagnostic; percentage movement is not a reason to add a test. `pnpm smoke` runs a very small CI-safe scenario and fails on broken behavior or only gross performance failures. `pnpm perf:baseline` runs 40 sequential 16 KiB publications, 120 content reads at concurrency 6, bounded version comparisons, HTTP artifact-list reads, modern MCP discovery and MCP `artifact_list` calls, the real file-first client against representative single-file and directory inputs, and one restart. The default run remains bounded and deletes its temporary server data when finished.
 
 The baseline writes `evidence/local-performance-baseline.json`. Results are machine-specific. Compare the same machine, Node version, workload, and storage class when looking for a regression. Do not treat one laptop's operations-per-second number as a production capacity claim.
 
 The JSON report records:
 
-- publish, content read, comparison, and artifact-list p50, p95, p99, mean, maximum, and throughput;
+- publish, content read, comparison, HTTP artifact-list, MCP discovery, MCP artifact-list, file-client single-file, and file-client directory p50, p95, p99, mean, maximum, and throughput;
 - event-loop delay and utilization;
-- process CPU and memory change for the combined benchmark client and local server process;
+- process CPU and memory change for the combined benchmark client and local
+  server process, with an explicit collection point before the retained-memory
+  sample;
 - local storage bytes and file count;
 - restart time and persistence checks;
 - environment and workload details.
 
 The manual baseline reports investigation warnings but does not fail on those heuristics. The smoke test uses intentionally broad limits so ordinary CI variance does not create noise.
 
-The current harness runs its HTTP client and server in one process so the event-loop signal covers the complete local path. Its memory result is therefore a high-water signal for that combined process, not a claim about server-only memory or a leak. If memory becomes a release gate, collect server-process telemetry separately before setting a tight budget.
+The current harness runs its HTTP client and server in one process so the
+event-loop signal covers the complete local path. RSS remains a useful allocator
+high-water signal but is not treated as retained memory. The harness runs with
+`--expose-gc` and samples retained heap and external memory after collection.
+That result still covers the combined process, not server-only memory. If memory
+becomes a release gate, collect compiled server-process telemetry separately
+before setting a tight budget.
 
 Safe command-line bounds prevent accidental stress runs:
 
@@ -31,4 +40,18 @@ Safe command-line bounds prevent accidental stress runs:
 pnpm perf:baseline --publications 100 --reads 500 --concurrency 8 --payload-kib 32
 ```
 
-Publications are capped at 500, reads at 5,000, concurrency at 16, and payload size at 1 MiB. In addition, the measured publication payload is capped at 128 MiB and the measured read payload at 256 MiB, so combining maximum flags cannot accidentally create a stress test.
+Publications are capped at 500, reads at 5,000, concurrency at 16, and payload size at 1 MiB. In addition, the measured publication payload is capped at 128 MiB, the measured read payload at 256 MiB, and the real file-client workload at 32 MiB, so combining maximum settings cannot accidentally create a stress test.
+
+## Shared Postgres and S3 baseline
+
+`pnpm verify:shared-performance` builds the production CLI, creates disposable pinned Postgres and MinIO containers, and starts two independent compiled Artifact Server processes against one installation and bucket. The harness uses the real file-first client and records:
+
+- readiness time for the providers, both initial server processes, and one replacement process;
+- repeated 2 MiB single-file and 48-file directory publications, including cross-process content reads;
+- 16 bounded concurrent publications and 80 cross-process content reads;
+- authenticated artifact-list reads from both processes;
+- provider-backed publication, cross-process visibility, exact bytes, health, and process-replacement checks.
+
+Provider provisioning is measured separately and excluded from application-operation latency. The default run caps publication concurrency at 4, read concurrency at 8, aggregate measured publication data at 64 MiB, and aggregate measured read data at 128 MiB. Command-line settings cannot raise publication concurrency above 16 or the bounded operation counts above their configured caps.
+
+The shared report is written to `evidence/shared-performance-baseline.json`. It is a regression baseline for the same machine, container runtime, Node version, workload, and storage class. MinIO on a laptop proves the S3-compatible application path; it does not claim production AWS S3 or Cloudflare R2 latency or capacity.

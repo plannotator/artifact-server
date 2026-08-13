@@ -24,6 +24,8 @@
     "performance/**/*.ts",
     "src/**/*.ts",
     "tests/**/*.ts",
-    "vitest.config.ts"
+    "tools/**/*.ts",
+    "vitest.config.ts",
+    "vitest.integration.config.ts"
   ]
 }

@@ -9,9 +9,7 @@ import {
 import type { CanonicalManifest } from "../core/model.js";
 import {
   createManifest,
-  createSingleFileManifest,
   type ManifestInput,
-  type SingleFileManifestInput,
 } from "../manifest/create-manifest.js";
 
 /** Expected failures produced while parsing a canonical manifest. */
@@ -26,13 +24,6 @@ export function parseManifest(
   input: ManifestInput,
 ): Effect.Effect<CanonicalManifest, ManifestFailure> {
   return catchManifestFailure(() => createManifest(input));
-}
-
-/** Parse one inline file into a canonical manifest effect. */
-export function parseSingleFileManifest(
-  input: SingleFileManifestInput,
-): Effect.Effect<CanonicalManifest, ManifestFailure> {
-  return catchManifestFailure(() => createSingleFileManifest(input));
 }
 
 function catchManifestFailure(

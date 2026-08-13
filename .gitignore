@@ -3,6 +3,9 @@ dist/
 coverage/
 performance/results/
 .artifact-server/
+.env
+.env.*
+!.env.example
 *.db
 *.db-shm
 *.db-wal

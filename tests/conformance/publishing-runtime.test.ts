@@ -9,6 +9,7 @@ import {access, readdir} from "node:fs/promises";
 import path from "node:path";
 
 import {
+  apiHeaders,
   createTestInstallation,
   fetchVersion,
   removeTestInstallation,
@@ -17,9 +18,13 @@ import {
   type TestInstallation,
 } from "../support/runtime-harness.js";
 import {
+  commitStagedUpload,
+  createStagedUpload,
   parsePublishResponse,
   publishNew,
   publishVersion,
+  type TestSiteFile,
+  uploadEveryStagedFile,
 } from "../support/publishing.js";
 
 describe("local publishing runtime", () => {
@@ -136,8 +141,31 @@ describe("local publishing runtime", () => {
       content: "<!doctype html><title>Retry</title>",
       idempotencyKey: "retry-the-same-publish-command",
     };
-    const first = await publishNew(server, installation, command);
-    const replay = await publishNew(server, installation, command);
+    const retryFile = textFile(command.content);
+    const upload = await createStagedUpload(
+      server,
+      installation,
+      retryFile.path,
+      [retryFile],
+    );
+    await uploadEveryStagedFile(installation, upload.body, [retryFile]);
+    const target = {
+      accessSetting: command.accessSetting,
+      kind: "new_artifact" as const,
+      name: "Test artifact",
+    };
+    const first = await commitStagedUpload(
+      installation,
+      upload.body,
+      command.idempotencyKey,
+      target,
+    );
+    const replay = await commitStagedUpload(
+      installation,
+      upload.body,
+      command.idempotencyKey,
+      target,
+    );
 
     expect(first.response.status).toBe(201);
     expect(replay.response.status).toBe(200);
@@ -145,16 +173,20 @@ describe("local publishing runtime", () => {
     expect(replay.body.artifact.id).toBe(first.body.artifact.id);
     expect(replay.body.version.id).toBe(first.body.version.id);
 
-    const conflict = await fetch(`${server.baseUrl}/api/v1/artifacts`, {
-      body: JSON.stringify({
-        accessSetting: "public_link",
-        file: {
-          contentBase64: Buffer.from("different bytes").toString("base64"),
-          mediaType: "text/plain",
-          path: "index.html",
-        },
-        name: "Test artifact",
-      }),
+    const conflictFile = textFile("different bytes", "text/plain");
+    const conflictUpload = await createStagedUpload(
+      server,
+      installation,
+      conflictFile.path,
+      [conflictFile],
+    );
+    await uploadEveryStagedFile(
+      installation,
+      conflictUpload.body,
+      [conflictFile],
+    );
+    const conflict = await fetch(conflictUpload.body.commitUrl, {
+      body: JSON.stringify({target}),
       headers: {
         Authorization: `Bearer ${installation.apiToken}`,
         "Content-Type": "application/json",
@@ -174,37 +206,30 @@ describe("local publishing runtime", () => {
       content: "<!doctype html><title>Initial</title>",
       idempotencyKey: "publish-race-initial-version",
     });
+    const candidateA = textFile("<title>Candidate A</title>");
+    const candidateB = textFile("<title>Candidate B</title>");
+    const [uploadA, uploadB] = await Promise.all([
+      createStagedUpload(server, installation, candidateA.path, [candidateA]),
+      createStagedUpload(server, installation, candidateB.path, [candidateB]),
+    ]);
+    await Promise.all([
+      uploadEveryStagedFile(installation, uploadA.body, [candidateA]),
+      uploadEveryStagedFile(installation, uploadB.body, [candidateB]),
+    ]);
+    const target = {
+      artifactId: initial.body.artifact.id,
+      expectedCurrentVersionId: initial.body.version.id,
+      kind: "new_version",
+    } as const;
     const requests = [
-      fetch(`${server.baseUrl}/api/v1/artifacts/${initial.body.artifact.id}/versions`, {
-        body: JSON.stringify({
-          expectedCurrentVersionId: initial.body.version.id,
-          file: {
-            contentBase64: Buffer.from("<title>Candidate A</title>").toString("base64"),
-            mediaType: "text/html",
-            path: "index.html",
-          },
-        }),
-        headers: {
-          Authorization: `Bearer ${installation.apiToken}`,
-          "Content-Type": "application/json",
-          "Idempotency-Key": "publish-race-candidate-a",
-        },
+      fetch(uploadA.body.commitUrl, {
+        body: JSON.stringify({target}),
+        headers: apiHeaders(installation, "publish-race-candidate-a"),
         method: "POST",
       }),
-      fetch(`${server.baseUrl}/api/v1/artifacts/${initial.body.artifact.id}/versions`, {
-        body: JSON.stringify({
-          expectedCurrentVersionId: initial.body.version.id,
-          file: {
-            contentBase64: Buffer.from("<title>Candidate B</title>").toString("base64"),
-            mediaType: "text/html",
-            path: "index.html",
-          },
-        }),
-        headers: {
-          Authorization: `Bearer ${installation.apiToken}`,
-          "Content-Type": "application/json",
-          "Idempotency-Key": "publish-race-candidate-b",
-        },
+      fetch(uploadB.body.commitUrl, {
+        body: JSON.stringify({target}),
+        headers: apiHeaders(installation, "publish-race-candidate-b"),
         method: "POST",
       }),
     ];
@@ -262,6 +287,17 @@ describe("local publishing runtime", () => {
     await previous.arrayBuffer();
   });
 });
+
+function textFile(
+  content: string,
+  mediaType = "text/html; charset=utf-8",
+): TestSiteFile {
+  return {
+    bytes: new TextEncoder().encode(content),
+    mediaType,
+    path: "index.html",
+  };
+}
 
 async function countBlobFiles(directory: string): Promise<number> {
   const entries = await readdir(directory, {withFileTypes: true});

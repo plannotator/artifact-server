@@ -11,17 +11,10 @@ import {
 } from "../core/errors.js";
 import {
   fileDispositions,
-  routingModes,
   type CanonicalManifest,
   type FileDisposition,
   type ManifestEntry,
 } from "../core/model.js";
-
-export interface SingleFileManifestInput {
-  readonly bytes: Uint8Array;
-  readonly mediaType: string;
-  readonly path: string;
-}
 
 export interface DeclaredManifestFile {
   readonly mediaType: string;
@@ -40,10 +33,6 @@ const encodedSeparatorPattern = /%(?:2f|5c)/iu;
 const inlineMediaTypePattern = /^(?:audio\/|image\/|text\/|video\/|application\/pdf$)/u;
 const mediaTypePattern = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+(?:[ \t]*;[ \t]*[!#$%&'*+.^_`|~0-9A-Za-z-]+=(?:[!#$%&'*+.^_`|~0-9A-Za-z-]+|"[\t\x20-\x21\x23-\x5b\x5d-\x7e]*"))*$/u;
 const sha256Pattern = /^[a-f0-9]{64}$/u;
-
-export function sha256(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
 
 export function parseManifestPath(candidate: string): string {
   if (
@@ -85,21 +74,6 @@ export function manifestPathFromUrl(pathname: string): string | null {
   } catch {
     return null;
   }
-}
-
-export function createSingleFileManifest(
-  input: SingleFileManifestInput,
-): CanonicalManifest {
-  return createManifest({
-    entryPath: input.path,
-    files: [{
-      mediaType: input.mediaType,
-      path: input.path,
-      sha256: sha256(input.bytes),
-      size: input.bytes.byteLength,
-    }],
-    routingMode: routingModes.static,
-  });
 }
 
 /**

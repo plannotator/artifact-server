@@ -53,6 +53,12 @@ export function hasCapability(
 
 /** Determine whether a human principal administers the standalone installation. */
 export function isHumanAdministrator(principal: Principal): boolean {
-  return principal.kind === principalKinds.human &&
+  return isDirectHumanPrincipal(principal) &&
     principal.membershipRole === membershipRoles.administrator;
+}
+
+/** Determine whether a principal came from a person's interactive session. */
+export function isDirectHumanPrincipal(principal: Principal): boolean {
+  return principal.kind === principalKinds.human &&
+    principal.authorizedByPrincipalId === null;
 }

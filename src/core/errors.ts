@@ -9,6 +9,11 @@ export const errorCodes = {
   contentBootstrapRejected: "CONTENT_BOOTSTRAP_REJECTED",
   contentNotPublic: "CONTENT_NOT_PUBLIC",
   idempotencyConflict: "IDEMPOTENCY_CONFLICT",
+  identityAdmissionDenied: "IDENTITY_ADMISSION_DENIED",
+  identityConflict: "IDENTITY_CONFLICT",
+  identityNotFound: "IDENTITY_NOT_FOUND",
+  identityProviderFailure: "IDENTITY_PROVIDER_FAILURE",
+  interactiveLoginUnavailable: "INTERACTIVE_LOGIN_UNAVAILABLE",
   invalidInput: "INVALID_INPUT",
   invalidManifestPath: "INVALID_MANIFEST_PATH",
   methodNotAllowed: "METHOD_NOT_ALLOWED",
@@ -41,6 +46,42 @@ export class ArtifactMutationConflict extends Schema.TaggedError<ArtifactMutatio
 /** The request did not contain a valid supported credential. */
 export class AuthenticationRequired extends Schema.TaggedError<AuthenticationRequired>()(
   "AuthenticationRequired",
+  messageField,
+) {}
+
+/** A verified external identity is not admitted to this installation. */
+export class IdentityAdmissionDenied extends Schema.TaggedError<IdentityAdmissionDenied>()(
+  "IdentityAdmissionDenied",
+  messageField,
+) {}
+
+/** An identity-management command conflicts with current installation state. */
+export class IdentityConflict extends Schema.TaggedError<IdentityConflict>()(
+  "IdentityConflict",
+  messageField,
+) {}
+
+/** A requested member, session, or API key does not exist. */
+export class IdentityNotFound extends Schema.TaggedError<IdentityNotFound>()(
+  "IdentityNotFound",
+  messageField,
+) {}
+
+/** Interactive browser login is not configured for this installation. */
+export class InteractiveLoginUnavailable extends Schema.TaggedError<InteractiveLoginUnavailable>()(
+  "InteractiveLoginUnavailable",
+  messageField,
+) {}
+
+/** A configured external identity provider could not complete its operation. */
+export class IdentityProviderFailure extends Schema.TaggedError<IdentityProviderFailure>()(
+  "IdentityProviderFailure",
+  messageField,
+) {}
+
+/** An interactive login attempt is invalid, expired, or already consumed. */
+export class LoginAttemptRejected extends Schema.TaggedError<LoginAttemptRejected>()(
+  "LoginAttemptRejected",
   messageField,
 ) {}
 
@@ -113,12 +154,6 @@ export class InvalidManifestFile extends Schema.TaggedError<InvalidManifestFile>
 /** A manifest path is unsafe or not portable. */
 export class InvalidManifestPath extends Schema.TaggedError<InvalidManifestPath>()(
   "InvalidManifestPath",
-  messageField,
-) {}
-
-/** A client supplied more bytes than the inline publication path permits. */
-export class InlineContentTooLarge extends Schema.TaggedError<InlineContentTooLarge>()(
-  "InlineContentTooLarge",
   messageField,
 ) {}
 
@@ -208,6 +243,34 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
   },
 ) {}
 
+/** An outbound installation-identity operation failed unexpectedly. */
+export class IdentityRepositoryFailure extends Schema.TaggedError<IdentityRepositoryFailure>()(
+  "IdentityRepositoryFailure",
+  {
+    cause: Schema.Defect(),
+    operation: Schema.Literals([
+      "admitMember",
+      "bindExternalIdentity",
+      "consumeLoginAttempt",
+      "createApiKey",
+      "createApplicationSession",
+      "createLoginAttempt",
+      "deactivateMember",
+      "findActiveMemberByEmail",
+      "findActiveMemberByExternalIdentity",
+      "findMember",
+      "findApiKey",
+      "findApplicationSession",
+      "hasMembers",
+      "listApiKeys",
+      "listMembers",
+      "revokeApiKey",
+      "revokeApplicationSession",
+      "rotateApiKey",
+    ]),
+  },
+) {}
+
 /** An outbound immutable-blob operation failed unexpectedly. */
 export class BlobStorageFailure extends Schema.TaggedError<BlobStorageFailure>()(
   "BlobStorageFailure",
@@ -230,6 +293,12 @@ const artifactServerFailureSchema = Schema.Union([
   ArtifactNotFound,
   ArtifactMutationConflict,
   AuthenticationRequired,
+  IdentityAdmissionDenied,
+  IdentityConflict,
+  IdentityNotFound,
+  IdentityProviderFailure,
+  InteractiveLoginUnavailable,
+  LoginAttemptRejected,
   AuthorizationDenied,
   ContentBootstrapRejected,
   ContentSessionRequired,
@@ -241,7 +310,6 @@ const artifactServerFailureSchema = Schema.Union([
   MissingManifestEntry,
   InvalidManifestFile,
   InvalidManifestPath,
-  InlineContentTooLarge,
   UploadedFileMismatch,
   IdempotencyConflict,
   PublishConflict,
@@ -253,6 +321,7 @@ const artifactServerFailureSchema = Schema.Union([
   VersionNotFound,
   ContentNotPublic,
   ArtifactRepositoryFailure,
+  IdentityRepositoryFailure,
   BlobStorageFailure,
   StagingStorageFailure,
 ]);

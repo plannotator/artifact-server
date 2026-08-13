@@ -1,8 +1,19 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { DateTime, Effect, Layer, Redacted } from "effect";
 
-import { AuthenticationService } from "../application/authentication.js";
+import {
+  AuthenticationService,
+  type BearerCredentialVerifier,
+} from "../application/authentication.js";
+import {
+  digestIdentitySecret,
+  InstallationAccessService,
+} from "../application/installation-access.js";
+import {
+  type InteractiveIdentityProvider,
+  InteractiveLoginService,
+} from "../application/interactive-login.js";
 import {
   type ArtifactManagementDependencies,
   ArtifactManagementService,
@@ -32,7 +43,11 @@ import {
   AuthenticationRequired,
   BlobStorageFailure,
   IdempotencyConflict,
+  IdentityConflict,
+  IdentityNotFound,
+  IdentityRepositoryFailure,
   PublishConflict,
+  LoginAttemptRejected,
   StagingStorageFailure,
   UploadClosed,
   UploadExpired,
@@ -49,35 +64,47 @@ import {
   type Principal,
 } from "../core/identity.js";
 import type {
+  ArtifactRepository,
   BlobStore,
   Clock,
+  ContentSessionRepository,
   IdGenerator,
+  StagedUploadRepository,
   StagingStore,
 } from "../core/ports.js";
+import type {IdentityRepository} from "../core/identity-ports.js";
 import type { ManifestEntry } from "../core/model.js";
 import { FileVerificationError } from "../storage/verified-file.js";
-import type { SqliteArtifactRepository } from "../storage/sqlite-artifact-repository.js";
 
-/** Concrete local adapters reused by the Effect application layer. */
-export interface LocalApplicationAdapters {
+/** Concrete Node adapters reused by the Effect application layer. */
+export interface ApplicationAdapters {
   readonly apiToken: Redacted.Redacted;
   readonly blobs: BlobStore;
+  readonly bootstrapAdministratorEmail: string;
   readonly clock: Clock;
+  readonly externalBearerVerifier: BearerCredentialVerifier | null;
   readonly ids: IdGenerator;
+  readonly identityRepository: IdentityRepository;
   readonly installationId: string;
-  readonly repository: SqliteArtifactRepository;
+  readonly interactiveIdentityProvider: InteractiveIdentityProvider | null;
+  readonly localBootstrapCredential: Redacted.Redacted | null;
+  readonly repository: ArtifactRepository &
+    ContentSessionRepository &
+    StagedUploadRepository;
   readonly staging: StagingStore;
 }
 
-/** Build the local publication services without changing their storage adapters. */
-export function createLocalApplicationLayer(
-  adapters: LocalApplicationAdapters,
+/** Build Node application services over the selected persistence adapters. */
+export function createApplicationLayer(
+  adapters: ApplicationAdapters,
 ): Layer.Layer<
   | AuthenticationService
   | ArtifactManagementService
   | AuthorizationService
   | CompareArtifactService
   | ContentAccessService
+  | InstallationAccessService
+  | InteractiveLoginService
   | PublishArtifactService
   | StagedUploadService
 > {
@@ -339,19 +366,161 @@ export function createLocalApplicationLayer(
     kind: principalKinds.service,
     membershipRole: membershipRoles.member,
   };
-  const authenticationLayer = AuthenticationService.layer({
-    bearerCredentials: {
-      verify: (credential) =>
-        credentialsEqual(
-          Redacted.value(credential),
-          Redacted.value(adapters.apiToken),
-        )
-          ? Effect.succeed(localPrincipal)
-          : Effect.fail(new AuthenticationRequired({
-            message: "A valid local API token is required.",
-          })),
+  const identityRepository = adapters.identityRepository;
+  const identityLayer = InstallationAccessService.layer({
+    bootstrapAdministratorEmail: adapters.bootstrapAdministratorEmail,
+    clock: adapters.clock,
+    ids: {
+      apiKeyId: () => `key_${randomUUID()}`,
+      memberId: () => `member_${randomUUID()}`,
+      sessionId: () => `session_${randomUUID()}`,
     },
+    installationId: adapters.installationId,
+    localBootstrapCredential: adapters.localBootstrapCredential,
+    repository: {
+      admitMember: (command) => identityEffectWithConflict(
+        "admitMember",
+        () => identityRepository.admitMember(command),
+      ),
+      bindExternalIdentity: (command) => identityEffectWithConflict(
+        "bindExternalIdentity",
+        () => identityRepository.bindExternalIdentity(command),
+      ),
+      createApiKey: (key) => identityEffect(
+        "createApiKey",
+        () => identityRepository.createApiKey(key),
+      ),
+      createApplicationSession: (command) => identityEffect(
+        "createApplicationSession",
+        () => identityRepository.createApplicationSession(command),
+      ),
+      deactivateMember: (installationId, memberId, updatedAt) =>
+        identityEffectWithConflictOrNotFound(
+          "deactivateMember",
+          () => identityRepository.deactivateMember(
+            installationId,
+            memberId,
+            updatedAt,
+          ),
+        ),
+      findActiveMemberByEmail: (installationId, email) => identityEffect(
+        "findActiveMemberByEmail",
+        () => identityRepository.findActiveMemberByEmail(installationId, email),
+      ),
+      findActiveMemberByExternalIdentity: (
+        installationId,
+        provider,
+        subject,
+      ) => identityEffect(
+        "findActiveMemberByExternalIdentity",
+        () => identityRepository.findActiveMemberByExternalIdentity(
+          installationId,
+          provider,
+          subject,
+        ),
+      ),
+      findMember: (installationId, memberId) => identityEffect(
+        "findMember",
+        () => identityRepository.findMember(installationId, memberId),
+      ),
+      findApiKey: (installationId, keyId) => identityEffect(
+        "findApiKey",
+        () => identityRepository.findApiKey(installationId, keyId),
+      ),
+      findApplicationSession: (installationId, tokenDigest, requestTime) =>
+        identityEffect(
+          "findApplicationSession",
+          () => identityRepository.findApplicationSession(
+            installationId,
+            tokenDigest,
+            requestTime,
+          ),
+        ),
+      hasMembers: (installationId) => identityEffect(
+        "hasMembers",
+        () => identityRepository.hasMembers(installationId),
+      ),
+      listApiKeys: (installationId) => identityEffect(
+        "listApiKeys",
+        () => identityRepository.listApiKeys(installationId),
+      ),
+      listMembers: (installationId) => identityEffect(
+        "listMembers",
+        () => identityRepository.listMembers(installationId),
+      ),
+      revokeApiKey: (installationId, keyId, revokedAt) => identityEffectWithNotFound(
+        "revokeApiKey",
+        () => identityRepository.revokeApiKey(installationId, keyId, revokedAt),
+      ),
+      revokeApplicationSession: (installationId, tokenDigest, revokedAt) =>
+        identityEffect(
+          "revokeApplicationSession",
+          () => identityRepository.revokeApplicationSession(
+            installationId,
+            tokenDigest,
+            revokedAt,
+          ),
+        ),
+      rotateApiKey: (installationId, previousKeyId, replacement, revokedAt) =>
+        identityEffectWithConflictOrNotFound(
+          "rotateApiKey",
+          () => identityRepository.rotateApiKey(
+            installationId,
+            previousKeyId,
+            replacement,
+            revokedAt,
+          ),
+        ),
+    },
+    secrets: {
+      digest: digestIdentitySecret,
+      issue: () => randomBytes(32).toString("base64url"),
+    },
+    sessionLifetimeMilliseconds: 12 * 60 * 60 * 1_000,
   });
+  const authenticationLayer = Layer.effect(
+    AuthenticationService,
+    InstallationAccessService.use((installationAccess) =>
+      Effect.succeed(AuthenticationService.of({
+        authenticateApplicationSession: installationAccess.authenticateSession,
+        authenticateBearer: (credential) => {
+          const raw = Redacted.value(credential);
+          if (raw.startsWith("as_key_")) {
+            return installationAccess.authenticateManagedApiKey(credential);
+          }
+          if (credentialsEqual(raw, Redacted.value(adapters.apiToken))) {
+            return Effect.succeed(localPrincipal);
+          }
+          if (adapters.externalBearerVerifier !== null) {
+            return adapters.externalBearerVerifier.verify(credential);
+          }
+          return Effect.fail(new AuthenticationRequired({
+            message: "A valid Artifact Server API key is required.",
+          }));
+        },
+      }))
+    ),
+  ).pipe(Layer.provideMerge(identityLayer));
+  const interactiveLoginLayer = InteractiveLoginService.layer({
+    attemptLifetimeMilliseconds: 10 * 60 * 1_000,
+    clock: adapters.clock,
+    provider: adapters.interactiveIdentityProvider,
+    repository: {
+      consume: (stateDigest, provider, consumedAt) =>
+        loginAttemptEffect(
+          "consumeLoginAttempt",
+          () => identityRepository.consumeLoginAttempt(
+            stateDigest,
+            provider,
+            consumedAt,
+          ),
+        ),
+      create: (attempt) => identityEffect(
+        "createLoginAttempt",
+        () => identityRepository.createLoginAttempt(attempt),
+      ),
+    },
+  }).pipe(Layer.provideMerge(identityLayer));
   const authorizationLayer = AuthorizationService.layer({
     installationId: adapters.installationId,
   });
@@ -373,11 +542,78 @@ export function createLocalApplicationLayer(
   ).pipe(Layer.provideMerge(authorizationLayer));
   return Layer.mergeAll(
     authenticationLayer,
+    identityLayer,
+    interactiveLoginLayer,
     stagedLayer,
     contentLayer,
     managementLayer,
     comparisonLayer,
   );
+}
+
+/** Backward-compatible local composition name. */
+export const createLocalApplicationLayer = createApplicationLayer;
+
+function identityEffect<A>(
+  operation: IdentityRepositoryFailure["operation"],
+  run: () => Promise<A>,
+): Effect.Effect<A, IdentityRepositoryFailure> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => new IdentityRepositoryFailure({cause, operation}),
+  });
+}
+
+function identityEffectWithConflict<A>(
+  operation: IdentityRepositoryFailure["operation"],
+  run: () => Promise<A>,
+): Effect.Effect<A, IdentityConflict | IdentityRepositoryFailure> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => cause instanceof IdentityConflict
+      ? cause
+      : new IdentityRepositoryFailure({cause, operation}),
+  });
+}
+
+function identityEffectWithNotFound<A>(
+  operation: IdentityRepositoryFailure["operation"],
+  run: () => Promise<A>,
+): Effect.Effect<A, IdentityNotFound | IdentityRepositoryFailure> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => cause instanceof IdentityNotFound
+      ? cause
+      : new IdentityRepositoryFailure({cause, operation}),
+  });
+}
+
+function identityEffectWithConflictOrNotFound<A>(
+  operation: IdentityRepositoryFailure["operation"],
+  run: () => Promise<A>,
+): Effect.Effect<
+  A,
+  IdentityConflict | IdentityNotFound | IdentityRepositoryFailure
+> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) =>
+      cause instanceof IdentityConflict || cause instanceof IdentityNotFound
+        ? cause
+        : new IdentityRepositoryFailure({cause, operation}),
+  });
+}
+
+function loginAttemptEffect<A>(
+  operation: IdentityRepositoryFailure["operation"],
+  run: () => Promise<A>,
+): Effect.Effect<A, LoginAttemptRejected | IdentityRepositoryFailure> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => cause instanceof LoginAttemptRejected
+      ? cause
+      : new IdentityRepositoryFailure({cause, operation}),
+  });
 }
 
 async function readBlobBytes(

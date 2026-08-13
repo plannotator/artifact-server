@@ -151,7 +151,7 @@ requirements:
       behavior: {id: ART-001-B, description: Publish two versions and confirm that the artifact ID remains stable while version IDs differ.}
       failure: {id: ART-001-F, description: A new version cannot change or reuse another artifact's identity.}
     deployments: *all
-    status: behavior_verified
+    status: specified
     depends_on: []
     evidence:
       - deployment: local
@@ -409,16 +409,21 @@ requirements:
 
   - id: PUB-002
     kind: behavior
-    behavior: Clients upload large sites and files directly to configured blob storage rather than carrying their bytes through MCP messages.
+    behavior: Public clients publish one actual file or finished directory through a file-upload transport. JSON and MCP schemas do not accept raw source strings or base64-wrapped file contents.
     owner: publishing
     source: {file: artifact-server-product-spec.html, anchor: architecture}
     acceptance:
-      behavior: {id: PUB-002-B, description: Publish a large multi-file fixture with the direct-upload plan and commit it through the normal product service.}
-      failure: {id: PUB-002-F, description: Oversized inline or MCP payloads are rejected with instructions for direct upload.}
+      behavior: {id: PUB-002-B, description: Publish one ordinary file and one large multi-file fixture through the advertised upload plan without asking the user for a manifest, fingerprint, upload ID, or size threshold.}
+      failure: {id: PUB-002-F, description: Reject raw source strings, base64-wrapped file contents, and oversized MCP payloads with instructions for the supported file-upload path.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [PUB-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [PUB-002-B, PUB-002-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T16:56:38Z"
 
   - id: PUB-003
     kind: security
@@ -538,12 +543,12 @@ requirements:
 
   - id: PUB-010
     kind: security
-    behavior: Local file import is available only through a local helper using administrator-approved roots, real-path checks, and immediate byte copying.
+    behavior: A local publishing client may read a user-selected path with its operating-system permissions, rejects unsafe file types and paths, and immediately uploads bytes; HTTP and MCP never receive the client path.
     owner: publishing
     source: {file: artifact-server-product-spec.html, anchor: architecture}
     acceptance:
-      behavior: {id: PUB-010-B, description: Import a regular file beneath an approved root and confirm that later source changes do not change the saved version.}
-      failure: {id: PUB-010-F, description: Reject paths outside approved roots, symlink escapes, special files, and paths inaccessible to the helper.}
+      behavior: {id: PUB-010-B, description: Publish a regular local file through the client and confirm that later source changes do not change the saved version.}
+      failure: {id: PUB-010-F, description: Reject symlinks, special files, forbidden manifest paths, and paths inaccessible to the client's operating-system identity before creating an upload.}
     deployments: [local, single_server]
     status: specified
     depends_on: [MAN-004, PUB-001]
@@ -555,12 +560,17 @@ requirements:
     owner: publishing
     source: {file: artifact-server-product-spec.html, anchor: safety}
     acceptance:
-      behavior: {id: PUB-011-B, description: Publish remote input only through inline bytes or a server-issued direct-upload plan.}
+      behavior: {id: PUB-011-B, description: Publish remote input only through a server-issued file-upload plan.}
       failure: {id: PUB-011-F, description: Reject client paths and arbitrary URLs, including private-network and cloud-metadata targets.}
     deployments: *shared
-    status: specified
+    status: behavior_verified
     depends_on: [PUB-001]
-    evidence: []
+    evidence:
+      - deployment: single_server
+        tests: [PUB-011-B, PUB-011-F]
+        result: pass
+        run: evidence/shared-runtime.json
+        recorded_at: "2026-08-13T16:56:38Z"
 
   - id: AUD-001
     kind: security
@@ -905,9 +915,14 @@ requirements:
       behavior: {id: AUTH-001-B, description: Admit users through installation administration and confirm that each belongs to the one installation group.}
       failure: {id: AUTH-001-F, description: An unaffiliated user cannot self-register, discover another organization, or switch the installation context.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: []
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [AUTH-001-B, AUTH-001-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T09:03:10Z"
 
   - id: AUTH-002
     kind: behavior
@@ -1032,9 +1047,14 @@ requirements:
       behavior: {id: AUTH-010-B, description: Sign in and confirm that application cookies are sent only to the application host.}
       failure: {id: AUTH-010-F, description: Artifact origins, sibling versions, and content JavaScript cannot receive or read an application cookie.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [CNT-003, CNT-004]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [AUTH-010-B, AUTH-010-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T09:03:10Z"
 
   - id: AUTH-011
     kind: security
@@ -1045,9 +1065,14 @@ requirements:
       behavior: {id: AUTH-011-B, description: Submit a valid same-origin mutation with the required CSRF and Fetch Metadata signals.}
       failure: {id: AUTH-011-F, description: Reject cross-origin forms, fetches, frames, missing or stale CSRF tokens, hostile origins, and invalid Fetch Metadata.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [AUTH-010]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [AUTH-011-B, AUTH-011-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T09:03:10Z"
 
   - id: AUTH-012
     kind: security
@@ -1058,9 +1083,14 @@ requirements:
       behavior: {id: AUTH-012-B, description: Confirm that documented public API CORS behavior does not include artifact content credentials.}
       failure: {id: AUTH-012-F, description: Preflight and direct credentialed requests from every artifact origin fail closed.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [CNT-004]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [AUTH-012-B, AUTH-012-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T09:03:10Z"
 
   - id: AUTH-013
     kind: security
@@ -1198,9 +1228,14 @@ requirements:
       behavior: {id: MCP-001-B, description: Call discovery and representative tools through POST /mcp and receive conforming JSON or request-scoped progress.}
       failure: {id: MCP-001-F, description: GET and DELETE /mcp return 405, and a request cannot create a permanent event stream or sticky session.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: []
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [MCP-001-B, MCP-001-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T18:09:37Z"
 
   - id: MCP-002
     kind: constraint
@@ -1211,22 +1246,32 @@ requirements:
       behavior: {id: MCP-002-B, description: Pass protocol conformance using the pinned revision and SDK without initialization, MCP session IDs, or load-balancer affinity.}
       failure: {id: MCP-002-F, description: A client cannot require undocumented session state, sticky routing, or an older protocol on the primary path.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [MCP-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [MCP-002-B, MCP-002-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T18:09:37Z"
 
   - id: MCP-003
     kind: behavior
-    behavior: server/discover reports supported protocol versions, tools, resources, instructions, upload methods, limits, sharing policy, comparison support, and optional Git support.
+    behavior: server/discover reports supported protocol versions and instructions; tools/list and resources/templates/list report the catalog; artifact_capabilities reports deployment-specific workflow, limits, and sharing modes.
     owner: mcp
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
-      behavior: {id: MCP-003-B, description: Discover each deployment and confirm that returned capabilities match its enabled behavior and limits.}
+      behavior: {id: MCP-003-B, description: Discover each deployment, list its tools and resources, then call artifact_capabilities and confirm that all returned behavior and limits match the installation.}
       failure: {id: MCP-003-F, description: Disabled, unsupported, or policy-forbidden methods are not advertised as available.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [MCP-002, SEC-003]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [MCP-003-B, MCP-003-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T18:09:37Z"
 
   - id: MCP-004
     kind: constraint
@@ -1237,9 +1282,14 @@ requirements:
       behavior: {id: MCP-004-B, description: Discover a deployment without an event service and observe no subscription capability.}
       failure: {id: MCP-004-F, description: Subscription attempts receive a stable unsupported response and allocate no permanent connection state.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [MCP-003]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [MCP-004-B, MCP-004-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T18:09:37Z"
 
   - id: MCP-005
     kind: constraint
@@ -1250,48 +1300,68 @@ requirements:
       behavior: {id: MCP-005-B, description: Run the modern conformance suite with compatibility disabled and unchanged.}
       failure: {id: MCP-005-F, description: Compatibility sessions, routes, or credentials cannot alter modern endpoint behavior or authorization.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [MCP-002]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [MCP-005-B, MCP-005-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T18:09:37Z"
 
   - id: MCP-006
     kind: behavior
-    behavior: The initial MCP surface supports capabilities, list, get, open, inline publish, staged upload, upload commit, approved local link, visibility change, version list, and diff.
+    behavior: The initial MCP surface supports capabilities, list, get, open, upload creation, upload commit, visibility, tags, version list, diff, restore, and delete. It has no local-path, raw-text, base64, or inline-content publishing tool.
     owner: mcp
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
       behavior: {id: MCP-006-B, description: Execute every documented tool against its supported fixture and compare the result with the HTTP behavior.}
       failure: {id: MCP-006-F, description: Each tool rejects invalid input, unsupported capability, wrong installation, wrong artifact, and insufficient permission through the shared authorization layer.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [PRD-004, MCP-003]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [MCP-006-B, MCP-006-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T18:09:37Z"
 
   - id: MCP-007
     kind: behavior
-    behavior: MCP carries instructions and small results while complete directories and large bytes use the server's direct-upload plan.
+    behavior: MCP carries instructions, file metadata, and bounded results while file bytes and complete directories use the server's upload plan.
     owner: mcp
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
-      behavior: {id: MCP-007-B, description: Publish small inline content and a large complete site using the two advertised paths.}
-      failure: {id: MCP-007-F, description: Oversized MCP input is rejected before memory or message limits are exceeded and returns the supported upload path.}
+      behavior: {id: MCP-007-B, description: Publish one small file and one large complete site from filesystem inputs while the client selects the advertised upload transport.}
+      failure: {id: MCP-007-F, description: Raw content and oversized MCP input are rejected before memory or message limits are exceeded and return the supported upload path.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [MCP-003, PUB-002]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [MCP-007-B, MCP-007-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T18:09:37Z"
 
   - id: MCP-008
     kind: behavior
-    behavior: Every MCP write includes an application idempotency key and expected current version.
+    behavior: Every durable MCP mutation includes an application idempotency key; mutations of an existing artifact also include the current version the caller started from. Upload creation is disposable staging and creating a new artifact has no prior version.
     owner: mcp
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
       behavior: {id: MCP-008-B, description: Lose and retry an MCP write and receive the original result without duplicating or overwriting work.}
       failure: {id: MCP-008-F, description: Missing, reused-with-different-input, and stale write controls are rejected through the same publishing rules as HTTP.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [PUB-006, PUB-008]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [MCP-008-B, MCP-008-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T18:09:37Z"
 
   - id: MCP-009
     kind: security
@@ -1302,9 +1372,14 @@ requirements:
       behavior: {id: MCP-009-B, description: Run the complete authorization matrix through MCP and HTTP and obtain equivalent outcomes.}
       failure: {id: MCP-009-F, description: MCP cannot list, read, publish, restore, change visibility, or delete beyond the caller's normal authority.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [AUTH-008]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [MCP-009-B, MCP-009-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T18:09:37Z"
 
   - id: MCP-010
     kind: security
@@ -1354,9 +1429,14 @@ requirements:
       behavior: {id: MCP-013-B, description: Connect locally without a browser and connect to a private server using a revocable API key and a configured compatible issuer.}
       failure: {id: MCP-013-F, description: A generic OIDC ID token, browser login cookie, or wrong resource token is not accepted as an MCP access token.}
     deployments: [local, single_server, kubernetes, aws, gcp, azure]
-    status: specified
+    status: behavior_verified
     depends_on: [AUTH-009]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [MCP-013-B, MCP-013-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T18:09:37Z"
 
   - id: MCP-014
     kind: release_gate
@@ -1776,12 +1856,12 @@ requirements:
 
   - id: DEP-004
     kind: deployment
-    behavior: The local target runs one process with SQLite, local blob storage, a local token, isolated localhost content origins, and optional private Git history.
+    behavior: The default local target runs directly on the host without Docker, using SQLite, local blob storage, a local token, isolated localhost content origins, and optional private Git history. A local container is optional.
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: deployment}
     acceptance:
       behavior: {id: DEP-004-B, description: Install and complete the local publish, open, version, compare, visibility, MCP, restart, and optional-Git workflows without an external service.}
-      failure: {id: DEP-004-F, description: Local operation does not require browser OAuth, a cloud account, a hosted database, or internet access.}
+      failure: {id: DEP-004-F, description: Local operation does not require Docker, another container runtime, browser OAuth, a cloud account, a hosted database, or internet access.}
     deployments: [local]
     status: specified
     depends_on: [MCP-013, CNT-004]
@@ -1789,12 +1869,12 @@ requirements:
 
   - id: DEP-005
     kind: deployment
-    behavior: The one-server target uses one container, SQLite and attached disk by default, with Postgres and configured blob storage available when selected.
+    behavior: The one-server Compose target has a compact profile with one container, SQLite, and one persistent data directory, plus a shared profile that connects the same image to existing Postgres and object storage through a supported adapter.
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: deployment}
     acceptance:
-      behavior: {id: DEP-005-B, description: Deploy both default Compose and documented Postgres/blob variants, restart them, and preserve all IDs and bytes.}
-      failure: {id: DEP-005-F, description: The SQLite variant cannot run multiple writers or claim high availability, and a restart cannot depend on container-local ephemeral files.}
+      behavior: {id: DEP-005-B, description: Deploy compact Compose and shared Compose, replace every application container, and preserve all IDs, records, pointers, and bytes.}
+      failure: {id: DEP-005-F, description: Compact mode rejects an ephemeral data path, cannot run multiple application writers or claim failover, and shared Compose cannot depend on container-local durable state.}
     deployments: [single_server]
     status: specified
     depends_on: [OPS-003]
@@ -1874,7 +1954,7 @@ requirements:
       behavior: {id: DEP-011-B, description: Run the immutable-blob and streaming contract suite against every first-party driver.}
       failure: {id: DEP-011-F, description: A driver cannot mutate an existing fingerprint, return bytes for another installation, or claim success before durable availability.}
     deployments: *all
-    status: specified
+    status: implementing
     depends_on: [ARC-002]
     evidence: []
 
@@ -1917,6 +1997,58 @@ requirements:
     depends_on: [CNT-003, CNT-004]
     evidence: []
 
+  - id: DEP-015
+    kind: deployment
+    behavior: Artifact Server publishes one digest-pinned Linux OCI image for amd64 and arm64; the image contains the compiled CLI and production dependencies, runs as non-root with a read-only root filesystem, and stores durable data only through the selected profile's declared storage.
+    owner: deployment
+    source: {file: phase-6-packaging.md, anchor: image-contract}
+    acceptance:
+      behavior: {id: DEP-015-B, description: Build and run both architectures, execute compact and shared workflows from the released image, replace the container, and verify the image digest and secret-free support manifest.}
+      failure: {id: DEP-015-F, description: The image cannot require root, a writable root filesystem, source files, development packages, floating tags, or undeclared container-local durable state.}
+    deployments: [single_server, kubernetes, aws, gcp, azure]
+    status: specified
+    depends_on: [DEP-005, DEP-006, DEP-012]
+    evidence: []
+
+  - id: DEP-016
+    kind: security
+    behavior: Deployed configuration supports mounted secret files, validates the application and wildcard content origins before serving, and trusts forwarded host and protocol values only from configured proxies.
+    owner: deployment
+    source: {file: phase-6-packaging.md, anchor: configuration-and-secrets}
+    acceptance:
+      behavior: {id: DEP-016-B, description: Start Compose and Kubernetes packages with mounted secret files behind a configured TLS proxy and resolve both the application and unique content hosts.}
+      failure: {id: DEP-016-F, description: Conflicting direct and file credentials, unreadable secret files, untrusted forwarded hosts, invalid wildcard DNS or certificates, and incomplete provider configuration fail before the process reports ready.}
+    deployments: [single_server, kubernetes, aws, gcp, azure]
+    status: specified
+    depends_on: [DEP-014, SEC-004]
+    evidence: []
+
+  - id: DEP-017
+    kind: deployment
+    behavior: The Kubernetes chart deploys stateless Artifact Server replicas and references existing Postgres, object storage, secrets, DNS, TLS, and ingress infrastructure; it does not bundle durable providers or store artifact state on pod-local filesystems.
+    owner: deployment
+    source: {file: phase-6-packaging.md, anchor: kubernetes-contract}
+    acceptance:
+      behavior: {id: DEP-017-B, description: Install the chart with two replicas, publish and read during a rolling update, replace every original pod, and pass the chart test against real Postgres and S3-compatible storage.}
+      failure: {id: DEP-017-F, description: Pod loss, node drain, unavailable providers, invalid secret references, or a failed migration cannot lose committed state, bypass readiness, or silently fall back to pod-local storage.}
+    deployments: [kubernetes]
+    status: specified
+    depends_on: [DEP-006, DEP-015, DEP-016, OPS-001, OPS-002]
+    evidence: []
+
+  - id: DEP-018
+    kind: deployment
+    behavior: Every released image and Helm chart has an immutable digest, SBOM, source-linked build provenance, signature, and declared compatibility matrix; generated deployment files never use latest tags.
+    owner: deployment
+    source: {file: phase-6-packaging.md, anchor: supply-chain-contract}
+    acceptance:
+      behavior: {id: DEP-018-B, description: Verify image and chart signatures, provenance, SBOM contents, pinned dependencies, source revision, and compatibility metadata from a clean release download.}
+      failure: {id: DEP-018-F, description: A release with a floating image, unverifiable origin, missing dependency inventory, embedded test credential, or undocumented compatibility range cannot be published.}
+    deployments: [single_server, kubernetes, aws, gcp, azure]
+    status: specified
+    depends_on: [DEP-012, DEP-015]
+    evidence: []
+
   - id: OPS-001
     kind: behavior
     behavior: Every non-local deployment exposes health and readiness checks that distinguish process health from database, blob, migration, and configuration readiness.
@@ -1926,9 +2058,14 @@ requirements:
       behavior: {id: OPS-001-B, description: Probe a healthy instance and each declared dependency and receive stable machine-readable readiness reasons.}
       failure: {id: OPS-001-F, description: A process with a missing migration, unavailable database, inaccessible blob store, or invalid content-domain configuration cannot report ready.}
     deployments: *shared
-    status: specified
+    status: behavior_verified
     depends_on: [ARC-002]
-    evidence: []
+    evidence:
+      - deployment: single_server
+        tests: [OPS-001-B, OPS-001-F]
+        result: pass
+        run: evidence/shared-runtime.json
+        recorded_at: "2026-08-13T21:05:57Z"
 
   - id: OPS-002
     kind: deployment
@@ -2021,6 +2158,50 @@ requirements:
     depends_on: [DEP-012]
     evidence: []
 
+  - id: OPS-009
+    kind: behavior
+    behavior: Deployed processes emit sampled structured request logs, complete request metrics, and traces with server-generated request IDs, bounded route names, and no credentials or raw request URLs; server failures and requests taking at least one second are never omitted from logs.
+    owner: operations
+    source: {file: artifact-server-product-spec.html, anchor: implementation}
+    acceptance:
+      behavior: {id: OPS-009-B, description: Send HTTP and MCP requests through a deployed process and receive correlated structured logs, request metrics, spans, and response request IDs through a standard OTLP collector.}
+      failure: {id: OPS-009-F, description: Telemetry excludes authorization values, cookies, query strings, caller-controlled request IDs, raw artifact identifiers, and unbounded request paths.}
+    deployments: *all
+    status: behavior_verified
+    depends_on: [ARC-002]
+    evidence:
+      - deployment: local
+        tests: [OPS-009-B, OPS-009-F]
+        result: pass
+        run: evidence/observability.json
+        recorded_at: "2026-08-13T21:05:51Z"
+
+  - id: OPS-010
+    kind: behavior
+    behavior: A deployed process receiving SIGTERM stops reporting ready, allows routing withdrawal to propagate, drains accepted requests to a deadline, closes providers, flushes telemetry, and exits without claiming an uncommitted publish succeeded.
+    owner: operations
+    source: {file: phase-6-packaging.md, anchor: shutdown-and-readiness}
+    acceptance:
+      behavior: {id: OPS-010-B, description: Terminate idle, reading, uploading, and committing containers during Compose and Kubernetes replacement and observe the documented durable result for every request.}
+      failure: {id: OPS-010-F, description: A draining process cannot remain ready, accept unbounded new work, exceed the termination deadline, leak providers, or return a successful publish that disappears after exit.}
+    deployments: [single_server, kubernetes, aws, gcp, azure]
+    status: specified
+    depends_on: [OPS-001, PUB-003, PUB-004]
+    evidence: []
+
+  - id: OPS-011
+    kind: deployment
+    behavior: Compact installations move to shared Postgres and object storage through a verified export and import that preserves installation, artifact, version, action, manifest, access, audit, pointer, and byte identity.
+    owner: operations
+    source: {file: phase-6-packaging.md, anchor: compact-to-shared-transfer}
+    acceptance:
+      behavior: {id: OPS-011-B, description: Freeze a populated compact installation, export it, import it into empty shared providers, pass integrity checks, and continue publishing with every prior ID, link contract, and byte preserved.}
+      failure: {id: OPS-011-F, description: A partial, mismatched, concurrently changing, cross-installation, or already-populated import target fails closed and cannot report ready.}
+    deployments: [single_server, kubernetes]
+    status: specified
+    depends_on: [OPS-003, OPS-004, DEP-005, DEP-006]
+    evidence: []
+
   - id: REL-001
     kind: release_gate
     behavior: The local release includes one-process offline operation, single-file and complete-site publishing, immutable versions, comparisons, restore, two read settings, HTTP, MCP, the publishing skill, browser isolation, and optional local Git.
@@ -2041,7 +2222,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: implementation}
     acceptance:
       behavior: {id: REL-002-B, description: Pass every shared requirement on one server and every replicated requirement with multi-replica Kubernetes and record deployment evidence.}
-      failure: {id: REL-002-F, description: A private-team target cannot be called supported when private delivery, failover, backup, restore, upgrade, health, or authorization evidence is missing.}
+      failure: {id: REL-002-F, description: A private-team target cannot be called supported when private delivery, backup, restore, upgrade, health, authorization, or its advertised availability evidence is missing; compact single-server mode explicitly makes no failover claim.}
     deployments: [single_server, kubernetes]
     status: specified
     depends_on: [DEP-005, DEP-006, OPS-005, REL-006]
@@ -2183,12 +2364,17 @@ requirements:
     owner: publishing
     source: {file: artifact-server-product-spec.html, anchor: scope}
     acceptance:
-      behavior: {id: SCP-007-B, description: Accept bytes only through inline, upload, and verified local-import paths.}
+      behavior: {id: SCP-007-B, description: Accept publication bytes through file-upload while reserving local path reads for the separately verified local-import helper.}
       failure: {id: SCP-007-F, description: A URL, redirect chain, internal address, file URL, or cloud metadata address cannot cause server-side retrieval.}
     deployments: *all
-    status: specified
-    depends_on: [PUB-010, PUB-011]
-    evidence: []
+    status: behavior_verified
+    depends_on: [PUB-011]
+    evidence:
+      - deployment: local
+        tests: [SCP-007-B, SCP-007-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-13T16:56:38Z"
 
   - id: SCP-008
     kind: constraint

@@ -84,22 +84,27 @@ export async function publishNew(
   installation: TestInstallation,
   input: PublishNewInput,
 ): Promise<{readonly body: PublishResponse; readonly response: Response}> {
-  const response = await fetch(`${server.baseUrl}/api/v1/artifacts`, {
-    body: JSON.stringify({
+  const file = testFile(input.content, input.mediaType, input.path);
+  const upload = await createStagedUpload(
+    server,
+    installation,
+    file.path,
+    [file],
+  );
+  await requireSuccessfulUploads(
+    uploadEveryStagedFile(installation, upload.body, [file]),
+  );
+  return commitStagedUpload(
+    installation,
+    upload.body,
+    input.idempotencyKey,
+    {
       accessSetting: input.accessSetting,
-      file: {
-        contentBase64: Buffer.from(input.content).toString("base64"),
-        mediaType: input.mediaType ?? "text/html; charset=utf-8",
-        path: input.path ?? "index.html",
-      },
+      kind: "new_artifact",
       name: input.name ?? "Test artifact",
-      tags: input.tags ?? [],
-    }),
-    headers: apiHeaders(installation, input.idempotencyKey),
-    method: "POST",
-  });
-  const body = publishResponseSchema.parse(await response.json());
-  return {body, response};
+      tags: [...(input.tags ?? [])],
+    },
+  );
 }
 
 export async function publishVersion(
@@ -107,23 +112,26 @@ export async function publishVersion(
   installation: TestInstallation,
   input: PublishVersionInput,
 ): Promise<{readonly body: PublishResponse; readonly response: Response}> {
-  const response = await fetch(
-    `${server.baseUrl}/api/v1/artifacts/${input.artifactId}/versions`,
+  const file = testFile(input.content, input.mediaType, input.path);
+  const upload = await createStagedUpload(
+    server,
+    installation,
+    file.path,
+    [file],
+  );
+  await requireSuccessfulUploads(
+    uploadEveryStagedFile(installation, upload.body, [file]),
+  );
+  return commitStagedUpload(
+    installation,
+    upload.body,
+    input.idempotencyKey,
     {
-      body: JSON.stringify({
-        expectedCurrentVersionId: input.expectedCurrentVersionId,
-        file: {
-          contentBase64: Buffer.from(input.content).toString("base64"),
-          mediaType: input.mediaType ?? "text/html; charset=utf-8",
-          path: input.path ?? "index.html",
-        },
-      }),
-      headers: apiHeaders(installation, input.idempotencyKey),
-      method: "POST",
+      artifactId: input.artifactId,
+      expectedCurrentVersionId: input.expectedCurrentVersionId,
+      kind: "new_version",
     },
   );
-  const body = publishResponseSchema.parse(await response.json());
-  return {body, response};
 }
 
 export async function createStagedUpload(
@@ -212,3 +220,25 @@ const commitTargetSchema = z.discriminatedUnion("kind", [
     kind: z.literal("new_version"),
   }),
 ]);
+
+function testFile(
+  content: string,
+  mediaType: string | undefined,
+  filePath: string | undefined,
+): TestSiteFile {
+  return {
+    bytes: new TextEncoder().encode(content),
+    mediaType: mediaType ?? "text/html; charset=utf-8",
+    path: filePath ?? "index.html",
+  };
+}
+
+async function requireSuccessfulUploads(
+  pending: Promise<readonly Response[]>,
+): Promise<void> {
+  const responses = await pending;
+  const failure = responses.find((response) => !response.ok);
+  if (failure !== undefined) {
+    throw new Error(`A staged test upload failed with HTTP ${failure.status}.`);
+  }
+}

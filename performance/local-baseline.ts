@@ -1,13 +1,40 @@
-import {readdir, stat} from "node:fs/promises";
+import {randomUUID} from "node:crypto";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import {request} from "node:http";
-import {availableParallelism, cpus, platform, release} from "node:os";
+import {
+  availableParallelism,
+  cpus,
+  platform,
+  release,
+  tmpdir,
+} from "node:os";
 import path from "node:path";
 import {
   monitorEventLoopDelay,
   performance,
 } from "node:perf_hooks";
 
+import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
+import {
+  CLIENT_CAPABILITIES_META_KEY,
+  CLIENT_INFO_META_KEY,
+  PROTOCOL_VERSION_META_KEY,
+} from "@modelcontextprotocol/server";
+import {Effect, Redacted} from "effect";
+import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import {z} from "zod";
+
+import {
+  type FilePublicationResult,
+  publishPath,
+} from "../src/client/file-publication-client.js";
 
 import {
   createTestInstallation,
@@ -23,8 +50,14 @@ import {
 
 const maximumMeasuredPublishBytes = 134_217_728;
 const maximumMeasuredReadBytes = 268_435_456;
+const maximumMeasuredFileClientBytes = 33_554_432;
+const mcpProtocolVersion = "2026-07-28";
 
 const baselineConfigSchema = z.object({
+  clientDirectoryFileBytes: z.number().int().min(1_024).max(65_536),
+  clientDirectoryFiles: z.number().int().min(2).max(128),
+  clientIterations: z.number().int().min(1).max(5),
+  clientSingleFileBytes: z.number().int().min(1_024).max(8_388_608),
   concurrency: z.number().int().min(1).max(16),
   payloadBytes: z.number().int().min(1_024).max(1_048_576),
   publications: z.number().int().min(1).max(500),
@@ -45,11 +78,26 @@ const baselineConfigSchema = z.object({
       path: ["reads"],
     });
   }
+  const clientBytes = (
+    configuration.clientDirectoryFileBytes * configuration.clientDirectoryFiles
+    + configuration.clientSingleFileBytes
+  ) * configuration.clientIterations;
+  if (clientBytes > maximumMeasuredFileClientBytes) {
+    context.addIssue({
+      code: "custom",
+      message: "The measured file-client workload must stay at or below 32 MiB.",
+      path: ["clientIterations"],
+    });
+  }
 });
 
 export type LocalBaselineConfig = z.infer<typeof baselineConfigSchema>;
 
 export const defaultLocalBaselineConfig: LocalBaselineConfig = {
+  clientDirectoryFileBytes: 4_096,
+  clientDirectoryFiles: 48,
+  clientIterations: 3,
+  clientSingleFileBytes: 2_097_152,
   concurrency: 6,
   payloadBytes: 16_384,
   publications: 40,
@@ -58,6 +106,10 @@ export const defaultLocalBaselineConfig: LocalBaselineConfig = {
 };
 
 export const smokeBaselineConfig: LocalBaselineConfig = {
+  clientDirectoryFileBytes: 2_048,
+  clientDirectoryFiles: 12,
+  clientIterations: 1,
+  clientSingleFileBytes: 524_288,
   concurrency: 4,
   payloadBytes: 4_096,
   publications: 8,
@@ -84,8 +136,11 @@ export interface OperationSummary {
 export interface LocalBaselineReport {
   readonly checks: {
     readonly comparisonEndpoint: "passed";
+    readonly fileClientDirectory: "passed";
+    readonly fileClientSingleFile: "passed";
     readonly healthEndpoint: "passed";
     readonly listEndpoint: "passed";
+    readonly mcpControlPlane: "passed";
     readonly previousVersionDeniedAfterRestart: "passed";
     readonly restartPersistence: "passed";
   };
@@ -103,10 +158,15 @@ export interface LocalBaselineReport {
     readonly p95DelayMilliseconds: number;
     readonly utilization: number;
   };
+  readonly fileClient: {
+    readonly directory: OperationSummary;
+    readonly singleFile: OperationSummary;
+  };
   readonly generatedAt: string;
   readonly memory: {
     readonly arrayBuffersDeltaBytes: number;
     readonly externalDeltaBytes: number;
+    readonly garbageCollection: "forced" | "unavailable";
     readonly heapUsedDeltaBytes: number;
     readonly rssAfterBytes: number;
     readonly rssBeforeBytes: number;
@@ -119,6 +179,8 @@ export interface LocalBaselineReport {
   };
   readonly comparison: OperationSummary;
   readonly artifactList: OperationSummary;
+  readonly mcpArtifactList: OperationSummary;
+  readonly mcpDiscovery: OperationSummary;
   readonly publish: OperationSummary;
   readonly read: OperationSummary;
   readonly restartMilliseconds: number;
@@ -135,6 +197,18 @@ interface StorageUse {
   readonly files: number;
 }
 
+interface McpPerformanceParameters {
+  readonly [key: string]: McpPerformanceParameterValue;
+}
+
+type McpPerformanceParameterValue =
+  | boolean
+  | number
+  | string
+  | null
+  | readonly McpPerformanceParameterValue[]
+  | McpPerformanceParameters;
+
 export async function runLocalBaseline(
   input: LocalBaselineConfig,
 ): Promise<LocalBaselineReport> {
@@ -142,6 +216,7 @@ export async function runLocalBaseline(
   const installation = await createTestInstallation();
   let server: RunningTestServer | null = null;
   const delay = monitorEventLoopDelay({resolution: 10});
+  const garbageCollectionAvailable = collectGarbage();
   const memoryBefore = process.memoryUsage();
   const cpuBefore = process.cpuUsage();
   const eventLoopBefore = performance.eventLoopUtilization();
@@ -149,7 +224,7 @@ export async function runLocalBaseline(
   delay.enable();
 
   try {
-    server = await startTestServer(installation);
+    server = await startTestServer(installation, {observability: true});
     await assertHealthy(server);
     await warmUp(server, installation, configuration);
 
@@ -159,6 +234,11 @@ export async function runLocalBaseline(
       configuration,
     );
     const reads = await measureReads(server, publications.results, configuration);
+    const fileClient = await measureFileClient(
+      server,
+      installation.apiToken,
+      configuration,
+    );
 
     const anchor = publications.results[0];
     if (anchor === undefined) {
@@ -176,7 +256,7 @@ export async function runLocalBaseline(
     const restartStartedAt = performance.now();
     await server.stop();
     server = null;
-    server = await startTestServer(installation);
+    server = await startTestServer(installation, {observability: true});
     const restartMilliseconds = round(performance.now() - restartStartedAt);
     await assertHealthy(server);
     await assertStableVersion(server, updated.body, configuration.payloadBytes);
@@ -195,8 +275,22 @@ export async function runLocalBaseline(
       Math.min(configuration.publications, 20),
       configuration.concurrency,
     );
+    const mcpRequests = Math.min(configuration.publications, 20);
+    const mcpDiscovery = await measureMcpDiscovery(
+      server,
+      installation.apiToken,
+      mcpRequests,
+      configuration.concurrency,
+    );
+    const mcpArtifactList = await measureMcpArtifactLists(
+      server,
+      installation.apiToken,
+      mcpRequests,
+      configuration.concurrency,
+    );
 
     const storage = await measureStorage(installation.dataDirectory);
+    collectGarbage();
     const memoryAfter = process.memoryUsage();
     const cpu = process.cpuUsage(cpuBefore);
     const eventLoop = performance.eventLoopUtilization(eventLoopBefore);
@@ -206,8 +300,11 @@ export async function runLocalBaseline(
     const reportWithoutWarnings = {
       checks: {
         comparisonEndpoint: "passed" as const,
+        fileClientDirectory: "passed" as const,
+        fileClientSingleFile: "passed" as const,
         healthEndpoint: "passed" as const,
         listEndpoint: "passed" as const,
+        mcpControlPlane: "passed" as const,
         previousVersionDeniedAfterRestart: "passed" as const,
         restartPersistence: "passed" as const,
       },
@@ -219,10 +316,12 @@ export async function runLocalBaseline(
         p95DelayMilliseconds: nanosecondsToMilliseconds(delay.percentile(95)),
         utilization: round(eventLoop.utilization, 4),
       },
+      fileClient,
       generatedAt: new Date().toISOString(),
       memory: {
         arrayBuffersDeltaBytes: memoryAfter.arrayBuffers - memoryBefore.arrayBuffers,
         externalDeltaBytes: memoryAfter.external - memoryBefore.external,
+        garbageCollection: garbageCollectionAvailable ? "forced" as const : "unavailable" as const,
         heapUsedDeltaBytes: memoryAfter.heapUsed - memoryBefore.heapUsed,
         rssAfterBytes: memoryAfter.rss,
         rssBeforeBytes: memoryBefore.rss,
@@ -235,6 +334,8 @@ export async function runLocalBaseline(
       },
       comparison: comparisons,
       artifactList: artifactLists,
+      mcpArtifactList,
+      mcpDiscovery,
       publish: publications.summary,
       read: reads,
       restartMilliseconds,
@@ -251,6 +352,125 @@ export async function runLocalBaseline(
     if (server !== null) await server.stop();
     await removeTestInstallation(installation);
   }
+}
+
+async function measureMcpDiscovery(
+  server: RunningTestServer,
+  apiToken: string,
+  count: number,
+  concurrency: number,
+): Promise<OperationSummary> {
+  return measureMcpOperation(count, concurrency, async () => {
+    const response = await mcpPerformanceRequest(
+      server,
+      apiToken,
+      "server/discover",
+      {},
+    );
+    if (response.status !== 200) {
+      throw new Error(`MCP discovery returned ${response.status}.`);
+    }
+    const result = z.object({
+      result: z.object({
+        resultType: z.literal("complete"),
+        supportedVersions: z.array(z.literal(mcpProtocolVersion)).length(1),
+      }).loose(),
+    }).loose().parse(await response.json()).result;
+    if (result.supportedVersions[0] !== mcpProtocolVersion) {
+      throw new Error("MCP discovery returned the wrong protocol revision.");
+    }
+  });
+}
+
+async function measureMcpArtifactLists(
+  server: RunningTestServer,
+  apiToken: string,
+  count: number,
+  concurrency: number,
+): Promise<OperationSummary> {
+  return measureMcpOperation(count, concurrency, async () => {
+    const response = await mcpPerformanceRequest(
+      server,
+      apiToken,
+      "tools/call",
+      {
+        arguments: {cursor: null, limit: 100, tag: "performance"},
+        name: "artifact_list",
+      },
+      "artifact_list",
+    );
+    if (response.status !== 200) {
+      throw new Error(`MCP artifact_list returned ${response.status}.`);
+    }
+    const result = z.object({
+      result: z.object({
+        isError: z.boolean().optional(),
+        resultType: z.literal("complete"),
+        structuredContent: z.object({
+          artifacts: z.array(z.object({id: z.string()}).loose()).min(1).max(100),
+          nextCursor: z.string().nullable(),
+        }),
+      }).loose(),
+    }).loose().parse(await response.json()).result;
+    if (result.isError === true) {
+      throw new Error("MCP artifact_list returned a tool error.");
+    }
+  });
+}
+
+async function measureMcpOperation(
+  count: number,
+  concurrency: number,
+  operation: () => Promise<void>,
+): Promise<OperationSummary> {
+  const latencies = Array.from<number>({length: count});
+  const phaseStartedAt = performance.now();
+  await runBounded(count, concurrency, async (index) => {
+    const startedAt = performance.now();
+    await operation();
+    latencies[index] = performance.now() - startedAt;
+  });
+  return summarizeOperations(
+    z.array(z.number()).length(count).parse(latencies),
+    performance.now() - phaseStartedAt,
+  );
+}
+
+function mcpPerformanceRequest(
+  server: RunningTestServer,
+  apiToken: string,
+  method: string,
+  parameters: McpPerformanceParameters,
+  name?: string,
+): Promise<Response> {
+  const headers = new Headers({
+    Accept: "application/json, text/event-stream",
+    Authorization: `Bearer ${apiToken}`,
+    "Content-Type": "application/json",
+    "MCP-Protocol-Version": mcpProtocolVersion,
+    "Mcp-Method": method,
+  });
+  if (name !== undefined) headers.set("Mcp-Name", name);
+  return fetch(`${server.baseUrl}/mcp`, {
+    body: JSON.stringify({
+      id: randomUUID(),
+      jsonrpc: "2.0",
+      method,
+      params: {
+        ...parameters,
+        _meta: {
+          [CLIENT_CAPABILITIES_META_KEY]: {},
+          [CLIENT_INFO_META_KEY]: {
+            name: "artifact-server-performance-baseline",
+            version: "1",
+          },
+          [PROTOCOL_VERSION_META_KEY]: mcpProtocolVersion,
+        },
+      },
+    }),
+    headers,
+    method: "POST",
+  });
 }
 
 async function measureArtifactLists(
@@ -387,6 +607,129 @@ async function measurePublications(
     results,
     summary: summarizeOperations(latencies, performance.now() - phaseStartedAt),
   };
+}
+
+async function measureFileClient(
+  server: RunningTestServer,
+  apiToken: string,
+  configuration: LocalBaselineConfig,
+): Promise<LocalBaselineReport["fileClient"]> {
+  const fixtureDirectory = await mkdtemp(
+    path.join(tmpdir(), "artifact-server-file-client-baseline-"),
+  );
+  const siteDirectory = path.join(fixtureDirectory, "site");
+  const assetDirectory = path.join(siteDirectory, "assets");
+  const singleFilePath = path.join(fixtureDirectory, "large-file.bin");
+  await mkdir(assetDirectory, {recursive: true});
+  try {
+    await runBounded(
+      configuration.clientDirectoryFiles - 1,
+      Math.min(configuration.concurrency, 8),
+      async (index) => {
+        await writeFile(
+          path.join(assetDirectory, `asset-${index.toString().padStart(3, "0")}.bin`),
+          sizedBuffer(configuration.clientDirectoryFileBytes, `asset-${index}`),
+        );
+      },
+    );
+
+    const directoryLatencies: number[] = [];
+    const singleFileLatencies: number[] = [];
+    await runSequential(configuration.clientIterations, async (index) => {
+      await writeFile(
+        path.join(siteDirectory, "index.html"),
+        sizedBuffer(configuration.clientDirectoryFileBytes, `directory-${index}`),
+      );
+      const directoryStartedAt = performance.now();
+      const directoryPublication = await executeFileClient(
+        server,
+        apiToken,
+        siteDirectory,
+        `File-client directory ${index}`,
+      );
+      directoryLatencies.push(performance.now() - directoryStartedAt);
+      await assertExactVersion(
+        server,
+        directoryPublication.links.version.toString(),
+        configuration.clientDirectoryFileBytes,
+      );
+      const lastAssetIndex = configuration.clientDirectoryFiles - 2;
+      await assertExactVersion(
+        server,
+        new URL(
+          `assets/asset-${lastAssetIndex.toString().padStart(3, "0")}.bin`,
+          directoryPublication.links.version,
+        ).toString(),
+        configuration.clientDirectoryFileBytes,
+      );
+
+      await writeFile(
+        singleFilePath,
+        sizedBuffer(configuration.clientSingleFileBytes, `single-file-${index}`),
+      );
+      const singleFileStartedAt = performance.now();
+      const singleFilePublication = await executeFileClient(
+        server,
+        apiToken,
+        singleFilePath,
+        `File-client single file ${index}`,
+      );
+      singleFileLatencies.push(performance.now() - singleFileStartedAt);
+      await assertExactVersion(
+        server,
+        singleFilePublication.links.version.toString(),
+        configuration.clientSingleFileBytes,
+      );
+    });
+
+    return {
+      directory: summarizeOperations(
+        directoryLatencies,
+        directoryLatencies.reduce((sum, sample) => sum + sample, 0),
+      ),
+      singleFile: summarizeOperations(
+        singleFileLatencies,
+        singleFileLatencies.reduce((sum, sample) => sum + sample, 0),
+      ),
+    };
+  } finally {
+    await rm(fixtureDirectory, {force: true, recursive: true});
+  }
+}
+
+function executeFileClient(
+  server: RunningTestServer,
+  apiToken: string,
+  inputPath: string,
+  name: string,
+): Promise<FilePublicationResult> {
+  return Effect.runPromise(
+    publishPath(
+      {
+        apiToken: Redacted.make(apiToken, {label: "performance-api-token"}),
+        serverOrigin: server.baseUrl,
+      },
+      {
+        idempotencyKey: randomUUID(),
+        inputPath,
+        target: {
+          accessSetting: "public_link",
+          kind: "new_artifact",
+          name,
+          tags: ["performance", "file-client"],
+        },
+      },
+    ).pipe(
+      Effect.provide(FetchHttpClient.layer),
+      Effect.provide(NodeFileSystem.layer),
+    ),
+  );
+}
+
+function sizedBuffer(bytes: number, label: string): Buffer {
+  const buffer = Buffer.alloc(bytes, 0x78);
+  buffer.write(label, 0, "utf8");
+  return buffer;
 }
 
 async function measureReads(
@@ -619,7 +962,10 @@ function baselineWarnings(report: {
   readonly artifactList: OperationSummary;
   readonly comparison: OperationSummary;
   readonly eventLoop: LocalBaselineReport["eventLoop"];
+  readonly fileClient: LocalBaselineReport["fileClient"];
   readonly memory: LocalBaselineReport["memory"];
+  readonly mcpArtifactList: OperationSummary;
+  readonly mcpDiscovery: OperationSummary;
   readonly publish: OperationSummary;
   readonly read: OperationSummary;
 }): readonly string[] {
@@ -630,6 +976,18 @@ function baselineWarnings(report: {
   if (report.comparison.latency.p95Milliseconds > 250) {
     warnings.push("Comparison p95 exceeded the local investigation threshold of 250 ms.");
   }
+  if (report.fileClient.directory.latency.p95Milliseconds > 2_000) {
+    warnings.push("File-client directory publication p95 exceeded 2,000 ms.");
+  }
+  if (report.fileClient.singleFile.latency.p95Milliseconds > 2_000) {
+    warnings.push("File-client single-file publication p95 exceeded 2,000 ms.");
+  }
+  if (report.mcpArtifactList.latency.p95Milliseconds > 250) {
+    warnings.push("MCP artifact_list p95 exceeded the local investigation threshold of 250 ms.");
+  }
+  if (report.mcpDiscovery.latency.p95Milliseconds > 250) {
+    warnings.push("MCP discovery p95 exceeded the local investigation threshold of 250 ms.");
+  }
   if (report.publish.latency.p95Milliseconds > 250) {
     warnings.push("Publish p95 exceeded the local investigation threshold of 250 ms.");
   }
@@ -639,10 +997,19 @@ function baselineWarnings(report: {
   if (report.eventLoop.maximumDelayMilliseconds > 100) {
     warnings.push("Maximum event-loop delay exceeded 100 ms.");
   }
-  if (report.memory.rssDeltaBytes > 134_217_728) {
-    warnings.push("Combined benchmark-process RSS grew by more than 128 MiB during the bounded run.");
+  if (
+    report.memory.heapUsedDeltaBytes > 134_217_728 ||
+    report.memory.externalDeltaBytes > 134_217_728
+  ) {
+    warnings.push("Retained heap or external memory grew by more than 128 MiB during the bounded run.");
   }
   return warnings;
+}
+
+function collectGarbage(): boolean {
+  if (globalThis.gc === undefined) return false;
+  globalThis.gc();
+  return true;
 }
 
 function nanosecondsToMilliseconds(value: number): number {

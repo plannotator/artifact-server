@@ -1,36 +1,41 @@
-import { Context, Layer, type Effect, type Redacted } from "effect";
+import { Context, type Effect, type Redacted } from "effect";
 
-import type { AuthenticationRequired } from "../core/errors.js";
+import type {
+  AuthenticationRequired,
+  IdentityRepositoryFailure,
+} from "../core/errors.js";
 import type { Principal } from "../core/identity.js";
+
+/** Browser-session verification result required by the HTTP security boundary. */
+export interface AuthenticatedApplicationSession {
+  readonly csrfDigest: string;
+  readonly expiresAt: string;
+  readonly principal: Principal;
+}
+
+/** Expected failures while converting a credential into a principal. */
+export type AuthenticationFailure =
+  | AuthenticationRequired
+  | IdentityRepositoryFailure;
 
 /** Credential verification required by provider-neutral authentication. */
 export interface BearerCredentialVerifier {
   readonly verify: (
     credential: Redacted.Redacted,
-  ) => Effect.Effect<Principal, AuthenticationRequired>;
-}
-
-/** Dependencies used to construct authentication. */
-export interface AuthenticationDependencies {
-  readonly bearerCredentials: BearerCredentialVerifier;
+  ) => Effect.Effect<Principal, AuthenticationFailure>;
 }
 
 interface AuthenticationOperations {
+  readonly authenticateApplicationSession: (
+    credential: Redacted.Redacted,
+  ) => Effect.Effect<AuthenticatedApplicationSession, AuthenticationFailure>;
   readonly authenticateBearer: (
     credential: Redacted.Redacted,
-  ) => Effect.Effect<Principal, AuthenticationRequired>;
+  ) => Effect.Effect<Principal, AuthenticationFailure>;
 }
 
 /** Converts supported credentials once into a provider-neutral principal. */
 export class AuthenticationService extends Context.Service<
   AuthenticationService,
   AuthenticationOperations
->()("artifact-server/application/AuthenticationService") {
-  /** Construct authentication from deployment-specific credential verification. */
-  static readonly layer = (
-    dependencies: AuthenticationDependencies,
-  ): Layer.Layer<AuthenticationService> =>
-    Layer.succeed(AuthenticationService, AuthenticationService.of({
-      authenticateBearer: dependencies.bearerCredentials.verify,
-    }));
-}
+>()("artifact-server/application/AuthenticationService") {}

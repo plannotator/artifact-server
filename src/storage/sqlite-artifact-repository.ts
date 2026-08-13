@@ -1435,7 +1435,6 @@ export class SqliteArtifactRepository implements
     manifestDigest: string,
     commitTime: string,
   ): void {
-    if (source.kind === "inline") return;
     const row = this.#database
       .prepare(
         `SELECT
@@ -1474,7 +1473,6 @@ export class SqliteArtifactRepository implements
   }
 
   #sealStagedUpload(source: PublicationSource, versionId: string): void {
-    if (source.kind === "inline") return;
     const update = this.#database
       .prepare(
         `UPDATE staged_uploads

@@ -20,9 +20,11 @@ intentional changes that must pass the complete iteration verification gate.
 
 ## Initial migration boundary
 
-The first migration covers the complete publishing capability:
+The first migration covers the publishing capability needed to establish the
+application boundary:
 
-- inline publication;
+- a temporary single-file JSON publication adapter, superseded as a public
+  interface by Decision 0007;
 - staged upload creation, file verification, and commit;
 - idempotent publication and optimistic version conflicts;
 - application-owned ports for publication persistence, blob storage, staging,

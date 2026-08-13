@@ -1,6 +1,8 @@
-# Initial local performance findings
+# Performance findings
 
-There is no critical performance bottleneck in the current local implementation slice under its 1 MiB inline-publication limit. This is an engineering baseline for regression detection, not a production capacity claim.
+There is no critical local bottleneck in the measured file sizes, but complete
+directory publication has a confirmed per-file scaling cost. This is an
+engineering baseline for regression detection, not a production capacity claim.
 
 ## Measured baseline
 
@@ -28,6 +30,58 @@ and restart at 4.78 ms. No investigation warning fired. These results show no
 obvious local regression from the tombstone, action-history, pagination-index,
 or migration work; they do not establish shared-database capacity.
 
+The file-first client iteration added the actual user path: filesystem walk,
+SHA-256 calculation, upload-plan creation, streamed file uploads, commit, and
+retrieval. A 2 MiB file measured 28–41 ms across bounded runs. A 48-file
+directory containing 4 KiB files measured 651–936 ms. A focused file-count
+curve using 2 KiB files measured 53 ms for 2 files, 210 ms for 12 files, and
+936 ms for 48 files. Increasing client upload concurrency from four to eight
+did not materially improve the result, so the production setting remains four.
+
+The modern MCP iteration added 20 bounded `server/discover` calls and 20
+authenticated `artifact_list` calls at concurrency six. Two consecutive default
+runs measured discovery p95 at 27.10–28.00 ms and list p95 at 17.61–19.01 ms.
+Both use a fresh protocol server per request and the real application runtime;
+no obvious local control-plane bottleneck appeared.
+
+Those runs raised the combined-process RSS high-water mark by 225–260 MiB. An
+explicit diagnostic collection after the same default workload returned live
+heap slightly below its starting value. Three consecutive MCP-enabled smoke
+runs also kept post-collection heap flat while RSS stabilized at 319–324 MiB.
+This is allocator high-water, not evidence of per-request retained MCP state.
+The harness now uses an explicit collection point and gates retained heap and
+external memory rather than treating unreclaimed RSS as a leak.
+
+The observability iteration runs the default local baseline with Effect request
+metrics and spans enabled and one-percent normal completion-log sampling. Its
+final bounded run measured 46.50 sequential 16 KiB publications per second at
+24.79 ms p95, 3,176.90 content reads per second at 2.88 ms p95, MCP discovery at
+24.20 ms p95, MCP artifact-list at 34.94 ms p95, the 2 MiB file client at
+40.58 ms p95, and the 48-file directory at 879.46 ms p95. After explicit
+collection, retained heap grew 12.62 MiB and external memory 0.03 MiB. No
+investigation warning fired. A paired run with JSON and OTLP export disabled
+measured 23.41 ms publication p95 versus 24.79 ms with deployed observability,
+which is inside normal laptop variance. The older approximately 10 ms baseline
+predates the file-first, MCP, shared-policy, and observability work, so this phase
+does not claim a single cause for that broader difference.
+
+The first two shared-runtime baselines used two independent compiled server
+processes, one Postgres database, and one MinIO S3-compatible bucket. Providers
+became ready in 1,044–1,144 ms; initial server processes became ready in
+265–347 ms, and replacements became ready in 187–193 ms. Sixteen 16 KiB
+file-first publications at concurrency four measured 89–106 operations per
+second with 82–111 ms p95. Eighty cross-process reads at concurrency eight
+measured 2,381–2,386 operations per second with 4.64–5.2 ms p95. Authenticated
+artifact lists measured 2.89–3.32 ms p95. The repeated 2 MiB single-file path
+measured 95–96 ms p95, while the 48-file directory path measured 359–411 ms
+p95. Every exact-byte, cross-process, health, and replacement check passed
+without an investigation warning.
+
+These numbers prove that no obvious Postgres, S3-adapter, or process-boundary
+bottleneck appears in this bounded local-container workload. They do not
+predict managed Postgres, AWS S3, Cloudflare R2, cross-region, Kubernetes, or
+public-network capacity.
+
 ## What the pre-phase review changed
 
 - Blob reads now stream from disk with backpressure. Normal GET requests do not load or fingerprint the complete file.
@@ -35,15 +89,25 @@ or migration work; they do not establish shared-database capacity.
 - HEAD requests inspect metadata without reading the file.
 - The local server binds only to IPv4 loopback.
 - Request paths are decoded, normalized, and checked against the manifest path rules before lookup.
-- Inline request bodies have an explicit bound; malformed JSON returns a client error rather than an internal error.
+- Upload-plan request bodies have an explicit bound; malformed JSON returns a client error rather than an internal error.
 
 These fixes remove the obvious read-amplification and crash-durability problems found during the foundation review.
 
 ## Remaining limits and risks
 
-### Inline JSON publication is intentionally a small-file path
+### P2: Directory publication cost grows approximately with file count
 
-The inline HTTP API carries base64 inside JSON. That representation adds roughly one third to the request size and requires a complete JSON body plus decoded bytes before the application creates the blob write stream. The 1 MiB decoded-file ceiling keeps this behavior bounded. Complete sites now use the local staged-upload path, which streams raw bytes and verifies each file. Remote object-store adapters still need provider-native signed upload addresses before their deployments are supported.
+The client sends one verified upload request per file. Local storage syncs every
+staged file durably and records its uploaded state before commit. The measured
+2/12/48-file curve is close to linear, and doubling client concurrency did not
+remove it. A site with hundreds or thousands of small assets will therefore be
+noticeably slower even when its total byte size is small.
+
+Do not weaken integrity checks or filesystem durability to hide this cost. The
+next transport investigation should compare a bounded multipart small-file
+batch and the separately specified verified local-import helper. Provider-native
+signed uploads remain required for cloud deployments. Verification must repeat
+the file-count curve and the existing mismatch, restart, and isolation tests.
 
 ### Writes favor durability over local write throughput
 
@@ -51,17 +115,30 @@ Local SQLite runs in WAL mode with `synchronous = FULL`, and each new blob syncs
 
 ### Memory is measured for the combined client and server
 
-The default run increased combined-process RSS by 58.73 MiB; the 1 MiB diagnostic increased it by 106.70 MiB. The benchmark client constructs request bodies in the same process as the server, so these figures neither isolate server memory nor prove a leak. Before memory becomes a release gate, measure the server in a separate process and establish repeated controlled-run variance.
+The file-client baseline raised combined-process RSS substantially while
+post-collection live heap and external memory stayed bounded. Native allocator
+high-water behavior therefore dominates the RSS signal. This is not evidence of
+a growing live-memory leak, but it is not a server-memory proof either. Before
+memory becomes a release gate, measure the compiled server processes separately
+across repeated runs and record retained heap, external memory, and RSS after an
+explicit settling period.
 
-### Portability and multi-process behavior are not proved yet
+### Managed-provider and sustained capacity are not measured yet
 
-The durable local blob path is currently exercised on APFS. Windows directory-sync behavior, network filesystems, multiple server processes, remote object stores, and database/blob commit failures need their own adapters and conformance tests. The current results apply only to the local single-process deployment.
+The shared baseline now measures multiple processes against pinned Postgres and
+MinIO, but it is deliberately short and bounded. It does not establish a
+sustained connection-pool limit, managed-provider tail latency, provider request
+cost, multi-node network behavior, or failure behavior under dependency
+throttling. AWS S3, Cloudflare R2, managed Postgres, Kubernetes, Windows, and
+network filesystems still require their own provider evidence before their
+capacity is advertised.
 
 ## Baseline policy
 
-- `pnpm verify:iteration` is the required end-of-iteration gate. It includes correctness, coverage diagnostics, conformance checks, and the default bounded baseline.
+- `pnpm verify:iteration` is the required end-of-iteration gate. It includes correctness, a coverage report, conformance checks, and the default bounded baseline. Coverage percentage is not a test-design target.
 - `pnpm smoke` catches broken behavior and gross regressions with deliberately loose machine-timing limits.
 - `pnpm perf:baseline` records diagnostics and reports investigation warnings without failing on normal laptop variance.
+- `pnpm verify:shared-performance` runs the real compiled two-process Postgres and S3-compatible path and records provider startup separately from application latency.
 - Aggregate workload limits prevent command-line flags from accidentally creating a stress test.
 - Set tighter regression budgets only after repeated runs on a controlled runner establish normal variance.
 - Run the same behavior on local disk, every blob driver, Postgres, Kubernetes, and Cloudflare as those adapters are implemented.

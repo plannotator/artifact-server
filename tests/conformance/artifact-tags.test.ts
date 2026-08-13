@@ -295,22 +295,30 @@ function readHeaders(installation: TestInstallation): Headers {
   return new Headers({Authorization: `Bearer ${installation.apiToken}`});
 }
 
-function publishNewWithTags(
+async function publishNewWithTags(
   server: RunningTestServer,
   installation: TestInstallation,
   tags: readonly string[],
 ): Promise<Response> {
-  return fetch(`${server.baseUrl}/api/v1/artifacts`, {
-    body: JSON.stringify({
+  const file = {
+    bytes: new TextEncoder().encode("invalid tags"),
+    mediaType: "text/plain",
+    path: "invalid.txt",
+  };
+  const upload = await createStagedUpload(
+    server,
+    installation,
+    file.path,
+    [file],
+  );
+  await uploadEveryStagedFile(installation, upload.body, [file]);
+  return fetch(upload.body.commitUrl, {
+    body: JSON.stringify({target: {
       accessSetting: "account_required",
-      file: {
-        contentBase64: Buffer.from("invalid tags").toString("base64"),
-        mediaType: "text/plain",
-        path: "invalid.txt",
-      },
+      kind: "new_artifact",
       name: "Invalid tags",
       tags,
-    }),
+    }}),
     headers: apiHeaders(installation, "artifact-tags-invalid-create"),
     method: "POST",
   });

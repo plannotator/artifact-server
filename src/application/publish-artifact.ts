@@ -32,10 +32,7 @@ import type {
   PublicationSource,
   StoredBlob,
 } from "../core/ports.js";
-import {
-  type ManifestFailure,
-  parseSingleFileManifest,
-} from "./parse-manifest.js";
+import type {ManifestFailure} from "./parse-manifest.js";
 import {
   type AuthorizationOperations,
   AuthorizationService,
@@ -43,29 +40,6 @@ import {
 import type { ApplicationClock } from "./application-clock.js";
 import { parseIdempotencyKey } from "./idempotency-key.js";
 import { parseArtifactTags } from "./artifact-tags.js";
-
-/** Input for publishing one inline file as a new artifact. */
-export interface PublishNewArtifactCommand {
-  readonly accessSetting: AccessSetting;
-  readonly bytes: Uint8Array;
-  readonly idempotencyKey: string;
-  readonly mediaType: string;
-  readonly name: string;
-  readonly path: string;
-  readonly principal: Principal;
-  readonly tags?: readonly string[];
-}
-
-/** Input for publishing one inline file as the next artifact version. */
-export interface PublishVersionCommand {
-  readonly artifactId: string;
-  readonly bytes: Uint8Array;
-  readonly expectedCurrentVersionId: string;
-  readonly idempotencyKey: string;
-  readonly mediaType: string;
-  readonly path: string;
-  readonly principal: Principal;
-}
 
 /** An immutable file source that can be opened during publication. */
 export interface PublicationFileSource {
@@ -165,17 +139,11 @@ export type PublishArtifactFailure =
   | AuthorizationDenied;
 
 interface PublishArtifactOperations {
-  readonly publishNew: (
-    command: PublishNewArtifactCommand,
-  ) => Effect.Effect<PublishedVersion, PublishArtifactFailure>;
   readonly publishPreparedNew: (
     command: PublishPreparedNewArtifactCommand,
   ) => Effect.Effect<PublishedVersion, PublishArtifactFailure>;
   readonly publishPreparedVersion: (
     command: PublishPreparedVersionCommand,
-  ) => Effect.Effect<PublishedVersion, PublishArtifactFailure>;
-  readonly publishVersion: (
-    command: PublishVersionCommand,
   ) => Effect.Effect<PublishedVersion, PublishArtifactFailure>;
 }
 
@@ -254,7 +222,6 @@ function makePublishArtifactService(
       manifest: command.manifest,
       name,
       principalId: command.principal.id,
-      source: command.source,
       tags,
     });
     const replayed = yield* dependencies.repository.findIdempotentPublication(
@@ -314,7 +281,6 @@ function makePublishArtifactService(
       expectedCurrentVersionId: command.expectedCurrentVersionId,
       manifest: command.manifest,
       principalId: command.principal.id,
-      source: command.source,
     });
     const replayed = yield* dependencies.repository.findIdempotentPublication(
       idempotencyKey,
@@ -347,48 +313,9 @@ function makePublishArtifactService(
     });
   });
 
-  const publishNew = Effect.fn("PublishArtifactService.publishNew")(
-    function*(
-      command: PublishNewArtifactCommand,
-    ): Effect.fn.Return<PublishedVersion, PublishArtifactFailure> {
-      const manifest = yield* parseSingleFileManifest(command);
-      const entry = onlyManifestEntry(manifest);
-      return yield* publishPreparedNew({
-        accessSetting: command.accessSetting,
-        files: [inlineFileSource(command.bytes, entry)],
-        idempotencyKey: command.idempotencyKey,
-        manifest,
-        name: command.name,
-        principal: command.principal,
-        source: {kind: "inline"},
-        tags: command.tags ?? [],
-      });
-    },
-  );
-
-  const publishVersion = Effect.fn("PublishArtifactService.publishVersion")(
-    function*(
-      command: PublishVersionCommand,
-    ): Effect.fn.Return<PublishedVersion, PublishArtifactFailure> {
-      const manifest = yield* parseSingleFileManifest(command);
-      const entry = onlyManifestEntry(manifest);
-      return yield* publishPreparedVersion({
-        artifactId: command.artifactId,
-        expectedCurrentVersionId: command.expectedCurrentVersionId,
-        files: [inlineFileSource(command.bytes, entry)],
-        idempotencyKey: command.idempotencyKey,
-        manifest,
-        principal: command.principal,
-        source: {kind: "inline"},
-      });
-    },
-  );
-
   return PublishArtifactService.of({
-    publishNew,
     publishPreparedNew,
     publishPreparedVersion,
-    publishVersion,
   });
 }
 
@@ -397,7 +324,6 @@ interface NewArtifactDigestInput {
   readonly manifest: CanonicalManifest;
   readonly name: string;
   readonly principalId: string;
-  readonly source: PublicationSource;
   readonly tags: readonly string[];
 }
 
@@ -406,7 +332,6 @@ interface ArtifactVersionDigestInput {
   readonly expectedCurrentVersionId: string;
   readonly manifest: CanonicalManifest;
   readonly principalId: string;
-  readonly source: PublicationSource;
 }
 
 function newArtifactInputDigest(input: NewArtifactDigestInput): string {
@@ -415,7 +340,6 @@ function newArtifactInputDigest(input: NewArtifactDigestInput): string {
     manifestDigest: input.manifest.digest,
     name: input.name,
     principalId: input.principalId,
-    source: sourceDigestValue(input.source),
     tags: input.tags,
   });
   return createHash("sha256").update(canonicalInput).digest("hex");
@@ -427,37 +351,8 @@ function artifactVersionInputDigest(input: ArtifactVersionDigestInput): string {
     expectedCurrentVersionId: input.expectedCurrentVersionId,
     manifestDigest: input.manifest.digest,
     principalId: input.principalId,
-    source: sourceDigestValue(input.source),
   });
   return createHash("sha256").update(canonicalInput).digest("hex");
-}
-
-function inlineFileSource(
-  bytes: Uint8Array,
-  entry: CanonicalManifest["entries"][number],
-): PublicationFileSource {
-  return {
-    open: () =>
-      Effect.succeed(new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(bytes);
-          controller.close();
-        },
-      })),
-    path: entry.path,
-    sha256: entry.sha256,
-    size: entry.size,
-  };
-}
-
-function onlyManifestEntry(
-  manifest: CanonicalManifest,
-): CanonicalManifest["entries"][number] {
-  const entry = manifest.entries[0];
-  if (entry === undefined || manifest.entries.length !== 1) {
-    throw new Error("A single-file manifest must contain exactly one entry.");
-  }
-  return entry;
 }
 
 function publicationSourcesByPath(
@@ -484,18 +379,4 @@ function publicationSourcesByPath(
     throw new Error("Publication file sources do not match the canonical manifest.");
   }
   return sources;
-}
-
-function sourceDigestValue(source: PublicationSource): string {
-  switch (source.kind) {
-    case "inline":
-      return "inline";
-    case "staged_upload":
-      return `${source.principalId}:${source.uploadId}`;
-  }
-  return casesHandled(source);
-}
-
-function casesHandled(value: never): never {
-  throw new Error(`Unreachable publication variant: ${String(value)}`);
 }

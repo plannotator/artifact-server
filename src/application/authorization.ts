@@ -3,9 +3,9 @@ import { Context, Effect, Layer } from "effect";
 import { AuthorizationDenied } from "../core/errors.js";
 import {
   hasCapability,
+  isDirectHumanPrincipal,
   isHumanAdministrator,
   principalCapabilities,
-  principalKinds,
   type Principal,
 } from "../core/identity.js";
 import type { ArtifactRecord } from "../core/model.js";
@@ -79,7 +79,7 @@ function makeAuthorizationService(
   )(function*(principal: Principal) {
     yield* requireInstallation(principal);
     if (
-      principal.kind === principalKinds.human ||
+      isDirectHumanPrincipal(principal) ||
       hasCapability(principal, principalCapabilities.createArtifact)
     ) {
       return;
@@ -92,7 +92,7 @@ function makeAuthorizationService(
   )(function*(principal: Principal) {
     yield* requireInstallation(principal);
     if (
-      principal.kind === principalKinds.human ||
+      isDirectHumanPrincipal(principal) ||
       hasCapability(principal, principalCapabilities.readArtifacts) ||
       hasCapability(principal, principalCapabilities.manageAnyArtifact)
     ) {
@@ -109,7 +109,7 @@ function makeAuthorizationService(
   )(function*(principal: Principal, _artifact: ArtifactRecord) {
     yield* requireInstallation(principal);
     if (
-      principal.kind === principalKinds.human ||
+      isDirectHumanPrincipal(principal) ||
       hasCapability(principal, principalCapabilities.issueContentSession)
     ) {
       return;
@@ -122,7 +122,7 @@ function makeAuthorizationService(
   )(function*(principal: Principal, artifact: ArtifactRecord) {
     yield* requireInstallation(principal);
     if (
-      principal.kind === principalKinds.human ||
+      isDirectHumanPrincipal(principal) ||
       hasCapability(principal, principalCapabilities.readArtifacts) ||
       hasCapability(principal, principalCapabilities.manageAnyArtifact) ||
       (
@@ -141,7 +141,7 @@ function makeAuthorizationService(
     yield* requireInstallation(principal);
     if (isHumanAdministrator(principal)) return;
     if (
-      principal.kind === principalKinds.human &&
+      isDirectHumanPrincipal(principal) &&
       principal.id === artifact.ownerPrincipalId
     ) {
       return;
@@ -163,7 +163,7 @@ function makeAuthorizationService(
   )(function*(principal: Principal) {
     yield* requireInstallation(principal);
     if (
-      principal.kind === principalKinds.human ||
+      isDirectHumanPrincipal(principal) ||
       hasCapability(principal, principalCapabilities.createArtifact) ||
       hasCapability(principal, principalCapabilities.publishAnyArtifact) ||
       hasCapability(principal, principalCapabilities.publishOwnedArtifact)
@@ -179,7 +179,7 @@ function makeAuthorizationService(
     yield* requireInstallation(principal);
     if (isHumanAdministrator(principal)) return;
     if (
-      principal.kind === principalKinds.human &&
+      isDirectHumanPrincipal(principal) &&
       principal.id === artifact.ownerPrincipalId
     ) {
       return;

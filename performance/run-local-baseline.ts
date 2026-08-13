@@ -50,11 +50,11 @@ async function main(): Promise<void> {
   program.parse();
   const options = optionsSchema.parse(program.opts());
   const report = await runLocalBaseline({
+    ...defaultLocalBaselineConfig,
     concurrency: options.concurrency,
     payloadBytes: options.payloadKib * 1_024,
     publications: options.publications,
     reads: options.reads,
-    warmupPublications: defaultLocalBaselineConfig.warmupPublications,
   });
   const outputPath = path.resolve(options.output);
   await mkdir(path.dirname(outputPath), {recursive: true});
@@ -75,6 +75,10 @@ function formatSummary(
     `Read: ${report.read.operationsPerSecond} ops/s, p95 ${report.read.latency.p95Milliseconds} ms.`,
     `Compare: ${report.comparison.operationsPerSecond} ops/s, p95 ${report.comparison.latency.p95Milliseconds} ms.`,
     `Artifact list: ${report.artifactList.operationsPerSecond} ops/s, p95 ${report.artifactList.latency.p95Milliseconds} ms.`,
+    `MCP discovery: ${report.mcpDiscovery.operationsPerSecond} ops/s, p95 ${report.mcpDiscovery.latency.p95Milliseconds} ms.`,
+    `MCP artifact_list: ${report.mcpArtifactList.operationsPerSecond} ops/s, p95 ${report.mcpArtifactList.latency.p95Milliseconds} ms.`,
+    `File client, ${report.configuration.clientDirectoryFiles}-file directory: p95 ${report.fileClient.directory.latency.p95Milliseconds} ms.`,
+    `File client, ${formatMib(report.configuration.clientSingleFileBytes)} MiB file: p95 ${report.fileClient.singleFile.latency.p95Milliseconds} ms.`,
     `Restart: ${report.restartMilliseconds} ms.`,
     `Event-loop max delay: ${report.eventLoop.maximumDelayMilliseconds} ms.`,
     `RSS change: ${formatMib(report.memory.rssDeltaBytes)} MiB.`,

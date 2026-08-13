@@ -1,7 +1,7 @@
 # Artifact Server MCP baseline
 
-**Status:** Proposed engineering baseline
-**Date:** August 12, 2026
+**Status:** Implementing
+**Date:** August 13, 2026
 **Protocol target:** MCP `2026-07-28`
 
 ## Decision
@@ -17,7 +17,7 @@ The deployment chooses its authorization mode:
 | Hosted Artifact Server | WorkOS AuthKit browser OAuth | Artifact Server API key for CI and automation |
 | Private or self-hosted server | Artifact Server API key | Existing compatible OAuth authorization server |
 | Self-hosted server that requires built-in browser OAuth | Not enabled by default | Better Auth MCP after its beta path passes the release test matrix |
-| One laptop | Local helper and local token | Loopback HTTP with a short-lived local token |
+| One laptop | Loopback HTTP and local token | Local publishing CLI or skill using the same upload protocol |
 
 WorkOS is the hosted authorization server. Artifact Server is the protected resource. WorkOS handles browser sign-in, approval, client identity or registration, authorization codes, access tokens, refresh tokens, and grant revocation. Artifact Server verifies the resulting access token and maps it to a local account admitted to that installation.
 
@@ -104,10 +104,12 @@ The canonical resource has no trailing slash, query, or fragment. Another instal
 
 ### Artifact Server metadata
 
-Artifact Server serves RFC 9728 Protected Resource Metadata at both:
+Artifact Server serves RFC 9728 Protected Resource Metadata at:
 
 - `/.well-known/oauth-protected-resource/mcp`
-- `/.well-known/oauth-protected-resource` as a compatibility alias
+
+The root `/.well-known/oauth-protected-resource` alias is optional
+compatibility, not a first-release requirement for the `/mcp` resource.
 
 The document names:
 
@@ -190,9 +192,15 @@ The proposed single OAuth scope is intentionally coarse. Artifact Server keeps f
 
 ### Laptop
 
-Use a local helper or loopback HTTP listener and a short-lived local token. Stdio reads its credential from the environment or operating-system keychain. It does not use browser OAuth.
+Use the loopback HTTP listener and the local API token. The bundled publishing
+CLI or skill reads actual local files, calls the same upload endpoints as a
+remote client, and never sends a filesystem path to the server. It does not use
+browser OAuth.
 
-The local helper is only a transport adapter. It calls the same product service and does not write directly to the database.
+The local publishing client is only a protocol adapter. It calls the same HTTP
+API and product services and does not write directly to the database. A stdio
+MCP transport may be added later only if current clients prove it is necessary;
+local use does not require a second MCP transport.
 
 ### Private or self-hosted server
 
@@ -218,37 +226,52 @@ Start with a small, explicit tool surface:
 
 | Tool | Purpose |
 | --- | --- |
-| `artifact_capabilities` | Report upload, local-file, public-link, Git-history, and size options for this installation. |
+| `artifact_capabilities` | Report the upload workflow, deployment mode, sharing settings, and current limits. |
 | `artifact_list` | Find artifacts the current principal may access. |
-| `artifact_get` | Read bounded artifact metadata and current-version information. |
+| `artifact_get` | Read artifact metadata, the current immutable version, and its complete manifest. |
 | `artifact_open` | Return the canonical browser link for the selected artifact and exact version when requested. The client opens it on the user's computer. |
-| `artifact_publish_inline` | Publish small text or a small single file. |
 | `artifact_create_upload` | Create an expiring upload handle and direct-upload plan. |
 | `artifact_commit_upload` | Verify the manifest and publish an immutable version. |
-| `artifact_link_local` | Import a file from an explicitly allowed local root. Local installations only. |
 | `artifact_set_visibility` | Change between account-required and public-link access when permitted. A public link opens only the current version. Warn that public copies cannot be recalled and perform the configured CDN purge when returning to account-required. |
-| `artifact_version_list` | List immutable saved versions. |
+| `artifact_set_tags` | Replace the artifact's normalized tag set without changing its saved files. |
+| `artifact_version_list` | List immutable saved versions and their exact content addresses. Use `artifact_open` when a user needs an authorized browser address. |
 | `artifact_diff` | Return a bounded comparison summary and a link to the full comparison. |
+| `artifact_restore_version` | Make an existing immutable version current again. |
+| `artifact_delete` | Delete one artifact after an optimistic current-version check. |
 
-Read-only resource templates may expose bounded version manifests and text files:
+The first read-only resource template exposes one bounded version manifest:
 
 - `artifact://artifacts/{artifactId}/versions/{versionId}/manifest`
-- `artifact://artifacts/{artifactId}/versions/{versionId}/files/{fileId}`
 
-Large files, complete websites, and complete comparison reports return HTTPS resource links. Authenticated list and resource results use private cache scope.
+Files and complete websites return HTTPS links. Authenticated list and resource
+results use private cache scope.
+
+Publishing always starts from an actual file or finished directory selected on
+the client. MCP does not accept raw HTML, CSS, JavaScript, base64 file contents,
+or an arbitrary client path. The CLI, MCP client helper, or publishing skill
+uploads the selected bytes through the returned upload plan, then calls
+`artifact_commit_upload`. These transport steps remain one "publish this file
+or directory" operation to the user. No MCP tool accepts a client filesystem
+path.
 
 Do not add prompts in the first release. Do not build new dependencies on deprecated MCP Roots, Sampling, or Logging.
 
 ## Direct upload flow
 
-1. `artifact_create_upload` creates a principal- and installation-bound staging record and returns an `uploadId`, expiry, size limits, and signed single-part or multipart staging addresses.
-2. The client uploads bytes to the staging namespace on local disk, S3, Google Cloud Storage, Azure Blob Storage, R2, or a compatible store.
+1. `artifact_create_upload` creates a principal- and installation-bound staging record and returns an `uploadId`, expiry, request limits, and authenticated Artifact Server upload addresses.
+2. The client sends each file to its returned address with the same bearer credential used for MCP. Artifact Server writes those bytes through the deployment's local-disk, S3, R2, or compatible storage adapter. The first release does not promise multipart or storage-provider URLs.
 3. The client submits a manifest containing normalized portable relative paths, media type, byte length, SHA-256 fingerprint, entry file, and routing mode. The server rejects traversal, absolute paths, `.git` components, encoded separators, symlinks, special files, and case or Unicode collisions.
 4. `artifact_commit_upload` verifies every size and fingerprint, writes missing final blobs without overwriting an existing object, computes the canonical manifest digest, and seals the upload.
 5. In one database transaction it stores the version, manifest, idempotency result, and conditional current-version update.
 6. The result returns artifact ID, version ID, manifest digest, access setting, main link, saved-version link, and optional Git commit ID.
 
-The publish call requires:
+Every durable mutation requires an application idempotency key. A mutation of
+an existing artifact also requires the current version the caller started
+from. Creating a new artifact has no earlier version to supply. Creating an
+uncommitted upload is disposable staging preparation, not a durable artifact
+mutation.
+
+The publish commit requires:
 
 - a caller-supplied idempotency key;
 - the version the caller started from when moving the current pointer;

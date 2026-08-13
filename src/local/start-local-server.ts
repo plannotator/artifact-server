@@ -25,7 +25,10 @@ export interface RunningLocalServer {
 export async function startLocalServer(
   config: LocalServerConfig,
 ): Promise<RunningLocalServer> {
-  const runtime = await createLocalRuntime(config);
+  const runtime = await createLocalRuntime({
+    ...config,
+    observability: config.observability ?? true,
+  });
   const server = createServer(
     getRequestListener(runtime.app.fetch, {hostname: loopbackHostname}),
   );

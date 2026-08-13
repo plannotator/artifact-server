@@ -20,25 +20,32 @@ import {createLocalApplicationLayer} from "../../src/local/create-local-applicat
 import {LocalBlobStore} from "../../src/storage/local-blob-store.js";
 import {LocalStagingStore} from "../../src/storage/local-staging-store.js";
 import {SqliteArtifactRepository} from "../../src/storage/sqlite-artifact-repository.js";
+import {SqliteIdentityRepository} from "../../src/storage/sqlite-identity-repository.js";
 
 describe("staged upload lifecycle", () => {
   let clock: ControlledClock;
   let dataDirectory: string;
   let repository: SqliteArtifactRepository;
+  let identityRepository: SqliteIdentityRepository;
   let runtime: ApplicationRuntime;
 
   beforeEach(async () => {
     dataDirectory = await mkdtemp(path.join(tmpdir(), "artifact-upload-lifecycle-"));
     clock = new ControlledClock(new Date("2026-08-13T00:00:00.000Z"));
-    repository = new SqliteArtifactRepository(
-      path.join(dataDirectory, "artifact-server.db"),
-    );
+    const databasePath = path.join(dataDirectory, "artifact-server.db");
+    repository = new SqliteArtifactRepository(databasePath);
+    identityRepository = new SqliteIdentityRepository(databasePath);
     runtime = ManagedRuntime.make(createLocalApplicationLayer({
       apiToken: Redacted.make("test-api-token"),
       blobs: new LocalBlobStore(path.join(dataDirectory, "blobs")),
+      bootstrapAdministratorEmail: "admin@example.test",
       clock,
+      externalBearerVerifier: null,
       ids: new SystemIdGenerator(),
+      identityRepository,
       installationId: "test-installation",
+      interactiveIdentityProvider: null,
+      localBootstrapCredential: null,
       repository,
       staging: new LocalStagingStore(path.join(dataDirectory, "staging")),
     }));
@@ -47,6 +54,7 @@ describe("staged upload lifecycle", () => {
 
   afterEach(async () => {
     await runtime.dispose();
+    identityRepository.close();
     repository.close();
     await rm(dataDirectory, {force: true, recursive: true});
   });
@@ -94,14 +102,22 @@ describe("staged upload lifecycle", () => {
     const foreignRepository = new SqliteArtifactRepository(
       path.join(dataDirectory, "foreign-installation.db"),
     );
+    const foreignIdentityRepository = new SqliteIdentityRepository(
+      path.join(dataDirectory, "foreign-installation.db"),
+    );
     try {
       const foreignRuntime: ApplicationRuntime = ManagedRuntime.make(
         createLocalApplicationLayer({
           apiToken: Redacted.make("foreign-api-token"),
           blobs: new LocalBlobStore(path.join(dataDirectory, "foreign-blobs")),
+          bootstrapAdministratorEmail: "foreign-admin@example.test",
           clock,
+          externalBearerVerifier: null,
           ids: new SystemIdGenerator(),
+          identityRepository: foreignIdentityRepository,
           installationId: "foreign-installation",
+          interactiveIdentityProvider: null,
+          localBootstrapCredential: null,
           repository: foreignRepository,
           staging: new LocalStagingStore(path.join(dataDirectory, "foreign-staging")),
         }),
@@ -142,6 +158,7 @@ describe("staged upload lifecycle", () => {
         await foreignRuntime.dispose();
       }
     } finally {
+      foreignIdentityRepository.close();
       foreignRepository.close();
     }
   });
