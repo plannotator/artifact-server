@@ -4,6 +4,31 @@ There is no critical local bottleneck in the measured file sizes, but complete
 directory publication has a confirmed per-file scaling cost. This is an
 engineering baseline for regression detection, not a production capacity claim.
 
+The server-only concurrency matrix completed every browse and publication
+journey at 1, 10, 25, 50, and 100 concurrent users. Across four complete runs,
+the 100-user browse p95 ranged from 847 to 924 ms and sustained 240 to 244 user
+journeys per second. The 100-user staged-publication p95 ranged from 1,082 to
+1,114 ms and sustained 94 to 96 complete publications per second. Maximum
+event-loop delay remained below 108 ms, health checks passed after every stage,
+and no request failed.
+
+Peak server RSS ranged from 619 to 683 MiB during the complete sustained matrix.
+After explicit collection, final live heap grew only 4.7 to 5.6 MiB across the
+entire run and settled around 60 to 67 MiB. That result is consistent with
+temporary allocation and allocator high-water behavior; it is not evidence of
+retained per-user state or a memory leak. It is still operationally meaningful:
+one Compact process deliberately serving this exact 100-user burst should not
+be placed in a 512 MiB memory
+limit. A 1 GiB process allocation provides reasonable headroom for this measured
+local workload, but it is not a provider-independent production recommendation.
+
+No application request throttle was added. At the measured ceiling, the server
+completed all work, retained throughput, recovered live heap, and kept event-loop
+delay bounded. Rejecting or queueing work at an invented threshold would reduce
+utility without addressing a confirmed failure. External-storage and managed
+provider capacity must be measured separately before Kubernetes or hosted
+resource defaults claim the same 100-user envelope.
+
 ## Measured baseline
 
 Machine: Apple M5 Max, Node.js 24.15.0, local APFS storage.

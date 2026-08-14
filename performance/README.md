@@ -6,6 +6,7 @@ These are bounded diagnostics, not capacity or stress tests. They exercise the s
 pnpm verify:iteration
 pnpm smoke
 pnpm perf:baseline
+pnpm perf:capacity
 pnpm verify:external-storage-performance
 ```
 
@@ -26,13 +27,13 @@ The JSON report records:
 
 The manual baseline reports investigation warnings but does not fail on those heuristics. The smoke test uses intentionally broad limits so ordinary CI variance does not create noise.
 
-The current harness runs its HTTP client and server in one process so the
+The original local harness runs its HTTP client and server in one process so the
 event-loop signal covers the complete local path. RSS remains a useful allocator
 high-water signal but is not treated as retained memory. The harness runs with
 `--expose-gc` and samples retained heap and external memory after collection.
 That result still covers the combined process, not server-only memory. If memory
-becomes a release gate, collect compiled server-process telemetry separately
-before setting a tight budget.
+regresses there, use the server-only capacity matrix below to determine whether
+the server or the load generator owns the change.
 
 Safe command-line bounds prevent accidental stress runs:
 
@@ -41,6 +42,26 @@ pnpm perf:baseline --publications 100 --reads 500 --concurrency 8 --payload-kib 
 ```
 
 Publications are capped at 500, reads at 5,000, concurrency at 16, and payload size at 1 MiB. In addition, the measured publication payload is capped at 128 MiB, the measured read payload at 256 MiB, and the real file-client workload at 32 MiB, so combining maximum settings cannot accidentally create a stress test.
+
+## Server-only concurrency matrix
+
+`pnpm perf:capacity` builds the product, starts the normal compiled local CLI in
+a separate child process, and measures only that server process. It runs browse
+and staged-publication workflows at 1, 10, 25, 50, and 100 concurrent users.
+The browse workflow streams content, lists artifacts through HTTP, compares two
+versions, and lists artifacts through MCP. The publication workflow uses the
+real create-plan, streamed-upload, and immutable-commit sequence.
+
+The report records starting, peak, and post-collection server memory, server CPU
+and event-loop delay, complete user-journey latency and throughput, health, and
+correctness. It is written to `evidence/local-capacity-baseline.json` and is part
+of `pnpm verify:iteration`.
+
+The normal matrix hard-caps concurrency at 100, streamed artifact bytes at
+512 MiB, publication payload bytes at 32 MiB, and repetition at five waves. These bounds make
+the command safe to repeat on a development machine. It remains a same-machine
+Compact-mode baseline, not a production capacity claim for Postgres, S3,
+Kubernetes, or a managed cloud.
 
 ## External-storage Postgres and S3 baseline
 

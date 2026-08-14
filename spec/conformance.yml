@@ -1,6 +1,6 @@
 version: 1
 product: artifactserver.com
-updated: "2026-08-13"
+updated: "2026-08-14"
 evidence_root: ".."
 
 source:

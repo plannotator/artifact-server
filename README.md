@@ -508,9 +508,9 @@ baseline, not a cloud-capacity claim.
 
 Tests use temporary real SQLite databases, real disk blobs, and a real HTTP server. Module mocking is forbidden. Coverage is reported as a diagnostic for unexercised code; conformance behavior and hostile tests are the release proof.
 
-`pnpm smoke` is a small correctness and gross-regression check. `pnpm perf:baseline` records local publish latency, read latency, throughput, event-loop delay, memory change, storage use, and restart time in `evidence/local-performance-baseline.json`. It is intentionally bounded and is not a stress test. See [`performance/README.md`](./performance/README.md).
+`pnpm smoke` is a small correctness and gross-regression check. `pnpm perf:baseline` records the combined local client/server path in `evidence/local-performance-baseline.json`. `pnpm perf:capacity` separately measures the compiled server at 1, 10, 25, 50, and 100 concurrent browse and publish workflows in `evidence/local-capacity-baseline.json`. Both commands are bounded development-machine diagnostics, not cloud-capacity claims. See [`performance/README.md`](./performance/README.md).
 
-The individual `pnpm check`, `pnpm smoke`, and `pnpm perf:baseline` commands remain available for focused work, but they do not replace the complete iteration gate.
+The individual `pnpm check`, `pnpm smoke`, `pnpm perf:baseline`, and `pnpm perf:capacity` commands remain available for focused work, but they do not replace the complete iteration gate.
 
 The readable proposal and executable checklist are in [`spec/`](./spec/):
 
