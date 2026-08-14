@@ -292,7 +292,7 @@ function makeInstallationAccessService(
         message: "The local browser-login credential is invalid.",
       }));
     }
-    const email = normalizeEmail(dependencies.bootstrapAdministratorEmail);
+    const email = yield* normalizeEmail(dependencies.bootstrapAdministratorEmail);
     let member = yield* dependencies.repository.findActiveMemberByEmail(
       dependencies.installationId,
       email,
@@ -323,7 +323,7 @@ function makeInstallationAccessService(
         message: "The login provider did not verify the email address.",
       }));
     }
-    const email = normalizeEmail(identity.email);
+    const email = yield* normalizeEmail(identity.email);
     let member = yield* dependencies.repository.findActiveMemberByExternalIdentity(
       dependencies.installationId,
       identity.provider,
@@ -339,9 +339,12 @@ function makeInstallationAccessService(
       const hasMembers = yield* dependencies.repository.hasMembers(
         dependencies.installationId,
       );
+      const bootstrapAdministratorEmail = yield* normalizeEmail(
+        dependencies.bootstrapAdministratorEmail,
+      );
       if (
         hasMembers ||
-        email !== normalizeEmail(dependencies.bootstrapAdministratorEmail)
+        email !== bootstrapAdministratorEmail
       ) {
         return yield* Effect.fail(new IdentityAdmissionDenied({
           message: "This person has not been admitted to the Artifact Server.",
@@ -422,10 +425,12 @@ function makeInstallationAccessService(
     "InstallationAccessService.admitMember",
   )(function*(command: AdmitMemberCommand) {
     yield* requireAdministrator(command.principal, dependencies.installationId);
+    const displayName = yield* requireText(command.displayName, "display name");
+    const email = yield* normalizeEmail(command.email);
     return yield* dependencies.repository.admitMember({
       createdAt: dependencies.clock.now().toISOString(),
-      displayName: requireText(command.displayName, "display name"),
-      email: normalizeEmail(command.email),
+      displayName,
+      email,
       id: dependencies.ids.memberId(),
       installationId: dependencies.installationId,
       role: command.role,
@@ -454,11 +459,12 @@ function makeInstallationAccessService(
     "InstallationAccessService.issueApiKey",
   )(function*(command: IssueApiKeyCommand) {
     yield* requireAdministrator(command.principal, dependencies.installationId);
-    const capabilities = normalizeCapabilities(command.capabilities);
-    const expiresAt = requireFutureDate(
+    const capabilities = yield* normalizeCapabilities(command.capabilities);
+    const expiresAt = yield* requireFutureDate(
       command.expiresAt,
       dependencies.clock.now(),
     );
+    const name = yield* requireText(command.name, "API key name");
     const id = dependencies.ids.apiKeyId();
     const secret = dependencies.secrets.issue();
     const token = `as_key_${id}_${secret}`;
@@ -480,7 +486,7 @@ function makeInstallationAccessService(
       expiresAt,
       id,
       installationId: dependencies.installationId,
-      name: requireText(command.name, "API key name"),
+      name,
       prefix: token.slice(0, Math.min(token.length, 32)),
       principalId: member?.id ?? `service:${id}`,
       principalKind: member === null ? principalKinds.service : principalKinds.human,
@@ -606,49 +612,61 @@ function invalidApiKey(): Effect.Effect<never, AuthenticationRequired> {
   }));
 }
 
-function normalizeEmail(value: string): string {
-  const normalized = value.trim().toLocaleLowerCase("en-US");
-  if (
-    normalized.length < 3 || normalized.length > 320 ||
-    !normalized.includes("@")
-  ) {
-    throw new IdentityConflict({message: "A valid email address is required."});
-  }
-  return normalized;
-}
+const normalizeEmail = Effect.fn("InstallationAccessService.normalizeEmail")(
+  function*(value: string): Effect.fn.Return<string, IdentityConflict> {
+    const normalized = value.trim().toLocaleLowerCase("en-US");
+    if (
+      normalized.length < 3 || normalized.length > 320 ||
+      !normalized.includes("@")
+    ) {
+      return yield* new IdentityConflict({
+        message: "A valid email address is required.",
+      });
+    }
+    return normalized;
+  },
+);
 
-function requireText(value: string, label: string): string {
-  const normalized = value.trim();
-  if (normalized.length < 1 || normalized.length > 200) {
-    throw new IdentityConflict({message: `A valid ${label} is required.`});
-  }
-  return normalized;
-}
+const requireText = Effect.fn("InstallationAccessService.requireText")(
+  function*(value: string, label: string): Effect.fn.Return<string, IdentityConflict> {
+    const normalized = value.trim();
+    if (normalized.length < 1 || normalized.length > 200) {
+      return yield* new IdentityConflict({
+        message: `A valid ${label} is required.`,
+      });
+    }
+    return normalized;
+  },
+);
 
-function requireFutureDate(value: string, now: Date): string {
-  const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime()) || parsed.getTime() <= now.getTime()) {
-    throw new IdentityConflict({
-      message: "The API key expiration must be a future date and time.",
-    });
-  }
-  return parsed.toISOString();
-}
+const requireFutureDate = Effect.fn("InstallationAccessService.requireFutureDate")(
+  function*(value: string, now: Date): Effect.fn.Return<string, IdentityConflict> {
+    const parsed = new Date(value);
+    if (!Number.isFinite(parsed.getTime()) || parsed.getTime() <= now.getTime()) {
+      return yield* new IdentityConflict({
+        message: "The API key expiration must be a future date and time.",
+      });
+    }
+    return parsed.toISOString();
+  },
+);
 
-function normalizeCapabilities(
+const normalizeCapabilities = Effect.fn(
+  "InstallationAccessService.normalizeCapabilities",
+)(function*(
   capabilities: readonly PrincipalCapability[],
-): readonly PrincipalCapability[] {
+): Effect.fn.Return<readonly PrincipalCapability[], IdentityConflict> {
   const unique = [...new Set(capabilities)];
   if (
     unique.length === 0 ||
     unique.some((capability) => !allCapabilities.includes(capability))
   ) {
-    throw new IdentityConflict({
+    return yield* new IdentityConflict({
       message: "At least one recognized API key capability is required.",
     });
   }
   return unique.toSorted();
-}
+});
 
 function secretsEqual(actual: string, expected: string): boolean {
   const actualBytes = Buffer.from(actual);

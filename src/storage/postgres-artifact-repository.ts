@@ -406,7 +406,7 @@ export class PostgresArtifactRepository implements
         );
         if (replayed !== null) return replayed;
         const artifact = yield* this.#readArtifact(command.artifactId, true);
-        assertExpectedVersion(artifact, command.expectedCurrentVersionId);
+        yield* assertExpectedVersion(artifact, command.expectedCurrentVersionId);
         yield* this.#replaceTags(command.artifactId, command.tags);
         yield* this.#insertAction(
           command,
@@ -446,7 +446,7 @@ export class PostgresArtifactRepository implements
         );
         if (replayed !== null) return replayed;
         const artifact = yield* this.#readArtifact(command.artifactId, true);
-        assertExpectedVersion(artifact, command.expectedCurrentVersionId);
+        yield* assertExpectedVersion(artifact, command.expectedCurrentVersionId);
         const updated = yield* sql`UPDATE artifacts
           SET deleted_at = ${command.createdAt}
           WHERE installation_id = ${installationId}
@@ -625,7 +625,7 @@ export class PostgresArtifactRepository implements
         );
         if (replayed !== null) return replayed;
         const artifact = yield* this.#readArtifact(command.artifactId, true);
-        assertExpectedVersion(artifact, command.expectedCurrentVersionId);
+        yield* assertExpectedVersion(artifact, command.expectedCurrentVersionId);
         const restoredVersion = yield* this.#readVersionOrNull(
           command.versionId,
           command.artifactId,
@@ -912,7 +912,7 @@ export class PostgresArtifactRepository implements
         );
         if (replayed !== null) return replayed;
         const artifact = yield* this.#readArtifact(command.artifactId, true);
-        assertExpectedVersion(artifact, command.expectedCurrentVersionId);
+        yield* assertExpectedVersion(artifact, command.expectedCurrentVersionId);
         const updated = yield* mutate(sql);
         if (updated.length !== 1) return yield* changedDuringManagement();
         yield* this.#insertAction(
@@ -1588,16 +1588,19 @@ function lockIdempotency(
   )`;
 }
 
-function assertExpectedVersion(
+const assertExpectedVersion = Effect.fn(
+  "PostgresArtifactRepository.assertExpectedVersion",
+)(function*(
   artifact: ArtifactRecord,
   expectedCurrentVersionId: string,
-): void {
+): Effect.fn.Return<void, ArtifactMutationConflict> {
   if (artifact.currentVersionId !== expectedCurrentVersionId) {
-    throw new ArtifactMutationConflict({
+    return yield* new ArtifactMutationConflict({
       message: `The artifact moved to version ${artifact.currentVersionId}.`,
     });
   }
-}
+  return yield* Effect.void;
+});
 
 function changedDuringManagement(): ArtifactMutationConflict {
   return new ArtifactMutationConflict({

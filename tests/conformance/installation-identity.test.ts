@@ -122,6 +122,23 @@ describe("installation identity and access", () => {
     );
     expect(cannotRemoveLastAdministrator.status).toBe(409);
 
+    const pastExpiration = await fetch(`${server.baseUrl}/api/v1/api-keys`, {
+      body: JSON.stringify({
+        capabilities: ["artifact:read"],
+        expiresAt: "2026-08-13T07:59:59.999Z",
+        name: "Already expired automation",
+      }),
+      headers: browserMutationHeaders(server.baseUrl, cookies),
+      method: "POST",
+    });
+    expect(pastExpiration.status).toBe(409);
+    expect(await pastExpiration.json()).toEqual({
+      error: {
+        code: "IDENTITY_CONFLICT",
+        message: "The API key expiration must be a future date and time.",
+      },
+    });
+
     const issuedResponse = await fetch(`${server.baseUrl}/api/v1/api-keys`, {
       body: JSON.stringify({
         capabilities: ["artifact:read"],
@@ -397,6 +414,37 @@ describe("installation identity and access", () => {
     outsideCallback.searchParams.set("code", provider.authorizationCode);
     outsideCallback.searchParams.set("state", provider.authorization.state);
     expect((await fetch(outsideCallback, {redirect: "manual"})).status).toBe(403);
+  });
+
+  test("external login reports a malformed verified identity as a typed conflict", async () => {
+    await server.stop();
+    const provider = new TestIdentityProvider({
+      displayName: "Malformed identity",
+      email: "not-an-email-address",
+      emailVerified: true,
+      provider: "test-workos",
+      subject: "workos-user-malformed",
+    });
+    server = await startTestServer(installation, {
+      bootstrapAdministratorEmail: "ramos@plannotator.ai",
+      interactiveIdentityProvider: provider,
+    });
+
+    expect((await fetch(`${server.baseUrl}/auth/login`, {
+      redirect: "manual",
+    })).status).toBe(302);
+    const callback = new URL("/auth/callback", server.baseUrl);
+    callback.searchParams.set("code", provider.authorizationCode);
+    callback.searchParams.set("state", provider.authorization.state);
+    const response = await fetch(callback, {redirect: "manual"});
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "IDENTITY_CONFLICT",
+        message: "A valid email address is required.",
+      },
+    });
   });
 
   test("a configured external bearer verifier shares the principal boundary without managed-key parser fallback", async () => {

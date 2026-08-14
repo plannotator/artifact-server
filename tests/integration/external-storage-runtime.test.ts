@@ -666,6 +666,25 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     );
     expect(tagChange.status).toBe(200);
 
+    const staleAccessChange = await mutateArtifact(
+      server.baseUrl,
+      repositoryIdentity.apiToken,
+      `/api/v1/artifacts/${first.body.artifact.id}/access`,
+      "PATCH",
+      `surface-stale-access-${randomUUID()}`,
+      {
+        accessSetting: "account_required",
+        expectedCurrentVersionId: first.body.version.id,
+      },
+    );
+    expect(staleAccessChange.status).toBe(409);
+    expect(await staleAccessChange.json()).toEqual({
+      error: {
+        code: "ARTIFACT_MUTATION_CONFLICT",
+        message: `The artifact moved to version ${secondBody.version.id}.`,
+      },
+    });
+
     const filtered = await fetch(
       `${server.baseUrl}/api/v1/artifacts?tag=postgres`,
       {headers: bearerHeaders(repositoryIdentity.apiToken)},
