@@ -1912,9 +1912,14 @@ requirements:
       behavior: {id: DEP-006-B, description: Publish while replicas roll, replace every pod, and confirm IDs, bytes, current pointers, and private delivery remain correct.}
       failure: {id: DEP-006-F, description: Pod loss, rescheduling, or concurrent replicas cannot lose committed data, split the current pointer, or rely on a pod-local repository.}
     deployments: [kubernetes]
-    status: specified
+    status: behavior_verified
     depends_on: [ARC-003, OPS-001]
-    evidence: []
+    evidence:
+      - deployment: kubernetes
+        tests: [DEP-006-B, DEP-006-F]
+        result: pass
+        run: evidence/helm-kubernetes.json
+        recorded_at: "2026-08-14T15:21:08Z"
 
   - id: DEP-007
     kind: deployment
@@ -2055,9 +2060,14 @@ requirements:
       behavior: {id: DEP-017-B, description: Install the chart with two replicas, publish and read during a rolling update, replace every original pod, and pass the chart test against real Postgres and S3-compatible storage.}
       failure: {id: DEP-017-F, description: Pod loss, node drain, unavailable providers, invalid secret references, or a failed migration cannot lose committed state, bypass readiness, or silently fall back to pod-local storage.}
     deployments: [kubernetes]
-    status: specified
+    status: behavior_verified
     depends_on: [DEP-006, DEP-015, DEP-016, OPS-001, OPS-002]
-    evidence: []
+    evidence:
+      - deployment: kubernetes
+        tests: [DEP-017-B, DEP-017-F]
+        result: pass
+        run: evidence/helm-kubernetes.json
+        recorded_at: "2026-08-14T15:21:08Z"
 
   - id: DEP-018
     kind: deployment

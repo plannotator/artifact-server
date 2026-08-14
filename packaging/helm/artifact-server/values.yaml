@@ -1,0 +1,124 @@
+replicaCount: 2
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: ghcr.io/artifactserver/artifact-server
+  tag: "0.0.0"
+  digest: ""
+  allowMutableTag: false
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+configuration:
+  installationId: ""
+  bootstrapAdministratorEmail: ""
+  applicationOrigin: ""
+  contentDomain: ""
+  postgresConnectionBudget: 21
+  requestLogSampleRate: 0.01
+  readinessWithdrawalMilliseconds: 1000
+  shutdownDeadlineMilliseconds: 10000
+  s3:
+    bucket: ""
+    region: ""
+    endpoint: ""
+    forcePathStyle: false
+
+secret:
+  name: ""
+  rolloutChecksum: ""
+  keys:
+    apiToken: api-token
+    databaseUrl: database-url
+    s3AccessKeyId: ""
+    s3SecretAccessKey: ""
+    localBootstrapToken: ""
+    workosApiKey: ""
+
+identity:
+  workosClientId: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: false
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+terminationGracePeriodSeconds: 30
+
+deployment:
+  revisionHistoryLimit: 3
+  minReadySeconds: 5
+  rolloutRevision: ""
+
+probes:
+  startup:
+    periodSeconds: 2
+    timeoutSeconds: 1
+    failureThreshold: 30
+  liveness:
+    periodSeconds: 10
+    timeoutSeconds: 1
+    failureThreshold: 3
+  readiness:
+    periodSeconds: 3
+    timeoutSeconds: 1
+    failureThreshold: 2
+
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
+
+topologySpread:
+  enabled: true
+  topologyKey: kubernetes.io/hostname
+  whenUnsatisfiable: ScheduleAnyway
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+priorityClassName: ""
+
+migration:
+  enabled: true
+  activeDeadlineSeconds: 300
+  backoffLimit: 0
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  applicationTlsSecretName: ""
+  contentTlsSecretName: ""
+
+networkPolicy:
+  enabled: false
+  ingress: []
+  egress: []

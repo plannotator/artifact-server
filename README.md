@@ -43,7 +43,13 @@ This repository contains the local publication foundation and the first external
 - a bounded two-process Postgres and S3-compatible performance baseline using the real file-first client;
 - External-storage Compose with mounted secrets, no application-data volume,
   two tested replicas, safe cross-replica conflicts, and complete container
-  replacement through the production image.
+  replacement through the production image;
+- an application-only Helm chart for Kubernetes 1.34 through 1.36 with two
+  stateless replicas, blocking migrations, restricted Pod security, private
+  Service routing, disruption controls, and existing-secret references; and
+- a real three-node Kubernetes release gate against Postgres and S3-compatible
+  storage, including rollout, pod loss, provider outage, node drain, private
+  delivery, uninstall, and reinstall.
 
 ## Remaining implementation
 
@@ -52,9 +58,9 @@ production OCI image, Compact Compose, and External-storage Compose packages now
 exist. The remaining executable scope is in
 [`spec/phase-6-packaging.md`](./spec/phase-6-packaging.md). It defines a native
 local package that does not require Docker, one optional OCI image, Compact
-Compose and External-storage Compose, a Helm chart, recovery, release evidence,
+Compose, External-storage Compose, a Helm chart, recovery, release evidence,
 and the tests that make those targets supportable. The next packaging target is
-the Kubernetes Helm chart.
+compact-to-external-storage export and import.
 
 After that foundation passes, the remaining work is:
 
@@ -132,7 +138,7 @@ mode receives a writable durable data volume.
 
 This local build does not sign the image. Signing requires the release registry
 and release identity and remains a release-pipeline gate. Compose and Helm files
-will use the published image digest, never a floating tag.
+use the published image digest, never a floating tag.
 
 ## Run Compact Compose
 
@@ -189,6 +195,42 @@ Compose, publishes a file and complete site, restarts and replaces the
 container, backs up and restores into a clean volume, compares complete stored
 state and bytes, and runs the hostile configurations. It is also part of
 `pnpm verify:iteration`.
+
+## Run External-storage Compose
+
+External-storage Compose runs two disposable Artifact Server containers against
+an existing Postgres database and object store. It mounts credentials from
+files and has no application-data volume. See
+[`packaging/compose/README.md`](./packaging/compose/README.md) for provider,
+secret, proxy, upgrade, and failure requirements.
+
+Run its production-image gate with:
+
+```sh
+pnpm verify:external-storage-compose
+```
+
+## Run on Kubernetes
+
+The application-only Helm chart requires existing Postgres, object storage,
+DNS, TLS, and cluster ingress. It supports Kubernetes 1.34, 1.35, and 1.36 with
+Helm 4.2. The source chart requires an immutable image digest for release use.
+
+See [`packaging/helm/artifact-server/README.md`](./packaging/helm/artifact-server/README.md)
+for required values, existing Secret keys, routing choices, workload identity,
+connection budgeting, and install commands.
+
+Run the static compatibility gate and the real three-node cluster gate with:
+
+```sh
+pnpm verify:helm-static
+pnpm verify:helm
+```
+
+The cluster gate uses the production image, real Postgres and S3-compatible
+storage, two worker nodes, public and account-required artifacts, rolling
+replacement, provider outage, node drain, uninstall, and reinstall. It is part
+of `pnpm verify:iteration`.
 
 ## Run from the source checkout
 
@@ -348,7 +390,11 @@ storage and telemetry resources. Configure the bounded intervals with
 pnpm verify:iteration
 ```
 
-`pnpm verify:iteration` is the command every implementation iteration finishes with. It runs Oxlint with type-aware checking and all anti-slop rules, TypeScript, real runtime and smoke tests, coverage diagnostics, the production build, the ledger validator, the test-ID mapper, and the bounded local performance baseline.
+`pnpm verify:iteration` is the command every implementation iteration finishes
+with. It runs Oxlint with type-aware checking and all anti-slop rules,
+TypeScript, real runtime and smoke tests, coverage diagnostics, the production
+build, the ledger validator, the test-ID mapper, bounded local performance, the
+production-image Compose packages, and the real Kubernetes Helm gate.
 
 Remote storage changes additionally finish with:
 

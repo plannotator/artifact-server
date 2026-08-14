@@ -1,0 +1,43 @@
+{{- include "artifact-server.validation" . -}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "artifact-server.fullname" . }}-test-ready
+  labels:
+    {{- include "artifact-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chart-test
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    {{- toYaml .Values.podSecurityContext | nindent 4 }}
+  containers:
+    - name: ready
+      image: {{ include "artifact-server.image" . | quote }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      command:
+        - node
+        - -e
+        - >-
+          fetch('http://{{ include "artifact-server.fullname" . }}/ready')
+          .then(async response => {
+            if (!response.ok) throw new Error(`readiness returned ${response.status}: ${await response.text()}`);
+          })
+          .catch(error => { console.error(error); process.exit(1); });
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      volumeMounts:
+        - name: temporary
+          mountPath: /tmp
+  volumes:
+    - name: temporary
+      emptyDir:
+        medium: Memory
+        sizeLimit: 16Mi

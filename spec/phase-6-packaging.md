@@ -230,12 +230,16 @@ The default workload has:
   storage.
 
 Ingress templates cover the application host and wildcard content host. They
-are disabled unless the operator supplies hosts and TLS secret references.
-A namespace NetworkPolicy template is enabled when the cluster supports it. It
-allows ingress only from the named ingress namespace and egress only to DNS,
-Postgres, object storage, the configured login provider, and the OTLP endpoint.
-Operators can disable or extend it explicitly for clusters whose networking
-model differs. Autoscaling remains disabled until measured capacity and
+are disabled unless the operator supplies TLS secret references. Clusters that
+use Gateway API or a managed provider edge route the private Service and leave
+the Ingress template disabled.
+
+NetworkPolicy is disabled by default and accepts explicit native rules when an
+operator enables it. Standard Kubernetes NetworkPolicy cannot allow managed
+Postgres, S3, R2, WorkOS, or OTLP services by DNS name. The chart therefore does
+not invent changing IP ranges or ship a policy that silently blocks required
+dependencies. A provider installer can generate exact rules when it owns the
+network addresses. Autoscaling remains disabled until measured capacity and
 provider connection limits define safe thresholds.
 
 ## Configuration and secrets
@@ -277,7 +281,8 @@ External-storage mode separates migration from serving:
 3. External-storage serving processes use migration validation and do not alter the
    schema.
 4. The Helm chart runs `migrate apply` in a blocking pre-install and pre-upgrade
-   Job. A failed Job fails the release. Hook cleanup is explicit.
+   Job. A failed Job fails the release. Successful hooks are removed; a failed
+   hook remains for diagnosis and is removed before the next attempt.
 5. New migrations remain compatible with the previously supported application
    version during a rolling update. Destructive contraction happens only after
    the compatibility window.
@@ -425,9 +430,10 @@ fail the packaging gate.
   with reliable local locking and atomic rename behavior. NFS-like storage is
   unsupported until its exact mount and failure behavior passes the SQLite and
   blob tests.
-- **Database connection multiplication:** each replica has a bounded pool. The
-  chart validates that replicas, pool size, and the migration Job fit the
-  declared Postgres connection budget.
+- **Database connection multiplication:** each serving replica uses a bounded
+  ten-connection pool and the migration Job uses one connection. The chart
+  validates that the replica count and migration Job fit the declared Postgres
+  connection budget.
 - **Object lifecycle rules:** a provider rule cannot expire or rewrite the
   committed-object prefix. Cleanup is limited to separately identified,
   expired, uncommitted staging data.
@@ -478,9 +484,10 @@ fail the packaging gate.
    replicas, cross-replica conflict control, complete application replacement,
    secret-file configuration, no local durable mounts, provider failures, and
    a bounded read baseline.
-6. **Next.** Ship the Helm chart and pass the multi-replica migration, rollout, failure,
-   recovery, observability, and performance gates in a disposable cluster.
-7. Add compact-to-external-storage export and import, then prove one installation can move
+6. **Complete.** Ship the Helm chart and pass the multi-replica migration,
+   rollout, failure, recovery, observability, and performance gates in a
+   disposable cluster.
+7. **Next.** Add compact-to-external-storage export and import, then prove one installation can move
    from the Compose package to the Helm package without changing IDs or bytes.
 8. Publish signed release artifacts and add the common CLI wrapper around the
    verified Compose and Helm operations.
@@ -506,14 +513,12 @@ phase.
 ## Decisions required before implementation closes
 
 1. Choose the release registry and signing identity.
-2. Choose the minimum supported Postgres, Kubernetes, and Helm versions from
-   compatibility tests.
-3. Prove the Caddy two-domain TLS configuration on a private network and a
+2. Prove the Caddy two-domain TLS configuration on a private network and a
    public server, then record the requirements for equivalent proxies.
-4. Define the minimum S3-compatible operation and consistency matrix required
+3. Define the minimum S3-compatible operation and consistency matrix required
    for a provider to be supported.
-5. Choose the self-hosted browser-login baseline when WorkOS is not configured.
-6. Define recovery-point and recovery-time targets after the backup procedures
+4. Choose the self-hosted browser-login baseline when WorkOS is not configured.
+5. Define recovery-point and recovery-time targets after the backup procedures
    have measured evidence.
-7. Choose and publish the source and binary distribution license before a
+6. Choose and publish the source and binary distribution license before a
    public release. The repository does not yet contain a license file.

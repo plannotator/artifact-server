@@ -1,0 +1,235 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "replicaCount",
+    "image",
+    "configuration",
+    "secret",
+    "identity",
+    "serviceAccount",
+    "podSecurityContext",
+    "securityContext",
+    "resources",
+    "terminationGracePeriodSeconds",
+    "deployment",
+    "probes",
+    "podDisruptionBudget",
+    "topologySpread",
+    "migration",
+    "ingress",
+    "networkPolicy"
+  ],
+  "properties": {
+    "replicaCount": {"type": "integer", "minimum": 1, "maximum": 1000},
+    "nameOverride": {"type": "string"},
+    "fullnameOverride": {"type": "string"},
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "digest", "allowMutableTag", "pullPolicy"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "tag": {"type": "string", "minLength": 1},
+        "digest": {
+          "type": "string",
+          "oneOf": [
+            {"const": ""},
+            {"pattern": "^sha256:[a-f0-9]{64}$"}
+          ]
+        },
+        "allowMutableTag": {"type": "boolean"},
+        "pullPolicy": {"enum": ["Always", "IfNotPresent", "Never"]}
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {"name": {"type": "string", "minLength": 1}}
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "installationId",
+        "bootstrapAdministratorEmail",
+        "applicationOrigin",
+        "contentDomain",
+        "postgresConnectionBudget",
+        "requestLogSampleRate",
+        "readinessWithdrawalMilliseconds",
+        "shutdownDeadlineMilliseconds",
+        "s3"
+      ],
+      "properties": {
+        "installationId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"},
+        "bootstrapAdministratorEmail": {"type": "string", "format": "email"},
+        "applicationOrigin": {"type": "string", "pattern": "^https?://[^/\\s]+$"},
+        "contentDomain": {"type": "string", "pattern": "^[A-Za-z0-9.-]+$"},
+        "postgresConnectionBudget": {"type": "integer", "minimum": 1, "maximum": 100000},
+        "requestLogSampleRate": {"type": "number", "minimum": 0, "maximum": 1},
+        "readinessWithdrawalMilliseconds": {"type": "integer", "minimum": 0, "maximum": 60000},
+        "shutdownDeadlineMilliseconds": {"type": "integer", "minimum": 1, "maximum": 300000},
+        "s3": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bucket", "region", "endpoint", "forcePathStyle"],
+          "properties": {
+            "bucket": {"type": "string", "minLength": 3},
+            "region": {"type": "string", "minLength": 1},
+            "endpoint": {
+              "type": "string",
+              "oneOf": [{"const": ""}, {"pattern": "^https?://[^\\s]+$"}]
+            },
+            "forcePathStyle": {"type": "boolean"}
+          }
+        }
+      }
+    },
+    "secret": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "rolloutChecksum", "keys"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "rolloutChecksum": {"type": "string"},
+        "keys": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "apiToken",
+            "databaseUrl",
+            "s3AccessKeyId",
+            "s3SecretAccessKey",
+            "localBootstrapToken",
+            "workosApiKey"
+          ],
+          "properties": {
+            "apiToken": {"type": "string", "minLength": 1},
+            "databaseUrl": {"type": "string", "minLength": 1},
+            "s3AccessKeyId": {"type": "string"},
+            "s3SecretAccessKey": {"type": "string"},
+            "localBootstrapToken": {"type": "string"},
+            "workosApiKey": {"type": "string"}
+          }
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workosClientId"],
+      "properties": {"workosClientId": {"type": "string"}}
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["create", "name", "annotations", "automountServiceAccountToken"],
+      "properties": {
+        "create": {"type": "boolean"},
+        "name": {"type": "string"},
+        "annotations": {"type": "object", "additionalProperties": {"type": "string"}},
+        "automountServiceAccountToken": {"type": "boolean"}
+      }
+    },
+    "podAnnotations": {"type": "object", "additionalProperties": {"type": "string"}},
+    "podLabels": {"type": "object", "additionalProperties": {"type": "string"}},
+    "podSecurityContext": {"type": "object"},
+    "securityContext": {"type": "object"},
+    "resources": {"type": "object"},
+    "terminationGracePeriodSeconds": {"type": "integer", "minimum": 2, "maximum": 3600},
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revisionHistoryLimit", "minReadySeconds", "rolloutRevision"],
+      "properties": {
+        "revisionHistoryLimit": {"type": "integer", "minimum": 0, "maximum": 20},
+        "minReadySeconds": {"type": "integer", "minimum": 0, "maximum": 300},
+        "rolloutRevision": {"type": "string"}
+      }
+    },
+    "probes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startup", "liveness", "readiness"],
+      "properties": {
+        "startup": {"$ref": "#/$defs/probe"},
+        "liveness": {"$ref": "#/$defs/probe"},
+        "readiness": {"$ref": "#/$defs/probe"}
+      }
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "maxUnavailable", "unhealthyPodEvictionPolicy"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "maxUnavailable": {"oneOf": [{"type": "integer", "minimum": 0}, {"type": "string", "pattern": "^[0-9]+%$"}]},
+        "unhealthyPodEvictionPolicy": {"enum": ["IfHealthyBudget", "AlwaysAllow"]}
+      }
+    },
+    "topologySpread": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "topologyKey", "whenUnsatisfiable"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "topologyKey": {"type": "string", "minLength": 1},
+        "whenUnsatisfiable": {"enum": ["DoNotSchedule", "ScheduleAnyway"]}
+      }
+    },
+    "nodeSelector": {"type": "object"},
+    "tolerations": {"type": "array", "items": {"type": "object"}},
+    "affinity": {"type": "object"},
+    "priorityClassName": {"type": "string"},
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "activeDeadlineSeconds", "backoffLimit"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "activeDeadlineSeconds": {"type": "integer", "minimum": 10, "maximum": 3600},
+        "backoffLimit": {"type": "integer", "minimum": 0, "maximum": 10}
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "className", "annotations", "applicationTlsSecretName", "contentTlsSecretName"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "className": {"type": "string"},
+        "annotations": {"type": "object", "additionalProperties": {"type": "string"}},
+        "applicationTlsSecretName": {"type": "string"},
+        "contentTlsSecretName": {"type": "string"}
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "ingress", "egress"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "ingress": {"type": "array", "items": {"type": "object"}},
+        "egress": {"type": "array", "items": {"type": "object"}}
+      }
+    }
+  },
+  "$defs": {
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["periodSeconds", "timeoutSeconds", "failureThreshold"],
+      "properties": {
+        "periodSeconds": {"type": "integer", "minimum": 1, "maximum": 300},
+        "timeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 60},
+        "failureThreshold": {"type": "integer", "minimum": 1, "maximum": 100}
+      }
+    }
+  }
+}

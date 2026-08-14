@@ -1,0 +1,46 @@
+{{- include "artifact-server.validation" . -}}
+{{- if .Values.ingress.enabled }}
+{{- $origin := urlParse .Values.configuration.applicationOrigin }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "artifact-server.fullname" . }}
+  labels:
+    {{- include "artifact-server.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  tls:
+    - hosts:
+        - {{ $origin.host | quote }}
+      secretName: {{ .Values.ingress.applicationTlsSecretName | quote }}
+    - hosts:
+        - {{ printf "*.%s" .Values.configuration.contentDomain | quote }}
+      secretName: {{ .Values.ingress.contentTlsSecretName | quote }}
+  rules:
+    - host: {{ $origin.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "artifact-server.fullname" . }}
+                port:
+                  name: http
+    - host: {{ printf "*.%s" .Values.configuration.contentDomain | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "artifact-server.fullname" . }}
+                port:
+                  name: http
+{{- end }}

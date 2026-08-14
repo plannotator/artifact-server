@@ -1,0 +1,16 @@
+{{- include "artifact-server.validation" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "artifact-server.fullname" . }}
+  labels:
+    {{- include "artifact-server.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: http
+  selector:
+    {{- include "artifact-server.serverSelectorLabels" . | nindent 4 }}

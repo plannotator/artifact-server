@@ -1,0 +1,19 @@
+Artifact Server is installed as {{ .Values.replicaCount }} stateless replica(s).
+
+Service:
+  {{ include "artifact-server.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+
+Verify the release:
+  helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }} --logs
+
+Inspect readiness:
+  kubectl get pods --namespace {{ .Release.Namespace }} \
+    --selector app.kubernetes.io/instance={{ .Release.Name }}
+
+{{- if .Values.ingress.enabled }}
+Application: {{ .Values.configuration.applicationOrigin }}
+Content: https://*.{{ .Values.configuration.contentDomain }}
+{{- else }}
+Ingress is disabled. Route the private Service through your Ingress, Gateway,
+or provider edge using the configured application and wildcard content hosts.
+{{- end }}

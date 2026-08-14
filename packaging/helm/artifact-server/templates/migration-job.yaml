@@ -1,0 +1,65 @@
+{{- include "artifact-server.validation" . -}}
+{{- if .Values.migration.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "artifact-server.fullname" . }}-migrate
+  labels:
+    {{- include "artifact-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "artifact-server.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ include "artifact-server.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - migrate
+            - apply
+          env:
+            - name: ARTIFACT_SERVER_DATABASE_URL_FILE
+              value: /run/secrets/artifact-server/database-url
+            - name: ARTIFACT_SERVER_INSTALLATION_ID
+              value: {{ .Values.configuration.installationId | quote }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: database-secret
+              mountPath: /run/secrets/artifact-server
+              readOnly: true
+            - name: temporary
+              mountPath: /tmp
+      volumes:
+        - name: database-secret
+          secret:
+            secretName: {{ .Values.secret.name | quote }}
+            defaultMode: 288
+            items:
+              - key: {{ .Values.secret.keys.databaseUrl | quote }}
+                path: database-url
+        - name: temporary
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Mi
+{{- end }}

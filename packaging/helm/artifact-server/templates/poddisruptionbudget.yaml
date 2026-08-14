@@ -1,0 +1,15 @@
+{{- include "artifact-server.validation" . -}}
+{{- if and .Values.podDisruptionBudget.enabled (gt (int .Values.replicaCount) 1) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "artifact-server.fullname" . }}
+  labels:
+    {{- include "artifact-server.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  unhealthyPodEvictionPolicy: {{ .Values.podDisruptionBudget.unhealthyPodEvictionPolicy }}
+  selector:
+    matchLabels:
+      {{- include "artifact-server.serverSelectorLabels" . | nindent 6 }}
+{{- end }}
