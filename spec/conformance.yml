@@ -1892,11 +1892,16 @@ requirements:
     source: {file: phase-6-packaging.md, anchor: external-storage-compose}
     acceptance:
       behavior: {id: DEP-020-B, description: Deploy External-storage Compose against real Postgres and object storage, replace every application container, and preserve IDs, records, pointers, manifests, action attribution, access settings, and bytes.}
-      failure: {id: DEP-020-F, description: External-storage Compose rejects incomplete provider configuration, unavailable or incompatible providers, unsafe local durable paths, and schema mismatch without reporting ready.}
+      failure: {id: DEP-020-F, description: External-storage Compose rejects incomplete provider configuration, unavailable or incompatible providers, and schema mismatch without reporting ready; the released service contains no application-data mount or container-local fallback.}
     deployments: [single_server]
-    status: specified
+    status: behavior_verified
     depends_on: [OPS-003, ARC-003]
-    evidence: []
+    evidence:
+      - deployment: single_server
+        tests: [DEP-020-B, DEP-020-F]
+        result: pass
+        run: evidence/external-storage-compose.json
+        recorded_at: "2026-08-14T08:47:56Z"
 
   - id: DEP-006
     kind: deployment

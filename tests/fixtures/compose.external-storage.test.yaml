@@ -1,0 +1,15 @@
+services:
+  artifact-server:
+    networks:
+      - default
+      - external-providers
+    ports:
+      - target: 8787
+        published: "0"
+        host_ip: 127.0.0.1
+        protocol: tcp
+
+networks:
+  external-providers:
+    name: ${ARTIFACT_SERVER_TEST_DOCKER_NETWORK:?Set ARTIFACT_SERVER_TEST_DOCKER_NETWORK}
+    external: true

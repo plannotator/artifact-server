@@ -40,17 +40,21 @@ This repository contains the local publication foundation and the first external
 - replacement of every application process without losing committed state;
 - installation isolation when several installations use one Postgres database and bucket;
 - logical Postgres and object-storage backup and restore with stable IDs and bytes;
-- a bounded two-process Postgres and S3-compatible performance baseline using the real file-first client.
+- a bounded two-process Postgres and S3-compatible performance baseline using the real file-first client;
+- External-storage Compose with mounted secrets, no application-data volume,
+  two tested replicas, safe cross-replica conflicts, and complete container
+  replacement through the production image.
 
 ## Remaining implementation
 
 Packaging is now in progress. The direct local archive, shared lifecycle CLI,
-production OCI image, and Compact Compose package now exist. The remaining executable scope is in
+production OCI image, Compact Compose, and External-storage Compose packages now
+exist. The remaining executable scope is in
 [`spec/phase-6-packaging.md`](./spec/phase-6-packaging.md). It defines a native
 local package that does not require Docker, one optional OCI image, Compact
 Compose and External-storage Compose, a Helm chart, recovery, release evidence,
 and the tests that make those targets supportable. The next packaging target is
-External-storage Compose.
+the Kubernetes Helm chart.
 
 After that foundation passes, the remaining work is:
 
@@ -358,6 +362,18 @@ It deletes and replaces the provider container over the same durable volume as
 part of the test. This provider proof does not make Docker a local-product
 runtime requirement.
 
+An opt-in AWS S3 probe is available when the AWS CLI is authenticated:
+
+```sh
+pnpm verify:aws-s3
+```
+
+It creates one uniquely named private bucket, blocks public access, enables
+default encryption, runs multipart, concurrent, staged, and hostile adapter
+operations through the AWS SDK credential chain, then removes every object,
+incomplete multipart upload, and the bucket. It is not part of the normal
+iteration gate and does not provision a database, role, network, or server.
+
 External-storage runtime changes also finish with:
 
 ```sh
@@ -370,6 +386,18 @@ cross-process reads and write conflicts, identity and API-key behavior, staged
 uploads, restart, installation isolation, logical backup and restore, and
 provider-credential failures. It is a subprocess behavior gate; the local
 in-process suite remains the source-coverage diagnostic.
+
+External-storage Compose packaging changes additionally finish with:
+
+```sh
+pnpm verify:external-storage-compose
+```
+
+That gate builds and loads the production OCI archive, starts two application
+containers against independently managed test providers, races a version
+write, replaces both containers, compares exact stored state and bytes, inspects
+the container mounts, and runs unavailable-provider and configuration failures.
+It is part of `verify:iteration`.
 
 Deployed local and external-storage processes write sampled one-line JSON request logs and
 return a server-generated `X-Request-Id`. Server failures and requests taking at

@@ -1,0 +1,4 @@
+services:
+  artifact-server:
+    ports:
+      - ${ARTIFACT_SERVER_BIND_ADDRESS:-127.0.0.1}:${ARTIFACT_SERVER_PORT:-8787}:8787

@@ -473,9 +473,12 @@ fail the packaging gate.
    restore, exact state comparison, and hostile configuration against the
    production image. Cross-version upgrade and rollback remain a release gate
    when two released images exist.
-5. **Next.** Ship External-storage Compose and run the existing multi-process Postgres
-   and S3 suite through containers.
-6. Ship the Helm chart and pass the multi-replica migration, rollout, failure,
+5. **Complete.** Ship External-storage Compose and run the multi-process Postgres
+   and S3 suite through the production image. The package now proves two
+   replicas, cross-replica conflict control, complete application replacement,
+   secret-file configuration, no local durable mounts, provider failures, and
+   a bounded read baseline.
+6. **Next.** Ship the Helm chart and pass the multi-replica migration, rollout, failure,
    recovery, observability, and performance gates in a disposable cluster.
 7. Add compact-to-external-storage export and import, then prove one installation can move
    from the Compose package to the Helm package without changing IDs or bytes.
