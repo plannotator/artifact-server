@@ -1589,7 +1589,7 @@
           </article>
           <article class="answer">
             <span class="answer-label">Agents</span>
-            <p class="answer-value">An agent publishes one actual file or one finished directory through normal web requests or MCP. It does not put raw HTML, CSS, JavaScript, or base64 file contents in an MCP or JSON argument. The publishing client handles the upload and returns an ID, version number, and link. A hosted MCP connection opens browser sign-in and approval the first time. Local and private installations can use local or server API keys.</p>
+            <p class="answer-value">An agent publishes one actual file or one finished directory through normal web requests or MCP. It does not put raw HTML, CSS, JavaScript, or base64 file contents in an MCP or JSON argument. The publishing client handles the upload and returns an ID, version number, and link. Local setup uses <code>artifactserver connect</code> without a visible key. A hosted connection opens browser sign-in. A self-hosted server without compatible browser authorization uses a key created by an administrator, never a key copied from startup logs.</p>
           </article>
           <article class="answer">
             <span class="answer-label">Deployment</span>
@@ -2612,11 +2612,40 @@ v12-7f3a.content.example.net</code></pre>
             <p>
               A remote AI client connects to one address: <code>/mcp</code>. On an external-storage server, its
               first request opens browser sign-in and approval. After approval, the client receives
-              a short-lived credential that works only with this Artifact Server. On a laptop, a
-              local helper uses a local credential instead. MCP sends publishing instructions and
-              small results; large website and file uploads go directly to file storage.
+              a short-lived credential that works only with this Artifact Server. On a laptop, the
+              user runs <code>artifactserver connect</code>. The registered stdio bridge retrieves a
+              private local credential automatically and forwards to the same loopback
+              <code>/mcp</code> endpoint. The credential is never printed or put in client
+              configuration. MCP sends publishing instructions and small results; large website
+              and file uploads use the normal upload path.
             </p>
           </div>
+
+          <div class="table-wrap" role="region" aria-label="Official MCP connection paths" tabindex="0">
+            <table>
+              <thead>
+                <tr><th>Condition</th><th>What the person does</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Local laptop</td><td>Install Artifact Server and run <code>artifactserver connect</code>. No browser, Docker, visible token, copied key, or startup-log step.</td></tr>
+                <tr><td>Hosted or team server with compatible MCP OAuth</td><td>Add the server's <code>/mcp</code> address, approve sign-in in the browser, then return to the AI client.</td></tr>
+                <tr><td>Private-network server with compatible MCP OAuth</td><td>Connect to the company network or VPN first, then use the same address and browser approval. Sign-in does not change network access.</td></tr>
+                <tr><td>Self-hosted server without compatible MCP OAuth</td><td>An administrator creates a scoped API key in an administration interface or CLI. Keys never come from startup logs.</td></tr>
+                <tr><td>CI or unattended agents</td><td>An administrator creates a scoped service key and puts it in the deployment's secret manager. No browser is involved.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <aside class="callout">
+            <strong>Local commands are part of the release contract.</strong>
+            <p>
+              <code>artifactserver connect</code> installs and verifies the bridge,
+              <code>artifactserver disconnect</code> removes its client registration, and
+              <code>artifactserver doctor</code> checks the service and registration without
+              revealing credentials. Account-required artifact links still use normal browser
+              sign-in; MCP credentials never become browser cookies.
+            </p>
+          </aside>
 
           <figure class="architecture" aria-labelledby="mcp-auth-diagram-title">
             <div class="architecture-top">
@@ -3639,8 +3668,9 @@ artifact_delete</code></pre>
                 <h3>One complete local product</h3>
                 <p>
                   Build saved versions that never change, comparisons between versions, support for complete client-side output directories, the separate artifact website, SQLite and
-                  local file storage, the modern stateless MCP route, web publishing, local-token
-                  access, the two sharing modes, and optional Git repositories in the local data
+                  local file storage, the modern stateless MCP route, web publishing,
+                  <code>artifactserver connect</code> and the credential-hidden local stdio bridge,
+                  the two sharing modes, and optional Git repositories in the local data
                   folder. Ship the <code>publish-artifact</code> skill after its MCP workflow is
                   stable. Reject MCP subscriptions until a real event service exists. Ship it as one running application.
                 </p>
@@ -3711,7 +3741,7 @@ artifact_delete</code></pre>
               <summary>How we know each release is ready</summary>
               <div class="detail-body">
                 <ul>
-                  <li><strong>Local:</strong> one process publishes one file and a complete static site, opens the unique version host, compares versions without Git, retries safely, and survives a restart.</li>
+                  <li><strong>Local:</strong> <code>artifactserver connect</code> works in every advertised local client without browser sign-in, Docker, a visible key, copied secret, or log inspection; one service then publishes one file and a complete static site, opens the unique version host, compares versions without Git, retries safely, and survives a restart.</li>
                   <li><strong>Private team:</strong> account-required subresources load, forbidden mutations fail, backup and restore preserve IDs, and cross-tenant and hostile-path tests pass on one server and Kubernetes.</li>
                   <li><strong>Cloudflare:</strong> WorkOS MCP sign-in, R2 staged uploads, D1 transactions, public cache purge, private no-cache delivery, abuse controls, and a restore drill pass under measured cost and load.</li>
                   <li><strong>Plannotator connection:</strong> one-click approval, cross-organization rejection, signed-request scope, one-use browser links, disconnect, key rotation, exact-version comments, hostile review-page tests, and private-route failure and recovery all pass.</li>
@@ -3749,7 +3779,7 @@ artifact_delete</code></pre>
             <article class="decision-item"><p>Changing public content back to account required stops future public access and purges supported caches, but cannot recall downloaded or externally cached copies.</p></article>
             <article class="decision-item"><p>Manifest paths follow one portable safety contract. Publishing clients upload bytes. A local client may read a user-selected path with its operating-system permissions, but HTTP and MCP never receive that path. The server does not fetch arbitrary source URLs.</p></article>
             <article class="decision-item"><p>Uploads stage, verify, then write content-addressed blobs without overwrite before the database commit. The first release deletes expired staging only and does not garbage-collect committed blobs.</p></article>
-            <article class="decision-item"><p>Browser, normal software requests, and MCP share the same product and authorization rules. Hosted MCP uses WorkOS AuthKit; local and self-hosted modes retain scoped API keys.</p></article>
+            <article class="decision-item"><p>Browser, normal software requests, and MCP share the same product and authorization rules. Local MCP uses <code>artifactserver connect</code> without a human-visible secret. Hosted MCP uses browser approval through WorkOS AuthKit. Self-hosted MCP uses compatible browser authorization when configured and administration-issued scoped API keys otherwise. Startup logs never distribute keys.</p></article>
             <article class="decision-item"><p>Artifact Server ships a routine publishing skill and a separately installed operator skill. Stored references include the server and artifact, so agents open local or team artifacts at the correct origin.</p></article>
             <article class="decision-item"><p>The product core uses narrow database, blob, login, background-work, and optional Git interfaces. Official deployment packages are Compose, Helm, Alchemy for Cloudflare, and Pulumi for AWS, GCP, and Azure.</p></article>
             <article class="decision-item"><p>Support is phased: local, private team and Kubernetes, hosted Cloudflare, then AWS, GCP, and Azure. A target is not supported until its install, upgrade, rollback, backup, restore, and isolation tests pass.</p></article>

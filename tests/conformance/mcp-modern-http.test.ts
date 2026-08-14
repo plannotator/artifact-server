@@ -285,7 +285,7 @@ describe("modern MCP HTTP", () => {
     expect(listenBody.error.message).toContain("Subscription limit");
   });
 
-  test("MCP-006-B MCP-006-F MCP-007-B MCP-007-F MCP-008-B MCP-008-F MCP-013-B MCP-013-F: every advertised artifact operation runs over real files and shared policy", async () => {
+  test("MCP-006-B MCP-006-F MCP-007-B MCP-007-F MCP-008-B MCP-008-F: every advertised artifact operation runs over real files and shared policy", async () => {
     expect.hasAssertions();
     const bytes = new TextEncoder().encode("MCP file publication proof\n");
     const declaredFile = {

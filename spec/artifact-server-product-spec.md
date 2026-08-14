@@ -230,6 +230,35 @@ The detailed connection, authorization, review, lifecycle, acceptance-test, and 
 
 The detailed MCP wire and authorization contract is in [Artifact Server MCP baseline](./artifact-server-mcp-baseline.md). MCP, the browser, and the HTTP API call the same product and authorization services.
 
+### Official MCP connection paths
+
+| Condition | What the person does |
+| --- | --- |
+| Local, single user | Install Artifact Server and run `artifactserver connect`. There is no browser sign-in, visible token, copied key, Docker requirement, or startup-log step. |
+| Hosted or team server with compatible MCP OAuth | Add or select the server's `/mcp` address, sign in and approve in the browser, then return to the AI client. The client renews authorization automatically until it is revoked or disconnected. |
+| Private-network team server with compatible MCP OAuth | Connect to the required company network or VPN, then use the same server-address and browser-sign-in flow. Signing in does not change network access. |
+| Self-hosted server without compatible MCP OAuth | An administrator creates a scoped API key in the administration interface or administrator CLI. The developer enters it once through the AI client's secret input. Keys never come from startup logs. |
+| CI, scripts, or unattended agents | An administrator creates a scoped service API key and stores it in the deployment's secret manager. No browser is involved. |
+
+`artifactserver connect` registers the local `artifactserver mcp` stdio bridge
+through the selected client's normal configuration and verifies it with a real
+discovery call. The bridge reaches the existing authenticated loopback `/mcp`
+endpoint. Its private local credential remains in a user-only file and is never
+shown to the user, stored in client configuration, or passed as a process
+argument. `artifactserver disconnect` removes the client registration, and
+`artifactserver doctor` diagnoses the local service and connection without
+revealing credentials.
+
+Account-required artifact links use normal Artifact Server browser sign-in.
+Public artifact links require no sign-in. MCP credentials never become browser
+cookies.
+
+These paths are release requirements. Each advertised client must pass clean
+connection, repeat connection, disconnect, stale-state recovery, and hostile
+credential tests. Remote OAuth paths must also pass renewal and revoke tests. A
+local release cannot ship with manual token copying. API-key issuance must use
+an administration surface, never startup output.
+
 The initial tool surface is:
 
 ```text
@@ -329,7 +358,7 @@ A requirement is complete only when both tests pass on every applicable deployme
 - Single-file and complete-site publishing.
 - Browser-native file handling.
 - Immutable versions, canonical manifests, text comparison, restore, and two read settings.
-- Local token, HTTP API, modern MCP, and `publish-artifact` skill.
+- `artifactserver connect`, the credential-hidden local stdio bridge, HTTP API, modern MCP, and `publish-artifact` skill.
 - Unique `*.localhost` version origins and the browser security tests.
 - Optional local Git history.
 - No automatic committed-blob garbage collection.
@@ -381,6 +410,10 @@ Every applicable release must prove:
 - public-to-private changes stop new origin access and attempt the configured CDN purge;
 - backup and restore preserve IDs before a deployment is called team-ready;
 - local/team target resolution never guesses between configured servers.
+- local MCP setup requires no browser, visible token, copied key, Docker requirement, or startup-log inspection;
+- remote MCP with OAuth connects from only the `/mcp` address and completes browser approval, renewal, revoke, and reconnect;
+- self-hosted and automation API keys are issued through an administration surface and never exposed in startup or diagnostic logs;
+- every advertised Codex, Claude Code, Cursor, and VS Code connection path passes from clean and stale client state.
 
 ## Known risks and decisions still required
 

@@ -36,7 +36,7 @@ afterEach(async () => {
 });
 
 describe("local Artifact Server CLI", () => {
-  test("starts a real process, creates a private reusable token, serves health, and shuts down", async () => {
+  test("starts with private reusable credentials without printing them", async () => {
     const dataDirectory = await mkdtemp(path.join(tmpdir(), "artifact-server-cli-"));
     try {
       const firstPort = await availablePort();
@@ -55,9 +55,10 @@ describe("local Artifact Server CLI", () => {
       const browserToken = (await readFile(browserTokenPath, "utf8")).trim();
       expect(browserToken).toMatch(/^[A-Za-z0-9_-]{43}$/u);
       expect((await stat(browserTokenPath)).mode & 0o777).toBe(0o600);
-      expect(firstReady).toContain(
-        `Browser login: http://localhost:${firstPort}/auth/local?token=${browserToken}`,
-      );
+      expect(firstReady).not.toContain(firstToken.trim());
+      expect(firstReady).not.toContain(browserToken);
+      expect(firstReady).not.toContain("Local API token:");
+      expect(firstReady).not.toContain("Browser login:");
       await stopProcess(first);
 
       await chmod(tokenPath, 0o644);
@@ -276,7 +277,7 @@ async function waitForReady(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     let output = "";
-    const readyText = `Browser login: http://localhost:${port}/auth/local?token=`;
+    const readyText = `Artifact Server: http://localhost:${port}`;
     const timeout = setTimeout(() => {
       cleanup();
       reject(new Error(`Artifact Server did not become ready: ${redactToken(output)}`));

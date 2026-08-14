@@ -48,6 +48,7 @@ const publicationSchema = z.object({
   links: z.object({artifact: z.url(), version: z.url()}),
   version: z.object({id: z.string(), number: z.number().int().positive()}),
 });
+const localServiceRecordSchema = z.object({pid: z.number().int().positive()}).loose();
 
 afterEach(async () => {
   await Promise.all([...runningProcesses].map(stopProcess));
@@ -62,7 +63,9 @@ describe("direct local release package", () => {
     const dataDirectory = path.join(workspace, "data");
     const backupDirectory = path.join(workspace, "backup");
     const restoredDirectory = path.join(workspace, "restored");
+    const onboardingDataDirectory = path.join(workspace, "onboarding-data");
     let server: ChildProcessWithoutNullStreams | undefined;
+    let managedServicePid: number | undefined;
 
     try {
       await runCommand(
@@ -109,12 +112,84 @@ describe("direct local release package", () => {
       await expectMissing(path.join(firstInstallation, "artifactserver/node_modules/vitest"));
       await expectMissing(path.join(firstInstallation, "artifactserver/node_modules/oxlint"));
 
+      const fakeBinaryDirectory = path.join(workspace, "fake-bin");
+      const cursorConfig = path.join(workspace, "cursor", "mcp.json");
+      await mkdir(fakeBinaryDirectory, {recursive: true});
+      await writeFile(
+        path.join(fakeBinaryDirectory, "cursor"),
+        "#!/bin/sh\nexit 0\n",
+        {mode: 0o700},
+      );
+      await mkdir(path.dirname(cursorConfig), {recursive: true});
+      await writeFile(cursorConfig, `{
+  // Packaged onboarding must preserve this entry.
+  "mcpServers": {"existing": {"command": "existing-command"}}
+}
+`);
+      const onboardingEnvironment = isolatedRuntimeEnvironment({
+        ARTIFACT_SERVER_CURSOR_MCP_CONFIG: cursorConfig,
+        PATH: [
+          fakeBinaryDirectory,
+          path.dirname(process.execPath),
+          "/usr/bin",
+          "/bin",
+        ].join(path.delimiter),
+      });
+      const connected = await runCommand(
+        executableA,
+        ["connect", "cursor", "--data", onboardingDataDirectory],
+        workspace,
+        onboardingEnvironment,
+      );
+      expect(JSON.parse(connected.stdout)).toMatchObject({
+        client: "cursor",
+        serverAddress: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+$/u),
+      });
+      const serviceRecord = localServiceRecordSchema.parse(JSON.parse(await readFile(
+        path.join(onboardingDataDirectory, "local-service.json"),
+        "utf8",
+      )));
+      managedServicePid = serviceRecord.pid;
+      const doctor = await runCommand(
+        executableA,
+        ["doctor", "cursor", "--data", onboardingDataDirectory],
+        workspace,
+        onboardingEnvironment,
+      );
+      expect(JSON.parse(doctor.stdout)).toMatchObject({status: "healthy"});
+      const disconnected = await runCommand(
+        executableA,
+        ["disconnect", "cursor", "--data", onboardingDataDirectory],
+        workspace,
+        onboardingEnvironment,
+      );
+      expect(JSON.parse(disconnected.stdout)).toMatchObject({status: "disconnected"});
+      const packagedApiCredential = (await readFile(
+        path.join(onboardingDataDirectory, "local-api-token"),
+        "utf8",
+      )).trim();
+      const onboardingSurfaces = [
+        connected.stdout,
+        connected.stderr,
+        doctor.stdout,
+        doctor.stderr,
+        disconnected.stdout,
+        disconnected.stderr,
+        await readFile(cursorConfig, "utf8"),
+        await readFile(path.join(onboardingDataDirectory, "local-service.log"), "utf8"),
+      ].join("\n");
+      expect(onboardingSurfaces).not.toContain(packagedApiCredential);
+      expect(await readFile(cursorConfig, "utf8")).toContain('"existing"');
+      expect(await readFile(cursorConfig, "utf8")).not.toContain('"artifact-server"');
+      await stopManagedService(serviceRecord.pid);
+      managedServicePid = undefined;
+
       const fixturePath = path.join(workspace, "release-proof.html");
       const fixture = "<!doctype html><title>Packaged Artifact Server</title>";
       await writeFile(fixturePath, fixture);
       const port = await availablePort();
       server = startPackagedServer(executableA, dataDirectory, port, workspace);
-      await waitForReady(server, port);
+      const startupOutput = await waitForReady(server, port);
 
       const publicationResult = await runCommand(
         executableA,
@@ -138,6 +213,18 @@ describe("direct local release package", () => {
       expect((await stat(dataDirectory)).mode & 0o777).toBe(0o700);
       expect((await stat(path.join(dataDirectory, "local-api-token"))).mode & 0o777)
         .toBe(0o600);
+      const localApiToken = (await readFile(
+        path.join(dataDirectory, "local-api-token"),
+        "utf8",
+      )).trim();
+      const browserToken = (await readFile(
+        path.join(dataDirectory, "local-browser-token"),
+        "utf8",
+      )).trim();
+      expect(startupOutput).not.toContain(localApiToken);
+      expect(startupOutput).not.toContain(browserToken);
+      expect(startupOutput).not.toContain("Local API token:");
+      expect(startupOutput).not.toContain("Browser login:");
 
       await stopProcess(server);
       server = undefined;
@@ -182,6 +269,9 @@ describe("direct local release package", () => {
       );
     } finally {
       if (server !== undefined) await stopProcess(server);
+      if (managedServicePid !== undefined) {
+        await stopManagedService(managedServicePid);
+      }
       await rm(workspace, {force: true, recursive: true});
     }
   });
@@ -222,7 +312,9 @@ function startPackagedServer(
   return child;
 }
 
-function isolatedRuntimeEnvironment(): NodeJS.ProcessEnv {
+function isolatedRuntimeEnvironment(
+  overrides: NodeJS.ProcessEnv = {},
+): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
     ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE: "0",
@@ -230,6 +322,7 @@ function isolatedRuntimeEnvironment(): NodeJS.ProcessEnv {
     HTTPS_PROXY: "http://127.0.0.1:1",
     NODE_PATH: "",
     NO_PROXY: "localhost,127.0.0.1",
+    ...overrides,
   };
   for (const name of [
     "ARTIFACT_SERVER_API_TOKEN",
@@ -246,10 +339,10 @@ function isolatedRuntimeEnvironment(): NodeJS.ProcessEnv {
 async function waitForReady(
   child: ChildProcessWithoutNullStreams,
   port: number,
-): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     let output = "";
-    const readyText = `Browser login: http://localhost:${port}/auth/local?token=`;
+    const readyText = `Artifact Server: http://localhost:${port}`;
     const timeout = setTimeout(() => {
       cleanup();
       reject(new Error(`Packaged server did not become ready: ${redactTokens(output)}`));
@@ -258,7 +351,7 @@ async function waitForReady(
       output += chunk.toString("utf8");
       if (!output.includes(readyText)) return;
       cleanup();
-      resolve();
+      resolve(output);
     };
     const exit = () => {
       cleanup();
@@ -306,11 +399,12 @@ function runCommand(
   command: string,
   arguments_: readonly string[],
   cwd: string,
+  environment: NodeJS.ProcessEnv = isolatedRuntimeEnvironment(),
 ): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, arguments_, {
       cwd,
-      env: isolatedRuntimeEnvironment(),
+      env: environment,
       stdio: ["ignore", "pipe", "pipe"],
     });
     const stdout: Uint8Array[] = [];
@@ -335,6 +429,28 @@ function runCommand(
       }
     });
   });
+}
+
+async function stopManagedService(pid: number): Promise<void> {
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  await waitForManagedServiceExit(pid, Date.now() + 10_000);
+}
+
+async function waitForManagedServiceExit(pid: number, deadline: number): Promise<void> {
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return;
+  }
+  if (Date.now() >= deadline) {
+    throw new Error("Packaged managed service did not stop after SIGTERM.");
+  }
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  await waitForManagedServiceExit(pid, deadline);
 }
 
 async function fetchPublishedContent(contentUrl: string, port: number): Promise<string> {

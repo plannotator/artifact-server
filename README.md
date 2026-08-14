@@ -5,6 +5,8 @@ Artifact Server stores finished browser files as immutable versions and serves e
 This repository contains the local publication foundation and the first external-storage runtime. It is not the complete product yet. The current implementation proves:
 
 - a file-first CLI backed by token-protected HTTP upload and commit operations;
+- a strict MCP 2026-07-28 endpoint plus credential-free local registration
+  adapters for Codex, Claude Code, Cursor, and VS Code;
 - single-file publication through the same verified upload contract used by complete sites;
 - complete multi-file site publication through durable staged uploads;
 - expiring upload records and opaque, streaming file-upload locations;
@@ -85,7 +87,7 @@ Build and unpack the package:
 pnpm package:local
 tar -xzf release/artifact-server-*-node.tar.gz
 ./artifactserver/bin/artifactserver --version
-./artifactserver/bin/artifactserver start --data .artifact-server --port 8787
+./artifactserver/bin/artifactserver connect
 ```
 
 Move the extracted `artifactserver` directory anywhere user-owned. Add its
@@ -99,9 +101,10 @@ archive contains both the POSIX `artifactserver` launcher and
 `artifactserver.cmd` for Windows.
 
 `pnpm test:local-package` builds the archive without network access, extracts it
-twice into clean directories, and runs the packaged executable through publish,
-open, program-directory replacement, restart, stopped-data backup, and clean
-restore. It records the archive checksum and runtime proof in `evidence/`.
+twice into clean directories, and runs the packaged executable through MCP
+connect, discovery, doctor, disconnect, publish, open, program-directory
+replacement, restart, stopped-data backup, and clean restore. It records the
+archive checksum and runtime proof in `evidence/`.
 
 ## Build and verify the OCI image
 
@@ -241,10 +244,43 @@ pnpm install
 pnpm start -- --data .artifact-server --port 8787
 ```
 
-The server creates separate random API and browser-bootstrap tokens in
-`.artifact-server/local-api-token` and `.artifact-server/local-browser-token`,
-prints the local URLs at startup, and keeps both files with mode `0600`. Open the
-printed browser-login URL to create or resume the local administrator session.
+The server creates separate random API and browser-bootstrap credentials in
+`.artifact-server/local-api-token` and `.artifact-server/local-browser-token`
+and keeps both files with mode `0600`. It prints neither credential and does not
+print a URL containing one.
+
+## Connect a local AI client
+
+Run:
+
+```sh
+artifactserver connect
+```
+
+If exactly one supported client is installed, Artifact Server connects it. If
+several are installed, name one explicitly: `codex`, `claude`, `cursor`, or
+`vscode`. For example:
+
+```sh
+artifactserver connect codex
+```
+
+The command starts one private loopback service when needed, installs a
+user-scoped stdio MCP entry, and verifies modern discovery and the complete tool
+list. It does not print, copy, or place a credential in the client
+configuration. Use `artifactserver doctor codex` to inspect the connection and
+`artifactserver disconnect codex` to remove only Artifact Server's managed
+entry. Disconnecting preserves artifacts and saved versions.
+
+`artifactserver mcp` is the stdio transport used by local AI clients. It is not
+a second application runtime: it forwards to the one per-user loopback service,
+which owns SQLite and local files. Remote deployments connect their AI clients
+directly to the deployment's `/mcp` URL instead.
+
+The repository tests the packaged bridge and every configuration adapter. The
+real-current-client matrix remains a release gate; a client is not advertised
+as release-verified until that exact host has passed connect, use, upgrade,
+disconnect, and stale-state recovery.
 
 One installation is one closed group. After the first administrator exists,
 administrators admit members through `POST /api/v1/members`. There is no public

@@ -23,6 +23,9 @@ importers:
       '@hono/node-server':
         specifier: 2.1.0
         version: 2.1.0(hono@4.13.1)
+      '@modelcontextprotocol/client':
+        specifier: 2.0.0
+        version: 2.0.0
       '@modelcontextprotocol/server':
         specifier: 2.0.0
         version: 2.0.0
@@ -38,6 +41,9 @@ importers:
       hono:
         specifier: 4.13.1
         version: 4.13.1
+      jsonc-parser:
+        specifier: 3.3.1
+        version: 3.3.1
       tldts:
         specifier: 7.4.10
         version: 7.4.10
@@ -48,9 +54,6 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
-      '@modelcontextprotocol/client':
-        specifier: 2.0.0
-        version: 2.0.0
       '@oxlint/plugins':
         specifier: 1.78.0
         version: 1.78.0
@@ -978,6 +981,9 @@ packages:
 
   js-tokens@10.0.0:
     resolution: {integrity: sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q==}
+
+  jsonc-parser@3.3.1:
+    resolution: {integrity: sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ==}
 
   kubernetes-types@1.30.0:
     resolution: {integrity: sha512-Dew1okvhM/SQcIa2rcgujNndZwU8VnSapDgdxlYoB84ZlpAD43U6KLAFqYo17ykSFGHNPrg0qry0bP+GJd9v7Q==}
@@ -2181,6 +2187,8 @@ snapshots:
   jose@6.2.8: {}
 
   js-tokens@10.0.0: {}
+
+  jsonc-parser@3.3.1: {}
 
   kubernetes-types@1.30.0: {}
 

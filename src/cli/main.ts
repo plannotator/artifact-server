@@ -1,27 +1,36 @@
 #!/usr/bin/env node
 
-import {randomBytes} from "node:crypto";
-import {chmod, mkdir, readFile, writeFile} from "node:fs/promises";
+import {homedir} from "node:os";
+import {readFile} from "node:fs/promises";
 import path from "node:path";
 
 import {Command, Option} from "commander";
 import {z} from "zod";
 
 import {WorkOsIdentityProvider} from "../identity/workos-identity-provider.js";
+import {
+  loadOrCreateLocalCredential,
+  localCredentialFiles,
+} from "../local/local-credentials.js";
+import {
+  removeOwnedLocalServiceRecord,
+  writeLocalServiceRecord,
+} from "../local/local-service-record.js";
 import {startLocalServer} from "../local/start-local-server.js";
 import {defaultCompletedRequestLogSampleRate} from
   "../observability/application-observability.js";
 import {configureLifecycleCommands} from "./lifecycle-commands.js";
+import {configureMcpOnboardingCommands} from "./mcp-onboarding-commands.js";
 import {configurePublishCommand} from "./publish-command.js";
 import {waitForProcessSignal} from "./wait-for-process-signal.js";
 import {loadWorkOsConfiguration} from "./workos-configuration.js";
 
 interface StartOptions {
   readonly data: string;
+  readonly managed: boolean;
   readonly port: string;
 }
 
-const systemErrorSchema = z.object({code: z.string().optional()});
 const observabilityEnvironmentSchema = z.object({
   ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE: z.coerce.number().min(0).max(1)
     .default(defaultCompletedRequestLogSampleRate),
@@ -46,6 +55,10 @@ const program = new Command()
 configurePublishCommand(program);
 configureDirectLocalStart(program);
 configureLifecycleCommands(program, {build: productBuild});
+configureMcpOnboardingCommands(program, {
+  defaultDataDirectory: path.join(homedir(), ".artifact-server"),
+  productVersion: packageMetadata.version,
+});
 
 await program.parseAsync();
 
@@ -62,16 +75,17 @@ function configureDirectLocalStart(programToConfigure: Command): void {
         .default("8787")
         .env("ARTIFACT_SERVER_PORT"),
     )
+    .addOption(new Option("--managed").hideHelp().default(false))
     .action(async (options: StartOptions) => {
-      const port = parsePort(options.port);
+      const port = parsePort(options.port, options.managed);
       const dataDirectory = path.resolve(options.data);
-      const apiToken = await loadOrCreateLocalToken(
+      const apiToken = await loadOrCreateLocalCredential(
         dataDirectory,
-        "local-api-token",
+        localCredentialFiles.api,
       );
-      const browserBootstrapToken = await loadOrCreateLocalToken(
+      const browserBootstrapToken = await loadOrCreateLocalCredential(
         dataDirectory,
-        "local-browser-token",
+        localCredentialFiles.browser,
       );
       const workOs = await loadWorkOsConfiguration(process.env);
       const observability = observabilityEnvironmentSchema.parse(process.env);
@@ -103,49 +117,46 @@ function configureDirectLocalStart(programToConfigure: Command): void {
         serviceVersion: packageMetadata.version,
       });
 
-      console.log(`Artifact Server: http://localhost:${port}`);
-      console.log(`Local API token: ${apiToken}`);
-      const browserLoginUrl = new URL(`http://localhost:${port}/auth/local`);
-      browserLoginUrl.searchParams.set("token", browserBootstrapToken);
-      console.log(`Browser login: ${browserLoginUrl.toString()}`);
-      if (workOs !== null) {
-        console.log(`WorkOS login: ${new URL("/auth/login", workOs.applicationOrigin)}`);
+      const origin = `http://localhost:${server.port}`;
+      const serviceOrigin = `http://${server.hostname}:${server.port}`;
+      let closed = false;
+      const close = async () => {
+        if (closed) return;
+        closed = true;
+        try {
+          await server.close();
+        } finally {
+          if (options.managed) {
+            await removeOwnedLocalServiceRecord(dataDirectory, process.pid);
+          }
+        }
+      };
+      try {
+        if (options.managed) {
+          await writeLocalServiceRecord(dataDirectory, {
+            dataDirectory,
+            origin: serviceOrigin,
+            pid: process.pid,
+            productVersion: packageMetadata.version,
+            schemaVersion: 1,
+            startedAt: new Date().toISOString(),
+          });
+        }
+        console.log(`Artifact Server: ${origin}`);
+        console.log(`Data directory: ${dataDirectory}`);
+        await waitForProcessSignal(close);
+      } catch (error) {
+        await close();
+        throw error;
       }
-      console.log(`Data directory: ${dataDirectory}`);
-
-      await waitForProcessSignal(() => server.close());
     });
 }
 
-function parsePort(value: string): number {
+function parsePort(value: string, allowAutomatic: boolean): number {
   const port = Number(value);
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+  const minimumPort = allowAutomatic ? 0 : 1;
+  if (!Number.isInteger(port) || port < minimumPort || port > 65_535) {
     throw new Error("The port must be an integer between 1 and 65535.");
   }
   return port;
-}
-
-async function loadOrCreateLocalToken(
-  dataDirectory: string,
-  filename: string,
-): Promise<string> {
-  const tokenPath = path.join(dataDirectory, filename);
-  await mkdir(dataDirectory, {recursive: true, mode: 0o700});
-  try {
-    const token = (await readFile(tokenPath, "utf8")).trim();
-    await chmod(tokenPath, 0o600);
-    return token;
-  } catch (error) {
-    const parsed = systemErrorSchema.safeParse(error);
-    if (!parsed.success || parsed.data.code !== "ENOENT") throw error;
-  }
-
-  const token = randomBytes(32).toString("base64url");
-  await writeFile(tokenPath, `${token}\n`, {
-    encoding: "utf8",
-    flag: "wx",
-    mode: 0o600,
-  });
-  await chmod(tokenPath, 0o600);
-  return token;
 }

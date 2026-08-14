@@ -1422,21 +1422,16 @@ requirements:
 
   - id: MCP-013
     kind: behavior
-    behavior: Local mode uses a local helper and local token without browser OAuth; self-hosted mode defaults to scoped API keys and may verify a compatible external issuer.
+    behavior: Local mode connects through artifactserver connect and a stdio bridge without browser OAuth or a human-visible secret; self-hosted mode uses browser OAuth when compatible authorization is configured and otherwise uses administration-issued scoped API keys.
     owner: mcp
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
-      behavior: {id: MCP-013-B, description: Connect locally without a browser and connect to a private server using a revocable API key and a configured compatible issuer.}
-      failure: {id: MCP-013-F, description: A generic OIDC ID token, browser login cookie, or wrong resource token is not accepted as an MCP access token.}
+      behavior: {id: MCP-013-B, description: Connect locally through the stdio bridge with no visible credential, connect to a private OAuth server through browser approval, and connect to a no-OAuth server using an administration-issued revocable API key.}
+      failure: {id: MCP-013-F, description: Startup logs, diagnostics, project files, generic OIDC ID tokens, browser login cookies, and wrong-resource tokens cannot expose or substitute for a valid MCP credential.}
     deployments: [local, single_server, kubernetes, aws, gcp, azure]
-    status: behavior_verified
+    status: implementing
     depends_on: [AUTH-009]
-    evidence:
-      - deployment: local
-        tests: [MCP-013-B, MCP-013-F]
-        result: pass
-        run: evidence/local-foundation.json
-        recorded_at: "2026-08-13T18:09:37Z"
+    evidence: []
 
   - id: MCP-014
     kind: release_gate
@@ -1462,6 +1457,58 @@ requirements:
     deployments: *all
     status: specified
     depends_on: [MCP-006, SKL-004]
+    evidence: []
+
+  - id: MCP-016
+    kind: release_gate
+    behavior: The supported local MCP path is install Artifact Server, run artifactserver connect, and use the selected AI client without browser sign-in, Docker, a visible token, copied key, or startup-log inspection.
+    owner: mcp
+    source: {file: artifact-server-product-spec.html, anchor: mcp}
+    acceptance:
+      behavior: {id: MCP-016-B, description: From a clean local package, connect Codex, Claude Code, Cursor, and VS Code through artifactserver connect, complete discovery and representative tool calls, restart, reconnect, disconnect, and run doctor.}
+      failure: {id: MCP-016-F, description: Multiple-client ambiguity asks for a choice, stale or corrupt registration produces a useful diagnosis, and no command output, log, project file, process argument, or diagnostic bundle exposes the internal local credential.}
+    deployments: [local]
+    status: implementing
+    depends_on: [MCP-002, MCP-009, MCP-013, OPS-008]
+    evidence: []
+
+  - id: MCP-017
+    kind: release_gate
+    behavior: The supported hosted interactive MCP path is add or select the exact /mcp address, complete browser sign-in and approval, and return to a connected client with automatic credential renewal.
+    owner: mcp
+    source: {file: artifact-server-product-spec.html, anchor: mcp}
+    acceptance:
+      behavior: {id: MCP-017-B, description: In every advertised remote client, add only the server address and pass discovery, browser approval, callback, tool use, renewal after access-token expiry, revoke, disconnect, and reconnect from fresh and stale client state.}
+      failure: {id: MCP-017-F, description: Wrong issuer, audience, scope, callback, network boundary, revoked grant, stale registration, and unadmitted user fail clearly without accepting a browser cookie or changing firewall or VPN access.}
+    deployments: *hosted
+    status: specified
+    depends_on: [MCP-010, MCP-011, MCP-012]
+    evidence: []
+
+  - id: MCP-018
+    kind: release_gate
+    behavior: Self-hosted fallback and unattended MCP access use scoped user or service API keys issued through an administration interface or administrator CLI and stored through the client or deployment secret manager.
+    owner: mcp
+    source: {file: artifact-server-product-spec.html, anchor: mcp}
+    acceptance:
+      behavior: {id: MCP-018-B, description: Issue, enter or inject, use, rotate, and revoke user and service keys through the supported administration and secret-storage paths on each applicable deployment.}
+      failure: {id: MCP-018-F, description: Keys never appear in startup logs, ordinary diagnostics, generated shell history, project configuration, artifact content, MCP results, or traces, and revoked or over-scoped keys fail closed.}
+    deployments: *all
+    status: specified
+    depends_on: [AUTH-009, MCP-009, OPS-008]
+    evidence: []
+
+  - id: MCP-019
+    kind: release_gate
+    behavior: Every advertised MCP client has a native one-click installation where supported or one copyable command or configuration otherwise, plus tested upgrade, disconnect, stale-state recovery, and reauthorization instructions.
+    owner: mcp
+    source: {file: artifact-server-product-spec.html, anchor: mcp}
+    acceptance:
+      behavior: {id: MCP-019-B, description: Install and exercise the release path in current supported Codex, Claude Code, Cursor, and VS Code hosts and record the exact host versions and connection method.}
+      failure: {id: MCP-019-F, description: A host with missing transport, protocol, authorization, installation, upgrade, or stale-state evidence is omitted from the supported-client list rather than inferred to work.}
+    deployments: *all
+    status: specified
+    depends_on: [MCP-016, MCP-017, MCP-018]
     evidence: []
 
   - id: SKL-001
@@ -2268,7 +2315,7 @@ requirements:
       failure: {id: REL-001-F, description: The local release cannot be declared complete when any applicable behavior or hostile test lacks passing local evidence.}
     deployments: [local]
     status: specified
-    depends_on: [DEP-004, DEP-019, REL-006]
+    depends_on: [DEP-004, DEP-019, MCP-016, MCP-018, MCP-019, REL-006]
     evidence: []
 
   - id: REL-002
@@ -2281,7 +2328,7 @@ requirements:
       failure: {id: REL-002-F, description: A private-team target cannot be called supported when private delivery, backup, restore, upgrade, health, authorization, or its advertised availability evidence is missing; compact single-server mode explicitly makes no failover claim.}
     deployments: [single_server, kubernetes]
     status: specified
-    depends_on: [DEP-005, DEP-006, OPS-005, REL-006]
+    depends_on: [DEP-005, DEP-006, MCP-018, MCP-019, OPS-005, REL-006]
     evidence: []
 
   - id: REL-003
@@ -2294,7 +2341,7 @@ requirements:
       failure: {id: REL-003-F, description: Public links cannot launch until all hosted-policy, tenant-isolation, recovery, rate, deletion, and OAuth gates have passing evidence.}
     deployments: [cloudflare]
     status: specified
-    depends_on: [DEP-007, HOST-001, HOST-002, HOST-003, REL-006]
+    depends_on: [DEP-007, HOST-001, HOST-002, HOST-003, MCP-017, MCP-019, REL-006]
     evidence: []
 
   - id: REL-004
@@ -2307,7 +2354,7 @@ requirements:
       failure: {id: REL-004-F, description: Success on one cloud cannot stand in for evidence on another, and a target with incomplete lifecycle or native-storage tests remains unsupported.}
     deployments: *major_clouds
     status: specified
-    depends_on: [DEP-008, DEP-009, DEP-010, REL-006]
+    depends_on: [DEP-008, DEP-009, DEP-010, MCP-018, MCP-019, REL-006]
     evidence: []
 
   - id: REL-005
