@@ -3,8 +3,8 @@ import {defineConfig} from "vitest/config";
 export default defineConfig({
   test: {
     fileParallelism: false,
-    include: ["tests/release/local-package.test.ts"],
+    include: ["tests/release/oci-image.test.ts"],
     pool: "forks",
-    testTimeout: 120_000,
+    testTimeout: 180_000,
   },
 });

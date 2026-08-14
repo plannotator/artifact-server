@@ -126,6 +126,16 @@ The production image must:
 The image tag is a convenience. Compose files, Helm values, tests, and support
 records pin the digest.
 
+The implemented image builder writes a multi-architecture OCI archive and a
+checksum manifest. Node, the Dockerfile frontend, and the SBOM scanner are
+pinned by digest or exact version. Each platform has an SPDX software inventory
+and SLSA build provenance. The local image gate loads that exact archive and
+runs AMD64 and ARM64. It then exercises compact and external-storage serving,
+publication, immutable reads, clean shutdown, container replacement, provider
+diagnostics, non-root execution, read-only root filesystems, and declared
+durable storage. Registry signing remains part of the release-pipeline step
+because it requires the release registry and release identity.
+
 ## Compose contract
 
 ### Compact Compose
@@ -448,9 +458,13 @@ fail the packaging gate.
 2. **Complete for the pre-image surface.** Add the remaining runtime lifecycle commands and behavior: migration apply and
    validate, configuration check, secret files, support manifest, integrity
    check, readiness drain, and version injection.
-3. **Next.** Build and verify the OCI image against the existing local, external-storage, MCP,
-   observability, smoke, and bounded performance suites.
-4. Ship the compact Compose package and complete its install, restart, upgrade,
+3. **Complete for the image foundation.** Build a digest-addressed AMD64 and ARM64
+   OCI archive with SPDX and SLSA attestations. Load the exact archive and prove
+   both architectures, non-root and read-only operation, compact and
+   external-storage publication, clean shutdown, replacement, durable bytes,
+   secret-free diagnostics, and a bounded container baseline. Release-registry
+   signing remains in step 8.
+4. **Next.** Ship the compact Compose package and complete its install, restart, upgrade,
    backup, restore, and hostile-configuration evidence.
 5. Ship External-storage Compose and run the existing multi-process Postgres
    and S3 suite through containers.

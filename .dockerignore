@@ -1,0 +1,13 @@
+.git
+.gitignore
+.DS_Store
+coverage
+dist
+evidence
+node_modules
+release
+tests
+performance
+spec
+*.log
+.artifact-server

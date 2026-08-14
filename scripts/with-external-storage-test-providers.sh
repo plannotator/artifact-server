@@ -14,6 +14,7 @@ readonly postgres_container="artifact-server-postgres-${run_id}"
 readonly postgres_volume="${postgres_container}-data"
 readonly minio_container="artifact-server-minio-external-storage-${run_id}"
 readonly minio_volume="${minio_container}-data"
+readonly provider_network="artifact-server-providers-${run_id}"
 readonly postgres_user="artifactserver"
 readonly postgres_password="artifactserver-postgres-integration-only"
 readonly postgres_database="artifactserver"
@@ -24,17 +25,21 @@ readonly provider_started_at="$(node -e 'process.stdout.write(String(Date.now())
 cleanup() {
   docker rm --force "${postgres_container}" "${minio_container}" >/dev/null 2>&1 || true
   docker volume rm --force "${postgres_volume}" "${minio_volume}" >/dev/null 2>&1 || true
+  docker network rm "${provider_network}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
 
 docker volume create "${postgres_volume}" >/dev/null
 docker volume create "${minio_volume}" >/dev/null
+docker network create "${provider_network}" >/dev/null
 
 docker run --detach \
   --name "${postgres_container}" \
   --env "POSTGRES_USER=${postgres_user}" \
   --env "POSTGRES_PASSWORD=${postgres_password}" \
   --env "POSTGRES_DB=${postgres_database}" \
+  --network "${provider_network}" \
+  --network-alias postgres \
   --publish 127.0.0.1::5432 \
   --volume "${postgres_volume}:/var/lib/postgresql/data" \
   "${postgres_image}" >/dev/null
@@ -43,6 +48,8 @@ docker run --detach \
   --name "${minio_container}" \
   --env "MINIO_ROOT_USER=${minio_access_key}" \
   --env "MINIO_ROOT_PASSWORD=${minio_secret_key}" \
+  --network "${provider_network}" \
+  --network-alias minio \
   --publish 127.0.0.1::9000 \
   --volume "${minio_volume}:/data" \
   "${minio_image}" \
@@ -93,6 +100,9 @@ fi
 readonly provider_ready_at="$(node -e 'process.stdout.write(String(Date.now()))')"
 
 export ARTIFACT_SERVER_TEST_DATABASE_URL="postgresql://${postgres_user}:${postgres_password}@127.0.0.1:${postgres_port}/${postgres_database}"
+export ARTIFACT_SERVER_TEST_DOCKER_DATABASE_URL="postgresql://${postgres_user}:${postgres_password}@postgres:5432/${postgres_database}"
+export ARTIFACT_SERVER_TEST_DOCKER_NETWORK="${provider_network}"
+export ARTIFACT_SERVER_TEST_DOCKER_S3_ENDPOINT="http://minio:9000"
 export ARTIFACT_SERVER_TEST_MINIO_IMAGE="${minio_image}"
 export ARTIFACT_SERVER_TEST_POSTGRES_CONTAINER="${postgres_container}"
 export ARTIFACT_SERVER_TEST_POSTGRES_IMAGE="${postgres_image}"

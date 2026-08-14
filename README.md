@@ -44,13 +44,13 @@ This repository contains the local publication foundation and the first external
 
 ## Remaining implementation
 
-Packaging is now in progress. The direct local archive, installed-package gate,
-and shared lifecycle CLI now exist. The remaining executable scope is in
+Packaging is now in progress. The direct local archive, shared lifecycle CLI,
+and production OCI image now exist. The remaining executable scope is in
 [`spec/phase-6-packaging.md`](./spec/phase-6-packaging.md). It defines a native
 local package that does not require Docker, one optional OCI image, Compact
 Compose and External-storage Compose, a Helm chart, recovery, release evidence,
 and the tests that make those targets supportable. The next packaging target is
-the OCI image.
+Compact Compose.
 
 After that foundation passes, the remaining work is:
 
@@ -92,6 +92,43 @@ archive contains both the POSIX `artifactserver` launcher and
 twice into clean directories, and runs the packaged executable through publish,
 open, program-directory replacement, restart, stopped-data backup, and clean
 restore. It records the archive checksum and runtime proof in `evidence/`.
+
+## Build and verify the OCI image
+
+The optional container image contains the same compiled CLI and production
+dependencies as the direct package. It supports Linux AMD64 and ARM64. It is
+not the default way to run Artifact Server on a laptop.
+
+Build the multi-architecture OCI archive:
+
+```sh
+pnpm package:oci
+```
+
+The command writes `release/artifact-server-<version>.oci.tar` and a JSON
+manifest containing the archive checksum, image-index digest, per-platform
+manifest and config digests, source revision, and attestation summary. The
+build pins Node, the Dockerfile frontend, and the SBOM scanner by digest. Each
+platform receives an SPDX software inventory and SLSA build provenance. The
+manifest and image labels also report whether the source tree was clean.
+
+Run the full image gate:
+
+```sh
+pnpm test:oci-image
+```
+
+The gate loads the exact archive and executes both architectures. It then runs
+compact mode with a real Docker volume and external-storage mode with pinned
+Postgres and MinIO. Both modes publish and read a file, stop cleanly, replace
+the application container, preserve the published bytes and IDs, and emit a
+credential-free support manifest. Server containers use a fixed non-root user,
+a read-only root filesystem, and a writable temporary filesystem. Only compact
+mode receives a writable durable data volume.
+
+This local build does not sign the image. Signing requires the release registry
+and release identity and remains a release-pipeline gate. Compose and Helm files
+will use the published image digest, never a floating tag.
 
 ## Run from the source checkout
 
