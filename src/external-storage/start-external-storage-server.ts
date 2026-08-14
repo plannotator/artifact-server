@@ -8,6 +8,9 @@ import {
   createExternalStorageRuntime,
   type ExternalStorageRuntimeConfig,
 } from "./create-external-storage-runtime.js";
+import {createGracefulHttpShutdown} from
+  "../lifecycle/graceful-http-shutdown.js";
+import {createRuntimeLifecycle} from "../lifecycle/runtime-readiness.js";
 
 const serverAddressSchema = z.object({
   address: z.string().min(1),
@@ -18,6 +21,8 @@ const serverAddressSchema = z.object({
 export interface ExternalStorageServerConfig extends ExternalStorageRuntimeConfig {
   readonly hostname: string;
   readonly port: number;
+  readonly readinessWithdrawalMilliseconds?: number;
+  readonly shutdownDeadlineMilliseconds?: number;
 }
 
 /** One running stateless external-storage process. */
@@ -31,28 +36,37 @@ export interface RunningExternalStorageServer {
 export async function startExternalStorageServer(
   config: ExternalStorageServerConfig,
 ): Promise<RunningExternalStorageServer> {
-  const runtime = await createExternalStorageRuntime(config);
+  const lifecycle = config.runtimeLifecycle ?? createRuntimeLifecycle();
+  const runtime = await createExternalStorageRuntime({
+    ...config,
+    runtimeLifecycle: lifecycle,
+  });
   const server = createServer(
     getRequestListener(runtime.app.fetch, {hostname: config.hostname}),
   );
-  server.listen(config.port, config.hostname);
+  const listening = once(server, "listening");
   try {
-    await once(server, "listening");
+    server.listen(config.port, config.hostname);
+    await listening;
   } catch (cause) {
     server.closeAllConnections();
     await runtime.close();
     throw cause;
   }
   const address = serverAddressSchema.parse(server.address());
+  lifecycle.markReady();
+  const close = createGracefulHttpShutdown({
+    closeResources: () => runtime.close(),
+    lifecycle,
+    readinessWithdrawalMilliseconds:
+      config.readinessWithdrawalMilliseconds ?? 0,
+    server,
+    shutdownDeadlineMilliseconds:
+      config.shutdownDeadlineMilliseconds ?? 10_000,
+  });
   return {
     hostname: address.address,
     port: address.port,
-    close: async () => {
-      const closed = once(server, "close");
-      server.close();
-      server.closeIdleConnections();
-      server.closeAllConnections();
-      await Promise.all([closed, runtime.close()]);
-    },
+    close,
   };
 }

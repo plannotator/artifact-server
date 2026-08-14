@@ -21,16 +21,26 @@ import {PostgresArtifactRepository} from "../storage/postgres-artifact-repositor
 import {PostgresDatabase} from "../storage/postgres-database.js";
 import {PostgresIdentityRepository} from "../storage/postgres-identity-repository.js";
 import {createS3ObjectStorageAdapters} from "../storage/s3-object-storage.js";
+import type {RuntimeLifecycle} from "../lifecycle/runtime-readiness.js";
 
-/** S3-compatible provider settings parsed by the external-storage composition root. */
-export interface ExternalObjectStorageConfig {
-  readonly accessKeyId: string;
+interface ExternalObjectStorageConfigBase {
   readonly bucket: string;
   readonly endpoint?: string;
   readonly forcePathStyle?: boolean;
   readonly region: string;
-  readonly secretAccessKey: Redacted.Redacted;
 }
+
+/** S3 settings using either a static pair or the AWS SDK credential chain. */
+export type ExternalObjectStorageConfig = ExternalObjectStorageConfigBase & (
+  | {
+    readonly accessKeyId: string;
+    readonly secretAccessKey: Redacted.Redacted;
+  }
+  | {
+    readonly accessKeyId?: never;
+    readonly secretAccessKey?: never;
+  }
+);
 
 /** Configuration for one stateless Artifact Server process. */
 export interface ExternalStorageRuntimeConfig {
@@ -46,6 +56,8 @@ export interface ExternalStorageRuntimeConfig {
   readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
   readonly localBootstrapCredential?: Redacted.Redacted;
   readonly objectStorage: ExternalObjectStorageConfig;
+  readonly runtimeLifecycle?: RuntimeLifecycle;
+  readonly serviceVersion?: string;
 }
 
 /** One ready external-storage runtime and its protocol adapter. */
@@ -54,7 +66,7 @@ export interface ExternalStorageRuntime {
   close(): Promise<void>;
 }
 
-/** Connect external providers, run migrations, verify readiness, and build the app. */
+/** Connect external providers, validate migrations, verify readiness, and build the app. */
 export async function createExternalStorageRuntime(
   config: ExternalStorageRuntimeConfig,
 ): Promise<ExternalStorageRuntime> {
@@ -62,8 +74,8 @@ export async function createExternalStorageRuntime(
     applicationName: `artifact-server:${config.installationId}`,
     maxConnections: 10,
     url: config.databaseUrl,
-  });
-  const client = new S3Client(s3ClientConfig(config.objectStorage));
+  }, "validate");
+  const client = new S3Client(createS3ClientConfig(config.objectStorage));
   let applicationRuntime: ApplicationRuntime | null = null;
   try {
     await Promise.all([
@@ -107,15 +119,14 @@ export async function createExternalStorageRuntime(
     const telemetry = otlpLayer({
       deploymentMode: "external-storage",
       installationId: config.installationId,
-      serviceVersion: "0.0.0",
+      serviceVersion: config.serviceVersion ?? "0.0.0",
     }).pipe(Layer.provideMerge(structuredLoggingLayer));
     applicationRuntime = ManagedRuntime.make(
       Layer.mergeAll(applicationLayer, resources, telemetry),
     );
     await applicationRuntime.context();
     const readyRuntime = applicationRuntime;
-    return {
-      app: createHttpApp({
+    const appDependencies = {
         applicationRuntime: readyRuntime,
         blobs,
         completedRequestLogSampleRate:
@@ -124,7 +135,11 @@ export async function createExternalStorageRuntime(
         contentDomain: config.contentDomain,
         readiness: () => externalStorageReadiness(database, client, config.objectStorage.bucket),
         trustedApplicationOrigin: config.applicationOrigin ?? null,
-      }),
+    };
+    return {
+      app: createHttpApp(config.runtimeLifecycle === undefined
+        ? appDependencies
+        : {...appDependencies, runtimeLifecycle: config.runtimeLifecycle}),
       close: () => readyRuntime.dispose(),
     };
   } catch (cause) {
@@ -143,8 +158,14 @@ async function externalStorageReadiness(
   client: S3Client,
   bucket: string,
 ) {
-  const [databaseResult, objectStorageResult] = await Promise.all([
+  const [databaseResult, migrationResult, objectStorageResult] = await Promise.all([
     readinessComponent(() => database.health()),
+    readinessComponent(async () => {
+      const migrations = await database.migrationStatus();
+      if (migrations.compatibility !== "current") {
+        throw new Error("The database schema is not compatible with this build.");
+      }
+    }),
     readinessComponent(async (signal) => {
       await client.send(
         new HeadBucketCommand({Bucket: bucket}),
@@ -153,6 +174,7 @@ async function externalStorageReadiness(
     }),
   ]);
   const status = databaseResult.status === "ready"
+    && migrationResult.status === "ready"
     && objectStorageResult.status === "ready"
     ? "ready" as const
     : "not_ready" as const;
@@ -160,7 +182,7 @@ async function externalStorageReadiness(
     components: {
       configuration: readyComponent,
       database: databaseResult,
-      migrations: readyComponent,
+      migrations: migrationResult,
       objectStorage: objectStorageResult,
     },
     status,
@@ -202,18 +224,20 @@ async function readinessComponent(
   }
 }
 
-function s3ClientConfig(
+/** Build an AWS SDK client configuration for one parsed object-store adapter. */
+export function createS3ClientConfig(
   config: ExternalObjectStorageConfig,
 ): S3ClientConfig {
-  const base = {
-    credentials: {
-      accessKeyId: config.accessKeyId,
-      secretAccessKey: Redacted.value(config.secretAccessKey),
-    },
+  const base: S3ClientConfig = {
     forcePathStyle: config.forcePathStyle ?? false,
     region: config.region,
   };
-  return config.endpoint === undefined
-    ? base
-    : {...base, endpoint: config.endpoint};
+  if (config.accessKeyId !== undefined) {
+    base.credentials = {
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: Redacted.value(config.secretAccessKey),
+    };
+  }
+  if (config.endpoint !== undefined) base.endpoint = config.endpoint;
+  return base;
 }

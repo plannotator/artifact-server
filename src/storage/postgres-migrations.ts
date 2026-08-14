@@ -250,6 +250,16 @@ const migrationLoader = Migrator.fromRecord({
   "0001_initial_shared_schema": initialSchema,
 });
 
+/** Schema revision required by this Artifact Server build. */
+export const requiredPostgresSchemaVersion = 1;
+
+/** Migration compatibility observed without changing Postgres. */
+export interface PostgresMigrationStatus {
+  readonly compatibility: "current" | "divergent" | "missing" | "newer" | "pending";
+  readonly currentVersion: number;
+  readonly requiredVersion: number;
+}
+
 const migrate = Migrator.make({})({
   loader: migrationLoader,
   table: "artifact_server_postgres_migrations",
@@ -271,4 +281,54 @@ export const runPostgresMigrations = Effect.gen(function*() {
     )`);
     yield* migrate;
   }));
+});
+
+/** Inspect the migration table without creating it or applying work. */
+export const readPostgresMigrationStatus = Effect.gen(function*() {
+  const sql = yield* SqlClient;
+  const presentRows = yield* sql<{readonly present: boolean}>`
+    SELECT to_regclass('public.artifact_server_postgres_migrations') IS NOT NULL AS present
+  `.withoutTransform;
+  const present = presentRows[0]?.present === true;
+  if (!present) {
+    return {
+      compatibility: "missing",
+      currentVersion: 0,
+      requiredVersion: requiredPostgresSchemaVersion,
+    } satisfies PostgresMigrationStatus;
+  }
+  const rows = yield* sql<{
+    readonly migration_id: number;
+    readonly name: string;
+  }>`
+    SELECT migration_id, name
+    FROM artifact_server_postgres_migrations
+    ORDER BY migration_id
+  `.withoutTransform;
+  const currentVersion = rows.at(-1)?.migration_id ?? 0;
+  const expectedHistory = [{
+    migration_id: 1,
+    name: "initial_shared_schema",
+  }] as const;
+  const observedRequiredHistory = rows.filter(
+    (row) => row.migration_id <= requiredPostgresSchemaVersion,
+  );
+  const historyMatches = observedRequiredHistory.length === expectedHistory.length &&
+    observedRequiredHistory.every((row, index) => {
+      const expected = expectedHistory[index];
+      return expected !== undefined &&
+        row.migration_id === expected.migration_id && row.name === expected.name;
+    });
+  const compatibility = currentVersion > requiredPostgresSchemaVersion
+    ? "newer" as const
+    : currentVersion < requiredPostgresSchemaVersion
+    ? "pending" as const
+    : historyMatches
+    ? "current" as const
+    : "divergent" as const;
+  return {
+    compatibility,
+    currentVersion,
+    requiredVersion: requiredPostgresSchemaVersion,
+  } satisfies PostgresMigrationStatus;
 });

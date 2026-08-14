@@ -35,7 +35,7 @@ This repository contains the local publication foundation and the first external
 - authenticated browser sessions for current or earlier exact versions;
 - persistence of committed versions and in-progress uploads across a full server restart;
 - a stateless external-storage process backed by Postgres and S3-compatible storage;
-- concurrent startup with serialized Postgres migrations;
+- explicit, advisory-locked Postgres migrations that serving processes only validate;
 - cross-process publication, browser sessions, managed keys, and staged uploads;
 - replacement of every application process without losing committed state;
 - installation isolation when several installations use one Postgres database and bucket;
@@ -44,13 +44,13 @@ This repository contains the local publication foundation and the first external
 
 ## Remaining implementation
 
-Packaging is now in progress. The direct local archive and its installed-package
-gate exist. The remaining executable scope is in
+Packaging is now in progress. The direct local archive, installed-package gate,
+and shared lifecycle CLI now exist. The remaining executable scope is in
 [`spec/phase-6-packaging.md`](./spec/phase-6-packaging.md). It defines a native
 local package that does not require Docker, one optional OCI image, Compact
-Compose and External-storage Compose, a Helm chart, migrations, graceful
-shutdown, recovery, release evidence, and the tests that make those targets
-supportable.
+Compose and External-storage Compose, a Helm chart, recovery, release evidence,
+and the tests that make those targets supportable. The next packaging target is
+the OCI image.
 
 After that foundation passes, the remaining work is:
 
@@ -117,11 +117,12 @@ future expiration and can be rotated or revoked.
 
 WorkOS is only an interactive identity provider. Artifact Server still owns its
 member list, authorization decisions, application sessions, and API keys. Copy
-`.env.example` into a secret local environment file or secret manager and set all
-four values before starting the server. Use a dedicated Artifact Server WorkOS
-environment, configure the exact `/auth/callback` redirect, and disable AuthKit
-self-sign-up. Never reuse a Plannotator Workspaces staging or production
-environment.
+`.env.example` into a secret local environment file or secret manager. Set the
+application origin, bootstrap administrator email, client ID, and either the
+WorkOS API-key value or its `_FILE` path before starting the server. Use a
+dedicated Artifact Server WorkOS environment, configure the exact
+`/auth/callback` redirect, and disable AuthKit self-sign-up. Never reuse a
+Plannotator Workspaces staging or production environment.
 
 The first successful WorkOS login is accepted only when its verified email is
 the configured bootstrap administrator email. Later logins require a member
@@ -190,24 +191,59 @@ on application-process disk. Each process uses Postgres for records and one
 S3-compatible bucket for staged and immutable bytes. Local mode remains the
 default and still uses SQLite plus local files.
 
-Set the external-storage values documented in `.env.example`, create the configured
-bucket, and run:
+Set the external-storage values documented in `.env.example` and create the
+configured bucket. Inspect and apply the database migration before serving:
 
 ```sh
 pnpm build
+node dist/cli/main.js migrate status
+node dist/cli/main.js migrate apply
+node dist/cli/main.js config check --mode external-storage
 node dist/cli/main.js start-external-storage --host 0.0.0.0 --port 8787
 ```
 
 Every replica for one installation must use the same installation ID, database,
 bucket, API token, and authentication configuration. Different installations
 may share a database and bucket because every table query and object key is
-installation-scoped. Secrets come from the process environment or its secret
-manager; the server does not print them.
+installation-scoped. Each supported secret accepts either its named environment
+variable or the same name with `_FILE` pointing to a mounted secret file.
+Configuring both forms is an error. The server does not print credential values.
 
-The process runs Postgres migrations under a database advisory lock and checks
+`migrate apply` runs Postgres migrations under a database advisory lock.
+Serving processes never apply migrations; they fail startup when the schema is
+missing, pending, divergent, or newer than the application. Startup also checks
 both providers before it prints the ready URL. Bad database or object-store
 credentials fail startup. Use normal `pg_dump`/`psql` operations plus a complete
 logical copy of the bucket for backup and restore; both halves are required.
+
+## Operator lifecycle commands
+
+The same commands are used by direct packages, containers, Compose, and
+Kubernetes. `artifactserver init` creates one compact installation and prints
+its browser bootstrap credential once. `start-compact` requires that initialized
+directory and never prints a credential.
+
+```sh
+artifactserver init --admin-email admin@example.com --data /srv/artifact-server
+artifactserver config check --mode compact --data /srv/artifact-server
+artifactserver start-compact --data /srv/artifact-server --host 0.0.0.0
+artifactserver support manifest --mode compact --data /srv/artifact-server
+artifactserver integrity check --mode compact --data /srv/artifact-server
+```
+
+`config check` parses the exact configuration, probes required providers, and
+prints only safe source labels such as `environment`, `file`, or
+`generated_file`. `support manifest` adds build, schema, adapter, migration, and
+provider status. `integrity check` reads but never repairs records or bytes; it
+returns exit code `2` when it finds corruption. External-storage integrity uses
+the same manifest, pointer, size, and SHA-256 checks over Postgres and S3.
+
+On `SIGTERM`, deployed processes first return `503` with lifecycle state
+`draining`, wait for the configured routing-withdrawal interval, stop accepting
+connections, finish accepted requests until the deadline, and only then close
+storage and telemetry resources. Configure the bounded intervals with
+`ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS` and
+`ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS`.
 
 ## Verification
 
@@ -236,7 +272,7 @@ pnpm verify:external-storage-runtime
 ```
 
 That Docker-backed gate starts digest-pinned Postgres and MinIO providers and
-runs multiple compiled server processes. It verifies migration concurrency,
+runs multiple compiled server processes. It verifies explicit migration separation,
 cross-process reads and write conflicts, identity and API-key behavior, staged
 uploads, restart, installation isolation, logical backup and restore, and
 provider-credential failures. It is a subprocess behavior gate; the local

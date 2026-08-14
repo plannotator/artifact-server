@@ -6,13 +6,15 @@ import path from "node:path";
 import {
   CreateBucketCommand,
   DeleteBucketCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   type PutObjectCommandInput,
   S3Client,
 } from "@aws-sdk/client-s3";
-import {Redacted} from "effect";
+import {Effect, Redacted} from "effect";
+import {SqlClient} from "effect/unstable/sql/SqlClient";
 import {afterAll, afterEach, beforeAll, describe, expect, test} from "vitest";
 import {z} from "zod";
 import {
@@ -22,6 +24,8 @@ import {
 } from "@modelcontextprotocol/server";
 
 import {startExternalStorageServer} from "../../src/external-storage/start-external-storage-server.js";
+import {checkExternalStorageIntegrity} from
+  "../../src/lifecycle/integrity-check.js";
 import {PostgresDatabase} from "../../src/storage/postgres-database.js";
 import {PostgresArtifactRepository} from "../../src/storage/postgres-artifact-repository.js";
 import {PostgresIdentityRepository} from "../../src/storage/postgres-identity-repository.js";
@@ -134,6 +138,65 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       ...[...runningProcesses].map(stopChild),
       ...[...runningInProcessServers].map((server) => server.stop()),
     ]);
+  });
+
+  test("external-storage foundation: migration status is read-only and serving begins only after explicit apply", async () => {
+    const migrationEnvironment = {
+      ARTIFACT_SERVER_DATABASE_URL: environment.databaseUrl,
+      ARTIFACT_SERVER_INSTALLATION_ID: installationId,
+    };
+    const before = await runExternalCli(["migrate", "status"], migrationEnvironment);
+    expect(before.exitCode).toBe(0);
+    expect(JSON.parse(before.output)).toMatchObject({
+      compatibility: "missing",
+      currentVersion: 0,
+      requiredVersion: 1,
+    });
+
+    const applied = await runExternalCli(["migrate", "apply"], migrationEnvironment);
+    expect(applied.exitCode).toBe(0);
+    expect(JSON.parse(applied.output)).toMatchObject({
+      compatibility: "current",
+      currentVersion: 1,
+      requiredVersion: 1,
+    });
+
+    const after = await runExternalCli(["migrate", "status"], migrationEnvironment);
+    expect(after.exitCode).toBe(0);
+    expect(JSON.parse(after.output)).toEqual(JSON.parse(applied.output));
+
+    const database = await PostgresDatabase.inspect({
+      applicationName: "artifact-server-divergent-migration-test",
+      maxConnections: 1,
+      url: Redacted.make(environment.databaseUrl, {label: "test-database-url"}),
+    });
+    try {
+      await database.run(Effect.gen(function*() {
+        const sql = yield* SqlClient;
+        yield* sql`
+          UPDATE artifact_server_postgres_migrations
+          SET name = 'divergent_test_history'
+          WHERE migration_id = 1
+        `;
+      }));
+      const divergent = await runExternalCli(
+        ["migrate", "apply"],
+        migrationEnvironment,
+      );
+      expect(divergent.exitCode).not.toBe(0);
+      expect(divergent.output).toContain("divergent");
+      expect(divergent.output).not.toContain(environment.databaseUrl);
+    } finally {
+      await database.run(Effect.gen(function*() {
+        const sql = yield* SqlClient;
+        yield* sql`
+          UPDATE artifact_server_postgres_migrations
+          SET name = 'initial_shared_schema'
+          WHERE migration_id = 1
+        `;
+      }));
+      await database.close();
+    }
   });
 
   afterAll(() => {
@@ -303,7 +366,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     const database = await PostgresDatabase.open({
       maxConnections: 2,
       url: Redacted.make(environment.databaseUrl),
-    });
+    }, "validate");
     try {
       const repository = new PostgresIdentityRepository(
         database,
@@ -322,7 +385,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     const database = await PostgresDatabase.open({
       maxConnections: 2,
       url: Redacted.make(environment.databaseUrl),
-    });
+    }, "validate");
     const scopedInstallation = `administrator-race-${randomUUID()}`;
     try {
       await PostgresArtifactRepository.open(database, scopedInstallation);
@@ -410,7 +473,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
         displayName: "External-storage team member",
         email: "external-storage-member@example.test",
       }),
-      headers: browserMutationHeaders(second.baseUrl, cookies),
+      headers: browserMutationHeaders("https://artifacts.example.com", cookies),
       method: "POST",
     });
     expect(memberResponse.status).toBe(201);
@@ -422,7 +485,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
         displayName: "Duplicate team member",
         email: "EXTERNAL-STORAGE-MEMBER@example.test",
       }),
-      headers: browserMutationHeaders(second.baseUrl, cookies),
+      headers: browserMutationHeaders("https://artifacts.example.com", cookies),
       method: "POST",
     });
     expect(duplicateMember.status).toBe(409);
@@ -439,7 +502,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
         expiresAt: "2099-01-01T00:00:00.000Z",
         name: "Cross-process reader",
       }),
-      headers: browserMutationHeaders(second.baseUrl, cookies),
+      headers: browserMutationHeaders("https://artifacts.example.com", cookies),
       method: "POST",
     });
     expect(issueResponse.status).toBe(201);
@@ -455,7 +518,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     const rotateResponse = await fetch(
       `${second.baseUrl}/api/v1/api-keys/${issued.apiKey.id}/rotate`,
       {
-        headers: browserMutationHeaders(second.baseUrl, cookies),
+        headers: browserMutationHeaders("https://artifacts.example.com", cookies),
         method: "POST",
       },
     );
@@ -467,7 +530,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     const revokeResponse = await fetch(
       `${second.baseUrl}/api/v1/api-keys/${rotated.apiKey.id}/revoke`,
       {
-        headers: browserMutationHeaders(second.baseUrl, cookies),
+        headers: browserMutationHeaders("https://artifacts.example.com", cookies),
         method: "POST",
       },
     );
@@ -477,7 +540,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     const deactivateMember = await fetch(
       `${second.baseUrl}/api/v1/members/${member.id}/deactivate`,
       {
-        headers: browserMutationHeaders(second.baseUrl, cookies),
+        headers: browserMutationHeaders("https://artifacts.example.com", cookies),
         method: "POST",
       },
     );
@@ -540,7 +603,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(await rendered.text()).toBe(new TextDecoder().decode(fileBytes));
 
     const logout = await fetch(`${second.baseUrl}/api/v1/session/logout`, {
-      headers: browserMutationHeaders(second.baseUrl, cookies),
+      headers: browserMutationHeaders("https://artifacts.example.com", cookies),
       method: "POST",
     });
     expect(logout.status).toBe(204);
@@ -751,6 +814,59 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     )).status).toBe(404);
   });
 
+  test("external-storage foundation: integrity scans committed Postgres records and S3 bytes without repair", async () => {
+    const identity = {
+      apiToken: "integrity-api-token-with-sufficient-entropy-000000",
+      installationId: `external-integrity-${randomUUID()}`,
+    };
+    const server = await startInProcessExternalStorageServer(environment, identity);
+    const published = await publishNew(server.baseUrl, identity.apiToken, {
+      content: "external integrity proof",
+      idempotencyKey: `external-integrity-${randomUUID()}`,
+      name: "External integrity proof",
+    });
+    expect(published.response.status).toBe(201);
+    await server.stop();
+
+    const configuration = {
+      databaseUrl: Redacted.make(environment.databaseUrl),
+      installationId: identity.installationId,
+      objectStorage: {
+        accessKeyId: environment.accessKey,
+        bucket,
+        endpoint: environment.endpoint,
+        forcePathStyle: true,
+        region,
+        secretAccessKey: Redacted.make(environment.secretKey),
+      },
+    };
+    const healthy = await checkExternalStorageIntegrity(configuration);
+    expect(healthy).toMatchObject({
+      artifactsChecked: 1,
+      blobsChecked: 1,
+      problems: [],
+      status: "healthy",
+      versionsChecked: 1,
+    });
+
+    const namespace = createHash("sha256")
+      .update(identity.installationId)
+      .digest("hex");
+    const listed = await s3Client.send(new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: `installations/${namespace}/blobs/`,
+    }));
+    const key = listed.Contents?.[0]?.Key;
+    if (key === undefined) throw new Error("The integrity fixture blob was not stored.");
+    await s3Client.send(new DeleteObjectCommand({Bucket: bucket, Key: key}));
+
+    const corrupt = await checkExternalStorageIntegrity(configuration);
+    expect(corrupt).toMatchObject({
+      problems: [{code: "blob_missing"}],
+      status: "corrupt",
+    });
+  });
+
   test("external-storage foundation: logical Postgres and object backups restore stable IDs and bytes", async () => {
     expect.hasAssertions();
     const backupIdentity = {
@@ -776,7 +892,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
         expiresAt: "2099-01-01T00:00:00.000Z",
         name: "Restored reader",
       }),
-      headers: browserMutationHeaders(source.baseUrl, cookies),
+      headers: browserMutationHeaders("https://artifacts.example.com", cookies),
       method: "POST",
     });
     expect(issueResponse.status).toBe(201);
@@ -906,12 +1022,16 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
           latencyMilliseconds: expect.any(Number),
           status: "ready",
         },
-        migrations: {latencyMilliseconds: 0, status: "ready"},
+        migrations: {
+          latencyMilliseconds: expect.any(Number),
+          status: "ready",
+        },
         objectStorage: {
           latencyMilliseconds: expect.any(Number),
           status: "ready",
         },
       },
+      lifecycle: "ready",
       status: "ready",
     });
 
@@ -925,12 +1045,16 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
           latencyMilliseconds: expect.any(Number),
           status: "ready",
         },
-        migrations: {latencyMilliseconds: 0, status: "ready"},
+        migrations: {
+          latencyMilliseconds: expect.any(Number),
+          status: "ready",
+        },
         objectStorage: {
           latencyMilliseconds: expect.any(Number),
           status: "unavailable",
         },
       },
+      lifecycle: "ready",
       status: "not_ready",
     });
 
@@ -981,10 +1105,12 @@ function startExternalStorageProcess(
         ...process.env,
         ARTIFACT_SERVER_API_TOKEN: identity.apiToken,
         ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL: "admin@example.test",
-        ARTIFACT_SERVER_CONTENT_DOMAIN: "localhost",
+        ARTIFACT_SERVER_CONTENT_DOMAIN: "content.example.net",
         ARTIFACT_SERVER_DATABASE_URL: environment.databaseUrl,
         ARTIFACT_SERVER_INSTALLATION_ID: identity.installationId,
         ARTIFACT_SERVER_LOCAL_BOOTSTRAP_TOKEN: browserBootstrapToken,
+        ARTIFACT_SERVER_ORIGIN: "https://artifacts.example.com",
+        ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS: "0",
         ARTIFACT_SERVER_S3_ACCESS_KEY_ID: environment.accessKey,
         ARTIFACT_SERVER_S3_BUCKET: identity.storageBucket ?? bucket,
         ARTIFACT_SERVER_S3_ENDPOINT: environment.endpoint,
@@ -999,14 +1125,36 @@ function startExternalStorageProcess(
   return waitForExternalStorageProcess(child);
 }
 
+function runExternalCli(
+  arguments_: readonly string[],
+  environment: Readonly<Record<string, string>>,
+): Promise<{readonly exitCode: number; readonly output: string}> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [externalStorageCli, ...arguments_], {
+      cwd: repositoryRoot,
+      env: {...process.env, ...environment},
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const output: Uint8Array[] = [];
+    child.stdout.on("data", (chunk: Buffer) => output.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => output.push(chunk));
+    child.once("error", reject);
+    child.once("close", (exitCode) => resolve({
+      exitCode: exitCode ?? -1,
+      output: Buffer.concat(output).toString("utf8").trim(),
+    }));
+  });
+}
+
 async function startInProcessExternalStorageServer(
   environment: IntegrationEnvironment,
   identity: {readonly apiToken: string; readonly installationId: string},
 ): Promise<InProcessExternalStorageServer> {
   const server = await startExternalStorageServer({
     apiToken: Redacted.make(identity.apiToken),
+    applicationOrigin: "https://artifacts.example.com",
     bootstrapAdministratorEmail: "admin@example.test",
-    contentDomain: "localhost",
+    contentDomain: "content.example.net",
     databaseUrl: Redacted.make(environment.databaseUrl),
     hostname: "127.0.0.1",
     installationId: identity.installationId,
@@ -1189,10 +1337,11 @@ function externalStorageMcpRequest(
     "Content-Type": "application/json",
     "MCP-Protocol-Version": "2026-07-28",
     "Mcp-Method": method,
+    Host: "artifacts.example.com",
+    Origin: "https://artifacts.example.com",
   });
   if (name !== undefined) headers.set("Mcp-Name", name);
-  return fetch(`${baseUrl}/mcp`, {
-    body: JSON.stringify({
+  const body = JSON.stringify({
       id: randomUUID(),
       jsonrpc: "2.0",
       method,
@@ -1204,9 +1353,43 @@ function externalStorageMcpRequest(
           [PROTOCOL_VERSION_META_KEY]: "2026-07-28",
         },
       },
-    }),
-    headers,
-    method: "POST",
+    });
+  return rawHttpRequest(new URL("/mcp", baseUrl), headers, "POST", body);
+}
+
+function rawHttpRequest(
+  target: URL,
+  headers: Headers,
+  method: string,
+  body: string,
+): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const outgoing = request({
+      headers: Object.fromEntries(headers),
+      hostname: target.hostname,
+      method,
+      path: `${target.pathname}${target.search}`,
+      port: target.port,
+    }, (incoming) => {
+      const chunks: Uint8Array[] = [];
+      incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
+      incoming.on("end", () => {
+        const responseHeaders = new Headers();
+        for (let index = 0; index < incoming.rawHeaders.length; index += 2) {
+          const name = incoming.rawHeaders[index];
+          const value = incoming.rawHeaders[index + 1];
+          if (name !== undefined && value !== undefined) {
+            responseHeaders.append(name, value);
+          }
+        }
+        resolve(new Response(Buffer.concat(chunks), {
+          headers: responseHeaders,
+          status: incoming.statusCode ?? 500,
+        }));
+      });
+    });
+    outgoing.once("error", reject);
+    outgoing.end(body);
   });
 }
 
@@ -1281,10 +1464,12 @@ function applicationCookies(
   setCookieHeaders: readonly string[],
 ): ApplicationCookies {
   const session = setCookieHeaders.find((value) =>
-    value.startsWith("artifact_session=")
+    value.startsWith("artifact_session=") ||
+    value.startsWith("__Host-artifact_session=")
   );
   const csrf = setCookieHeaders.find((value) =>
-    value.startsWith("artifact_csrf=")
+    value.startsWith("artifact_csrf=") ||
+    value.startsWith("__Host-artifact_csrf=")
   );
   if (session === undefined || csrf === undefined) {
     throw new Error("The login response did not issue both application cookies.");

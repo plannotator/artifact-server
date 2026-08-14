@@ -130,6 +130,7 @@ export interface ExternalStorageBaselineReport {
     readonly crossProcessDirectoryRead: "passed";
     readonly crossProcessSingleFileRead: "passed";
     readonly healthEndpoints: "passed";
+    readonly migrations: "passed";
     readonly processReplacement: "passed";
     readonly providerBackedPublication: "passed";
   };
@@ -211,6 +212,7 @@ export async function runExternalStorageBaseline(
 
   try {
     await s3Client.send(new CreateBucketCommand({Bucket: bucket}));
+    await applyMigrations(environment, installationId);
     const [first, second] = await Promise.all([
       startExternalStorageProcess(environment, {apiToken, bucket, installationId}),
       startExternalStorageProcess(environment, {apiToken, bucket, installationId}),
@@ -339,6 +341,7 @@ export async function runExternalStorageBaseline(
         crossProcessDirectoryRead: "passed" as const,
         crossProcessSingleFileRead: "passed" as const,
         healthEndpoints: "passed" as const,
+        migrations: "passed" as const,
         processReplacement: "passed" as const,
         providerBackedPublication: "passed" as const,
       },
@@ -463,10 +466,12 @@ function startExternalStorageProcess(
       env: {
         ...process.env,
         ARTIFACT_SERVER_API_TOKEN: identity.apiToken,
+        ARTIFACT_SERVER_ORIGIN: "https://artifacts.example.com",
         ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL: "performance@example.test",
-        ARTIFACT_SERVER_CONTENT_DOMAIN: "localhost",
+        ARTIFACT_SERVER_CONTENT_DOMAIN: "content.example.net",
         ARTIFACT_SERVER_DATABASE_URL: environment.databaseUrl,
         ARTIFACT_SERVER_INSTALLATION_ID: identity.installationId,
+        ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS: "0",
         ARTIFACT_SERVER_S3_ACCESS_KEY_ID: environment.accessKey,
         ARTIFACT_SERVER_S3_BUCKET: identity.bucket,
         ARTIFACT_SERVER_S3_ENDPOINT: environment.s3Endpoint,
@@ -478,6 +483,32 @@ function startExternalStorageProcess(
     },
   );
   return waitForExternalStorageProcess(child, startedAt);
+}
+
+function applyMigrations(
+  environment: ExternalStorageEnvironment,
+  installationId: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [externalStorageCli, "migrate", "apply"],
+      {
+        cwd: repositoryRoot,
+        env: {
+          ...process.env,
+          ARTIFACT_SERVER_DATABASE_URL: environment.databaseUrl,
+          ARTIFACT_SERVER_INSTALLATION_ID: installationId,
+        },
+        stdio: ["ignore", "ignore", "ignore"],
+      },
+    );
+    child.once("error", reject);
+    child.once("exit", (exitCode) => {
+      if (exitCode === 0) resolve();
+      else reject(new Error("The migration command failed before the baseline."));
+    });
+  });
 }
 
 function waitForExternalStorageProcess(

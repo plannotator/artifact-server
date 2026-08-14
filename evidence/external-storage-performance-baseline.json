@@ -2,49 +2,50 @@
   "artifactList": {
     "latency": {
       "count": 16,
-      "maximumMilliseconds": 3.839,
-      "meanMilliseconds": 2.314,
-      "minimumMilliseconds": 1.458,
-      "p50Milliseconds": 1.912,
-      "p95Milliseconds": 3.839,
-      "p99Milliseconds": 3.839
+      "maximumMilliseconds": 3.241,
+      "meanMilliseconds": 2.207,
+      "minimumMilliseconds": 1.438,
+      "p50Milliseconds": 2.057,
+      "p95Milliseconds": 3.241,
+      "p99Milliseconds": 3.241
     },
-    "operationsPerSecond": 1601.495,
-    "totalMilliseconds": 9.991
+    "operationsPerSecond": 1745.693,
+    "totalMilliseconds": 9.165
   },
   "checks": {
     "compiledProcesses": "passed",
     "crossProcessDirectoryRead": "passed",
     "crossProcessSingleFileRead": "passed",
     "healthEndpoints": "passed",
+    "migrations": "passed",
     "processReplacement": "passed",
     "providerBackedPublication": "passed"
   },
   "concurrentPublish": {
     "latency": {
       "count": 16,
-      "maximumMilliseconds": 80.383,
-      "meanMilliseconds": 47.03,
-      "minimumMilliseconds": 31.682,
-      "p50Milliseconds": 35.883,
-      "p95Milliseconds": 80.383,
-      "p99Milliseconds": 80.383
+      "maximumMilliseconds": 91.217,
+      "meanMilliseconds": 43.247,
+      "minimumMilliseconds": 24.945,
+      "p50Milliseconds": 33.448,
+      "p95Milliseconds": 91.217,
+      "p99Milliseconds": 91.217
     },
-    "operationsPerSecond": 80.344,
-    "totalMilliseconds": 199.143
+    "operationsPerSecond": 85.56,
+    "totalMilliseconds": 187.003
   },
   "concurrentRead": {
     "latency": {
       "count": 80,
-      "maximumMilliseconds": 5.754,
-      "meanMilliseconds": 3.515,
-      "minimumMilliseconds": 2.245,
-      "p50Milliseconds": 3.417,
-      "p95Milliseconds": 4.979,
-      "p99Milliseconds": 5.754
+      "maximumMilliseconds": 5.445,
+      "meanMilliseconds": 3.126,
+      "minimumMilliseconds": 2.091,
+      "p50Milliseconds": 2.946,
+      "p95Milliseconds": 4.961,
+      "p99Milliseconds": 5.445
     },
-    "operationsPerSecond": 2198.847,
-    "totalMilliseconds": 36.383
+    "operationsPerSecond": 2485.849,
+    "totalMilliseconds": 32.182
   },
   "configuration": {
     "concurrentFileBytes": 16384,
@@ -71,39 +72,39 @@
     "directory": {
       "latency": {
         "count": 3,
-        "maximumMilliseconds": 475.043,
-        "meanMilliseconds": 417.75,
-        "minimumMilliseconds": 376.753,
-        "p50Milliseconds": 401.453,
-        "p95Milliseconds": 475.043,
-        "p99Milliseconds": 475.043
+        "maximumMilliseconds": 381.159,
+        "meanMilliseconds": 351.844,
+        "minimumMilliseconds": 332.846,
+        "p50Milliseconds": 341.528,
+        "p95Milliseconds": 381.159,
+        "p99Milliseconds": 381.159
       },
-      "operationsPerSecond": 2.394,
-      "totalMilliseconds": 1253.276
+      "operationsPerSecond": 2.842,
+      "totalMilliseconds": 1055.552
     },
     "singleFile": {
       "latency": {
         "count": 3,
-        "maximumMilliseconds": 96.099,
-        "meanMilliseconds": 93.035,
-        "minimumMilliseconds": 86.911,
-        "p50Milliseconds": 96.094,
-        "p95Milliseconds": 96.099,
-        "p99Milliseconds": 96.099
+        "maximumMilliseconds": 108.891,
+        "meanMilliseconds": 99.606,
+        "minimumMilliseconds": 86.894,
+        "p50Milliseconds": 103.034,
+        "p95Milliseconds": 108.891,
+        "p99Milliseconds": 108.891
       },
-      "operationsPerSecond": 10.748,
-      "totalMilliseconds": 279.125
+      "operationsPerSecond": 10.039,
+      "totalMilliseconds": 298.833
     }
   },
-  "generatedAt": "2026-08-13T23:11:48.299Z",
-  "providerReadyMilliseconds": 2066,
+  "generatedAt": "2026-08-14T01:49:16.084Z",
+  "providerReadyMilliseconds": 2082,
   "serverReadyMilliseconds": {
     "initialProcesses": [
-      290.502,
-      294.658
+      242.566,
+      241.962
     ],
-    "replacementProcess": 246.17
+    "replacementProcess": 220.841
   },
-  "totalHarnessMilliseconds": 2490.209,
+  "totalHarnessMilliseconds": 2447.584,
   "warnings": []
 }

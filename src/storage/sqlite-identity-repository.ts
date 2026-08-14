@@ -20,6 +20,7 @@ import {
   principalCapabilities,
   principalKinds,
 } from "../core/identity.js";
+import {requiredSqliteSchemaVersion} from "./sqlite-schema.js";
 import type {
   AdmitMemberRecord,
   BindExternalIdentityRecord,
@@ -685,6 +686,7 @@ export class SqliteIdentityRepository implements IdentityRepository {
         consumed_at TEXT
       );
     `);
+    this.#database.exec(`PRAGMA user_version = ${requiredSqliteSchemaVersion};`);
   }
 }
 

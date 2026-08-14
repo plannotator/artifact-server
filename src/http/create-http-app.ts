@@ -68,6 +68,10 @@ import {
 } from "./artifact-http-links.js";
 import {artifactServerFailureResponse} from "./artifact-http-failure.js";
 import {observeHttpRequest} from "../observability/application-observability.js";
+import type {
+  RuntimeLifecycle,
+  RuntimeLifecycleState,
+} from "../lifecycle/runtime-readiness.js";
 
 const maximumJsonRequestBytes = 1_500_000;
 const accessSettingSchema = z.enum([
@@ -207,6 +211,7 @@ export interface HttpAppDependencies {
   readonly completedRequestLogSampleRate: number;
   readonly contentDomain: string;
   readonly readiness?: ReadinessProbe;
+  readonly runtimeLifecycle?: RuntimeLifecycle;
   readonly trustedApplicationOrigin: string | null;
 }
 
@@ -225,6 +230,7 @@ export interface ReadinessReport {
     readonly objectStorage: ReadinessComponent;
   };
   readonly status: "ready" | "not_ready";
+  readonly lifecycle?: RuntimeLifecycleState;
 }
 
 /** Probe external-storage dependencies without changing application state. */
@@ -425,11 +431,18 @@ export function createHttpApp(
   );
 
   app.get("/ready", async (context) => {
+    const lifecycle = dependencies.runtimeLifecycle?.current() ?? "ready";
+    if (lifecycle !== "ready") {
+      return context.json({lifecycle, status: "not_ready" as const}, 503);
+    }
     if (dependencies.readiness === undefined) {
-      return context.json({status: "ready" as const});
+      return context.json({lifecycle, status: "ready" as const});
     }
     const report = await dependencies.readiness();
-    return context.json(report, report.status === "ready" ? 200 : 503);
+    return context.json(
+      {...report, lifecycle},
+      report.status === "ready" ? 200 : 503,
+    );
   });
 
   app.get("/auth/local", async (context) => {

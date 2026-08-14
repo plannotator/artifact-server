@@ -19,6 +19,7 @@ import { LocalStagingStore } from "../storage/local-staging-store.js";
 import { SqliteArtifactRepository } from "../storage/sqlite-artifact-repository.js";
 import { SqliteIdentityRepository } from "../storage/sqlite-identity-repository.js";
 import { createLocalApplicationLayer } from "./create-local-application-layer.js";
+import type {RuntimeLifecycle} from "../lifecycle/runtime-readiness.js";
 
 export interface LocalRuntimeConfig {
   readonly apiToken: string;
@@ -32,6 +33,9 @@ export interface LocalRuntimeConfig {
   readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
   readonly localBootstrapToken?: string;
   readonly observability?: boolean;
+  readonly runtimeLifecycle?: RuntimeLifecycle;
+  readonly installationId?: string;
+  readonly serviceVersion?: string;
 }
 
 export interface LocalRuntime {
@@ -66,7 +70,7 @@ export async function createLocalRuntime(
     externalBearerVerifier: config.externalBearerVerifier ?? null,
     ids: new SystemIdGenerator(),
     identityRepository,
-    installationId: "local",
+    installationId: config.installationId ?? "local",
     interactiveIdentityProvider: config.interactiveIdentityProvider ?? null,
     localBootstrapCredential: config.localBootstrapToken === undefined
       ? null
@@ -79,8 +83,8 @@ export async function createLocalRuntime(
   const telemetryLayer = config.observability === true
     ? otlpLayer({
       deploymentMode: "local",
-      installationId: "local",
-      serviceVersion: "0.0.0",
+      installationId: config.installationId ?? "local",
+      serviceVersion: config.serviceVersion ?? "0.0.0",
     }).pipe(Layer.provideMerge(structuredLoggingLayer))
     : silentLoggingLayer;
   const applicationRuntime: ApplicationRuntime = ManagedRuntime.make(
@@ -88,7 +92,7 @@ export async function createLocalRuntime(
   );
   try {
     await applicationRuntime.context();
-    const app = createHttpApp({
+    const appDependencies = {
       applicationRuntime,
       blobs,
       completedRequestLogSampleRate:
@@ -96,7 +100,10 @@ export async function createLocalRuntime(
           defaultCompletedRequestLogSampleRate,
       contentDomain: config.contentDomain,
       trustedApplicationOrigin: config.applicationOrigin ?? null,
-    });
+    };
+    const app = createHttpApp(config.runtimeLifecycle === undefined
+      ? appDependencies
+      : {...appDependencies, runtimeLifecycle: config.runtimeLifecycle});
 
     return {
       app,

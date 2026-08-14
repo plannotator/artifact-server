@@ -52,6 +52,7 @@
     "commander": "15.0.0",
     "effect": "4.0.0-rc.108",
     "hono": "4.13.1",
+    "tldts": "7.4.10",
     "unicode-case-folding": "1.1.1",
     "zod": "4.4.3"
   },

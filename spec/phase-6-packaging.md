@@ -441,14 +441,14 @@ fail the packaging gate.
 
 ## Implementation order
 
-1. Build the direct local package from compiled JavaScript and production
+1. **Complete.** Build the direct local package from compiled JavaScript and production
    dependencies, then prove clean extraction, offline execution, program
    replacement, restart, stopped-data backup, and restore through the packaged
    executable.
-2. Add the remaining runtime lifecycle commands and behavior: migration apply and
+2. **Complete for the pre-image surface.** Add the remaining runtime lifecycle commands and behavior: migration apply and
    validate, configuration check, secret files, support manifest, integrity
    check, readiness drain, and version injection.
-3. Build and verify the OCI image against the existing local, external-storage, MCP,
+3. **Next.** Build and verify the OCI image against the existing local, external-storage, MCP,
    observability, smoke, and bounded performance suites.
 4. Ship the compact Compose package and complete its install, restart, upgrade,
    backup, restore, and hostile-configuration evidence.

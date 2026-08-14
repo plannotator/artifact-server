@@ -21,7 +21,7 @@ export interface TestInstallation {
 
 export interface RunningTestServer {
   readonly baseUrl: string;
-  readonly hostname: "127.0.0.1";
+  readonly hostname: string;
   readonly port: number;
   stop(): Promise<void>;
 }
