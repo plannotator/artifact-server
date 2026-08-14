@@ -45,12 +45,12 @@ This repository contains the local publication foundation and the first external
 ## Remaining implementation
 
 Packaging is now in progress. The direct local archive, shared lifecycle CLI,
-and production OCI image now exist. The remaining executable scope is in
+production OCI image, and Compact Compose package now exist. The remaining executable scope is in
 [`spec/phase-6-packaging.md`](./spec/phase-6-packaging.md). It defines a native
 local package that does not require Docker, one optional OCI image, Compact
 Compose and External-storage Compose, a Helm chart, recovery, release evidence,
 and the tests that make those targets supportable. The next packaging target is
-Compact Compose.
+External-storage Compose.
 
 After that foundation passes, the remaining work is:
 
@@ -129,6 +129,62 @@ mode receives a writable durable data volume.
 This local build does not sign the image. Signing requires the release registry
 and release identity and remains a release-pipeline gate. Compose and Helm files
 will use the published image digest, never a floating tag.
+
+## Run Compact Compose
+
+Compact Compose runs one Artifact Server container with SQLite and file storage
+in one persistent Docker volume. It is the shortest supported one-server team
+installation. It does not claim failover or support more than one application
+process.
+
+Copy [`packaging/compose`](./packaging/compose) to the server, copy
+`.env.example` to `.env`, and set the published immutable image digest. Then
+initialize and start the installation:
+
+```sh
+docker compose run --rm --no-deps artifact-server \
+  init --admin-email admin@example.com \
+  --data /var/lib/artifact-server/data
+docker compose up --detach --wait
+```
+
+The initialization command prints the browser bootstrap credential once. The
+server uses the same volume on restart and container replacement.
+
+Create a stopped-volume backup and restore it into a clean Compose project:
+
+```sh
+./compact-backup.sh /srv/backups/artifact-server/2026-08-14
+export COMPOSE_PROJECT_NAME=artifact-server-restored
+./compact-restore.sh /srv/backups/artifact-server/2026-08-14
+docker compose up --detach --wait
+```
+
+The backup includes the complete data directory, a SHA-256 checksum, and a
+support manifest. Restore refuses a running or nonempty target, incomplete or
+corrupt backup, unsafe archive path, link, or special filesystem entry. It runs
+the Artifact Server integrity check before the operator can start the restored
+service. A failed restore leaves a durable marker that prevents the server from
+starting with partial state.
+
+The default stack binds to loopback and needs no proxy. Access from another
+device requires an HTTPS application origin, a separate registrable wildcard
+content domain, and a trusted reverse proxy. The package does not install a
+proxy, issue certificates, change firewall rules, or create a public tunnel.
+See [`packaging/compose/README.md`](./packaging/compose/README.md) for the exact
+install, network, backup, restore, and failure contracts.
+
+Run the real Compose release gate with:
+
+```sh
+pnpm verify:compact-compose
+```
+
+The gate rebuilds and loads the production OCI archive, executes Docker
+Compose, publishes a file and complete site, restarts and replaces the
+container, backs up and restores into a clean volume, compares complete stored
+state and bytes, and runs the hostile configurations. It is also part of
+`pnpm verify:iteration`.
 
 ## Run from the source checkout
 

@@ -319,6 +319,10 @@ The first supported compact backup is deliberately simple and consistent:
 5. verify the backup by restoring it into an empty data directory and running
    the integrity check.
 
+Restore writes a durable incomplete marker before extraction. Runtime startup
+must refuse that data directory until restore finishes and its integrity check
+removes the marker.
+
 An online SQLite backup can replace the stop-and-copy procedure only after it
 has equivalent crash and restore evidence.
 
@@ -464,9 +468,12 @@ fail the packaging gate.
    external-storage publication, clean shutdown, replacement, durable bytes,
    secret-free diagnostics, and a bounded container baseline. Release-registry
    signing remains in step 8.
-4. **Next.** Ship the compact Compose package and complete its install, restart, upgrade,
-   backup, restore, and hostile-configuration evidence.
-5. Ship External-storage Compose and run the existing multi-process Postgres
+4. **Complete for the first-release foundation.** Ship the Compact Compose
+   package and prove install, restart, same-image replacement, backup, clean
+   restore, exact state comparison, and hostile configuration against the
+   production image. Cross-version upgrade and rollback remain a release gate
+   when two released images exist.
+5. **Next.** Ship External-storage Compose and run the existing multi-process Postgres
    and S3 suite through containers.
 6. Ship the Helm chart and pass the multi-replica migration, rollout, failure,
    recovery, observability, and performance gates in a disposable cluster.

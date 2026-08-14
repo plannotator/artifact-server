@@ -1869,15 +1869,33 @@ requirements:
 
   - id: DEP-005
     kind: deployment
-    behavior: The one-server target offers Compact Compose with one container, SQLite, and one persistent data directory, plus External-storage Compose that connects the same image to existing Postgres and object storage through a supported adapter.
+    behavior: The one-server Compact Compose target runs exactly one container with SQLite and one persistent data directory, and it preserves complete installation state through restart, replacement, backup, and restore.
     owner: deployment
-    source: {file: artifact-server-product-spec.html, anchor: deployment}
+    source: {file: phase-6-packaging.md, anchor: compact-compose}
     acceptance:
-      behavior: {id: DEP-005-B, description: Deploy Compact Compose and External-storage Compose, replace every application container, and preserve all IDs, records, pointers, and bytes.}
-      failure: {id: DEP-005-F, description: Compact Compose rejects an ephemeral data path, cannot run multiple application writers or claim failover, and External-storage Compose cannot depend on container-local durable state.}
+      behavior: {id: DEP-005-B, description: Deploy Compact Compose, publish a file and complete site, restart and replace the container, back up the stopped volume, restore into a clean volume, and preserve all IDs, records, pointers, manifests, action attribution, access settings, and bytes.}
+      failure: {id: DEP-005-F, description: Compact Compose rejects scaling, an ephemeral or uninitialized data path, bad permissions, missing generated secrets, invalid domain isolation, and incomplete identity-provider configuration without reporting ready.}
+    deployments: [single_server]
+    status: behavior_verified
+    depends_on: [OPS-003]
+    evidence:
+      - deployment: single_server
+        tests: [DEP-005-B, DEP-005-F]
+        result: pass
+        run: evidence/compact-compose.json
+        recorded_at: "2026-08-14T04:35:04Z"
+
+  - id: DEP-020
+    kind: deployment
+    behavior: External-storage Compose connects the production image to existing Postgres and object storage through a supported adapter, can run more than one application process, and stores no durable state on the application container filesystem.
+    owner: deployment
+    source: {file: phase-6-packaging.md, anchor: external-storage-compose}
+    acceptance:
+      behavior: {id: DEP-020-B, description: Deploy External-storage Compose against real Postgres and object storage, replace every application container, and preserve IDs, records, pointers, manifests, action attribution, access settings, and bytes.}
+      failure: {id: DEP-020-F, description: External-storage Compose rejects incomplete provider configuration, unavailable or incompatible providers, unsafe local durable paths, and schema mismatch without reporting ready.}
     deployments: [single_server]
     status: specified
-    depends_on: [OPS-003]
+    depends_on: [OPS-003, ARC-003]
     evidence: []
 
   - id: DEP-006
@@ -2107,9 +2125,14 @@ requirements:
       behavior: {id: OPS-003-B, description: Back up a populated deployment, restore it into a clean supported environment, and compare every required identity, pointer, record, and byte.}
       failure: {id: OPS-003-F, description: Missing, mismatched, cross-installation, partially restored, or mutable data makes restore fail closed and prevents the target from reporting ready.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [ART-001, ART-004, AUD-001]
-    evidence: []
+    evidence:
+      - deployment: single_server
+        tests: [OPS-003-B, OPS-003-F]
+        result: pass
+        run: evidence/compact-compose.json
+        recorded_at: "2026-08-14T04:35:04Z"
 
   - id: OPS-004
     kind: behavior

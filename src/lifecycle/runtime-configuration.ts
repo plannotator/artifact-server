@@ -2,7 +2,7 @@ import {constants} from "node:fs";
 import {access, readFile, stat} from "node:fs/promises";
 import path from "node:path";
 
-import {Effect, Redacted, Schema} from "effect";
+import {Effect, Option, Redacted, Schema} from "effect";
 import {getDomain} from "tldts";
 
 import type {ExternalObjectStorageConfig} from
@@ -37,6 +37,7 @@ const postgresUrlSchema = Schema.String.check(
 const urlStringSchema = Schema.String.check(
   Schema.isPattern(/^https?:\/\/[^\s]+$/u),
 );
+const systemErrorSchema = Schema.Struct({code: Schema.optional(Schema.String)});
 
 /** Runtime mode selected by one lifecycle command. */
 export type DeploymentMode = "compact" | "external-storage";
@@ -170,6 +171,7 @@ export const parseCompactRuntimeConfiguration = Effect.fn(
     })),
   );
   const layout = compactInstallationLayout(input.dataDirectory);
+  yield* ensureRestoreIsComplete(layout.restoreIncompletePath);
   const apiToken = yield* readGeneratedSecret(
     layout.apiTokenPath,
     "ARTIFACT_SERVER_API_TOKEN",
@@ -658,6 +660,28 @@ function ensureWritableDirectory(
     catch: () => new RuntimeConfigurationError({
       field: "ARTIFACT_SERVER_DATA",
       message: "The compact data directory is not a writable directory.",
+      reason: "path_unavailable",
+    }),
+  });
+}
+
+function ensureRestoreIsComplete(
+  markerPath: string,
+): Effect.Effect<void, RuntimeConfigurationError> {
+  return Effect.tryPromise({
+    try: async () => {
+      try {
+        await access(markerPath, constants.F_OK);
+      } catch (error) {
+        const parsed = Schema.decodeUnknownOption(systemErrorSchema)(error);
+        if (Option.isSome(parsed) && parsed.value.code === "ENOENT") return;
+        throw error;
+      }
+      throw new Error("compact restore is incomplete");
+    },
+    catch: () => new RuntimeConfigurationError({
+      field: "ARTIFACT_SERVER_DATA",
+      message: "The compact data directory contains an incomplete restore.",
       reason: "path_unavailable",
     }),
   });

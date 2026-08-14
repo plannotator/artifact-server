@@ -1,0 +1,50 @@
+services:
+  artifact-server:
+    image: ${ARTIFACT_SERVER_IMAGE:?Set ARTIFACT_SERVER_IMAGE to an immutable image digest}
+    container_name: ${COMPOSE_PROJECT_NAME:-artifact-server}-app
+    command:
+      - start-compact
+      - --data
+      - /var/lib/artifact-server/data
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8787"
+    environment:
+      - ARTIFACT_SERVER_CONTENT_DOMAIN=${ARTIFACT_SERVER_CONTENT_DOMAIN:-localhost}
+      - ARTIFACT_SERVER_ORIGIN=${ARTIFACT_SERVER_ORIGIN:-http://localhost:8787}
+      - ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS=${ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS:-1000}
+      - ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE=${ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE:-0.01}
+      - ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS=${ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS:-10000}
+      - ARTIFACT_SERVER_WORKOS_API_KEY
+      - ARTIFACT_SERVER_WORKOS_API_KEY_FILE
+      - ARTIFACT_SERVER_WORKOS_CLIENT_ID
+    ports:
+      - ${ARTIFACT_SERVER_BIND_ADDRESS:-127.0.0.1}:${ARTIFACT_SERVER_PORT:-8787}:8787
+    volumes:
+      - artifact-server-data:/var/lib/artifact-server
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    user: "1000:1000"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    pids_limit: 256
+    restart: unless-stopped
+    stop_grace_period: 15s
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8787/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+volumes:
+  artifact-server-data:

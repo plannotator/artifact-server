@@ -44,6 +44,8 @@ export interface CompactInstallationLayout {
   readonly dataDirectory: string;
   /** Stable installation metadata file. */
   readonly metadataPath: string;
+  /** Marker that prevents serving after an interrupted or failed restore. */
+  readonly restoreIncompletePath: string;
   /** Directory containing generated credentials. */
   readonly secretsDirectory: string;
 }
@@ -88,6 +90,7 @@ export function compactInstallationLayout(
     ),
     dataDirectory: resolved,
     metadataPath: path.join(resolved, "installation.json"),
+    restoreIncompletePath: path.join(resolved, ".restore-incomplete"),
     secretsDirectory,
   };
 }
