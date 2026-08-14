@@ -1919,7 +1919,7 @@ requirements:
         tests: [DEP-006-B, DEP-006-F]
         result: pass
         run: evidence/helm-kubernetes.json
-        recorded_at: "2026-08-14T15:21:08Z"
+        recorded_at: "2026-08-14T15:32:23Z"
 
   - id: DEP-007
     kind: deployment
@@ -2067,7 +2067,7 @@ requirements:
         tests: [DEP-017-B, DEP-017-F]
         result: pass
         run: evidence/helm-kubernetes.json
-        recorded_at: "2026-08-14T15:21:08Z"
+        recorded_at: "2026-08-14T15:32:23Z"
 
   - id: DEP-018
     kind: deployment
