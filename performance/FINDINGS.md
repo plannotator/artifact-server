@@ -5,12 +5,14 @@ directory publication has a confirmed per-file scaling cost. This is an
 engineering baseline for regression detection, not a production capacity claim.
 
 The server-only concurrency matrix completed every browse and publication
-journey at 1, 10, 25, 50, and 100 concurrent users. Across four complete runs,
-the 100-user browse p95 ranged from 847 to 924 ms and sustained 240 to 244 user
-journeys per second. The 100-user staged-publication p95 ranged from 1,082 to
-1,114 ms and sustained 94 to 96 complete publications per second. Maximum
-event-loop delay remained below 108 ms, health checks passed after every stage,
-and no request failed.
+journey at 1, 10, 25, 50, and 100 concurrent users. Across four standalone
+complete runs, the 100-user browse p95 ranged from 847 to 924 ms and sustained
+240 to 244 user journeys per second. The 100-user staged-publication p95 ranged
+from 1,082 to 1,114 ms and sustained 94 to 96 complete publications per second.
+The same matrix, run after every other check in the complete iteration gate,
+recorded 1,065 ms browse p95 at 201 journeys per second and 1,162 ms publication
+p95 at 95 publications per second. Maximum event-loop delay remained below
+108 ms, health checks passed after every stage, and no request failed.
 
 Peak server RSS ranged from 619 to 683 MiB during the complete sustained matrix.
 After explicit collection, final live heap grew only 4.7 to 5.6 MiB across the
