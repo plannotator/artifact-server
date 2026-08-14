@@ -60,7 +60,12 @@ configureMcpOnboardingCommands(program, {
   productVersion: packageMetadata.version,
 });
 
-await program.parseAsync();
+try {
+  await program.parseAsync();
+} catch (cause) {
+  process.exitCode = 1;
+  process.stderr.write(`${renderCliFailure(cause)}\n`);
+}
 
 function configureDirectLocalStart(programToConfigure: Command): void {
   programToConfigure
@@ -159,4 +164,14 @@ function parsePort(value: string, allowAutomatic: boolean): number {
     throw new Error("The port must be an integer between 1 and 65535.");
   }
   return port;
+}
+
+function renderCliFailure(cause: unknown): string {
+  if (cause instanceof z.ZodError) {
+    return "Artifact Server: The command input or environment does not match the required format.";
+  }
+  if (cause instanceof Error && cause.message.trim().length > 0) {
+    return `Artifact Server: ${cause.message}`;
+  }
+  return "Artifact Server: The command failed.";
 }

@@ -80,6 +80,9 @@ describe("local Artifact Server CLI", () => {
       const result = await runCliToExit(dataDirectory, "not-a-port");
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("The port must be an integer between 1 and 65535.");
+      expect(result.output).not.toContain("src/cli/main.ts");
+      expect(result.output).not.toContain("\n    at ");
+      expect(result.output).not.toContain("Node.js v");
       await expect(stat(dataDirectory)).rejects.toMatchObject({code: "ENOENT"});
     } finally {
       await rm(parentDirectory, {force: true, recursive: true});

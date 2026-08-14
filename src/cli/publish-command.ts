@@ -195,5 +195,10 @@ function withEntryPath(
 }
 
 function cliPublicationError(error: FilePublicationFailure): Error {
-  return new Error(error.message, {cause: error});
+  if (error._tag === "FilePublicationProtocolError") {
+    const code = error.serverCode ?? error._tag;
+    const status = error.status === null ? "" : ` (HTTP ${error.status})`;
+    return new Error(`${code}${status}: ${error.message}`, {cause: error});
+  }
+  return new Error(`${error._tag}: ${error.message}`, {cause: error});
 }

@@ -10,6 +10,7 @@ import {type Command, Option} from "commander";
 import {readLocalApiCredential} from "../local/local-credentials.js";
 import {startLocalMcpStdioBridge} from "../mcp/start-local-mcp-stdio-bridge.js";
 import {currentCliInvocation, localMcpCommand} from "./current-cli-invocation.js";
+import {runCliEffect} from "./run-cli-effect.js";
 import {
   connectMcpClient,
   detectInstalledMcpClients,
@@ -121,7 +122,7 @@ function configureDoctorCommand(
       const dataDirectory = path.resolve(commandOptions.data);
       const requestedClient = clientName === undefined
         ? null
-        : parseMcpClientId(clientName);
+        : await runCliEffect(parseMcpClientId(clientName));
       const [service, clients] = await Promise.all([
         inspectManagedLocalService(dataDirectory),
         inspectMcpClientRegistrations(dataDirectory),
@@ -170,7 +171,7 @@ async function selectInstalledClient(
 ): Promise<McpClientId> {
   const installed = await detectInstalledMcpClients();
   if (clientName !== undefined) {
-    const selected = parseMcpClientId(clientName);
+    const selected = await runCliEffect(parseMcpClientId(clientName));
     if (!installed.includes(selected)) {
       throw new Error(`${selected} is not installed or is not available on PATH.`);
     }
@@ -183,7 +184,9 @@ async function selectDisconnectClient(
   clientName: string | undefined,
   dataDirectory: string,
 ): Promise<McpClientId> {
-  if (clientName !== undefined) return parseMcpClientId(clientName);
+  if (clientName !== undefined) {
+    return runCliEffect(parseMcpClientId(clientName));
+  }
   const managed = await managedMcpClients(dataDirectory);
   if (managed.length > 0) return selectSingleClient(managed, "connected");
   return selectSingleClient(await detectInstalledMcpClients(), "installed");

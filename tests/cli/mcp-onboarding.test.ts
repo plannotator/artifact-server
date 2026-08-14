@@ -272,6 +272,20 @@ describe("local MCP onboarding", () => {
     expect(ambiguous.stderr).toContain("codex, claude");
     await expect(stat(missingDataDirectory)).rejects.toMatchObject({code: "ENOENT"});
 
+    const invalidClient = await runCli(
+      ["doctor", "invalid-client", "--data", missingDataDirectory],
+      environment,
+    );
+    expect(invalidClient.exitCode).not.toBe(0);
+    expect(invalidClient.stderr).toContain(
+      "Unsupported AI client \"invalid-client\". Choose codex, claude, cursor, or vscode.",
+    );
+    expect(invalidClient.stderr).not.toContain("ZodError");
+    expect(invalidClient.stderr).not.toContain("src/cli/");
+    expect(invalidClient.stderr).not.toContain("\n    at ");
+    expect(invalidClient.stderr).not.toContain("Node.js v");
+    await expect(stat(missingDataDirectory)).rejects.toMatchObject({code: "ENOENT"});
+
     const missingDoctor = await runCli(
       ["doctor", "codex", "--data", missingDataDirectory],
       environment,

@@ -18,6 +18,7 @@ import {
   printParseErrorCode,
   type ParseError,
 } from "jsonc-parser";
+import {Effect, Schema} from "effect";
 import {z} from "zod";
 
 import type {CliInvocation} from "./current-cli-invocation.js";
@@ -55,6 +56,11 @@ type JsoncMcpEntryInspection =
   | {readonly state: "other"}
   | {readonly entry: JsoncMcpEntry; readonly state: "valid"};
 
+class UnsupportedMcpClient extends Schema.TaggedError<UnsupportedMcpClient>()(
+  "UnsupportedMcpClient",
+  {message: Schema.String},
+) {}
+
 /** AI clients supported by the local onboarding command. */
 export type McpClientId = z.infer<typeof clientIdSchema>;
 
@@ -65,9 +71,18 @@ export interface McpClientRegistrationInspection {
   readonly managed: boolean;
 }
 
-/** Parse and validate a user-provided MCP client name. */
-export function parseMcpClientId(value: string): McpClientId {
-  return clientIdSchema.parse(value);
+/** Parse a user-provided MCP client name. */
+export function parseMcpClientId(
+  value: string,
+): Effect.Effect<McpClientId, UnsupportedMcpClient> {
+  const parsed = clientIdSchema.safeParse(value);
+  if (!parsed.success) {
+    return new UnsupportedMcpClient({
+      message:
+        `Unsupported AI client "${value}". Choose codex, claude, cursor, or vscode.`,
+    });
+  }
+  return Effect.succeed(parsed.data);
 }
 
 /** Find supported client executables available in the current environment. */
