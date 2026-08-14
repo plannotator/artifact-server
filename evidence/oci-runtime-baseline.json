@@ -1,16 +1,16 @@
 {
   "compact": {
     "concurrentReads": 24,
-    "readMilliseconds": 17.475875000000087,
-    "startupMilliseconds": 394.1297919999997
+    "readMilliseconds": 16.490084000000024,
+    "startupMilliseconds": 381.2351659999995
   },
   "externalStorage": {
     "concurrentReads": 24,
-    "providerStartupMilliseconds": 2229,
-    "readMilliseconds": 30.702917000000525,
-    "startupMilliseconds": 379.252625000001
+    "providerStartupMilliseconds": 1835,
+    "readMilliseconds": 29.297749999999724,
+    "startupMilliseconds": 370.88820900000064
   },
-  "measuredAt": "2026-08-14T02:57:59.157Z",
+  "measuredAt": "2026-08-14T02:59:47.451Z",
   "node": "v24.15.0",
   "platform": "darwin"
 }
