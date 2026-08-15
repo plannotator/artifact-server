@@ -1,6 +1,6 @@
 # Cloud deployment contract
 
-Status: accepted design; provider packages not yet implemented
+Status: shared executable contract implemented; provider packages not yet implemented
 
 This document is the handoff boundary for the Cloudflare, AWS, GCP, and Azure
 deployment work. It says exactly what every package receives, what it creates,
@@ -19,6 +19,33 @@ There is no `artifactserver deploy` wrapper. Provider developers own only their
 package, provider tests, and provider documentation. They do not change the
 artifact model, HTTP routes, MCP tools, authorization policy, database schema,
 or shared storage ports.
+
+## Executable contract
+
+The provider-neutral TypeScript boundary lives in `src/deployment/index.ts`.
+It is ordinary library code, not a deployment wrapper. Each Pulumi or Alchemy
+project passes its native configuration object into `parseCloudDeploymentInput`
+before defining provider resources. After an apply, the provider package's
+verification command passes the realized machine-readable outputs into
+`parseCloudDeploymentOutput`. Native Pulumi `Output` values remain native
+Pulumi values inside the infrastructure program; the contract does not wrap or
+replace them.
+
+The parser rejects unknown keys and applies the shared `0.01` request-log sample
+default. It enforces domain isolation, pinned images, capacity, backup,
+deletion-protection, DNS, WorkOS reference, Pulumi-state, and Alchemy-state
+rules before a provider write. Output parsing verifies the exact requested URLs
+and rejects credential-bearing URLs, signed URLs, private keys, access keys,
+JWT-shaped tokens, connection strings, and any secret value supplied through an
+Effect `Redacted` wrapper. Errors identify the unsafe field but never include
+the rejected value.
+
+Provider projects emit `CloudDeploymentEvidence`. Partial or failed evidence is
+valid diagnostic input. `validateCloudDeploymentReleaseEvidence` is the stricter
+release gate: it requires every lifecycle, recovery, ingress, identity,
+performance, destroy, and permanent-deletion check below to pass. These local
+contract tests prove validation behavior only. They do not satisfy `DEP-021`;
+that requirement still needs apply and failure evidence from each real cloud.
 
 ## Shared operator inputs
 

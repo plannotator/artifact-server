@@ -2214,7 +2214,7 @@ requirements:
       behavior: {id: DEP-021-B, description: Validate one minimal and one fully configured stack for each cloud, apply it, and verify every required runtime value and machine-readable output against the shared contract.}
       failure: {id: DEP-021-F, description: Reject unpinned images, equal application and content domains, invalid capacity, missing production deletion protection, missing public DNS, unknown inputs, secret outputs, and a main stack that creates its own state backend.}
     deployments: [cloudflare, aws, gcp, azure]
-    status: specified
+    status: implementing
     depends_on: [DEP-002, DEP-003, DEP-012, DEP-014, DEP-016]
     evidence: []
 
