@@ -104,6 +104,21 @@ describe("direct local release package", () => {
       const version = await runCommand(executableA, ["--version"], workspace);
       expect(version.stdout.trim()).toBe(packageMetadata.version);
       expect(packageMetadata.engines.node).toBe(">=24.12.0");
+      const authHelp = await runCommand(
+        executableA,
+        ["auth", "--help"],
+        workspace,
+      );
+      expect(authHelp.stdout).toContain("login");
+      expect(authHelp.stdout).toContain("status");
+      expect(authHelp.stdout).toContain("logout");
+      const publishHelp = await runCommand(
+        executableA,
+        ["publish", "--help"],
+        workspace,
+      );
+      expect(publishHelp.stdout).toContain("--profile <name>");
+      expect(publishHelp.stdout).toContain("--profile-data <directory>");
 
       await expectMissing(path.join(firstInstallation, "artifactserver/src"));
       await expectMissing(path.join(firstInstallation, "artifactserver/tests"));

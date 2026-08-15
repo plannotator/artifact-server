@@ -9,6 +9,7 @@ import {
 } from "../../src/local/start-local-server.js";
 import type {BearerCredentialVerifier} from "../../src/application/authentication.js";
 import type {InteractiveIdentityProvider} from "../../src/application/interactive-login.js";
+import type {ApiOAuthResourceConfiguration} from "../../src/http/create-http-app.js";
 import type {Clock} from "../../src/core/ports.js";
 import {defaultCompletedRequestLogSampleRate} from
   "../../src/observability/application-observability.js";
@@ -47,9 +48,11 @@ export async function startTestServer(
   installation: TestInstallation,
   options: {
     readonly bootstrapAdministratorEmail?: string;
+    readonly apiOAuthResource?: ApiOAuthResourceConfiguration;
     readonly clock?: Clock;
     readonly completedRequestLogSampleRate?: number;
-    readonly externalBearerVerifier?: BearerCredentialVerifier;
+    readonly externalApiBearerVerifier?: BearerCredentialVerifier;
+    readonly externalMcpBearerVerifier?: BearerCredentialVerifier;
     readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
     readonly observability?: boolean;
   } = {},
@@ -71,8 +74,20 @@ export async function startTestServer(
   if (options.clock !== undefined) {
     config = {...config, clock: options.clock};
   }
-  if (options.externalBearerVerifier !== undefined) {
-    config = {...config, externalBearerVerifier: options.externalBearerVerifier};
+  if (options.apiOAuthResource !== undefined) {
+    config = {...config, apiOAuthResource: options.apiOAuthResource};
+  }
+  if (options.externalApiBearerVerifier !== undefined) {
+    config = {
+      ...config,
+      externalApiBearerVerifier: options.externalApiBearerVerifier,
+    };
+  }
+  if (options.externalMcpBearerVerifier !== undefined) {
+    config = {
+      ...config,
+      externalMcpBearerVerifier: options.externalMcpBearerVerifier,
+    };
   }
   if (options.interactiveIdentityProvider !== undefined) {
     config = {

@@ -8,6 +8,7 @@ import type { InteractiveIdentityProvider } from "../application/interactive-log
 import type { Clock } from "../core/ports.js";
 import { SystemClock, SystemIdGenerator } from "../core/system.js";
 import { createHttpApp } from "../http/create-http-app.js";
+import type {ApiOAuthResourceConfiguration} from "../http/create-http-app.js";
 import {
   defaultCompletedRequestLogSampleRate,
   otlpLayer,
@@ -23,13 +24,15 @@ import type {RuntimeLifecycle} from "../lifecycle/runtime-readiness.js";
 
 export interface LocalRuntimeConfig {
   readonly apiToken: string;
+  readonly apiOAuthResource?: ApiOAuthResourceConfiguration;
   readonly applicationOrigin?: string;
   readonly bootstrapAdministratorEmail?: string;
   readonly clock?: Clock;
   readonly completedRequestLogSampleRate?: number;
   readonly contentDomain: string;
   readonly dataDirectory: string;
-  readonly externalBearerVerifier?: BearerCredentialVerifier;
+  readonly externalApiBearerVerifier?: BearerCredentialVerifier;
+  readonly externalMcpBearerVerifier?: BearerCredentialVerifier;
   readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
   readonly localBootstrapToken?: string;
   readonly observability?: boolean;
@@ -68,7 +71,8 @@ export async function createLocalRuntime(
     bootstrapAdministratorEmail: config.bootstrapAdministratorEmail ??
       "local-administrator@artifactserver.invalid",
     clock: config.clock ?? new SystemClock(),
-    externalBearerVerifier: config.externalBearerVerifier ?? null,
+    externalApiBearerVerifier: config.externalApiBearerVerifier ?? null,
+    externalMcpBearerVerifier: config.externalMcpBearerVerifier ?? null,
     ids: new SystemIdGenerator(),
     identityRepository,
     installationId,
@@ -93,7 +97,7 @@ export async function createLocalRuntime(
   );
   try {
     await applicationRuntime.context();
-    const appDependencies = {
+    const appDependenciesWithoutOAuth = {
       applicationRuntime,
       blobs,
       completedRequestLogSampleRate:
@@ -102,6 +106,12 @@ export async function createLocalRuntime(
       contentDomain: config.contentDomain,
       trustedApplicationOrigin: config.applicationOrigin ?? null,
     };
+    const appDependencies = config.apiOAuthResource === undefined
+      ? appDependenciesWithoutOAuth
+      : {
+        ...appDependenciesWithoutOAuth,
+        apiOAuthResource: config.apiOAuthResource,
+      };
     const app = createHttpApp(config.runtimeLifecycle === undefined
       ? appDependencies
       : {...appDependencies, runtimeLifecycle: config.runtimeLifecycle});

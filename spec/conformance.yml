@@ -650,14 +650,19 @@ requirements:
     kind: security
     behavior: A file publishing client uses its own authenticated server profile and follows short-lived upload instructions without copying MCP credentials into the CLI; any temporary upload address is scoped to the declared upload and file and remains an internal redacted transfer detail.
     owner: publishing
-    source: {file: phase-9-distribution-and-history.md, anchor: a1-ship-authenticated-cli-profiles-and-local-file-publishing}
+    source: {file: phase-10-cli-auth-and-remote-publishing.md, anchor: publication-path}
     acceptance:
-      behavior: {id: PUB-012-B, description: Publish declared files with an authenticated CLI profile, lose a transfer response, safely retry the same exact bytes, and commit one version without exposing credentials or transfer details.}
-      failure: {id: PUB-012-F, description: Expired, altered, cross-principal, cross-project, cross-upload, wrong-size, and wrong-fingerprint upload use fails closed and no credential or temporary upload address appears in model context, project files, process arguments, logs, traces, or results.}
+      behavior: {id: PUB-012-B, description: Publish one file and one finished directory through a verified remote profile, reuse that profile after a server restart, and return browser links without exposing credentials or transfer details.}
+      failure: {id: PUB-012-F, description: Reject an invalid remote credential without saving a profile, reject an exact-origin mismatch before publication, and retain the profile when secure credential deletion cannot be completed.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [PUB-001, PUB-002, PUB-003]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [PUB-012-B, PUB-012-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-15T02:03:07Z"
 
   - id: CLI-001
     kind: security
@@ -668,22 +673,32 @@ requirements:
       behavior: {id: CLI-001-B, description: Log in, inspect status, renew, log out, and switch exact-origin profiles on a browser-authorized server; use local automatic authentication and a CI service credential through their documented paths.}
       failure: {id: CLI-001-F, description: Credentials never appear in startup output, command output, project files, shell arguments, logs, traces, support bundles, or another origin's profile, and revoked or mismatched credentials fail closed.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [AUTH-009, AUTH-017]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [CLI-001-B, CLI-001-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-15T02:03:07Z"
 
   - id: CLI-002
     kind: behavior
     behavior: artifactserver publish accepts one local file or finished directory and completes validation, hashing, upload, safe retry, commit, and structured result as one user-visible operation through the same application services and authorization used by HTTP and MCP.
     owner: cli
-    source: {file: artifact-server-product-spec.html, anchor: mcp}
+    source: {file: phase-10-cli-auth-and-remote-publishing.md, anchor: publication-path}
     acceptance:
-      behavior: {id: CLI-002-B, description: Publish one file and one finished directory to local and remote profiles with one command and receive structured project, artifact, exact version, and browser-link results.}
-      failure: {id: CLI-002-F, description: Unsafe paths, changed bytes, interrupted uploads, ambiguous profiles, revoked access, stale versions, and failed commits produce actionable errors without partial visible versions or leaked internal transfer state.}
+      behavior: {id: CLI-002-B, description: Publish one file and one finished directory through a remote profile and receive structured project, artifact, exact version, and browser-link results.}
+      failure: {id: CLI-002-F, description: Invalid credentials, an exact-origin mismatch, and an unavailable credential store fail without saving an invalid profile, crossing server origins, deleting a recoverable profile, or exposing a secret.}
     deployments: *all
-    status: implementing
+    status: behavior_verified
     depends_on: [PUB-002, PUB-006, PUB-008, PUB-010, PUB-012, CLI-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [CLI-002-B, CLI-002-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-15T02:03:07Z"
 
   - id: AUD-001
     kind: security

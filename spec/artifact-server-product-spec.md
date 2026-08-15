@@ -303,7 +303,7 @@ arbitrary URL is not part of the initial release.
 Publishing starts from one actual file or one finished directory on the client's
 filesystem. MCP does not accept raw HTML, CSS, JavaScript, Markdown, or base64
 file contents as arguments. The primary local-file path is
-`artifactserver publish <path> --project <project> --json`. The CLI validates
+`artifactserver publish <path> --project <project>`. The CLI validates
 and hashes the selected files, follows the server-issued upload plan, commits
 the result, and hides upload IDs, fingerprints, manifests, retry details, and
 size thresholds. Any temporary upload address is short-lived, bound to the

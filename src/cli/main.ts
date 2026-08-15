@@ -20,6 +20,7 @@ import {startLocalServer} from "../local/start-local-server.js";
 import {defaultCompletedRequestLogSampleRate} from
   "../observability/application-observability.js";
 import {configureLifecycleCommands} from "./lifecycle-commands.js";
+import {configureCliAuthCommands} from "./cli-auth-commands.js";
 import {configureMcpOnboardingCommands} from "./mcp-onboarding-commands.js";
 import {configurePublishCommand} from "./publish-command.js";
 import {waitForProcessSignal} from "./wait-for-process-signal.js";
@@ -52,11 +53,18 @@ const program = new Command()
   .version(packageMetadata.version)
   .showHelpAfterError();
 
-configurePublishCommand(program);
+const defaultUserDataDirectory = path.join(homedir(), ".artifact-server");
+
+configureCliAuthCommands(program, {
+  defaultProfileDirectory: defaultUserDataDirectory,
+});
+configurePublishCommand(program, {
+  defaultProfileDirectory: defaultUserDataDirectory,
+});
 configureDirectLocalStart(program);
 configureLifecycleCommands(program, {build: productBuild});
 configureMcpOnboardingCommands(program, {
-  defaultDataDirectory: path.join(homedir(), ".artifact-server"),
+  defaultDataDirectory: defaultUserDataDirectory,
   productVersion: packageMetadata.version,
 });
 

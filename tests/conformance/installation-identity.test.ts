@@ -467,7 +467,9 @@ describe("installation identity and access", () => {
           }));
       },
     };
-    server = await startTestServer(installation, {externalBearerVerifier});
+    server = await startTestServer(installation, {
+      externalApiBearerVerifier: externalBearerVerifier,
+    });
 
     expect(await bearerStatus(server, "trusted-external-access-token")).toBe(200);
     expect(verificationCount).toBe(1);
@@ -478,6 +480,37 @@ describe("installation identity and access", () => {
     expect(verificationCount).toBe(1);
     expect(await bearerStatus(server, "wrong-external-access-token")).toBe(401);
     expect(verificationCount).toBe(2);
+  });
+
+  test("API OAuth metadata and challenge name the exact API resource without enabling it by default", async () => {
+    const absent = await fetch(
+      `${server.baseUrl}/.well-known/oauth-protected-resource/api`,
+    );
+    expect(absent.status).toBe(404);
+
+    await server.stop();
+    server = await startTestServer(installation, {
+      apiOAuthResource: {
+        authorizationServers: ["https://auth.example.test"],
+        resource: "https://team.example.test/api",
+      },
+    });
+    const metadata = await fetch(
+      `${server.baseUrl}/.well-known/oauth-protected-resource/api`,
+    );
+    expect(metadata.status).toBe(200);
+    await expect(metadata.json()).resolves.toEqual({
+      authorization_servers: ["https://auth.example.test"],
+      bearer_methods_supported: ["header"],
+      resource: "https://team.example.test/api",
+      scopes_supported: ["artifactserver"],
+    });
+
+    const denied = await fetch(`${server.baseUrl}/api/v1/session`);
+    expect(denied.status).toBe(401);
+    expect(denied.headers.get("www-authenticate")).toBe(
+      "Bearer resource_metadata=\"https://team.example.test/.well-known/oauth-protected-resource/api\" scope=\"artifactserver\"",
+    );
   });
 });
 

@@ -11,8 +11,17 @@ import {z} from "zod";
 import {
   type FilePublicationCommand,
   type FilePublicationFailure,
+  type FilePublicationResult,
   publishPath,
 } from "../client/file-publication-client.js";
+import {resolveVerifiedProfileCredential} from "./cli-auth-commands.js";
+import {
+  readCliProfileState,
+  resolveCliProfile,
+  type CliProfile,
+} from "./cli-profile-store.js";
+import {runCliEffect} from "./run-cli-effect.js";
+import {createSystemCredentialStore} from "./system-credential-store.js";
 
 interface PublishOptions {
   readonly artifact?: string;
@@ -22,9 +31,22 @@ interface PublishOptions {
   readonly name?: string;
   readonly public: boolean;
   readonly project?: string;
-  readonly server: string;
+  readonly profile?: string;
+  readonly profileData: string;
+  readonly server?: string;
   readonly tag: readonly string[];
   readonly tokenFile?: string;
+}
+
+/** User-local configuration shared by auth and publishing commands. */
+export interface PublishCommandOptions {
+  readonly defaultProfileDirectory: string;
+}
+
+interface PublicationConnection {
+  readonly apiToken: Redacted.Redacted;
+  readonly origin: string;
+  readonly profile?: CliProfile;
 }
 
 const bearerCredentialSchema = z.string()
@@ -33,14 +55,16 @@ const bearerCredentialSchema = z.string()
   .regex(/^[A-Za-z0-9._~-]+$/u);
 
 /** Add the file-first publication command to the Artifact Server CLI. */
-export function configurePublishCommand(program: Command): void {
+export function configurePublishCommand(
+  program: Command,
+  commandOptions: PublishCommandOptions,
+): void {
   program
     .command("publish")
     .description("Publish one file or finished directory.")
     .argument("<path>", "file or finished directory to publish")
     .addOption(
       new Option("--server <origin>", "Artifact Server origin")
-        .default("http://localhost:8787")
         .env("ARTIFACT_SERVER_URL"),
     )
     .addOption(
@@ -49,6 +73,12 @@ export function configurePublishCommand(program: Command): void {
     )
     .addOption(
       new Option("--token-file <path>", "file containing an Artifact Server API token"),
+    )
+    .addOption(new Option("--profile <name>", "saved Artifact Server profile"))
+    .addOption(
+      new Option("--profile-data <directory>", "user-local CLI profile directory")
+        .default(commandOptions.defaultProfileDirectory)
+        .env("ARTIFACT_SERVER_HOME"),
     )
     .addOption(new Option("--entry <path>", "directory file that opens first"))
     .addOption(new Option("--name <name>", "name for a new artifact"))
@@ -67,24 +97,22 @@ export function configurePublishCommand(program: Command): void {
       ),
     )
     .action(async (inputPath: string, options: PublishOptions) => {
-      const apiToken = await loadApiToken(options);
+      let connection = await resolvePublicationConnection(options);
       const command = publicationCommand(inputPath, options);
-      const outcome = await Effect.runPromise(
-        publishPath(
-          {
-            apiToken: Redacted.make(apiToken, {label: "artifact-server-api-token"}),
-            serverOrigin: options.server,
-          },
-          command,
-        ).pipe(
-          Effect.match({
-            onFailure: (error) => ({error, success: false} as const),
-            onSuccess: (result) => ({result, success: true} as const),
-          }),
-          Effect.provide(FetchHttpClient.layer),
-          Effect.provide(NodeFileSystem.layer),
-        ),
-      );
+      let outcome = await executePublication(connection, command);
+      if (
+        !outcome.success
+        && outcome.error._tag === "FilePublicationProtocolError"
+        && outcome.error.status === 401
+        && connection.profile?.authentication === "oauth"
+      ) {
+        connection = await resolveProfileConnection(
+          path.resolve(options.profileData),
+          connection.profile,
+          true,
+        );
+        outcome = await executePublication(connection, command);
+      }
       if (!outcome.success) throw cliPublicationError(outcome.error);
       console.log(JSON.stringify(outcome.result, null, 2));
     });
@@ -141,37 +169,149 @@ function publicationCommand(
   }, options.entry);
 }
 
-async function loadApiToken(options: PublishOptions): Promise<string> {
+async function resolvePublicationConnection(
+  options: PublishOptions,
+): Promise<PublicationConnection> {
+  const explicitToken = await loadExplicitApiToken(options);
+  const dataDirectory = path.resolve(options.profileData);
+  if (explicitToken !== undefined) {
+    if (options.server === undefined) {
+      throw new Error(
+        "ARTIFACT_SERVER_API_TOKEN and --token-file require --server or ARTIFACT_SERVER_URL so the credential has one explicit destination.",
+      );
+    }
+    return {
+      apiToken: explicitToken,
+      origin: options.server,
+    };
+  }
+
+  if (options.profile !== undefined) {
+    const profile = options.server === undefined
+      ? await runCliEffect(resolveCliProfile(dataDirectory, {
+        name: options.profile,
+      }))
+      : await runCliEffect(resolveCliProfile(dataDirectory, {
+        name: options.profile,
+        origin: options.server,
+      }));
+    return resolveProfileConnection(dataDirectory, profile);
+  }
+
+  if (options.server !== undefined && !isLoopbackServer(options.server)) {
+    const profile = await runCliEffect(resolveCliProfile(dataDirectory, {
+      origin: options.server,
+    }));
+    return resolveProfileConnection(dataDirectory, profile);
+  }
+
+  if (options.server === undefined) {
+    const state = await runCliEffect(readCliProfileState(dataDirectory));
+    const defaultProfile = state.profiles.find(
+      (profile) => profile.id === state.defaultProfileId,
+    );
+    if (defaultProfile !== undefined) {
+      return resolveProfileConnection(dataDirectory, defaultProfile);
+    }
+  }
+
+  return {
+    apiToken: await loadLocalApiToken(options),
+    origin: options.server ?? "http://localhost:8787",
+  };
+}
+
+async function resolveProfileConnection(
+  dataDirectory: string,
+  profile: CliProfile,
+  forceRefresh = false,
+): Promise<PublicationConnection> {
+  const resolved = await runCliEffect(resolveVerifiedProfileCredential(
+    dataDirectory,
+    profile,
+    createSystemCredentialStore(),
+    forceRefresh,
+  ).pipe(Effect.provide(FetchHttpClient.layer)));
+  return {
+    apiToken: resolved.bearer,
+    origin: profile.origin,
+    profile,
+  };
+}
+
+async function loadExplicitApiToken(
+  options: PublishOptions,
+): Promise<Redacted.Redacted | undefined> {
   const environmentToken = process.env["ARTIFACT_SERVER_API_TOKEN"];
   if (options.tokenFile === undefined && environmentToken !== undefined) {
     const parsed = bearerCredentialSchema.safeParse(environmentToken);
     if (!parsed.success) {
       throw new Error("ARTIFACT_SERVER_API_TOKEN is invalid.");
     }
-    return parsed.data;
+    return Redacted.make(parsed.data, {label: "artifact-server-api-token"});
   }
-  if (options.tokenFile === undefined && !isLoopbackServer(options.server)) {
-    throw new Error(
-      "A remote Artifact Server requires ARTIFACT_SERVER_API_TOKEN or --token-file. The local API token is never sent to a remote server automatically.",
-    );
-  }
+  if (options.tokenFile === undefined) return undefined;
 
-  const tokenPath = path.resolve(
-    options.tokenFile ?? path.join(options.data, "local-api-token"),
-  );
+  const tokenPath = path.resolve(options.tokenFile);
   let candidate: string;
   try {
     candidate = (await readFile(tokenPath, "utf8")).trim();
   } catch {
     throw new Error(
-      `Artifact Server API token not found at ${tokenPath}. Start the local server, set ARTIFACT_SERVER_API_TOKEN, or use --token-file.`,
+      `Artifact Server API token not found at ${tokenPath}.`,
     );
   }
   const parsed = bearerCredentialSchema.safeParse(candidate);
   if (!parsed.success) {
     throw new Error(`The API token in ${tokenPath} is invalid.`);
   }
-  return parsed.data;
+  return Redacted.make(parsed.data, {label: "artifact-server-api-token"});
+}
+
+async function loadLocalApiToken(
+  options: PublishOptions,
+): Promise<Redacted.Redacted> {
+  const tokenPath = path.resolve(
+    path.join(options.data, "local-api-token"),
+  );
+  let candidate: string;
+  try {
+    candidate = (await readFile(tokenPath, "utf8")).trim();
+  } catch {
+    throw new Error(
+      `Local Artifact Server API token not found at ${tokenPath}. Run artifactserver up or artifactserver start first.`,
+    );
+  }
+  const parsed = bearerCredentialSchema.safeParse(candidate);
+  if (!parsed.success) {
+    throw new Error(`The local API token in ${tokenPath} is invalid.`);
+  }
+  return Redacted.make(parsed.data, {label: "artifact-server-api-token"});
+}
+
+async function executePublication(
+  connection: PublicationConnection,
+  command: FilePublicationCommand,
+): Promise<
+  | {readonly error: FilePublicationFailure; readonly success: false}
+  | {readonly result: FilePublicationResult; readonly success: true}
+> {
+  return Effect.runPromise(
+    publishPath(
+      {
+        apiToken: connection.apiToken,
+        serverOrigin: connection.origin,
+      },
+      command,
+    ).pipe(
+      Effect.match({
+        onFailure: (error) => ({error, success: false} as const),
+        onSuccess: (result) => ({result, success: true} as const),
+      }),
+      Effect.provide(FetchHttpClient.layer),
+      Effect.provide(NodeFileSystem.layer),
+    ),
+  );
 }
 
 function isLoopbackServer(candidate: string): boolean {

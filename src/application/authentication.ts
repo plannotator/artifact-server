@@ -26,10 +26,13 @@ export interface BearerCredentialVerifier {
 }
 
 interface AuthenticationOperations {
+  readonly authenticateApiBearer: (
+    credential: Redacted.Redacted,
+  ) => Effect.Effect<Principal, AuthenticationFailure>;
   readonly authenticateApplicationSession: (
     credential: Redacted.Redacted,
   ) => Effect.Effect<AuthenticatedApplicationSession, AuthenticationFailure>;
-  readonly authenticateBearer: (
+  readonly authenticateMcpBearer: (
     credential: Redacted.Redacted,
   ) => Effect.Effect<Principal, AuthenticationFailure>;
 }

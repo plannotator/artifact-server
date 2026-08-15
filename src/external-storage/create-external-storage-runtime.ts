@@ -11,6 +11,7 @@ import type {InteractiveIdentityProvider} from "../application/interactive-login
 import type {Clock} from "../core/ports.js";
 import {SystemClock, SystemIdGenerator} from "../core/system.js";
 import {createHttpApp} from "../http/create-http-app.js";
+import type {ApiOAuthResourceConfiguration} from "../http/create-http-app.js";
 import {
   defaultCompletedRequestLogSampleRate,
   otlpLayer,
@@ -45,13 +46,15 @@ export type ExternalObjectStorageConfig = ExternalObjectStorageConfigBase & (
 /** Configuration for one stateless Artifact Server process. */
 export interface ExternalStorageRuntimeConfig {
   readonly apiToken: Redacted.Redacted;
+  readonly apiOAuthResource?: ApiOAuthResourceConfiguration;
   readonly applicationOrigin?: string;
   readonly bootstrapAdministratorEmail: string;
   readonly clock?: Clock;
   readonly completedRequestLogSampleRate?: number;
   readonly contentDomain: string;
   readonly databaseUrl: Redacted.Redacted;
-  readonly externalBearerVerifier?: BearerCredentialVerifier;
+  readonly externalApiBearerVerifier?: BearerCredentialVerifier;
+  readonly externalMcpBearerVerifier?: BearerCredentialVerifier;
   readonly installationId: string;
   readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
   readonly localBootstrapCredential?: Redacted.Redacted;
@@ -100,7 +103,8 @@ export async function createExternalStorageRuntime(
       blobs,
       bootstrapAdministratorEmail: config.bootstrapAdministratorEmail,
       clock: config.clock ?? new SystemClock(),
-      externalBearerVerifier: config.externalBearerVerifier ?? null,
+      externalApiBearerVerifier: config.externalApiBearerVerifier ?? null,
+      externalMcpBearerVerifier: config.externalMcpBearerVerifier ?? null,
       ids: new SystemIdGenerator(),
       identityRepository,
       installationId: config.installationId,
@@ -126,7 +130,7 @@ export async function createExternalStorageRuntime(
     );
     await applicationRuntime.context();
     const readyRuntime = applicationRuntime;
-    const appDependencies = {
+    const appDependenciesWithoutOAuth = {
         applicationRuntime: readyRuntime,
         blobs,
         completedRequestLogSampleRate:
@@ -136,6 +140,12 @@ export async function createExternalStorageRuntime(
         readiness: () => externalStorageReadiness(database, client, config.objectStorage.bucket),
         trustedApplicationOrigin: config.applicationOrigin ?? null,
     };
+    const appDependencies = config.apiOAuthResource === undefined
+      ? appDependenciesWithoutOAuth
+      : {
+        ...appDependenciesWithoutOAuth,
+        apiOAuthResource: config.apiOAuthResource,
+      };
     return {
       app: createHttpApp(config.runtimeLifecycle === undefined
         ? appDependencies

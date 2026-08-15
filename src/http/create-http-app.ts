@@ -214,6 +214,7 @@ interface HttpEnvironment {
 }
 
 export interface HttpAppDependencies {
+  readonly apiOAuthResource?: ApiOAuthResourceConfiguration;
   readonly applicationRuntime: ApplicationRuntime;
   readonly blobs: BlobStore;
   readonly completedRequestLogSampleRate: number;
@@ -221,6 +222,12 @@ export interface HttpAppDependencies {
   readonly readiness?: ReadinessProbe;
   readonly runtimeLifecycle?: RuntimeLifecycle;
   readonly trustedApplicationOrigin: string | null;
+}
+
+/** RFC 9728 metadata for the separately audience-bound HTTP API resource. */
+export interface ApiOAuthResourceConfiguration {
+  readonly authorizationServers: readonly [string, ...string[]];
+  readonly resource: string;
 }
 
 /** Machine-readable result of one declared runtime dependency probe. */
@@ -391,7 +398,7 @@ export function createHttpApp(
         context,
         dependencies,
         AuthenticationService.use((authentication) =>
-          authentication.authenticateBearer(
+          authentication.authenticateApiBearer(
             Redacted.make(parsed.data, {label: "bearer-credential"}),
           )
         ),
@@ -437,6 +444,16 @@ export function createHttpApp(
   app.get("/health", (context) =>
     context.json({status: "ok" as const}),
   );
+
+  app.get("/.well-known/oauth-protected-resource/api", (context) => {
+    if (dependencies.apiOAuthResource === undefined) return context.notFound();
+    return context.json({
+      authorization_servers: dependencies.apiOAuthResource.authorizationServers,
+      bearer_methods_supported: ["header"],
+      resource: dependencies.apiOAuthResource.resource,
+      scopes_supported: ["artifactserver"],
+    });
+  });
 
   app.get("/ready", async (context) => {
     const lifecycle = dependencies.runtimeLifecycle?.current() ?? "ready";
@@ -1171,7 +1188,10 @@ export function createHttpApp(
         headers.set("Cache-Control", "private, no-store");
       }
       if (error._tag === "AuthenticationRequired") {
-        headers.set("WWW-Authenticate", "Bearer");
+        headers.set(
+          "WWW-Authenticate",
+          apiBearerChallenge(context, dependencies),
+        );
       }
       return Response.json(
         {error: {code: response.code, message: response.message}},
@@ -1216,6 +1236,21 @@ export function createHttpApp(
   });
 
   return app;
+}
+
+function apiBearerChallenge(
+  context: {readonly req: {readonly path: string}},
+  dependencies: HttpAppDependencies,
+): string {
+  if (
+    dependencies.apiOAuthResource === undefined
+    || !context.req.path.startsWith("/api/")
+  ) return "Bearer";
+  const metadata = new URL(
+    "/.well-known/oauth-protected-resource/api",
+    dependencies.apiOAuthResource.resource,
+  );
+  return `Bearer resource_metadata="${metadata.toString()}" scope="artifactserver"`;
 }
 
 function setApplicationSessionCookies(

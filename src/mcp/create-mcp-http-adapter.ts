@@ -124,7 +124,7 @@ async function authenticateToken(
     const principal = await runApplicationEffect(
       dependencies.applicationRuntime,
       AuthenticationService.use((authentication) =>
-        authentication.authenticateBearer(
+        authentication.authenticateMcpBearer(
           Redacted.make(token, {label: "mcp-bearer-credential"}),
         )
       ),

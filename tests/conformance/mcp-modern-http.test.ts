@@ -646,7 +646,13 @@ describe("modern MCP HTTP", () => {
       },
     };
     await server.stop();
-    server = await startTestServer(installation, {externalBearerVerifier});
+    server = await startTestServer(installation, {
+      externalMcpBearerVerifier: externalBearerVerifier,
+    });
+
+    expect((await fetch(`${server.baseUrl}/api/v1/session`, {
+      headers: {Authorization: `Bearer ${readToken}`},
+    })).status).toBe(401);
 
     const readable = await callTool(server, readToken, {
       arguments: {cursor: null, limit: 10, tag: null},
@@ -684,7 +690,7 @@ describe("modern MCP HTTP", () => {
       })),
     };
     server = await startTestServer(installation, {
-      externalBearerVerifier: unavailableVerifier,
+      externalMcpBearerVerifier: unavailableVerifier,
     });
     const unavailable = await mcpRequest(
       server,

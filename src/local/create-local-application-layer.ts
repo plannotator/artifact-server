@@ -90,7 +90,8 @@ export interface ApplicationAdapters {
   readonly blobs: BlobStore;
   readonly bootstrapAdministratorEmail: string;
   readonly clock: Clock;
-  readonly externalBearerVerifier: BearerCredentialVerifier | null;
+  readonly externalApiBearerVerifier: BearerCredentialVerifier | null;
+  readonly externalMcpBearerVerifier: BearerCredentialVerifier | null;
   readonly ids: IdGenerator;
   readonly identityRepository: IdentityRepository;
   readonly installationId: string;
@@ -546,26 +547,32 @@ export function createApplicationLayer(
   });
   const authenticationLayer = Layer.effect(
     AuthenticationService,
-    InstallationAccessService.use((installationAccess) =>
-      Effect.succeed(AuthenticationService.of({
+    InstallationAccessService.use((installationAccess) => {
+      const authenticateBearerWith = (
+        externalVerifier: BearerCredentialVerifier | null,
+      ): BearerCredentialVerifier["verify"] => (credential) => {
+        const raw = Redacted.value(credential);
+        if (raw.startsWith("as_key_")) {
+          return installationAccess.authenticateManagedApiKey(credential);
+        }
+        if (credentialsEqual(raw, Redacted.value(adapters.apiToken))) {
+          return Effect.succeed(localPrincipal);
+        }
+        if (externalVerifier !== null) return externalVerifier.verify(credential);
+        return Effect.fail(new AuthenticationRequired({
+          message: "A valid Artifact Server API key is required.",
+        }));
+      };
+      return Effect.succeed(AuthenticationService.of({
+        authenticateApiBearer: authenticateBearerWith(
+          adapters.externalApiBearerVerifier,
+        ),
         authenticateApplicationSession: installationAccess.authenticateSession,
-        authenticateBearer: (credential) => {
-          const raw = Redacted.value(credential);
-          if (raw.startsWith("as_key_")) {
-            return installationAccess.authenticateManagedApiKey(credential);
-          }
-          if (credentialsEqual(raw, Redacted.value(adapters.apiToken))) {
-            return Effect.succeed(localPrincipal);
-          }
-          if (adapters.externalBearerVerifier !== null) {
-            return adapters.externalBearerVerifier.verify(credential);
-          }
-          return Effect.fail(new AuthenticationRequired({
-            message: "A valid Artifact Server API key is required.",
-          }));
-        },
-      }))
-    ),
+        authenticateMcpBearer: authenticateBearerWith(
+          adapters.externalMcpBearerVerifier,
+        ),
+      }));
+    }),
   ).pipe(Layer.provideMerge(identityLayer));
   const interactiveLoginLayer = InteractiveLoginService.layer({
     attemptLifetimeMilliseconds: 10 * 60 * 1_000,

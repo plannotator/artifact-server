@@ -4,7 +4,9 @@ Artifact Server stores finished browser files as immutable versions and serves e
 
 This repository contains the local publication foundation and the first external-storage runtime. It is not the complete product yet. The current implementation proves:
 
-- a file-first CLI backed by token-protected HTTP upload and commit operations;
+- a file-first CLI with exact-origin profiles, operating-system credential
+  storage, a portable browser OAuth client flow, scoped-key fallback, and
+  verified HTTP uploads; hosted OAuth-provider activation remains gated;
 - a strict MCP 2026-07-28 endpoint plus credential-free local registration
   adapters for Codex, Claude Code, Cursor, and VS Code;
 - single-file publication through the same verified upload contract used by complete sites;
@@ -82,8 +84,7 @@ implementation from deployment-specific release verification.
 
 The remaining product work is:
 
-1. Authenticated CLI profiles, the final local-file publishing path, and the
-   locality-aware `publish-artifact` Agent Skill.
+1. The locality-aware `publish-artifact` Agent Skill.
 2. The common cloud deployment command and one-installation Cloudflare target.
 3. Optional private Git history, including local and Cloudflare providers.
 4. AWS, GCP, and Azure installers plus native GCS and Azure Blob adapters.
@@ -97,6 +98,8 @@ The remaining product work is:
 The architecture, provider boundaries, implementation order, and release gates
 for the cloud, skill, and Git tracks are in
 [`phase-9-distribution-and-history.md`](./spec/phase-9-distribution-and-history.md).
+The implemented CLI authentication and remote-publication contract is in
+[`phase-10-cli-auth-and-remote-publishing.md`](./spec/phase-10-cli-auth-and-remote-publishing.md).
 
 ## Install the direct local package
 
@@ -344,10 +347,39 @@ artifactserver publish ./report.pdf
 artifactserver publish ./dist --public --name "Product prototype" --tag prototype
 ```
 
-To publish to a team server, set `ARTIFACT_SERVER_URL` and
-`ARTIFACT_SERVER_API_TOKEN`, or use `--server` and `--token-file`. To publish a
-new immutable version, pass both `--artifact` and `--expected-version`. The
-command returns JSON containing the artifact ID, version ID, and browser links.
+For a team server that advertises browser authorization, sign in once and then
+publish through the saved profile:
+
+```sh
+artifactserver auth login https://artifacts.example.com --name team
+artifactserver auth status team
+artifactserver publish ./dist --profile team
+```
+
+The login opens the system browser, completes PKCE authorization, verifies the
+credential against that exact Artifact Server, and stores the reusable grant in
+the operating-system credential store. The profile file contains only the
+server origin and non-secret account identifiers. `auth logout team` attempts
+remote grant revocation, deletes the operating-system credential, and then
+removes the profile. If secure deletion fails, the recoverable profile is kept.
+
+For a self-hosted server without browser authorization, an administrator can
+issue a scoped API key. Pipe it to the same profile boundary:
+
+```sh
+printf '%s\n' "$ARTIFACT_SERVER_API_TOKEN" |
+  artifactserver auth login https://artifacts.example.com \
+    --api-key-stdin --name team
+```
+
+The key is read from standard input and is never accepted as a command
+argument. CI can continue to set `ARTIFACT_SERVER_URL` and
+`ARTIFACT_SERVER_API_TOKEN`, or use `--server` and `--token-file`, without
+creating an interactive profile.
+
+To publish a new immutable version, pass both `--artifact` and
+`--expected-version`. The command returns JSON containing the project,
+artifact, exact version, and browser links.
 
 The former JSON routes that accepted base64-wrapped file contents have been
 removed. `POST /api/v1/artifacts` and
