@@ -43,6 +43,9 @@ PULUMI_BACKEND_URL=gs://example-state/artifact-server \
 PULUMI_BACKEND_URL=gs://example-state/artifact-server \
 ARTIFACT_SERVER_GCP_UPGRADE_IMAGE=REGISTRY/IMAGE@sha256:DIGEST \
   scripts/run-gcp-upgrade-rollback-qualification.sh
+
+PULUMI_BACKEND_URL=gs://example-state/artifact-server \
+  scripts/run-gcp-secret-rotation-qualification.sh
 ```
 
 The product check publishes through the real CLI, reads through the public load
@@ -51,3 +54,8 @@ compares versions, searches tags, checks MCP authentication and discovery, and
 records 1/10/25/50/100-user read measurements. The upgrade check runs that same
 probe after both the rollout and the rollback and rejects changed installation,
 database, or bucket identities.
+
+The credential-rotation check adds a temporary Secret Manager version, rolls a
+new Cloud Run revision, proves that only the new credential works, publishes
+through the replacement revision, restores the original credential, destroys
+the temporary secret version, and reconciles the service with Pulumi.

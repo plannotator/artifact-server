@@ -1,0 +1,77 @@
+{
+  "applicationOrigin": "https://gcp-qualification.reala2a.org",
+  "artifact": {
+    "id": "art_333e8128-2cb0-4787-8983-658cc6d3e3c0",
+    "versionIds": [
+      "ver_d8541004-772b-4dd5-8ccf-492359795519",
+      "ver_71e2bef2-8419-404a-bfb6-1e69ff1f23c4"
+    ],
+    "versionOrigins": [
+      "https://1be8658b9f071da1c3a8d4900b378e6bb3c4.gcp-qualification-content.contextmix.com",
+      "https://778b2bd86e3f1351b897913ead109a860a71.gcp-qualification-content.contextmix.com"
+    ]
+  },
+  "completedAt": "2026-08-15T20:27:01.654Z",
+  "mcp": {
+    "discoveryStatus": 200,
+    "unauthenticatedStatus": 401
+  },
+  "performance": [
+    {
+      "concurrentUsers": 1,
+      "maximumMilliseconds": 82.17,
+      "medianMilliseconds": 82.17,
+      "requests": 1,
+      "wallMilliseconds": 82.37
+    },
+    {
+      "concurrentUsers": 10,
+      "maximumMilliseconds": 346.18,
+      "medianMilliseconds": 311.86,
+      "requests": 10,
+      "wallMilliseconds": 352.03
+    },
+    {
+      "concurrentUsers": 25,
+      "maximumMilliseconds": 299.48,
+      "medianMilliseconds": 209.02,
+      "requests": 25,
+      "wallMilliseconds": 304.53
+    },
+    {
+      "concurrentUsers": 50,
+      "maximumMilliseconds": 409.1,
+      "medianMilliseconds": 264.06,
+      "requests": 50,
+      "wallMilliseconds": 416.12
+    },
+    {
+      "concurrentUsers": 100,
+      "maximumMilliseconds": 471.36,
+      "medianMilliseconds": 256.16,
+      "requests": 100,
+      "wallMilliseconds": 479.81
+    }
+  ],
+  "readiness": {
+    "components": {
+      "configuration": {
+        "status": "ready"
+      },
+      "database": {
+        "status": "ready"
+      },
+      "migrations": {
+        "status": "ready"
+      },
+      "objectStorage": {
+        "status": "ready"
+      }
+    },
+    "lifecycle": "ready",
+    "status": "ready"
+  },
+  "schemaVersion": 1,
+  "startedAt": "2026-08-15T20:26:55.284Z",
+  "target": "gcp"
+}
