@@ -106,6 +106,11 @@ describe("GCP Pulumi deployment", () => {
     expect(requireResource("gcp:compute/backendService:BackendService").inputs)
       .toMatchObject({
         cdnPolicy: {
+          cacheKeyPolicy: {
+            includeHost: true,
+            includeProtocol: true,
+            includeQueryString: true,
+          },
           cacheMode: "USE_ORIGIN_HEADERS",
           negativeCaching: false,
           serveWhileStale: 0,
