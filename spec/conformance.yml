@@ -68,6 +68,7 @@ allowed_modules:
   - web-application
   - http-api
   - mcp
+  - cli
   - agent-skills
   - plannotator-integration
   - database-adapters
@@ -82,8 +83,8 @@ required_source_sections:
   experience: [CNT-001, CNT-002, VER-001, DIF-001, GIT-001]
   sharing: [AUTH-001, AUTH-002, AUTH-003, AUTH-004]
   plannotator: [PLN-001, PLN-002, PLN-003, PLN-004, PLN-005, PLN-017]
-  architecture: [ARC-001, ARC-002, PUB-001, CNT-003]
-  mcp: [MCP-001, MCP-002, SKL-001]
+  architecture: [ARC-001, ARC-002, ARC-006, PUB-001, CNT-003]
+  mcp: [MCP-001, MCP-002, CLI-001, SKL-001]
   deployment: [DEP-001, DEP-002, DEP-003, DEP-004]
   safety: [SEC-001, SEC-002, SEC-003, SEC-004]
   scope: [SCP-001, SCP-002, SCP-003]
@@ -647,15 +648,41 @@ requirements:
 
   - id: PUB-012
     kind: security
-    behavior: A server-issued MCP upload plan uses short-lived, single-file capability URLs so an agent can stream local bytes without receiving or copying the MCP bearer credential.
+    behavior: A file publishing client uses its own authenticated server profile and follows short-lived upload instructions without copying MCP credentials into the CLI; any temporary upload address is scoped to the declared upload and file and remains an internal redacted transfer detail.
     owner: publishing
-    source: {file: phase-9-distribution-and-history.md, anchor: a1-resolve-the-file-upload-credential-gap}
+    source: {file: phase-9-distribution-and-history.md, anchor: a1-ship-authenticated-cli-profiles-and-local-file-publishing}
     acceptance:
-      behavior: {id: PUB-012-B, description: Create an upload through MCP, upload each declared file without exposing the MCP bearer credential, lose the first response, and safely retry the same exact bytes.}
-      failure: {id: PUB-012-F, description: Expired, altered, cross-principal, cross-project, cross-upload, wrong-size, and wrong-fingerprint capability use fails closed and no credential appears in logs or errors.}
+      behavior: {id: PUB-012-B, description: Publish declared files with an authenticated CLI profile, lose a transfer response, safely retry the same exact bytes, and commit one version without exposing credentials or transfer details.}
+      failure: {id: PUB-012-F, description: Expired, altered, cross-principal, cross-project, cross-upload, wrong-size, and wrong-fingerprint upload use fails closed and no credential or temporary upload address appears in model context, project files, process arguments, logs, traces, or results.}
     deployments: *all
     status: specified
     depends_on: [PUB-001, PUB-002, PUB-003]
+    evidence: []
+
+  - id: CLI-001
+    kind: security
+    behavior: The Artifact Server CLI keeps profiles by exact server origin and account; remote interactive login uses browser authorization and operating-system credential storage, local mode uses private user-only state without visible secrets, and CI uses scoped service credentials from its secret manager.
+    owner: cli
+    source: {file: artifact-server-product-spec.html, anchor: mcp}
+    acceptance:
+      behavior: {id: CLI-001-B, description: Log in, inspect status, renew, log out, and switch exact-origin profiles on a browser-authorized server; use local automatic authentication and a CI service credential through their documented paths.}
+      failure: {id: CLI-001-F, description: Credentials never appear in startup output, command output, project files, shell arguments, logs, traces, support bundles, or another origin's profile, and revoked or mismatched credentials fail closed.}
+    deployments: *all
+    status: specified
+    depends_on: [AUTH-009, AUTH-017]
+    evidence: []
+
+  - id: CLI-002
+    kind: behavior
+    behavior: artifactserver publish accepts one local file or finished directory and completes validation, hashing, upload, safe retry, commit, and structured result as one user-visible operation through the same application services and authorization used by HTTP and MCP.
+    owner: cli
+    source: {file: artifact-server-product-spec.html, anchor: mcp}
+    acceptance:
+      behavior: {id: CLI-002-B, description: Publish one file and one finished directory to local and remote profiles with one command and receive structured project, artifact, exact version, and browser-link results.}
+      failure: {id: CLI-002-F, description: Unsafe paths, changed bytes, interrupted uploads, ambiguous profiles, revoked access, stale versions, and failed commits produce actionable errors without partial visible versions or leaked internal transfer state.}
+    deployments: *all
+    status: implementing
+    depends_on: [PUB-002, PUB-006, PUB-008, PUB-010, PUB-012, CLI-001]
     evidence: []
 
   - id: AUD-001
@@ -1612,15 +1639,15 @@ requirements:
 
   - id: SKL-002
     kind: security
-    behavior: publish-artifact can publish, update, open, share, list, and compare using normal user permissions but cannot install, upgrade, reconfigure, back up, restore, or delete an Artifact Server installation.
+    behavior: publish-artifact can publish, update, open, share, list, and compare using normal user permissions, routes local-file operations through the CLI and server-only operations through MCP or CLI, and cannot install, upgrade, reconfigure, back up, restore, or delete an Artifact Server installation.
     owner: agent-skills
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
-      behavior: {id: SKL-002-B, description: Complete every routine artifact task through the publishing MCP connection.}
+      behavior: {id: SKL-002-B, description: Complete local-file publishing through the CLI and every server-only routine artifact task through MCP and CLI with equivalent product results.}
       failure: {id: SKL-002-F, description: Requests for infrastructure changes never gain administrator commands or credentials through the publishing skill.}
     deployments: *all
     status: specified
-    depends_on: [SKL-001, MCP-009]
+    depends_on: [SKL-001, MCP-009, CLI-002, ARC-006]
     evidence: []
 
   - id: SKL-003
@@ -1651,11 +1678,11 @@ requirements:
 
   - id: SKL-005
     kind: security
-    behavior: Project configuration may name a non-secret default server or profile, while access credentials remain in the MCP client or operating-system credential store.
+    behavior: Project configuration may name a non-secret default server or profile, while MCP credentials remain in the MCP client and CLI credentials remain in the operating-system credential store or another documented secure user-local store.
     owner: agent-skills
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
-      behavior: {id: SKL-005-B, description: Resolve a project default from .artifactserver.json while retrieving credentials from user-local secure state.}
+      behavior: {id: SKL-005-B, description: Resolve a project default from .artifactserver.json and route an MCP or CLI operation while each adapter retrieves its own credential from user-local secure state.}
       failure: {id: SKL-005-F, description: Skills never write bearer tokens, API keys, cookies, infrastructure credentials, or private server credentials into the project.}
     deployments: *all
     status: specified
@@ -1959,6 +1986,19 @@ requirements:
     deployments: *all
     status: specified
     depends_on: [AUTH-008, MCP-009, PLN-007]
+    evidence: []
+
+  - id: ARC-006
+    kind: constraint
+    behavior: HTTP, MCP, and CLI adapters call the same application services for overlapping artifact operations; adapter choice depends on caller and file locality and never creates a second product or authorization implementation.
+    owner: product-core
+    source: {file: artifact-server-product-spec.html, anchor: architecture}
+    acceptance:
+      behavior: {id: ARC-006-B, description: Execute equivalent list, open, publish, compare, restore, tag, share, and delete operations through every applicable adapter and observe equivalent identities, authorization, idempotency, audit, and result semantics.}
+      failure: {id: ARC-006-F, description: Dependency checks and hostile adapter tests fail when an MCP tool or CLI command duplicates product policy, bypasses application authorization, or claims access to a remote client path.}
+    deployments: *all
+    status: specified
+    depends_on: [ARC-001, ARC-002, ARC-005, MCP-009]
     evidence: []
 
   - id: DEP-001

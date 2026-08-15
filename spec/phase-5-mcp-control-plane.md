@@ -72,10 +72,10 @@ artifact://projects/{projectId}/artifacts/{artifactId}/versions/{versionId}/mani
 ## Local publishing
 
 Local MCP uses the same loopback HTTP endpoint as a deployed installation. The
-bundled publishing CLI and the future `publish-artifact` skill read the local
-path, compute the manifest, and upload the bytes. This is safer and simpler
-than a separate local-path MCP tool and preserves one server contract across
-local and remote deployments.
+bundled publishing CLI reads the local path, computes the manifest, and uploads
+the bytes. The future `publish-artifact` skill invokes that CLI when a local
+file is involved. This is safer and simpler than a separate local-path MCP tool
+and preserves one server contract across local and remote deployments.
 
 ## Verified locally
 

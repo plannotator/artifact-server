@@ -20,7 +20,7 @@ The first release runs locally. Later releases add one-server, Kubernetes, Cloud
 | What is an artifact? | One published item with a stable ID, owner, access setting, optional tags, current version, and immutable saved versions. |
 | Who can read it? | Exactly two settings: account required, or public link. On a standalone installation, account required means every person admitted to that one installation may read it. A public link opens only the current version; history and comparisons remain account-required. |
 | Who can change it? | Its owner and installation administrators. A service principal can perform only the actions granted to its API key. |
-| How do agents use it? | Through MCP or the normal HTTP API. The `publish-artifact` Agent Skill handles routine publishing and opening. The optional `operate-artifact-server` skill handles deployment and administration. |
+| How do agents use it? | Through MCP, the CLI, or the normal HTTP API. They share the same product operations and permissions. The `publish-artifact` Agent Skill uses the CLI for files on the user's computer and MCP or the CLI for server-only work. The optional `operate-artifact-server` skill handles deployment and administration. |
 | Where does it run? | Local first. Then one server and Kubernetes. Then Cloudflare. Official AWS, GCP, and Azure installers follow the same container and storage contracts. |
 | What stays outside it? | Building source code, artifact backends, comments, annotations, review workflow, workspace collaboration, and general-purpose Git hosting. Plannotator owns review and collaboration. |
 
@@ -293,24 +293,36 @@ artifact_restore_version
 artifact_delete
 ```
 
-The MCP server never accepts an arbitrary client filesystem path. The bundled
-publishing client or skill reads a local file or directory, rejects symlinks and
-special files, computes its portable manifest, and sends the actual bytes
-through the server-issued upload plan. Server-side download from an arbitrary
-URL is not part of the initial release.
+MCP, the CLI, and HTTP adapt the same application services. Their operations
+overlap intentionally; they do not contain separate copies of artifact or
+authorization logic. The adapter depends on locality. The CLI can read a file
+or directory on the user's computer. A remote MCP server cannot and never
+accepts an arbitrary client filesystem path. Server-side download from an
+arbitrary URL is not part of the initial release.
 
 Publishing starts from one actual file or one finished directory on the client's
 filesystem. MCP does not accept raw HTML, CSS, JavaScript, Markdown, or base64
-file contents as arguments. The publishing skill or client helper uploads the
-selected bytes through the server-issued upload plan and commits the result. It
-hides upload IDs, fingerprints, manifests, and size thresholds from the user.
-Each upload address is a short-lived, single-file capability, so the helper can
-stream the selected bytes without receiving or copying the MCP bearer
-credential. An exact retry after a lost response is safe.
+file contents as arguments. The primary local-file path is
+`artifactserver publish <path> --project <project> --json`. The CLI validates
+and hashes the selected files, follows the server-issued upload plan, commits
+the result, and hides upload IDs, fingerprints, manifests, retry details, and
+size thresholds. Any temporary upload address is short-lived, bound to the
+declared upload and file, redacted, and handled inside the CLI. An exact retry
+after a lost response is safe.
+
+The CLI keeps named profiles for exact server origins. On a remote server with
+browser authorization, `artifactserver auth login <server>` opens sign-in and
+stores the renewable credential in the operating-system credential store.
+Local mode uses private user-only state without browser login or a visible
+secret. A self-hosted server without browser authorization uses an
+administrator-issued scoped key stored in the same secure profile boundary. CI
+uses a scoped service credential from its secret manager. `artifactserver
+connect` remains the command for registering an MCP connection; it is not CLI
+login.
 
 Artifact Server ships two portable Agent Skills:
 
-- **`publish-artifact`:** publish, update, open, share, list, and compare artifacts through MCP.
+- **`publish-artifact`:** publish, update, open, share, list, and compare artifacts. It uses the CLI when local files are involved and MCP or the CLI for server-only operations.
 - **`operate-artifact-server`:** an optional, separately installed administrator skill for install, deploy, upgrade, backup, restore, inspect, and repair work through the Artifact Server CLI.
 
 The publishing skill resolves its target in this order: an explicit address or link, the server recorded in the artifact reference, current conversation context, project default, then user default. If more than one server remains possible, it asks and never guesses. Project configuration may name a server profile but never contains a credential.

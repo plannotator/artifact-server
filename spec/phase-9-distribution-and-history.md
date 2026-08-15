@@ -72,7 +72,9 @@ authorize a request, change an artifact, or block publication.
 
 ### Keep publishing and operation in separate skills
 
-`publish-artifact` uses ordinary user permissions and routine MCP operations.
+`publish-artifact` uses ordinary user permissions and routes routine operations
+through the MCP connection or Artifact Server CLI. Local-file operations use
+the CLI because only a process on the user's computer can read those files.
 `operate-artifact-server` uses the local CLI and separately acquired
 administrator and infrastructure access. Installing the publishing skill does
 not install or activate the operator skill.
@@ -115,31 +117,46 @@ logs.
 
 ## Track A: Agent Skills
 
-### A1. Resolve the file-upload credential gap
+### A1. Ship authenticated CLI profiles and local-file publishing
 
-The current MCP upload plan returns application URLs that require the same
-bearer credential as the MCP connection. MCP clients normally keep that bearer
-credential private, so an agent shell cannot use it to upload local files.
+MCP and the CLI expose overlapping artifact operations through the same
+application services. Locality selects the adapter: the CLI reads files on the
+user's computer; MCP or the CLI can be used when the operation needs only
+server data. A remote MCP server never receives or dereferences a client
+filesystem path.
 
-Before `publish-artifact` ships, the upload plan must return short-lived,
-single-file upload capabilities. Each URL is bound to one upload, storage
-token, path, declared size, fingerprint, principal, project, and expiry. It is
-limited to that upload slot and cannot read files or call another API. The
-agent can PUT bytes to that URL without learning the MCP bearer token. An exact
-retry after a lost response returns success; different bytes fail. Logs and
-errors redact the capability.
+The supported remote interactive setup is:
 
-This preserves the file-first design:
+```text
+artifactserver auth login https://team.example.com
+artifactserver auth status
+artifactserver auth logout
+```
 
-1. The skill inspects one local file or finished directory.
-2. It calls `artifact_create_upload` with bounded metadata.
-3. The server returns one capability URL per file.
-4. The skill streams the exact bytes to those URLs.
-5. It calls `artifact_commit_upload` and returns the artifact and version links.
+When browser authorization is available, login opens it and stores the
+renewable credential in the operating-system credential store. Local mode uses
+private user-only Artifact Server state without browser login or a visible
+secret. A self-hosted server without browser authorization uses an
+administrator-issued scoped key in the same secure profile boundary. CI uses a
+service credential supplied by its secret manager.
+
+The primary file operation is one command:
+
+```text
+artifactserver publish <path> --project <project> --json
+```
+
+The CLI validates and hashes one actual file or finished directory, follows the
+server's upload plan, retries safe transfer failures, commits the version, and
+returns the artifact and exact version links. Create, upload, and commit may be
+separate internal requests, but the user and agent see one action. Any
+short-lived upload address is bound to the declared upload and file and remains
+an internal, redacted transfer detail. It is not an MCP bearer workaround.
 
 Clients without local filesystem and process access can manage existing
-artifacts but cannot publish a local path. The skill states this instead of
-pretending the remote MCP server can read the user's disk.
+artifacts but cannot publish a file that exists only on the user's computer.
+The skill states this instead of pretending that a remote MCP server can read
+the path.
 
 ### A2. Ship `publish-artifact`
 
@@ -150,7 +167,9 @@ The skill covers:
 - choose the target from an explicit address or link, conversation state,
   project configuration, then the user's default;
 - ask when the target remains ambiguous;
-- call `artifact_capabilities` before choosing an upload path;
+- use the CLI when a source or destination path is local, and use MCP or the
+  CLI for server-only operations;
+- call `artifact_capabilities` before choosing a server-supported upload path;
 - publish or update one file or one finished directory;
 - list projects and artifacts, open an artifact, change sharing, compare
   versions, restore a version, and manage tags;
@@ -159,8 +178,9 @@ The skill covers:
 
 The main `SKILL.md` stays short. Upload recovery, target selection, old-server
 compatibility, and client-specific notes live in one-level-deep references.
-Scripts are limited to portable file inspection and streaming helpers that do
-not store credentials.
+The skill invokes the supported CLI rather than reimplementing file inspection,
+authentication, hashing, streaming, or retry behavior in scripts. It never
+writes credentials into a project.
 
 ### A3. Ship `operate-artifact-server` after the deployment commands stabilize
 
@@ -183,17 +203,22 @@ the selected target. It always:
 - Validate both folders with the current Agent Skills reference validator.
 - Test realistic prompts that must activate each skill and similar prompts that
   must not.
-- Run publishing end to end in Codex and Claude Code against local and remote
-  installations.
-- Test missing files, symlinks, changed bytes, expired upload capabilities,
-  exact retry after a lost response, altered retry, stale server versions,
-  ambiguous targets, revoked access, and interrupted uploads.
+- Run CLI-routed local-file publishing and MCP-routed server operations end to
+  end in Codex and Claude Code against local and remote installations.
+- Test browser login, renewal, logout, local automatic authentication,
+  administrator-issued key fallback, CI service credentials, missing files,
+  symlinks, changed bytes, expired upload instructions, exact retry after a
+  lost response, altered retry, stale server versions, ambiguous targets,
+  revoked access, and interrupted uploads.
+- Confirm that no credential, temporary upload address, or local path enters
+  model context, project files, process arguments, logs, traces, or results.
 - Test operator plan, refusal, apply, failed health verification, and recovery
   on every advertised deployment.
 - Version the skills with the server release and publish their compatibility
   range.
 
-This track closes `SKL-001` through `SKL-006` and contributes to `MCP-019`.
+This track closes `CLI-001`, `CLI-002`, `SKL-001` through `SKL-006`, and
+contributes to `MCP-019`.
 
 ## Track B: Cloudflare-native deployment
 
@@ -421,7 +446,8 @@ This track closes `GIT-001` through `GIT-007` and `GATE-004`.
 
 ## Build order
 
-1. Add the upload-capability contract and ship `publish-artifact`.
+1. Add authenticated CLI profiles, finish the local-file publishing command,
+   and ship `publish-artifact` with locality-based routing.
 2. Add the common deployment command and deployment-package interface.
 3. Build the one-installation Cloudflare runtime with Git disabled.
 4. Add the history outbox and local Git provider.

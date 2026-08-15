@@ -1589,7 +1589,7 @@
           </article>
           <article class="answer">
             <span class="answer-label">Agents</span>
-            <p class="answer-value">An agent publishes one actual file or one finished directory through normal web requests or MCP. It does not put raw HTML, CSS, JavaScript, or base64 file contents in an MCP or JSON argument. The publishing client handles the upload and returns an ID, version number, and link. Local setup uses <code>artifactserver connect</code> without a visible key. A hosted connection opens browser sign-in. A self-hosted server without compatible browser authorization uses a key created by an administrator, never a key copied from startup logs.</p>
+            <p class="answer-value">MCP, the command-line program, and normal web requests use the same artifact operations and permissions. The command-line program handles files on the user's computer. MCP or the command-line program handles work that only needs server data. Local MCP setup uses <code>artifactserver connect</code> without a visible key. Remote command-line setup uses <code>artifactserver auth login</code> and browser sign-in when the server supports it.</p>
           </article>
           <article class="answer">
             <span class="answer-label">Deployment</span>
@@ -2275,8 +2275,8 @@
             <span class="section-label">Architecture</span>
             <h2 id="architecture-section-title">One product core with deployment-specific storage</h2>
             <p>
-              The browser, MCP, and normal web requests from software follow the same rules for sign-in, sharing, versions,
-              comparisons, and publishing. Small pieces of code connect those rules to the database,
+              The browser, MCP, command-line program, and normal web requests from software call the same application services and follow the same rules for sign-in, sharing, versions,
+              comparisons, and publishing. These ways of calling the server intentionally overlap. Where a file exists decides which one works: the command-line program can read files on the user's computer; a remote MCP server cannot. Small pieces of code connect those rules to the database,
               file storage, and optional Git provider selected when the server is installed.
             </p>
           </div>
@@ -2315,7 +2315,7 @@
                     <text class="svg-copy" x="48" y="130">Command line</text>
                     <rect class="svg-node" x="28" y="164" width="164" height="82" rx="8"></rect>
                     <text class="svg-title" x="48" y="194">AI agents</text>
-                    <text class="svg-copy" x="48" y="218">MCP</text>
+                    <text class="svg-copy" x="48" y="218">MCP · command line</text>
                     <text class="svg-copy" x="48" y="236">Normal web requests</text>
 
                     <rect class="svg-boundary" x="226" y="32" width="508" height="500" rx="14"></rect>
@@ -2323,8 +2323,8 @@
 
                     <rect class="svg-node-primary" x="260" y="88" width="190" height="92" rx="8"></rect>
                     <text class="svg-title" x="280" y="120">Application entry</text>
-                    <text class="svg-copy" x="280" y="144">Sign-in, browser, MCP</text>
-                    <text class="svg-copy" x="280" y="163">and software requests</text>
+                    <text class="svg-copy" x="280" y="144">Browser, HTTP, MCP</text>
+                    <text class="svg-copy" x="280" y="163">and command line</text>
 
                     <rect class="svg-node-primary" x="498" y="88" width="202" height="92" rx="8"></rect>
                     <text class="svg-title" x="518" y="120">Product rules</text>
@@ -2789,7 +2789,7 @@ v12-7f3a.content.example.net</code></pre>
             </article>
             <article class="mcp-step">
               <code>publish</code>
-              <p>Select one actual file or one finished directory. The publishing client handles the upload method.</p>
+              <p>Select one actual file or one finished directory. The local command-line program reads it and handles the upload.</p>
             </article>
             <article class="mcp-step">
               <code>finish upload</code>
@@ -2821,13 +2821,14 @@ v12-7f3a.content.example.net</code></pre>
               <h3><code>publish-artifact</code></h3>
               <p>
                 The normal skill. It is used when someone asks an agent to publish, update, open,
-                share, list, or compare an artifact. It connects through MCP and uses the signed-in
-                person's normal Artifact Server permissions.
+                share, list, or compare an artifact. It uses the command-line program when a local
+                file is involved and MCP or the command-line program for server-only work. Both use
+                the signed-in person's normal Artifact Server permissions.
               </p>
               <ul>
                 <li>Resolve which local or team server the user means before reading, publishing, or opening an artifact.</li>
                 <li>Ask the server what it supports before choosing an upload method.</li>
-                <li>Publish one actual file or one finished directory. Do not place raw source text or base64 file contents in MCP arguments.</li>
+                <li>Publish one actual file or one finished directory through <code>artifactserver publish</code>. Do not place a local path, raw source text, or base64 file contents in remote MCP arguments.</li>
                 <li>Choose the supported upload method without asking the user to construct a manifest, fingerprint, or upload session.</li>
                 <li>Return the artifact link and exact saved version after publishing.</li>
                 <li>Never install, upgrade, reconfigure, back up, or delete an Artifact Server installation.</li>
@@ -2851,21 +2852,21 @@ v12-7f3a.content.example.net</code></pre>
 
           <figure class="architecture" aria-labelledby="skill-diagram-title">
             <div class="architecture-top">
-              <strong class="architecture-title" id="skill-diagram-title">Publishing and server operation use separate paths.</strong>
+              <strong class="architecture-title" id="skill-diagram-title">The publishing skill checks where the files are.</strong>
               <p class="architecture-caption">
-                There is one publishing skill for every deployment. It asks the connected server
-                which upload methods and limits are available instead of carrying a different copy for each cloud.
+                The CLI handles files on the user's computer. MCP or the CLI handles operations
+                that only need server data. Both call the same Artifact Server product services.
               </p>
             </div>
             <div class="diagram-shell">
               <div class="diagram-heading">
-                <strong>Separate publishing and administrator paths</strong>
-                <span>The publishing skill never receives infrastructure credentials.</span>
+                <strong>One product, two ways to call it</strong>
+                <span>The user asks for an operation; the skill selects MCP or the command line.</span>
               </div>
               <div class="diagram-scroll">
                 <svg class="architecture-diagram skill-diagram" viewBox="0 0 1040 430" role="img" aria-labelledby="skill-flow-title skill-flow-desc">
                   <title id="skill-flow-title">Agent Skill workflow</title>
-                  <desc id="skill-flow-desc">A routine publishing request activates the publish-artifact skill, which resolves the intended local or team server, asks that server for its capabilities, and then calls publishing tools through MCP. A separate explicit administrator request activates the optional operate-artifact-server skill, which uses the command-line program and a deployment adapter. The two paths use separate credentials.</desc>
+                  <desc id="skill-flow-desc">A routine artifact request activates the publish-artifact skill. The skill finds the intended local or team server. It uses the Artifact Server command-line program for files on the user's computer and MCP or the command-line program for information already on the server. Both call the same product services. A separate administrator request activates the optional operate-artifact-server skill and deployment code.</desc>
                   <defs>
                     <marker id="skill-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
                       <path d="M0,0 L8,4 L0,8 Z" style="fill: var(--code-ink)"></path>
@@ -2884,11 +2885,11 @@ v12-7f3a.content.example.net</code></pre>
                   <text class="svg-title" x="280" y="112">publish-artifact</text>
                   <text class="svg-copy" x="280" y="135">Loads for publishing work</text>
                   <rect class="svg-node-auth" x="500" y="82" width="188" height="76" rx="8"></rect>
-                  <text class="svg-title" x="520" y="112">Target + capabilities</text>
-                  <text class="svg-copy" x="520" y="135">Local or team · methods · limits</text>
+                  <text class="svg-title" x="520" y="112">Find server + files</text>
+                  <text class="svg-copy" x="520" y="135">Files here or already on server</text>
                   <rect class="svg-node-primary" x="740" y="82" width="248" height="76" rx="8"></rect>
-                  <text class="svg-title" x="760" y="112">Artifact Server MCP</text>
-                  <text class="svg-copy" x="760" y="135">Upload · save version · return link</text>
+                  <text class="svg-title" x="760" y="112">MCP or CLI</text>
+                  <text class="svg-copy" x="760" y="135">Same product services · same policy</text>
                   <path class="svg-line" d="M208 120 H260" marker-end="url(#skill-arrow)"></path>
                   <path class="svg-line" d="M448 120 H500" marker-end="url(#skill-arrow)"></path>
                   <path class="svg-line" d="M688 120 H740" marker-end="url(#skill-arrow)"></path>
@@ -2913,7 +2914,7 @@ v12-7f3a.content.example.net</code></pre>
                 </svg>
               </div>
               <div class="diagram-legend" aria-label="Agent Skill diagram legend">
-                <span><i class="diagram-key" aria-hidden="true"></i>Normal user permission</span>
+                <span><i class="diagram-key" aria-hidden="true"></i>Normal user permission · MCP or CLI</span>
                 <span><i class="diagram-key optional" aria-hidden="true"></i>Separate administrator permission</span>
               </div>
             </div>
@@ -2950,6 +2951,15 @@ v12-7f3a.content.example.net</code></pre>
                   they are never written into the project file.
                 </p>
                 <p>
+                  The two credential stores are intentionally separate. <code>artifactserver
+                  connect</code> registers MCP in an AI client. <code>artifactserver auth login
+                  &lt;server&gt;</code> signs the command-line program into an exact server origin,
+                  opens browser approval when supported, and stores the renewable credential in
+                  the operating-system credential store. Local mode uses private user-only state
+                  without browser login or a visible key. CI uses a scoped service credential from
+                  its secret manager.
+                </p>
+                <p>
                   The MCP <code>artifact_open</code> tool returns the canonical browser address for
                   the chosen artifact and version. A local helper may ask the operating system to
                   open that address directly. A remote server only returns its address; the agent
@@ -2977,17 +2987,20 @@ v12-7f3a.content.example.net</code></pre>
                   in separate reference files that the agent reads only when required.
                 </p>
                 <p>
-                  The publishing skill does not contain a cloud-specific configuration. It calls
-                  <code>artifact_capabilities</code> at the start of a publishing task. That response
-                  reports whether the server is local or remote, the file-count and upload-request
-                  limits, the exact upload workflow, supported sharing settings, and the text-comparison bound. The same installed skill
-                  therefore works with a laptop, private server, Kubernetes, or hosted service.
+                  The publishing skill does not contain a cloud-specific configuration. It resolves
+                  the target, uses <code>artifactserver publish</code> when it must read a file on the
+                  user's computer, and calls <code>artifact_capabilities</code> before choosing a
+                  server-supported upload path. Operations that only need information already on
+                  the server may use MCP or the command-line program. The same installed skill therefore works with
+                  a laptop, private server, Kubernetes, or hosted service.
                 </p>
                 <p>
-                  Each returned upload address is short-lived and limited to one declared file.
-                  The publishing helper can stream that file without receiving or copying the MCP
-                  sign-in credential. An exact retry after a lost response is safe. The server still
-                  verifies the declared size and SHA-256 fingerprint before it saves a version.
+                  The command-line program owns its authenticated server profile and hides the
+                  create, upload, retry, and commit requests behind one publish action. Any temporary
+                  upload address is short-lived, limited to one declared file, and redacted. It is
+                  not copied from MCP or shown to the model. An exact retry after a lost response is
+                  safe. The server still verifies the declared size and SHA-256 fingerprint before
+                  it saves a version.
                 </p>
                 <p>
                   Skills are versioned with Artifact Server releases and tested for correct
@@ -3642,7 +3655,7 @@ artifact_delete</code></pre>
                 <li>File and text comparisons between any two saved versions.</li>
                 <li>Optional private Git history selected when the server is installed.</li>
                 <li>Exactly two access settings: account required and public link.</li>
-                <li>Browser access, MCP, and normal web requests from software.</li>
+                <li>Browser access, MCP, the Artifact Server command-line program, and normal web requests from software.</li>
                 <li>An optional connection from one Artifact Server installation to one Plannotator organization, including signed operation requests and temporary browser sessions.</li>
                 <li>An explicit Plannotator review response that may add a credential-free review bridge without changing the stored artifact.</li>
                 <li>A portable <code>publish-artifact</code> skill and a separately installed <code>operate-artifact-server</code> administrator skill.</li>
@@ -3701,8 +3714,10 @@ artifact_delete</code></pre>
                   local file storage, the modern stateless MCP route, web publishing,
                   <code>artifactserver connect</code> and the credential-hidden local stdio bridge,
                   the two sharing modes, and optional Git repositories in the local data
-                  folder. Ship the <code>publish-artifact</code> skill after its MCP workflow is
-                  stable. Reject MCP subscriptions until a real event service exists. Ship it as one running application.
+                  folder. Add secure command-line profiles and make
+                  <code>artifactserver publish</code> the local-file path. Ship the
+                  <code>publish-artifact</code> skill after its CLI and MCP routing is stable.
+                  Reject MCP subscriptions until a real event service exists. Ship it as one running application.
                 </p>
               </div>
             </article>
@@ -3813,8 +3828,9 @@ artifact_delete</code></pre>
             <article class="decision-item"><p>Changing public content back to account required stops future public access and purges supported caches, but cannot recall downloaded or externally cached copies.</p></article>
             <article class="decision-item"><p>Manifest paths follow one portable safety contract. Publishing clients upload bytes. A local client may read a user-selected path with its operating-system permissions, but HTTP and MCP never receive that path. The server does not fetch arbitrary source URLs.</p></article>
             <article class="decision-item"><p>Uploads stage, verify, then write content-addressed blobs without overwrite before the database commit. The first release deletes expired staging only and does not garbage-collect committed blobs.</p></article>
-            <article class="decision-item"><p>Browser, normal software requests, and MCP share the same product and authorization rules. Local MCP uses <code>artifactserver connect</code> without a human-visible secret. Hosted MCP uses browser approval through WorkOS AuthKit. Self-hosted MCP uses compatible browser authorization when configured and administration-issued scoped API keys otherwise. Startup logs never distribute keys.</p></article>
-            <article class="decision-item"><p>Artifact Server ships a routine publishing skill and a separately installed operator skill. Stored references include the server and artifact, so agents open local or team artifacts at the correct origin.</p></article>
+            <article class="decision-item"><p>Browser, normal software requests, the command-line program, and MCP share the same product and authorization rules. Local MCP uses <code>artifactserver connect</code> without a human-visible secret. Hosted MCP uses browser approval through WorkOS AuthKit. Self-hosted MCP uses compatible browser authorization when configured and administration-issued scoped API keys otherwise. Startup logs never distribute keys.</p></article>
+            <article class="decision-item"><p>MCP and the command-line program intentionally overlap. Files on the user's computer use the command-line program. Work that only needs information already on Artifact Server may use either. <code>artifactserver auth login</code> gives the command-line program its own secure server profile. A remote MCP server never reads a user's local path.</p></article>
+            <article class="decision-item"><p>Artifact Server ships a routine publishing skill and a separately installed operator skill. The publishing skill uses the command-line program for local files and MCP or the command-line program for information already on the server. Stored references include the server and artifact, so agents open local or team artifacts at the correct address.</p></article>
             <article class="decision-item"><p>The product core uses narrow database, blob, login, background-work, and optional Git interfaces. Official deployment packages are Compose, Helm, Alchemy for Cloudflare, and Pulumi for AWS, GCP, and Azure.</p></article>
             <article class="decision-item"><p>Support is phased: local, private team and Kubernetes, hosted Cloudflare, then AWS, GCP, and Azure. A target is not supported until its install, upgrade, rollback, backup, restore, and isolation tests pass.</p></article>
             <article class="decision-item"><p>Committed versions cannot be edited or deleted individually. Deleting an artifact creates a tombstone and stops access; physical reclamation waits for a proven retention and garbage-collection design.</p></article>

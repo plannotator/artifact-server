@@ -82,7 +82,8 @@ implementation from deployment-specific release verification.
 
 The remaining product work is:
 
-1. The upload-capability path and `publish-artifact` Agent Skill.
+1. Authenticated CLI profiles, the final local-file publishing path, and the
+   locality-aware `publish-artifact` Agent Skill.
 2. The common cloud deployment command and one-installation Cloudflare target.
 3. Optional private Git history, including local and Cloudflare providers.
 4. AWS, GCP, and Azure installers plus native GCS and Azure Blob adapters.
@@ -582,3 +583,6 @@ the public file and directory input contract and the removal of raw-content
 publishing from HTTP and MCP.
 See [`Decision 0008`](./spec/decisions/0008-effect-observability.md) for request
 correlation, structured logs, bounded metrics, OTLP export, and readiness.
+See [`ADR 0016`](./spec/decisions/0016-cli-and-mcp-share-product-capabilities.md)
+for the intentional MCP and CLI overlap, local-file boundary, secure CLI
+profiles, and Agent Skill routing rule.

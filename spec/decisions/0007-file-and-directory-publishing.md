@@ -14,10 +14,12 @@ with an entry file such as `index.html`. Both use the same verified upload and
 commit rules.
 
 The client owns the local filesystem path. A remote Artifact Server never reads
-an arbitrary client path. The CLI, MCP client helper, or publishing skill reads
-the selected file, uploads its bytes through a server-issued upload plan, and
-commits the version. A local installation may use the separately constrained
-local-import path.
+an arbitrary client path. The Artifact Server CLI reads the selected file,
+uploads its bytes through a server-issued upload plan, and commits the version.
+The publishing skill invokes that CLI when a local path is involved. MCP may
+manage the upload only when its own runtime can already access the bytes; a
+remote MCP server never treats a user-local path as accessible. A local
+installation may use the separately constrained local-import path.
 
 The publishing client may use a one-request binary or multipart upload for a
 small file when the server advertises that capability. Larger files and
@@ -50,6 +52,9 @@ through the verified file-upload operation.
 The manifest disposition value `inline` has a different meaning: it tells a
 browser to display a stored file instead of downloading it. Decision 0007 does
 not rename or remove that value.
+
+ADR 0016 defines the shared CLI and MCP capability surface, authenticated CLI
+profiles, and locality-based Agent Skill routing.
 
 ## Verification
 

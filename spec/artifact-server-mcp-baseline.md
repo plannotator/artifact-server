@@ -297,22 +297,34 @@ results use private cache scope.
 
 Publishing always starts from an actual file or finished directory selected on
 the client. MCP does not accept raw HTML, CSS, JavaScript, base64 file contents,
-or an arbitrary client path. The CLI, MCP client helper, or publishing skill
-uploads the selected bytes through the returned upload plan, then calls
-`artifact_commit_upload`. These transport steps remain one "publish this file
-or directory" operation to the user. No MCP tool accepts a client filesystem
-path.
+or an arbitrary client path. The authenticated Artifact Server CLI owns the
+normal local-file path. It uploads the selected bytes through the returned
+upload plan, then calls the corresponding commit operation. An MCP client whose
+own runtime already has the bytes may use `artifact_create_upload` and
+`artifact_commit_upload` directly. These transport steps remain one "publish
+this file or directory" operation to the user. No MCP tool accepts a client
+filesystem path.
+
+MCP and the CLI intentionally overlap for server-only artifact operations.
+Both adapt the same application services and authorization rules. The
+`publish-artifact` skill selects the CLI when local file access is required and
+may use either adapter when all required data already exists on the server.
 
 Do not add prompts in the first release. Do not build new dependencies on deprecated MCP Roots, Sampling, or Logging.
 
 ## Direct upload flow
 
-1. `artifact_create_upload` creates a principal- and installation-bound staging record and returns an `uploadId`, expiry, request limits, and one short-lived single-file capability address for each declared file.
-2. The client sends each file to its returned address without receiving or copying the MCP bearer credential. Each capability is bound to one principal, project, upload, storage token, declared size, fingerprint, and expiry and is limited to that upload slot. An exact retry after a lost response returns success; different bytes fail. Artifact Server writes those bytes through the deployment's local-disk, S3, R2, or compatible storage adapter. The first release does not promise multipart or storage-provider URLs.
+1. `artifact_create_upload`, or the corresponding CLI and HTTP operation, creates a principal- and installation-bound staging record and returns an `uploadId`, expiry, request limits, and upload instructions for each declared file.
+2. The authenticated CLI sends each file according to those instructions. It uses its own server profile; it never copies an MCP credential. A temporary upload address, when returned, is bound to one principal, project, upload, storage token, declared size, fingerprint, and expiry and is limited to that upload slot. An exact retry after a lost response returns success; different bytes fail. Artifact Server writes those bytes through the deployment's local-disk, S3, R2, or compatible storage adapter. The first release does not promise multipart or storage-provider URLs.
 3. The client submits a manifest containing normalized portable relative paths, media type, byte length, SHA-256 fingerprint, entry file, and routing mode. The server rejects traversal, absolute paths, `.git` components, encoded separators, symlinks, special files, and case or Unicode collisions.
 4. `artifact_commit_upload` verifies every size and fingerprint, writes missing final blobs without overwriting an existing object, computes the canonical manifest digest, and seals the upload.
 5. In one database transaction it stores the version, manifest, idempotency result, and conditional current-version update.
 6. The result returns artifact ID, version ID, manifest digest, access setting, main link, saved-version link, and optional Git commit ID.
+
+The user and agent see one CLI action even when the upload plan uses several
+HTTP requests. Upload identifiers, temporary addresses, bearer credentials,
+fingerprints, and retry state stay inside the client and never enter model
+context or project configuration.
 
 Every durable mutation requires an application idempotency key. A mutation of
 an existing artifact also requires the current version the caller started
