@@ -1,5 +1,5 @@
 {
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "$schema": "../../node_modules/oxlint/configuration_schema.json",
   "categories": {
     "correctness": "error",
     "perf": "error",
@@ -10,16 +10,15 @@
     "node": true
   },
   "ignorePatterns": [
+    ".alchemy/**",
+    ".build/**",
     "coverage/**",
-    "deploy/cloudflare/**",
-    "dist/**",
-    "node_modules/**",
-    "tools/oxlint/**"
+    "node_modules/**"
   ],
   "jsPlugins": [
     {
       "name": "anti-slop",
-      "specifier": "./tools/oxlint/anti-slop/index.ts"
+      "specifier": "../../tools/oxlint/anti-slop/index.ts"
     }
   ],
   "plugins": [
@@ -51,18 +50,10 @@
     "eslint/no-eval": "error",
     "eslint/no-implied-eval": "error",
     "eslint/no-new-func": "error",
-    "eslint/no-underscore-dangle": [
-      "error",
-      {
-        "allow": ["_tag"]
-      }
-    ],
+    "eslint/no-underscore-dangle": ["error", {"allow": ["_tag"]}],
     "eslint/no-warning-comments": [
       "error",
-      {
-        "terms": ["fixme", "hack"],
-        "location": "anywhere"
-      }
+      {"terms": ["fixme", "hack"], "location": "anywhere"}
     ],
     "import/no-cycle": "error",
     "typescript/consistent-type-imports": "error",

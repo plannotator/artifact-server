@@ -1,5 +1,6 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
+import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 
 import {
@@ -17,6 +18,7 @@ export default Alchemy.Stack(
   Effect.gen(function* () {
     const document = yield* cloudflareDeploymentDocumentConfig;
     const input = yield* parseCloudflareDeploymentInput(document);
-    return yield* defineCloudflareFoundation(input);
+    const apiToken = yield* Config.redacted("ARTIFACT_SERVER_API_TOKEN");
+    return yield* defineCloudflareFoundation(input, apiToken);
   }),
 );

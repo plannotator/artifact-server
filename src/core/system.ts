@@ -1,6 +1,7 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import {randomUUID} from "node:crypto";
 
 import type { Clock, IdGenerator } from "./ports.js";
+import {randomHex} from "./random.js";
 
 export class SystemClock implements Clock {
   now(): Date {
@@ -14,7 +15,7 @@ export class SystemIdGenerator implements IdGenerator {
   }
 
   contentToken(): string {
-    return randomBytes(18).toString("hex");
+    return randomHex(18);
   }
 
   /** Create one opaque project identity. */
@@ -23,7 +24,7 @@ export class SystemIdGenerator implements IdGenerator {
   }
 
   stagedFileToken(): string {
-    return randomBytes(18).toString("hex");
+    return randomHex(18);
   }
 
   uploadId(): string {

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "provider": "cloudflare",
+  "deployment": "cloudflare",
+  "qualification": "private-application-core",
+  "startedAt": "2026-08-15T23:44:42.474Z",
+  "finishedAt": "2026-08-15T23:45:22.007Z",
+  "sourceEvidenceSha256": "9c831007926b1c1e90e294922daa4843585b7aaeaa15def070125036f1b44bcd",
+  "accountIdSha256": "731f3dd0cf9d9055209a1f4d8f3c1535704097fca322a9c7cc89969736702f06",
+  "passed": true,
+  "dnsChanged": false,
+  "checks": {
+    "accountMatched": true,
+    "bucketEmptied": true,
+    "cleanupSucceeded": true,
+    "deploymentOutputValid": true,
+    "durableDataRetainedBeforeCleanup": true,
+    "exactResourceIdsCaptured": true,
+    "initialInventoryClear": true,
+    "nativePlanNoWrites": true,
+    "nonProbeDurableInventoryUnchanged": true,
+    "repeatDeploymentNoDrift": true,
+    "runtimeQualified": true,
+    "workerDestroyed": true
+  },
+  "runtimeHttpStatus": {
+    "health": 200,
+    "ready": 200,
+    "unauthorized": 401,
+    "upload": 201,
+    "uploadFile": 200,
+    "commit": 201,
+    "idempotentReplay": 200,
+    "list": 200
+  },
+  "remainingReleaseGates": [
+    "public domain and TLS qualification",
+    "WorkOS browser and MCP authorization",
+    "backup and restore qualification",
+    "hosted load, quota, and abuse controls"
+  ]
+}

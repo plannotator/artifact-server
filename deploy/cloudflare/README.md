@@ -1,18 +1,25 @@
 # Artifact Server Cloudflare deployment
 
-This package contains the first Cloudflare infrastructure checkpoint. It does
-not contain the Artifact Server product runtime.
+This package deploys the Artifact Server application core on Cloudflare
+Workers. D1 stores records and R2 stores uploaded and published file bytes.
 
 The stack defines these resources:
 
 - one Cloudflare Worker
 - one D1 database
 - one private R2 bucket
-- two Worker custom domains for public ingress
+- one application custom domain for public ingress
+- one proxied wildcard DNS record and Worker route for version content
 - one account-level Cloudflare state-store dependency
 
-The Worker returns `503` for all requests. The response prevents users from
-mistaking this infrastructure checkpoint for a product deployment.
+The Worker runs the same HTTP, MCP, publishing, project, artifact, version,
+sharing, and API-key services as the other deployments. The Cloudflare package
+supplies D1 repositories and direct R2 bindings instead of SQLite, Postgres, or
+an S3 client.
+
+The current package uses an Artifact Server API token. Hosted browser login and
+WorkOS MCP authorization remain release gates; this package must not yet be
+advertised as the complete hosted Artifact Server service.
 
 ## Pinned tools
 
@@ -43,8 +50,10 @@ Then run the package checks:
 pnpm check
 ```
 
-The tests use an in-memory state store. Provider methods stop the test if a
-plan tries a provider write.
+The plan tests use an in-memory state store. Provider methods stop the test if
+a plan tries a provider write. The runtime test starts the real Worker bundle
+through Wrangler with local D1 and R2, publishes and renders a file, restarts
+the Worker, and races two publications against the same current version.
 
 ## Prepare the configuration
 
@@ -63,6 +72,13 @@ Set the Alchemy stage to the same value as `stage` in the configuration:
 
 ```sh
 export ALCHEMY_STAGE=probe-yourname
+```
+
+Set a generated Artifact Server API token. Use at least 32 random characters;
+do not commit or print it:
+
+```sh
+export ARTIFACT_SERVER_API_TOKEN="$(openssl rand -base64 32)"
 ```
 
 The parser rejects unknown fields. The parser also rejects unsafe production,
@@ -112,7 +128,10 @@ A plan reads the Cloudflare account and the remote state store. It does not
 apply Artifact Server resources.
 
 For public ingress, the plan reads the zones for both domains. It stops if
-either zone identifier does not match `dnsZoneId`.
+either zone identifier does not match `dnsZoneIds`. It creates the application
+custom domain, a proxied `*.content-domain` DNS record, and a wildcard Worker
+route. Cloudflare custom domains cannot provide the required wildcard content
+host by themselves.
 
 The state store can write during credential recovery or a version upgrade.
 Prepare current cached state credentials before a no-write plan check.
@@ -154,9 +173,15 @@ CAUTION: The probe creates and deletes Cloudflare resources. Run it only in the
 approved account.
 
 The probe accepts private development configurations only. It rejects
-`dnsZoneId` and public ingress. Both `installationName` and `stage` must start
+`dnsZoneIds` and public ingress. Both `installationName` and `stage` must start
 with `probe-`. Every generated Worker, D1, and R2 name also starts with
 `probe-`.
+
+A stage beginning with `probe-runtime-` temporarily enables the probe Worker's
+`workers.dev` address. The probe generates an API token in memory and verifies
+health, readiness, authentication, D1, R2 upload, publication, idempotent
+replay, and listing before cleanup. Normal private deployments keep
+`workers.dev` disabled.
 
 The probe uses the active `npx wrangler` login. Run:
 
@@ -176,8 +201,11 @@ The probe runs these operations:
 6. It validates the resolved output and checks for no drift.
 7. It destroys the Worker and verifies its removal.
 8. It verifies that the exact D1 and R2 resources remain.
-9. It deletes D1 by UUID and R2 by its exact bucket name.
-10. It verifies that the non-probe D1 and R2 inventories did not change.
+9. It lists and removes objects only from the exact probe R2 bucket.
+10. It deletes D1 by UUID and R2 by its exact bucket name.
+11. It verifies that the non-probe D1 and R2 inventories did not change.
+
+For `probe-runtime-` stages, the functional runtime check runs after step 4.
 
 The probe disables Alchemy telemetry. It stores hashes of command output, not
 the command output. The evidence includes the exact probe resource names and
@@ -185,6 +213,7 @@ identifiers.
 
 The evidence file is in `evidence/account-probe-<timestamp>.json`. The package
 ignores this generated file until a reviewer approves it for durable evidence.
+The approved repository summary is `../../evidence/cloudflare-runtime.json`.
 
 If cleanup fails, use only the exact names and identifiers in the evidence
 file. Do not use a wildcard or an account-wide cleanup command.
@@ -203,19 +232,20 @@ identifiers and locations only.
 r2://<bucket>/support/installation-manifest.json
 ```
 
-This checkpoint does not write the manifest object. The product runtime track
-will write and update the manifest.
+The stack does not yet write this support object. That remains an operational
+release gate, not a dependency of artifact publication.
 
 ## Scope
 
-This checkpoint excludes these functions:
+The current Cloudflare release work still excludes these functions:
 
-- D1 product repositories and migrations
-- the R2 product adapter
 - WorkOS login and MCP authorization
 - optional Git history
-- scheduled product work
+- scheduled expired-upload cleanup
+- backup and restore qualification
+- public-domain and TLS qualification
+- hosted load, quota, and abuse controls
 - the shared hosted control plane
-- product release qualification
+- complete hosted-product release qualification
 
 Read `FINDINGS.md` before you change the state, telemetry, or removal policy.

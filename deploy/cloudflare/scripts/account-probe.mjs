@@ -1,10 +1,13 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import * as Schema from "effect/Schema";
+
+import { buildCloudflareDeploymentManifest } from
+  "../src/deployment-manifest.ts";
 
 const PACKAGE_DIRECTORY = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -34,7 +37,10 @@ const DEPLOYMENT_OUTPUT_KEYS = [
 const ProbePolicyConfiguration = Schema.Struct({
   cloudflareAccountId: Schema.String,
   compatibilityDate: Schema.String,
-  dnsZoneId: Schema.optionalKey(Schema.String),
+  dnsZoneIds: Schema.optionalKey(Schema.Struct({
+    application: Schema.String,
+    content: Schema.String,
+  })),
   environment: Schema.String,
   ingress: Schema.String,
   installationName: Schema.String,
@@ -47,6 +53,30 @@ const ProbeDatabaseId = Schema.String.check(
     /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/iu,
   ),
 );
+const QualificationUpload = Schema.Struct({
+  commitUrl: Schema.String,
+  files: Schema.Array(Schema.Struct({uploadUrl: Schema.String})),
+});
+const QualificationCommit = Schema.Struct({
+  artifact: Schema.Struct({id: Schema.String}),
+});
+const QualificationList = Schema.Struct({
+  artifacts: Schema.Array(Schema.Struct({
+    artifact: Schema.Struct({id: Schema.String}),
+  })),
+});
+const CloudflareCursor = Schema.String.check(Schema.isMinLength(1));
+const R2ObjectListResponse = Schema.Struct({
+  result: Schema.Array(Schema.Struct({key: Schema.String})),
+  result_info: Schema.optionalKey(Schema.Struct({
+    cursor: Schema.optionalKey(Schema.String),
+    is_truncated: Schema.optionalKey(Schema.Boolean),
+  })),
+  success: Schema.Literal(true),
+});
+const R2ObjectDeleteResponse = Schema.Struct({
+  success: Schema.Literal(true),
+});
 
 const usage = `Usage:
   pnpm probe:account \\
@@ -107,35 +137,8 @@ const runCommand = (command, args, environment, input) =>
     child.stdin.end(input);
   });
 
-const boundedName = (value, limit) => {
-  if (value.length <= limit) {
-    return value;
-  }
-  let hash = 0x811c9dc5;
-  for (const character of value) {
-    hash ^= character.charCodeAt(0);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  const digest = (hash >>> 0).toString(16).padStart(8, "0");
-  return `${value.slice(0, limit - digest.length - 1)}-${digest}`;
-};
-
-const resourceNames = (configuration) => {
-  const applicationName = configuration.stage.startsWith("probe-")
-    ? "probe-artifact-server"
-    : "artifact-server";
-  const base = [
-    applicationName,
-    configuration.installationName,
-    configuration.environment,
-    configuration.stage,
-  ].join("-");
-  return {
-    bucket: boundedName(`${base}-objects`, 63),
-    database: boundedName(`${base}-records`, 64),
-    worker: boundedName(`${base}-worker`, 63),
-  };
-};
+const resourceNames = (configuration) =>
+  buildCloudflareDeploymentManifest(configuration).resourceNames;
 
 const parseOptions = () => {
   try {
@@ -217,8 +220,8 @@ const validateProbePolicy = (options, configuration) => {
   if (configuration.ingress !== "private") {
     failures.push("the approved probe requires private ingress");
   }
-  if (configuration.dnsZoneId !== undefined) {
-    failures.push("the approved probe forbids dnsZoneId");
+  if (configuration.dnsZoneIds !== undefined) {
+    failures.push("the approved probe forbids dnsZoneIds");
   }
   if (
     options["confirm-account"] !==
@@ -360,6 +363,241 @@ const createdIdsAreEqual = (left, right) =>
   left.database === right.database &&
   left.bucket === right.bucket;
 
+const delay = (durationMs) =>
+  new Promise((resolveDelay) => setTimeout(resolveDelay, durationMs));
+
+const rewriteQualificationUrl = (qualificationUrl, value) => {
+  const source = new URL(value);
+  const target = new URL(qualificationUrl);
+  target.pathname = source.pathname;
+  target.search = source.search;
+  return target;
+};
+
+const requestStatus = async (url, options) => {
+  const response = await fetch(url, options);
+  return {
+    body: await response.text(),
+    status: response.status,
+  };
+};
+
+const parseCloudflareResponse = async (response) => {
+  try {
+    return await response.json();
+  } catch {
+    return undefined;
+  }
+};
+
+const r2ObjectsUrl = (accountId, bucketName) =>
+  new URL(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${encodeURIComponent(bucketName)}/objects`,
+  );
+
+const encodedObjectKey = (key) =>
+  key.split("/").map(encodeURIComponent).join("/");
+
+const listExactR2ObjectKeys = async (
+  accountId,
+  bucketName,
+  headers,
+  cursor,
+  remainingPages,
+) => {
+  if (remainingPages === 0) return {keys: [], ok: false};
+  const url = r2ObjectsUrl(accountId, bucketName);
+  url.searchParams.set("per_page", "1000");
+  if (cursor !== undefined) url.searchParams.set("cursor", cursor);
+  const response = await fetch(url, {headers});
+  const document = await parseCloudflareResponse(response);
+  if (!response.ok || !Schema.is(R2ObjectListResponse)(document)) {
+    return {keys: [], ok: false};
+  }
+  const keys = document.result.map(({key}) => key);
+  if (document.result_info?.is_truncated !== true) {
+    return {keys, ok: true};
+  }
+  const nextCursor = document.result_info.cursor;
+  if (!Schema.is(CloudflareCursor)(nextCursor)) {
+    return {keys: [], ok: false};
+  }
+  const remaining = await listExactR2ObjectKeys(
+    accountId,
+    bucketName,
+    headers,
+    nextCursor,
+    remainingPages - 1,
+  );
+  return remaining.ok
+    ? {keys: [...keys, ...remaining.keys], ok: true}
+    : remaining;
+};
+
+const emptyExactR2Bucket = async (
+  accountId,
+  bucketName,
+  apiToken,
+) => {
+  if (apiToken === undefined || apiToken.length === 0) {
+    return {deletedCount: 0, ok: false};
+  }
+  const headers = {Authorization: `Bearer ${apiToken}`};
+  const listed = await listExactR2ObjectKeys(
+    accountId,
+    bucketName,
+    headers,
+    undefined,
+    100,
+  );
+  if (!listed.ok) return {deletedCount: 0, ok: false};
+  const deleted = await Promise.all(listed.keys.map(async (key) => {
+    const url = r2ObjectsUrl(accountId, bucketName);
+    url.pathname = `${url.pathname}/${encodedObjectKey(key)}`;
+    const response = await fetch(url, {headers, method: "DELETE"});
+    const document = await parseCloudflareResponse(response);
+    return response.ok && Schema.is(R2ObjectDeleteResponse)(document);
+  }));
+  const deletedCount = deleted.filter(Boolean).length;
+  return {deletedCount, ok: deletedCount === listed.keys.length};
+};
+
+const parseResponseDocument = (response) => {
+  try {
+    return JSON.parse(response.body);
+  } catch {
+    return undefined;
+  }
+};
+
+const awaitHealthyRuntime = async (qualificationUrl, attempts) => {
+  const response = await requestStatus(new URL("/health", qualificationUrl));
+  if (response.status === 200 || attempts <= 1) return response;
+  await delay(500);
+  return awaitHealthyRuntime(qualificationUrl, attempts - 1);
+};
+
+const parseQualificationUrl = (value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname.endsWith(".workers.dev")
+      ? url
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const qualifyRuntime = async (qualificationUrl, apiToken) => {
+  const evidence = {
+    artifactIdSha256: null,
+    commit: null,
+    health: null,
+    list: null,
+    ready: null,
+    replay: null,
+    unauthorized: null,
+    upload: null,
+    uploadFile: null,
+  };
+  try {
+    const health = await awaitHealthyRuntime(qualificationUrl, 20);
+    evidence.health = health.status;
+    const ready = await requestStatus(new URL("/ready", qualificationUrl));
+    evidence.ready = ready.status;
+    const unauthorized = await requestStatus(
+      new URL("/api/v1/artifacts", qualificationUrl),
+    );
+    evidence.unauthorized = unauthorized.status;
+
+    const bytes = new TextEncoder().encode(
+      "<main>Live Cloudflare qualification</main>",
+    );
+    const upload = await requestStatus(
+      new URL("/api/v1/uploads", qualificationUrl),
+      {
+        body: JSON.stringify({
+          entryPath: "index.html",
+          files: [{
+            mediaType: "text/html; charset=utf-8",
+            path: "index.html",
+            sha256: createHash("sha256").update(bytes).digest("hex"),
+            size: bytes.byteLength,
+          }],
+        }),
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    evidence.upload = upload.status;
+    const uploadDocument = parseResponseDocument(upload);
+    if (!Schema.is(QualificationUpload)(uploadDocument)) {
+      return {evidence, passed: false};
+    }
+    const plannedFile = uploadDocument.files[0];
+    if (plannedFile === undefined) return {evidence, passed: false};
+    const uploadedFile = await requestStatus(
+      rewriteQualificationUrl(qualificationUrl, plannedFile.uploadUrl),
+      {
+        body: bytes,
+        headers: {Authorization: `Bearer ${apiToken}`},
+        method: "PUT",
+      },
+    );
+    evidence.uploadFile = uploadedFile.status;
+    const commitBody = JSON.stringify({target: {
+      accessSetting: "public_link",
+      kind: "new_artifact",
+      name: "Live Cloudflare qualification",
+      tags: ["cloudflare", "qualification"],
+    }});
+    const commitHeaders = {
+      Authorization: `Bearer ${apiToken}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": "cloudflare-live-runtime-qualification",
+    };
+    const commit = await requestStatus(
+      rewriteQualificationUrl(qualificationUrl, uploadDocument.commitUrl),
+      {body: commitBody, headers: commitHeaders, method: "POST"},
+    );
+    evidence.commit = commit.status;
+    const commitDocument = parseResponseDocument(commit);
+    if (!Schema.is(QualificationCommit)(commitDocument)) {
+      return {evidence, passed: false};
+    }
+    const artifactId = commitDocument.artifact.id;
+    evidence.artifactIdSha256 = sha256(artifactId);
+    const replay = await requestStatus(
+      rewriteQualificationUrl(qualificationUrl, uploadDocument.commitUrl),
+      {body: commitBody, headers: commitHeaders, method: "POST"},
+    );
+    evidence.replay = replay.status;
+    const list = await requestStatus(
+      new URL("/api/v1/artifacts", qualificationUrl),
+      {headers: {Authorization: `Bearer ${apiToken}`}},
+    );
+    evidence.list = list.status;
+    const listDocument = parseResponseDocument(list);
+    const listed = Schema.is(QualificationList)(listDocument) &&
+      listDocument.artifacts.some((item) => item.artifact.id === artifactId);
+    const passed = evidence.health === 200 &&
+      evidence.ready === 200 &&
+      evidence.unauthorized === 401 &&
+      evidence.upload === 201 &&
+      evidence.uploadFile === 200 &&
+      evidence.commit === 201 &&
+      evidence.replay === 200 &&
+      evidence.list === 200 &&
+      listed;
+    return {evidence, passed};
+  } catch {
+    return {evidence, passed: false};
+  }
+};
+
 const writeEvidence = async (evidence) => {
   const timestamp = evidence.finishedAt.replaceAll(/[:.]/gu, "-");
   const path = resolve(
@@ -414,11 +652,13 @@ const main = async () => {
   }
 
   const names = resourceNames(configuration);
+  const runtimeApiToken = randomBytes(32).toString("base64url");
   const environment = {
     ...process.env,
     ALCHEMY_TELEMETRY_DISABLED: "1",
     ARTIFACT_SERVER_CLOUDFLARE_CONFIG:
       parsedConfiguration.raw.trim(),
+    ARTIFACT_SERVER_API_TOKEN: runtimeApiToken,
     CLOUDFLARE_ACCOUNT_ID: configuration.cloudflareAccountId,
     DO_NOT_TRACK: "1",
     FORCE_COLOR: "0",
@@ -449,8 +689,11 @@ const main = async () => {
       input,
     );
   const steps = [];
+  const runtimeQualificationRequested =
+    configuration.stage.startsWith("probe-runtime-");
   const checks = {
     accountMatched: false,
+    bucketEmptied: false,
     cleanupSucceeded: false,
     deploymentOutputValid: false,
     dnsChangesExcluded: true,
@@ -460,8 +703,10 @@ const main = async () => {
     nativePlanNoWrites: false,
     nonProbeDurableInventoryUnchanged: false,
     repeatDeploymentNoDrift: false,
+    runtimeQualified: !runtimeQualificationRequested,
     workerDestroyed: false,
   };
+  let runtimeEvidence = null;
   let exactIds = {
     worker: null,
     database: null,
@@ -479,6 +724,7 @@ const main = async () => {
       resources: names,
       createdResourceIds: exactIds,
       checks,
+      runtime: runtimeEvidence,
       stoppedReason,
       steps,
     });
@@ -636,6 +882,29 @@ const main = async () => {
     return;
   }
 
+  if (runtimeQualificationRequested) {
+    const qualificationUrl = extractOutputValue(
+      firstDeploy,
+      "qualificationUrl",
+    );
+    const parsedQualificationUrl = qualificationUrl === undefined
+      ? undefined
+      : parseQualificationUrl(qualificationUrl);
+    if (parsedQualificationUrl === undefined) {
+      await stop(
+        "qualification-url-missing",
+        "The runtime probe did not return a workers.dev qualification URL.",
+      );
+      return;
+    }
+    const runtimeResult = await qualifyRuntime(
+      parsedQualificationUrl,
+      runtimeApiToken,
+    );
+    runtimeEvidence = runtimeResult.evidence;
+    checks.runtimeQualified = runtimeResult.passed;
+  }
+
   let repeatDeploy = {
     command: "repeat deploy skipped",
     exitCode: 1,
@@ -720,16 +989,38 @@ const main = async () => {
     return;
   }
 
+  const bucketCleanup = await emptyExactR2Bucket(
+    configuration.cloudflareAccountId,
+    exactIds.bucket,
+    process.env.CLOUDFLARE_API_TOKEN,
+  );
+  checks.bucketEmptied = bucketCleanup.ok;
+  steps.push({
+    command: "Cloudflare API empty exact probe R2 bucket",
+    exitCode: bucketCleanup.ok ? 0 : 1,
+    stderrSha256: sha256(""),
+    stdoutSha256: sha256(JSON.stringify({
+      deletedCount: bucketCleanup.deletedCount,
+    })),
+  });
+
   const databaseDelete = await wrangler([
     "d1",
     "delete",
     exactIds.database,
     "--skip-confirmation",
   ]);
-  const bucketDelete = await wrangler(
-    ["r2", "bucket", "delete", exactIds.bucket],
-    "y\n",
-  );
+  const bucketDelete = bucketCleanup.ok
+    ? await wrangler(
+      ["r2", "bucket", "delete", exactIds.bucket],
+      "y\n",
+    )
+    : {
+      command: `npx wrangler r2 bucket delete ${exactIds.bucket}`,
+      exitCode: 1,
+      stdout: "",
+      stderr: "Exact bucket object cleanup failed.",
+    };
   steps.push(
     commandEvidence(databaseDelete),
     commandEvidence(bucketDelete),
@@ -763,6 +1054,7 @@ const main = async () => {
     finalBuckets !== undefined &&
     JSON.stringify(initialBuckets) === JSON.stringify(finalBuckets);
   checks.cleanupSucceeded =
+    checks.bucketEmptied &&
     databaseDelete.exitCode === 0 &&
     bucketDelete.exitCode === 0 &&
     checks.nonProbeDurableInventoryUnchanged &&

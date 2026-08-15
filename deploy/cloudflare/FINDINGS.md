@@ -47,8 +47,9 @@ ownership link that a later plan needs.
 Use an explicit adoption procedure to manage a retained resource again. Never
 use broad adoption against an unreviewed account.
 
-The probe uses Wrangler for permanent deletion after it proves retention. It
-deletes D1 by UUID and R2 by its exact bucket name.
+The probe uses Wrangler and the Cloudflare API for permanent deletion after it
+proves retention. It lists and removes objects only from the exact probe R2
+bucket, deletes D1 by UUID, and deletes R2 by its exact bucket name.
 
 ## Telemetry
 
@@ -67,18 +68,24 @@ and the configured sample rate.
 
 ## Domain behavior
 
-Public ingress attaches two custom domains to one Worker. The application
-domain is canonical. The content domain is an alias.
+Public ingress attaches the application hostname as a custom domain. It creates
+a proxied wildcard `AAAA` record for `*.content-domain` and attaches the Worker
+with a wildcard route. Cloudflare custom domains do not support wildcard DNS,
+so an exact content-domain alias cannot serve the per-version content hosts.
 
 The stack reads the zone for each domain before it defines resources. Both zone
-identifiers must match `dnsZoneId`. The custom-domain API then infers the same
-zones from the hostnames because it does not accept a zone identifier.
+identifiers must match `dnsZoneIds`. The application custom-domain API infers
+its zone from the hostname; the wildcard content route uses its configured zone
+identifier directly.
 
 Private ingress attaches no custom domain. The stack also disables
-`workers.dev` and preview URLs.
+`workers.dev` and preview URLs. A `probe-runtime-` development stage is the one
+exception: it enables `workers.dev` only long enough to qualify the real Worker,
+D1, and R2 lifecycle without changing DNS.
 
-This checkpoint does not implement separate application and content route
-tables. The Worker returns the same `503` response on both domains.
+The Worker rejects unknown hosts. Application requests use the configured
+application hostname. Artifact content uses a token beneath the separate
+content domain, and the HTTP application exposes only content routes there.
 
 ## Output boundary
 
@@ -86,10 +93,12 @@ Alchemy output expressions resolve after the provider apply. Effect Schema
 cannot parse unresolved output expressions during stack construction.
 
 The package checks the realized output shape with provider-free tests. The
-real-account probe still needs a direct read of persisted stack outputs.
+real-account probe also validates the realized output from both the first and
+no-drift deployments. A separate support command will still need a direct read
+of persisted stack outputs.
 
-The support manifest location points to R2. This checkpoint does not create the
-manifest object.
+The support manifest location points to R2. The current stack does not create
+the manifest object.
 
 The installation identifier uses the installation name and environment. The
 product runtime track must replace it with a generated identifier in durable
@@ -109,11 +118,26 @@ The Cloudflare package keeps Alchemy and Cloudflare types inside
 `src/deployment-input.ts` calls the shared executable contract. It adds only
 the exact compatibility-date and state-store requirements for this package.
 
-`src/worker.ts` is also temporary. Replace it when the Worker runtime
-composition is ready.
+`src/worker.ts` reuses the shared Effect application layer and creates one
+managed runtime per Worker isolate. Caller identity remains request-scoped.
+D1 and R2 implementations stay inside this package so the application core
+does not import Cloudflare SDK types.
 
-Do not add D1 repositories, the R2 product adapter, WorkOS, or optional Git to
-this checkpoint.
+WorkOS, optional Git, scheduled cleanup, and the shared hosted control plane
+remain separate release work.
+
+## Live runtime qualification
+
+The private runtime probe passed on August 15, 2026. It created one Worker, one
+D1 database, and one R2 bucket in the approved standalone Cloudflare account.
+It verified health, readiness, API-token rejection, upload, publication,
+idempotent replay, listing, no-drift deployment, retention, and exact cleanup.
+It made no DNS changes. The redacted durable result is
+`../../evidence/cloudflare-runtime.json`.
+
+This proves the Cloudflare application core and private deployment lifecycle.
+It does not prove public domains and certificates, WorkOS login, backup and
+restore, or hosted load and abuse controls.
 
 ## Dependency findings
 
@@ -123,7 +147,15 @@ Alchemy includes `capnp-es@0.0.14`. That package requests TypeScript `^5.7.3`.
 The repository pins TypeScript `7.0.2`.
 
 Lint, type checks, unit tests, and the in-memory plan pass with TypeScript
-`7.0.2`. A future Alchemy update can remove this peer warning.
+`7.0.2`. The real-account application-core probe also passes. A future Alchemy
+update can remove this peer warning.
 
 pnpm blocks build scripts for optional local-runtime packages by default. The
 foundation plan does not need those build scripts.
+
+## Cloudflare references
+
+- [Workers Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)
+- [Workers Routes](https://developers.cloudflare.com/workers/configuration/routing/routes/)
+- [Workers routing options](https://developers.cloudflare.com/workers/configuration/routing/)
+- [R2 Objects API](https://developers.cloudflare.com/api/resources/r2/subresources/buckets/subresources/objects)

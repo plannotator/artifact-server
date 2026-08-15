@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import {createHash, randomUUID, timingSafeEqual} from "node:crypto";
 
 import { DateTime, Effect, Layer, Redacted } from "effect";
 
@@ -82,6 +82,7 @@ import type {
 } from "../core/ports.js";
 import type {IdentityRepository} from "../core/identity-ports.js";
 import type { ManifestEntry } from "../core/model.js";
+import {randomBase64Url} from "../core/random.js";
 import { FileVerificationError } from "../storage/verified-file.js";
 
 /** Concrete Node adapters reused by the Effect application layer. */
@@ -407,7 +408,7 @@ export function createApplicationLayer(
       digest: (token) =>
         createHash("sha256").update(Redacted.value(token)).digest("hex"),
       issue: () => {
-        const raw = randomBytes(32).toString("base64url");
+        const raw = randomBase64Url(32);
         return {
           digest: createHash("sha256").update(raw).digest("hex"),
           token: Redacted.make(raw, {label: "content-session-token"}),
@@ -541,7 +542,7 @@ export function createApplicationLayer(
     },
     secrets: {
       digest: digestIdentitySecret,
-      issue: () => randomBytes(32).toString("base64url"),
+      issue: () => randomBase64Url(32),
     },
     sessionLifetimeMilliseconds: 12 * 60 * 60 * 1_000,
   });

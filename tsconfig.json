@@ -30,5 +30,6 @@
     "vitest.config.ts",
     "vitest.release.config.ts",
     "vitest.integration.config.ts"
-  ]
+  ],
+  "exclude": ["deploy/cloudflare/**"]
 }

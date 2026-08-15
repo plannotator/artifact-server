@@ -24,7 +24,10 @@ export const validDeploymentInput = {
   databasePlan: "small",
   backupRetentionDays: 7,
   deletionProtection: false,
-  dnsZoneId: "0123456789abcdef0123456789abcdef",
+  dnsZoneIds: {
+    application: "0123456789abcdef0123456789abcdef",
+    content: "fedcba9876543210fedcba9876543210",
+  },
   requestLogSampleRate: 0.01,
   resourceTags: {
     owner: "artifact-server-review",
@@ -54,7 +57,9 @@ export const validDeploymentOutput = {
       "cloudflare-secrets-store://alchemy-state-store",
   },
   networkResourceIds: {
-    dnsZoneId: "0123456789abcdef0123456789abcdef",
+    applicationDnsZoneId: "0123456789abcdef0123456789abcdef",
+    contentWildcardDnsRecordId: "content-wildcard-dns-record-id",
+    contentDnsZoneId: "fedcba9876543210fedcba9876543210",
   },
   logDestination: "cloudflare-workers://review-worker",
   stateBackend: "cloudflare:alchemy-state-store",

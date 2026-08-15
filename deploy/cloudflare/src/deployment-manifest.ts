@@ -1,6 +1,7 @@
 import type { CloudflareDeploymentInput } from "./deployment-input.ts";
 
 const WORKER_NAME_LIMIT = 63;
+const WORKERS_DEV_NAME_LIMIT = 54;
 const D1_NAME_LIMIT = 64;
 const R2_NAME_LIMIT = 63;
 
@@ -54,6 +55,9 @@ export const buildCloudflareDeploymentManifest = (
   const applicationName = input.stage.startsWith("probe-")
     ? "probe-artifact-server"
     : "artifact-server";
+  const workerNameLimit = input.stage.startsWith("probe-runtime-")
+    ? WORKERS_DEV_NAME_LIMIT
+    : WORKER_NAME_LIMIT;
   const baseName = [
     applicationName,
     input.installationName,
@@ -72,14 +76,14 @@ export const buildCloudflareDeploymentManifest = (
     stackName: "artifact-server-cloudflare",
     stage: input.stage,
     resourceNames: {
-      worker: boundedName(`${baseName}-worker`, WORKER_NAME_LIMIT),
+      worker: boundedName(`${baseName}-worker`, workerNameLimit),
       database: boundedName(`${baseName}-records`, D1_NAME_LIMIT),
       bucket: boundedName(`${baseName}-objects`, R2_NAME_LIMIT),
     },
     applicationOrigin: `https://${input.applicationDomain}`,
     routes: {
       application: `${input.applicationDomain}/*`,
-      content: `${input.contentDomain}/*`,
+      content: `*.${input.contentDomain}/*`,
     },
     workerTags: Object.entries(requiredTags)
       .toSorted(([left], [right]) => left.localeCompare(right))

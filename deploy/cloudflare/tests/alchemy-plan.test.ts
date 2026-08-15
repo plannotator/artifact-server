@@ -45,6 +45,13 @@ const bucketProvider = Provider.succeed(
     delete: writeForbidden,
   },
 );
+const dnsRecordProvider = Provider.succeed(
+  Cloudflare.DNS.Record,
+  {
+    reconcile: writeForbidden,
+    delete: writeForbidden,
+  },
+);
 const workerProvider = Provider.succeed(
   PlanWorker,
   {
@@ -55,6 +62,7 @@ const workerProvider = Provider.succeed(
 const individualProviders = Layer.mergeAll(
   databaseProvider,
   bucketProvider,
+  dnsRecordProvider,
   workerProvider,
 );
 const providerCollection = Layer.succeed(
@@ -69,7 +77,7 @@ const cloudflareEnvironment = Layer.succeed(
   Cloudflare.CloudflareEnvironment,
   Effect.succeed({
     type: "apiToken",
-    apiToken: Redacted.make("test-only-placeholder"),
+    apiToken: Redacted.make("test-only-cloudflare-credential"),
     accountId: validDeploymentInput.cloudflareAccountId,
     source: {
       type: "env",
@@ -80,7 +88,7 @@ const cloudflareCredentials = Layer.succeed(
   Cloudflare.Credentials,
   Effect.succeed({
     type: "apiToken",
-    apiToken: Redacted.make("test-only-placeholder"),
+    apiToken: Redacted.make("test-only-cloudflare-credential"),
     apiBaseUrl: "https://api.cloudflare.invalid/client/v4",
   }),
 );
@@ -98,17 +106,22 @@ const options = {
 } satisfies Test.MakeOptions;
 
 describe("Alchemy foundation plan", () => {
-  it("plans named Worker, D1, and R2 without provider writes", async () => {
+  it("plans the public Worker, D1, R2, and content DNS without provider writes", async () => {
     const resolvedHostnames: string[] = [];
     const resolveZoneId: CloudflareZoneResolver = ({ hostname }) => {
       resolvedHostnames.push(hostname);
-      return Effect.succeed(validDeploymentInput.dnsZoneId ?? "");
+      return Effect.succeed(
+        hostname === validDeploymentInput.applicationDomain
+          ? validDeploymentInput.dnsZoneIds?.application ?? ""
+          : validDeploymentInput.dnsZoneIds?.content ?? "",
+      );
     };
     const scratch = Test.scratchStack(options, "foundation-plan");
     const plan = await Test.run(
       scratch.plan(
         defineCloudflareFoundation(
           validDeploymentInput,
+          Redacted.make("test-only-runtime-token-value"),
           resolveZoneId,
         ),
       ),
@@ -116,13 +129,14 @@ describe("Alchemy foundation plan", () => {
     );
     const resources = Object.values(plan.resources);
 
-    expect(resources).toHaveLength(3);
+    expect(resources).toHaveLength(4);
     expect(
       resources
         .map(({ resource }) => resource.Type)
         .toSorted((left, right) => left.localeCompare(right)),
     ).toEqual([
       "Cloudflare.D1Database",
+      "Cloudflare.DNS.Record",
       "Cloudflare.R2.Bucket",
       "Cloudflare.Worker",
     ]);
@@ -154,7 +168,8 @@ describe("Alchemy foundation plan", () => {
 
     const retained = resources
       .filter(({ resource }) =>
-        resource.Type !== "Cloudflare.Worker"
+        resource.Type === "Cloudflare.D1Database" ||
+        resource.Type === "Cloudflare.R2.Bucket"
       )
       .map(({ resource }) => resource.RemovalPolicy);
     expect(retained).toEqual(["retain", "retain"]);
@@ -165,12 +180,27 @@ describe("Alchemy foundation plan", () => {
     expect(worker?.resource.Props).toMatchObject({
       compatibility: {
         date: validDeploymentInput.compatibilityDate,
+        flags: ["nodejs_compat"],
       },
       domain: {
         name: validDeploymentInput.applicationDomain,
-        aliases: [validDeploymentInput.contentDomain],
       },
+      routes: [{
+        pattern: `*.${validDeploymentInput.contentDomain}/*`,
+        zoneId: validDeploymentInput.dnsZoneIds?.content,
+      }],
       workersDev: false,
+    });
+
+    const contentDns = resources.find(
+      ({ resource }) => resource.Type === "Cloudflare.DNS.Record",
+    );
+    expect(contentDns?.resource.Props).toMatchObject({
+      content: "100::",
+      name: `*.${validDeploymentInput.contentDomain}`,
+      proxied: true,
+      type: "AAAA",
+      zoneId: validDeploymentInput.dnsZoneIds?.content,
     });
   });
 
@@ -182,19 +212,20 @@ describe("Alchemy foundation plan", () => {
         scratch.plan(
           defineCloudflareFoundation(
             validDeploymentInput,
+            Redacted.make("test-only-runtime-token-value"),
             mismatchedZoneResolver,
           ),
         ),
         options,
       ),
     ).rejects.toThrow(
-      "dnsZoneId does not match a domain zone inferred by Cloudflare",
+      "dnsZoneIds.application does not match the application domain zone inferred by Cloudflare",
     );
   });
 
   it("keeps private ingress off domains and workers.dev", async () => {
     const {
-      dnsZoneId: _dnsZoneId,
+      dnsZoneIds: _dnsZoneIds,
       ...deploymentInputWithoutZone
     } = validDeploymentInput;
     const privateDeploymentInput = {
@@ -206,6 +237,7 @@ describe("Alchemy foundation plan", () => {
       scratch.plan(
         defineCloudflareFoundation(
           privateDeploymentInput,
+          Redacted.make("test-only-runtime-token-value"),
           unexpectedZoneResolver,
         ),
       ),

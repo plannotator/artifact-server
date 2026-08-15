@@ -2,6 +2,7 @@ import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Output from "alchemy/Output";
 import * as Effect from "effect/Effect";
+import type * as Redacted from "effect/Redacted";
 
 import type { CloudflareDeploymentInput } from "./deployment-input.ts";
 import {
@@ -35,14 +36,14 @@ const validatePublicDnsZone = Effect.fn("validatePublicDnsZone")(
     if (input.ingress !== "public") {
       return;
     }
-    const configuredZoneId = input.dnsZoneId;
-    if (configuredZoneId === undefined) {
+    const configuredZoneIds = input.dnsZoneIds;
+    if (configuredZoneIds === undefined) {
       yield* Effect.die(
-        new Error("public ingress requires dnsZoneId"),
+        new Error("public ingress requires dnsZoneIds"),
       );
       return;
     }
-    const inferredZoneIds = yield* Effect.all([
+    const [applicationZoneId, contentZoneId] = yield* Effect.all([
       resolveZoneId({
         accountId,
         hostname: input.applicationDomain,
@@ -54,20 +55,28 @@ const validatePublicDnsZone = Effect.fn("validatePublicDnsZone")(
         zone: undefined,
       }).pipe(Effect.orDie),
     ]);
-    if (
-      inferredZoneIds.some(
-        (inferredZoneId) =>
-          inferredZoneId !== configuredZoneId,
-      )
-    ) {
+    if (applicationZoneId !== configuredZoneIds.application) {
       yield* Effect.die(
         new Error(
-          "dnsZoneId does not match a domain zone inferred by Cloudflare",
+          "dnsZoneIds.application does not match the application domain zone inferred by Cloudflare",
+        ),
+      );
+    }
+    if (contentZoneId !== configuredZoneIds.content) {
+      yield* Effect.die(
+        new Error(
+          "dnsZoneIds.content does not match the content domain zone inferred by Cloudflare",
         ),
       );
     }
   },
 );
+
+const requireContentDnsZoneId = (
+  input: CloudflareDeploymentInput,
+): Effect.Effect<string> => input.dnsZoneIds === undefined
+  ? Effect.die(new Error("public ingress requires a content DNS zone"))
+  : Effect.succeed(input.dnsZoneIds.content);
 
 const defineDurableResources = Effect.fn("defineDurableResources")(
   function* (manifest: CloudflareDeploymentManifest) {
@@ -99,6 +108,7 @@ export const defineCloudflareFoundation = Effect.fn(
   "defineCloudflareFoundation",
 )(function* (
   input: CloudflareDeploymentInput,
+  apiToken: Redacted.Redacted,
   resolveZoneId: CloudflareZoneResolver =
     Cloudflare.Zone.resolveZoneId,
 ) {
@@ -116,20 +126,42 @@ export const defineCloudflareFoundation = Effect.fn(
 
   const { database, bucket } = yield* defineDurableResources(manifest);
 
+  const contentWildcardDns = input.ingress === "public"
+    ? yield* Cloudflare.DNS.Record("ContentWildcardDns", {
+      comment: "Artifact Server version content",
+      content: "100::",
+      name: `*.${input.contentDomain}`,
+      proxied: true,
+      ttl: "1",
+      type: "AAAA",
+      zoneId: input.dnsZoneIds?.content ?? "",
+    })
+    : undefined;
+
+  const qualificationMode = input.stage.startsWith("probe-runtime-");
+  let workerEnvironment: Cloudflare.WorkerProps["env"] = {
+    ...manifest.runtimeConfiguration,
+    ARTIFACT_SERVER_API_TOKEN: apiToken,
+    ARTIFACT_SERVER_INSTALLATION_ID:
+      `${input.installationName}:${input.environment}`,
+    ARTIFACT_SERVER_D1_DATABASE: database,
+    ARTIFACT_SERVER_R2_BUCKET: bucket,
+  };
+  if (qualificationMode) {
+    workerEnvironment = {
+      ...workerEnvironment,
+      ARTIFACT_SERVER_QUALIFICATION_MODE: "enabled",
+    };
+  }
   const workerProps: Cloudflare.WorkerProps = {
     name: manifest.resourceNames.worker,
     main: WORKER_ENTRYPOINT,
     compatibility: {
       date: input.compatibilityDate,
+      flags: ["nodejs_compat"],
     },
-    workersDev: false,
-    env: {
-      ...manifest.runtimeConfiguration,
-      ARTIFACT_SERVER_INSTALLATION_ID:
-        `${input.installationName}:${input.environment}`,
-      ARTIFACT_SERVER_D1_DATABASE: database,
-      ARTIFACT_SERVER_R2_BUCKET: bucket,
-    },
+    workersDev: qualificationMode,
+    env: workerEnvironment,
     observability: {
       enabled: true,
       logs: {
@@ -141,10 +173,14 @@ export const defineCloudflareFoundation = Effect.fn(
     tags: [...manifest.workerTags],
   };
   if (input.ingress === "public") {
+    const contentZoneId = yield* requireContentDnsZoneId(input);
     workerProps.domain = {
       name: input.applicationDomain,
-      aliases: [input.contentDomain],
     };
+    workerProps.routes = [{
+      pattern: manifest.routes.content,
+      zoneId: contentZoneId,
+    }];
   }
   const worker = yield* Cloudflare.Worker(
     "Application",
@@ -174,14 +210,20 @@ export const defineCloudflareFoundation = Effect.fn(
       alchemyStateStore:
         "cloudflare-secrets-store://alchemy-state-store",
     },
-    networkResourceIds:
-      input.dnsZoneId === undefined
-        ? {}
-        : { dnsZoneId: input.dnsZoneId },
+    networkResourceIds: input.dnsZoneIds === undefined
+      ? {}
+      : {
+        applicationDnsZoneId: input.dnsZoneIds.application,
+        contentWildcardDnsRecordId:
+          contentWildcardDns?.recordId ?? "",
+        contentDnsZoneId: input.dnsZoneIds.content,
+      },
     logDestination: Output.interpolate`cloudflare-workers://${worker.workerName}`,
     stateBackend: "cloudflare:alchemy-state-store",
     supportManifestLocation,
   };
 
-  return output;
+  return qualificationMode
+    ? {...output, qualificationUrl: worker.url}
+    : output;
 });

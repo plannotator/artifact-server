@@ -12,7 +12,7 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "deploy": "alchemy deploy",
     "destroy": "alchemy destroy",
-    "lint": "oxlint --type-aware --type-check --deny-warnings .",
+    "lint": "oxlint --config ./.oxlintrc.json --type-aware --type-check --deny-warnings .",
     "plan": "alchemy plan",
     "probe:account": "node ./scripts/account-probe.mjs",
     "test": "vitest run",
