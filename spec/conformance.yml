@@ -1,6 +1,6 @@
 version: 1
 product: artifactserver.com
-updated: "2026-08-14"
+updated: "2026-08-15"
 evidence_root: ".."
 
 source:
@@ -13,17 +13,17 @@ source:
 # names that deployment is verified with evidence from that deployment.
 deployment_sets:
   all: &all
-    [local, single_server, kubernetes, cloudflare, aws, gcp, azure]
+    [local, single_server, kubernetes, cloudflare, aws, gcp]
   external_storage: &external_storage
-    [single_server, kubernetes, cloudflare, aws, gcp, azure]
+    [single_server, kubernetes, cloudflare, aws, gcp]
   replicated: &replicated
-    [kubernetes, cloudflare, aws, gcp, azure]
+    [kubernetes, cloudflare, aws, gcp]
   hosted: &hosted
     [cloudflare]
-  major_clouds: &major_clouds
-    [aws, gcp, azure]
+  direct_clouds: &direct_clouds
+    [aws, gcp]
   plannotator_capable: &plannotator_capable
-    [single_server, kubernetes, cloudflare, aws, gcp, azure]
+    [single_server, kubernetes, cloudflare, aws, gcp]
 
 allowed_statuses:
   - specified
@@ -1556,7 +1556,7 @@ requirements:
     acceptance:
       behavior: {id: MCP-013-B, description: Connect locally through the stdio bridge with no visible credential, connect to a private OAuth server through browser approval, and connect to a no-OAuth server using an administration-issued revocable API key.}
       failure: {id: MCP-013-F, description: Startup logs, diagnostics, project files, generic OIDC ID tokens, browser login cookies, and wrong-resource tokens cannot expose or substitute for a valid MCP credential.}
-    deployments: [local, single_server, kubernetes, aws, gcp, azure]
+    deployments: [local, single_server, kubernetes, aws, gcp]
     status: implementing
     depends_on: [AUTH-009]
     evidence: []
@@ -1569,7 +1569,7 @@ requirements:
     acceptance:
       behavior: {id: MCP-014-B, description: Pass the full hosted hostile and client matrix using the embedded provider before advertising it.}
       failure: {id: MCP-014-F, description: Self-hosted deployments remain usable through API keys and compatible external issuers when embedded OAuth is absent.}
-    deployments: [single_server, kubernetes, aws, gcp, azure]
+    deployments: [single_server, kubernetes, aws, gcp]
     status: specified
     depends_on: [MCP-010, MCP-013]
     evidence: []
@@ -2018,7 +2018,7 @@ requirements:
 
   - id: DEP-001
     kind: deployment
-    behavior: The same artifact, version, access, HTTP, and MCP contracts run on a laptop, one server, Kubernetes, Cloudflare, AWS, GCP, and Azure.
+    behavior: The same artifact, version, access, HTTP, and MCP contracts run on a laptop, one server, Kubernetes, Cloudflare, AWS, and GCP; Azure teams use the Kubernetes contract on AKS.
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: deployment}
     acceptance:
@@ -2031,7 +2031,7 @@ requirements:
 
   - id: DEP-002
     kind: deployment
-    behavior: Official installation surfaces are Artifact Server local commands, Docker Compose, Helm, a direct Alchemy Cloudflare project, and direct Pulumi projects for AWS, GCP, and Azure.
+    behavior: Official installation surfaces are Artifact Server local commands, Docker Compose, Helm for any supported Kubernetes cluster including AKS, a direct Alchemy Cloudflare project, and direct Pulumi projects for AWS and GCP.
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: deployment}
     acceptance:
@@ -2161,26 +2161,13 @@ requirements:
     depends_on: [DEP-003, DEP-021, OPS-003]
     evidence: []
 
-  - id: DEP-010
-    kind: deployment
-    behavior: The default Azure target is a direct Pulumi project that creates Container Apps, Azure Database for PostgreSQL Flexible Server, native Azure Blob Storage, managed identity, secrets, networking, DNS, TLS, telemetry, and required support outputs.
-    owner: deployment
-    source: {file: artifact-server-product-spec.html, anchor: deployment}
-    acceptance:
-      behavior: {id: DEP-010-B, description: Create, upgrade, roll back, recover state, back up, restore, and delete the Azure target with native Blob Storage and private-network options.}
-      failure: {id: DEP-010-F, description: The supported path cannot depend on an S3 compatibility shim, lose durable state during replacement, or require Pulumi Cloud.}
-    deployments: [azure]
-    status: implementing
-    depends_on: [DEP-003, DEP-021, OPS-003]
-    evidence: []
-
   - id: DEP-011
     kind: constraint
-    behavior: The external runtime consumes one provider-neutral factory with immutable blob, staging, readiness, and shutdown capabilities; first-party factories cover S3-compatible storage, native Google Cloud Storage, native Azure Blob Storage, and Worker R2 without cloud SDK types entering product or protocol code.
+    behavior: The external runtime consumes one provider-neutral factory with immutable blob, staging, readiness, and shutdown capabilities; supported factories cover S3-compatible storage, native Google Cloud Storage, and Worker R2 without cloud SDK types entering product or protocol code. A native Azure Blob factory is available as preview and does not imply a supported Azure deployment.
     owner: blob-storage
     source: {file: artifact-server-product-spec.html, anchor: deployment}
     acceptance:
-      behavior: {id: DEP-011-B, description: Run the immutable-blob, staging, readiness, shutdown, and streaming contract suite against every first-party driver and the real managed provider.}
+      behavior: {id: DEP-011-B, description: Run the immutable-blob, staging, readiness, shutdown, and streaming contract suite against every first-party driver and its real managed provider before calling that driver supported.}
       failure: {id: DEP-011-F, description: A driver cannot mutate an existing fingerprint, return bytes for another installation, claim success before durable availability, or leave an interrupted multipart upload.}
     deployments: *all
     status: behavior_verified
@@ -2213,14 +2200,14 @@ requirements:
     acceptance:
       behavior: {id: DEP-021-B, description: Validate one minimal and one fully configured stack for each cloud, apply it, and verify every required runtime value and machine-readable output against the shared contract.}
       failure: {id: DEP-021-F, description: Reject unpinned images, equal application and content domains, invalid capacity, missing production deletion protection, missing public DNS, unknown inputs, secret outputs, and a main stack that creates its own state backend.}
-    deployments: [cloudflare, aws, gcp, azure]
+    deployments: [cloudflare, aws, gcp]
     status: implementing
     depends_on: [DEP-002, DEP-003, DEP-012, DEP-014, DEP-016]
     evidence: []
 
   - id: DEP-022
     kind: constraint
-    behavior: The external runtime, lifecycle inspection, and integrity scanner depend only on the object-storage provider factory; AWS, Google, Azure, and Cloudflare SDK imports stay inside their provider adapters and deployment packages.
+    behavior: The external runtime, lifecycle inspection, and integrity scanner depend only on the object-storage provider factory; AWS, Google, and Cloudflare SDK imports stay inside their provider adapters and deployment packages, while the preview Azure SDK stays inside its storage adapter.
     owner: blob-storage
     source: {file: decisions/0017-native-cloud-projects-and-storage-provider-boundary.md, anchor: decision}
     acceptance:
@@ -2270,7 +2257,7 @@ requirements:
     acceptance:
       behavior: {id: DEP-015-B, description: Build and run both architectures, execute compact and external-storage workflows from the released image, replace the container, and verify the image digest and secret-free support manifest.}
       failure: {id: DEP-015-F, description: The image cannot require root, a writable root filesystem, source files, development packages, floating tags, or undeclared container-local durable state.}
-    deployments: [single_server, kubernetes, aws, gcp, azure]
+    deployments: [single_server, kubernetes, aws, gcp]
     status: specified
     depends_on: [DEP-005, DEP-006, DEP-012]
     evidence: []
@@ -2283,7 +2270,7 @@ requirements:
     acceptance:
       behavior: {id: DEP-016-B, description: Start Compose and Kubernetes packages with mounted secret files behind a configured TLS proxy and resolve both the application and unique content hosts.}
       failure: {id: DEP-016-F, description: Conflicting direct and file credentials, unreadable secret files, untrusted forwarded hosts, invalid wildcard DNS or certificates, and incomplete provider configuration fail before the process reports ready.}
-    deployments: [single_server, kubernetes, aws, gcp, azure]
+    deployments: [single_server, kubernetes, aws, gcp]
     status: specified
     depends_on: [DEP-014, SEC-004]
     evidence: []
@@ -2314,7 +2301,7 @@ requirements:
     acceptance:
       behavior: {id: DEP-018-B, description: Verify image and chart signatures, provenance, SBOM contents, pinned dependencies, source revision, and compatibility metadata from a clean release download.}
       failure: {id: DEP-018-F, description: A release with a floating image, unverifiable origin, missing dependency inventory, embedded test credential, or undocumented compatibility range cannot be published.}
-    deployments: [single_server, kubernetes, aws, gcp, azure]
+    deployments: [single_server, kubernetes, aws, gcp]
     status: specified
     depends_on: [DEP-012, DEP-015]
     evidence: []
@@ -2477,7 +2464,7 @@ requirements:
     acceptance:
       behavior: {id: OPS-010-B, description: Terminate idle, reading, uploading, and committing containers during Compose and Kubernetes replacement and observe the documented durable result for every request.}
       failure: {id: OPS-010-F, description: A draining process cannot remain ready, accept unbounded new work, exceed the termination deadline, leak providers, or return a successful publish that disappears after exit.}
-    deployments: [single_server, kubernetes, aws, gcp, azure]
+    deployments: [single_server, kubernetes, aws, gcp]
     status: specified
     depends_on: [OPS-001, PUB-003, PUB-004]
     evidence: []
@@ -2536,15 +2523,15 @@ requirements:
 
   - id: REL-004
     kind: release_gate
-    behavior: Each major-cloud release includes its official installer, native object storage, private-network option, upgrades, rollback, state recovery, backup, restore, deletion, and the external-storage Helm alternative.
+    behavior: Each direct-cloud release includes its official installer, native object storage, private-network option, upgrades, rollback, state recovery, backup, restore, deletion, and the external-storage Helm alternative.
     owner: product-core
     source: {file: artifact-server-product-spec.html, anchor: implementation}
     acceptance:
-      behavior: {id: REL-004-B, description: Independently pass create-to-delete and full product conformance on AWS, GCP, and Azure and publish per-target evidence.}
+      behavior: {id: REL-004-B, description: Independently pass create-to-delete and full product conformance on AWS and GCP and publish per-target evidence.}
       failure: {id: REL-004-F, description: Success on one cloud cannot stand in for evidence on another, and a target with incomplete lifecycle or native-storage tests remains unsupported.}
-    deployments: *major_clouds
+    deployments: *direct_clouds
     status: specified
-    depends_on: [DEP-008, DEP-009, DEP-010, MCP-018, MCP-019, REL-006]
+    depends_on: [DEP-008, DEP-009, MCP-018, MCP-019, REL-006]
     evidence: []
 
   - id: REL-005
@@ -2801,15 +2788,15 @@ requirements:
 
   - id: GATE-007
     kind: release_gate
-    behavior: AWS, GCP, and Azure remain unsupported until their default managed-container projects independently pass create, upgrade, rollback, state recovery, backup, restore, private-network, workload-identity, and delete tests; Kubernetes support remains the separately qualified Helm path.
+    behavior: AWS and GCP remain unsupported until their default managed-container projects independently pass create, upgrade, rollback, state recovery, backup, restore, private-network, workload-identity, and delete tests; Azure is not a direct target and uses the separately qualified Helm path on AKS.
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: decisions}
     acceptance:
       behavior: {id: GATE-007-B, description: Publish a complete signed evidence run for the full lifecycle on each cloud and each advertised runtime variant.}
       failure: {id: GATE-007-F, description: Documentation, code generation, success on another cloud, or a create-only smoke test cannot qualify a deployment as supported.}
-    deployments: *major_clouds
+    deployments: *direct_clouds
     status: specified
-    depends_on: [DEP-008, DEP-009, DEP-010]
+    depends_on: [DEP-008, DEP-009]
     evidence: []
 
   - id: GATE-008

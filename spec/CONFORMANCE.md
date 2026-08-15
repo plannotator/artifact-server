@@ -31,7 +31,7 @@ Passing evidence records:
 - the durable report or CI run containing the result;
 - the recording time.
 
-The local test report is `evidence/local-foundation.json`. Other deployments must produce their own evidence; local results cannot stand in for a server, Kubernetes, Cloudflare, AWS, GCP, or Azure run.
+The local test report is `evidence/local-foundation.json`. Other deployments must produce their own evidence; local results cannot stand in for a server, Kubernetes, Cloudflare, AWS, or GCP run. Azure uses the Kubernetes path on AKS rather than a separate deployment target.
 
 ## MCP release critical path
 

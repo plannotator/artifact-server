@@ -37,7 +37,7 @@ const mcpResultSchema = z.object({
     supportedVersions: z.array(z.string()),
   }).loose(),
 });
-const targetSchema = z.enum(["aws", "azure", "cloudflare", "gcp"]);
+const targetSchema = z.enum(["aws", "cloudflare", "gcp"]);
 
 interface PerformanceResult {
   readonly concurrentUsers: number;

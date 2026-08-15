@@ -1555,9 +1555,9 @@
             backend code, convert media, or provide specialized document viewers.
           </p>
           <div class="hero-meta">
-            <span>August 14, 2026</span>
+            <span>August 15, 2026</span>
             <span>Product proposal</span>
-            <span>Local, private network, server, Kubernetes, Cloudflare, AWS, GCP, Azure</span>
+            <span>Local, server, Kubernetes, Cloudflare, AWS, GCP</span>
           </div>
         </div>
       </div>
@@ -1593,7 +1593,7 @@
           </article>
           <article class="answer">
             <span class="answer-label">Deployment</span>
-            <p class="answer-value">The same product rules run locally, on one server, on Kubernetes, or on Cloudflare. Official installers later cover AWS, GCP, and Azure without changing the product.</p>
+            <p class="answer-value">The same product rules run locally, on one server, on Kubernetes, or on Cloudflare. AWS and GCP have direct installers. Azure teams use the Kubernetes release on AKS; there is no separate Azure installer.</p>
           </article>
           <article class="answer">
             <span class="answer-label">Not included</span>
@@ -2339,7 +2339,8 @@
                     <rect class="svg-node-store" x="498" y="236" width="202" height="100" rx="8"></rect>
                     <text class="svg-title" x="518" y="268">Published files</text>
                     <text class="svg-copy" x="518" y="292">Files addressed by fingerprint</text>
-                    <text class="svg-small" x="518" y="316">Disk · S3 · GCS · Azure Blob · R2</text>
+                    <text class="svg-small" x="518" y="316">Disk · S3 · GCS · R2</text>
+                    <text class="svg-small" x="518" y="330">Azure Blob is preview</text>
 
                     <rect class="svg-node" x="260" y="392" width="190" height="94" rx="8"></rect>
                     <text class="svg-title" x="280" y="424">Comparison engine</text>
@@ -2843,7 +2844,7 @@ v12-7f3a.content.example.net</code></pre>
                 target's native tool for infrastructure.
               </p>
               <ul>
-                <li>Read only the instructions for the selected target: laptop, server, Kubernetes, Cloudflare, AWS, GCP, or Azure.</li>
+                <li>Read only the instructions for the selected target: laptop, server, Kubernetes, Cloudflare, AWS, or GCP. Azure uses the Kubernetes instructions for AKS.</li>
                 <li>Show the proposed change before applying it and verify health after it finishes.</li>
                 <li>Require administrator access. It does not gain infrastructure access through the publishing MCP connection.</li>
                 <li>Remain an explicit, separately installed skill because its actions can change running infrastructure.</li>
@@ -3198,8 +3199,8 @@ artifact_delete</code></pre>
               <p>Cloudflare Workers, D1 records, R2 files, nearby copies of public files, and optional Cloudflare Artifacts history.</p>
             </article>
             <article class="deployment-item">
-              <h3>Major clouds</h3>
-              <p>AWS uses ECS Fargate, RDS PostgreSQL, and S3. GCP uses Cloud Run, Cloud SQL PostgreSQL, and Google Cloud Storage. Azure uses Container Apps, PostgreSQL Flexible Server, and Azure Blob Storage.</p>
+              <h3>AWS, GCP, and Azure</h3>
+              <p>AWS uses ECS Fargate, RDS PostgreSQL, and S3. GCP uses Cloud Run, Cloud SQL PostgreSQL, and Google Cloud Storage. Azure teams use the Helm chart on AKS.</p>
             </article>
           </div>
 
@@ -3227,7 +3228,7 @@ artifact_delete</code></pre>
               <div class="diagram-scroll">
                 <svg class="architecture-diagram" viewBox="0 0 1040 520" role="img" aria-labelledby="deployment-map-title deployment-map-desc">
                   <title id="deployment-map-title">Deployment architecture map</title>
-                  <desc id="deployment-map-desc">The same Artifact Server product rules connect to different application runtimes, databases, file stores, and optional Git providers on a laptop, one server, Kubernetes, and Cloudflare. AWS, GCP, and Azure use the server or Kubernetes shape with native managed storage.</desc>
+                  <desc id="deployment-map-desc">The same Artifact Server product rules connect to different application runtimes, databases, file stores, and optional Git providers on a laptop, one server, Kubernetes, and Cloudflare. AWS and GCP use direct managed-cloud packages. Azure uses the Kubernetes shape on AKS.</desc>
                   <defs>
                     <marker id="deployment-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
                       <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
@@ -3347,7 +3348,7 @@ artifact_delete</code></pre>
                   <td>Kubernetes</td>
                   <td>Node.js containers that keep no data on their own disks</td>
                   <td>Postgres</td>
-                  <td>S3, Google Cloud Storage, Azure Blob, or compatible object storage</td>
+                  <td>S3, Google Cloud Storage, a tested compatible object store, or the preview Azure Blob adapter</td>
                   <td>Internal Git history service or private Git server</td>
                   <td>Normally no</td>
                 </tr>
@@ -3375,14 +3376,6 @@ artifact_delete</code></pre>
                   <td>Configured private Git server</td>
                   <td>No</td>
                 </tr>
-                <tr>
-                  <td>Azure</td>
-                  <td>Container Apps</td>
-                  <td>Azure Database for PostgreSQL Flexible Server</td>
-                  <td>Azure Blob Storage</td>
-                  <td>Configured private Git server</td>
-                  <td>No</td>
-                </tr>
               </tbody>
             </table>
           </div>
@@ -3395,7 +3388,7 @@ artifact_delete</code></pre>
                   The product ships as a downloadable local package that does not require Docker,
                   one optional container image, Compact Compose and External-storage Compose for one server,
                   a Helm chart for Kubernetes, a pinned Alchemy project for Cloudflare,
-                  and pinned Pulumi projects for AWS, GCP, and Azure. Operators use Compose,
+                  and pinned Pulumi projects for AWS and GCP. Operators use Compose,
                   Helm, Alchemy, or Pulumi directly. Artifact Server does not hide their plans
                   behind another deployment command. Each package emits the same required URLs,
                   resource IDs, and secret-free support information.
@@ -3404,9 +3397,9 @@ artifact_delete</code></pre>
                   Teams that already run Kubernetes use the Helm chart on EKS, GKE, AKS, or their
                   own cluster. The chart installs only Artifact Server and connects to the team's
                   existing Postgres, file storage, secrets, DNS, TLS, and Ingress or Gateway. The
-                  AWS, GCP, and Azure Pulumi projects are turnkey alternatives for teams that do not
-                  want to operate Kubernetes. The AWS default uses ECS Fargate; it does not create
-                  or replace an existing EKS cluster.
+                  AWS and GCP Pulumi projects are turnkey alternatives for teams that do not
+                  want to operate Kubernetes. Azure teams use the same Helm chart on AKS. The AWS
+                  default uses ECS Fargate; it does not create or replace an existing EKS cluster.
                 </p>
                 <p>
                   Browser login and MCP authorization are separate protocols even when they use the
@@ -3431,11 +3424,10 @@ artifact_delete</code></pre>
                   <li><strong>Laptop:</strong> one process runs directly on the host by default, with SQLite for records, files stored on disk by their SHA-256 fingerprints, optional local file links, and optional Git repositories in the same data folder. Docker is optional.</li>
                   <li><strong>One server, compact:</strong> one process, SQLite in write-ahead logging mode, one persistent data directory, and optional Git repositories in that directory. This profile does not support multiple application writers or claim failover.</li>
                   <li><strong>One server, external storage:</strong> the same image connected to existing Postgres and object storage through a supported adapter. The Compose package does not bundle those providers.</li>
-                  <li><strong>Kubernetes:</strong> Postgres plus S3, Google Cloud Storage, Azure Blob, R2, or compatible object storage, with an optional internal Git history service or private Git server.</li>
+                  <li><strong>Kubernetes:</strong> Postgres plus S3, Google Cloud Storage, R2, a tested compatible object store, or the preview Azure Blob adapter, with an optional internal Git history service or private Git server. This is the official Azure path on AKS.</li>
                   <li><strong>Cloudflare:</strong> Workers for the application, D1 for records, R2 for files, and optional Cloudflare Artifacts history. External Postgres is supported through a separate adapter but is not the default.</li>
                   <li><strong>AWS:</strong> ECS Fargate, RDS PostgreSQL, and S3 through the AWS Pulumi project.</li>
                   <li><strong>GCP:</strong> Cloud Run, Cloud SQL PostgreSQL, and native Google Cloud Storage through the GCP Pulumi project.</li>
-                  <li><strong>Azure:</strong> Container Apps, PostgreSQL Flexible Server, and native Azure Blob Storage through the Azure Pulumi project.</li>
                 </ul>
                 <p>
                   The storage boundary uses product operations such as “publish this version only
@@ -3447,8 +3439,9 @@ artifact_delete</code></pre>
                 <p>
                   The first external-storage package supports AWS S3 and Cloudflare R2 through its S3 adapter.
                   Another S3-compatible service is supported only after it passes the same storage
-                  contract tests. Native Google Cloud Storage and Azure Blob adapters ship with
-                  their cloud packages. Adding an adapter does not change artifact or version rules.
+                  contract tests. Native Google Cloud Storage ships with the GCP package. The Azure
+                  Blob adapter is preview-only until a live Azure qualification passes. Adding an
+                  adapter does not change artifact or version rules.
                 </p>
               </div>
             </details>
@@ -3701,7 +3694,7 @@ artifact_delete</code></pre>
                 <li>An optional connection from one Artifact Server installation to one Plannotator organization, including signed operation requests and temporary browser sessions.</li>
                 <li>An explicit Plannotator review response that may add a credential-free review bridge without changing the stored artifact.</li>
                 <li>A portable <code>publish-artifact</code> skill and a separately installed <code>operate-artifact-server</code> administrator skill.</li>
-                <li>Local, one-server, Kubernetes, Cloudflare, AWS, GCP, and Azure deployment packages delivered in stages.</li>
+                <li>Local, one-server, Kubernetes, Cloudflare, AWS, and GCP deployment packages delivered in stages. AKS uses the Kubernetes package.</li>
               </ul>
             </article>
             <article class="scope-panel no-panel">
@@ -3770,7 +3763,7 @@ artifact_delete</code></pre>
                 <p>
                   Keep SQLite for a single-server installation. Add Postgres and cloud file storage
                   for Kubernetes or any deployment with multiple application replicas. Support S3,
-                  Google Cloud Storage, Azure Blob, R2, and compatible object stores through one
+                  Google Cloud Storage, R2, compatible object stores, and a preview Azure Blob adapter through one
                   narrow interface. Add browser login, API-key and external-issuer modes for private
                   deployments, staged direct uploads, expired-staging cleanup, a Docker image, a
                   Compose file, a Helm chart, backup and restore, and optional private Git history.
@@ -3814,11 +3807,10 @@ artifact_delete</code></pre>
             <article class="roadmap-item">
               <span class="roadmap-stage">After</span>
               <div class="roadmap-copy">
-                <h3>Official AWS, GCP, and Azure packages</h3>
+                <h3>Official AWS and GCP packages</h3>
                 <p>
-                  Ship direct, pinned Pulumi projects for ECS Fargate on AWS, Cloud Run on GCP,
-                  and Container Apps on Azure, with managed PostgreSQL and each provider's native
-                  object store. Test install,
+                  Ship direct, pinned Pulumi projects for ECS Fargate on AWS and Cloud Run on GCP,
+                  with managed PostgreSQL and each provider's native object store. Test install,
                   upgrade, rollback, backup, restore, private networking, and removal independently
                   for each provider. Do not claim a provider is supported until those tests pass.
                 </p>
@@ -3874,8 +3866,9 @@ artifact_delete</code></pre>
             <article class="decision-item"><p>Browser, normal software requests, the command-line program, and MCP share the same product and authorization rules. Local MCP uses <code>artifactserver connect</code> without a human-visible secret. Hosted MCP uses browser approval through WorkOS AuthKit. Self-hosted MCP uses compatible browser authorization when configured and administration-issued scoped API keys otherwise. Startup logs never distribute keys.</p></article>
             <article class="decision-item"><p>MCP and the command-line program intentionally overlap. Files on the user's computer use the command-line program. Work that only needs information already on Artifact Server may use either. <code>artifactserver auth login</code> gives the command-line program its own secure server profile. A remote MCP server never reads a user's local path.</p></article>
             <article class="decision-item"><p>Artifact Server ships a routine publishing skill and a separately installed operator skill. The publishing skill uses the command-line program for local files and MCP or the command-line program for information already on the server. Stored references include the server and artifact, so agents open local or team artifacts at the correct address.</p></article>
-            <article class="decision-item"><p>The product core uses narrow database, file-storage, login, background-work, and optional Git interfaces. Operators use Compose for one server, Helm for Kubernetes, Alchemy directly for Cloudflare, and Pulumi directly for AWS, GCP, and Azure. Artifact Server does not add an infrastructure wrapper.</p></article>
-            <article class="decision-item"><p>Support is phased: local, private team and Kubernetes, hosted Cloudflare, then AWS, GCP, and Azure. A target is not supported until its install, upgrade, rollback, backup, restore, and isolation tests pass.</p></article>
+            <article class="decision-item"><p>The product core uses narrow database, file-storage, login, background-work, and optional Git interfaces. Operators use Compose for one server, Helm for Kubernetes, Alchemy directly for Cloudflare, and Pulumi directly for AWS and GCP. Artifact Server does not add an infrastructure wrapper.</p></article>
+            <article class="decision-item"><p>Azure has no separate installer or release claim. Azure teams use Helm on AKS. The Azure Blob adapter remains preview until it passes a real Azure storage test.</p></article>
+            <article class="decision-item"><p>Support is phased: local, private team and Kubernetes, hosted Cloudflare, then AWS and GCP. A target is not supported until its install, upgrade, rollback, backup, restore, and isolation tests pass.</p></article>
             <article class="decision-item"><p>Committed versions cannot be edited or deleted individually. Deleting an artifact creates a tombstone and stops access; physical reclamation waits for a proven retention and garbage-collection design.</p></article>
           </div>
 

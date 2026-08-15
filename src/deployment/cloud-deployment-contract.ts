@@ -49,7 +49,7 @@ const httpsUrl = Schema.String.check(
     : "expected an HTTPS URL without credentials"),
 );
 const stateBackendUrl = Schema.String.check(
-  Schema.isPattern(/^(?:https:\/\/api\.pulumi\.com(?:\/[^\s]*)?|(?:s3|gs|azblob):\/\/[^\s]+)$/u),
+  Schema.isPattern(/^(?:https:\/\/api\.pulumi\.com(?:\/[^\s]*)?|(?:s3|gs):\/\/[^\s]+)$/u),
   Schema.isMaxLength(2_000),
   Schema.makeFilter((value) => findUnsafeCloudDeploymentValue(
     [{field: "stateBackendUrl", value}],
@@ -151,17 +151,6 @@ export interface GcpExistingNetwork extends Schema.Schema.Type<
   typeof GcpExistingNetwork
 > {}
 
-/** Azure network identifiers accepted instead of creating a new network. */
-export const AzureExistingNetwork = Schema.Struct({
-  containerAppsSubnetId: providerResourceIdentifier,
-  postgresSubnetId: providerResourceIdentifier,
-  privateDnsZoneId: providerResourceIdentifier,
-  virtualNetworkId: providerResourceIdentifier,
-});
-export interface AzureExistingNetwork extends Schema.Schema.Type<
-  typeof AzureExistingNetwork
-> {}
-
 const pulumiInputFields = {
   imageReference: pinnedImageReference,
   secretsProvider: nonEmptyString,
@@ -193,18 +182,6 @@ export interface GcpCloudDeploymentInput extends Schema.Schema.Type<
   typeof GcpCloudDeploymentInput
 > {}
 
-/** Shared Azure deployment input consumed by the native Pulumi stack. */
-export const AzureCloudDeploymentInput = Schema.Struct({
-  ...sharedInputFields,
-  ...pulumiInputFields,
-  existingNetwork: Schema.optionalKey(AzureExistingNetwork),
-  target: Schema.Literal("azure"),
-  tlsCertificateSecretId: Schema.optionalKey(providerResourceIdentifier),
-});
-export interface AzureCloudDeploymentInput extends Schema.Schema.Type<
-  typeof AzureCloudDeploymentInput
-> {}
-
 /** Shared Cloudflare deployment input consumed by the native Alchemy project. */
 export const CloudflareCloudDeploymentInput = Schema.Struct({
   ...sharedInputFields,
@@ -221,7 +198,6 @@ export interface CloudflareCloudDeploymentInput extends Schema.Schema.Type<
 const uncheckedCloudDeploymentInput = Schema.Union([
   AwsCloudDeploymentInput,
   GcpCloudDeploymentInput,
-  AzureCloudDeploymentInput,
   CloudflareCloudDeploymentInput,
 ]);
 
@@ -278,15 +254,6 @@ export const CloudDeploymentInput = uncheckedCloudDeploymentInput.check(
       issues.push({
         issue: "private AWS ingress requires an existing ACM certificate",
         path: ["tlsCertificateArn"],
-      });
-    }
-    if (
-      input.target === "azure" && input.ingress === "public" &&
-      input.tlsCertificateSecretId === undefined
-    ) {
-      issues.push({
-        issue: "public Azure ingress requires an existing Key Vault wildcard certificate secret",
-        path: ["tlsCertificateSecretId"],
       });
     }
     if (

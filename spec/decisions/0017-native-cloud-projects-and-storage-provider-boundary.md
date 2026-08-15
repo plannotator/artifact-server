@@ -1,6 +1,6 @@
 # Decision 0017: Use native deployment tools and one object-storage provider boundary
 
-Status: accepted for Phase 9
+Status: accepted for Phase 9; amended by Decision 0018
 
 ## Decision
 
@@ -12,8 +12,10 @@ the tools that own the infrastructure.
 - Kubernetes installations use Helm.
 - Cloudflare installations use the pinned Alchemy project in
   `deploy/cloudflare`.
-- AWS, GCP, and Azure installations use the pinned Pulumi projects in
-  `deploy/pulumi/aws`, `deploy/pulumi/gcp`, and `deploy/pulumi/azure`.
+- AWS and GCP installations use the pinned Pulumi projects in
+  `deploy/pulumi/aws` and `deploy/pulumi/gcp`.
+- Azure installations use the Helm chart on AKS. Artifact Server has no
+  Azure-specific installer.
 
 Operators run `alchemy plan`, `alchemy deploy`, and `alchemy destroy` for
 Cloudflare. They run `pulumi preview`, `pulumi up`, and `pulumi destroy` for a
@@ -33,9 +35,9 @@ operations, readiness, and shutdown. The runtime, lifecycle inspection, and
 integrity scanner do not construct a provider SDK client. AWS SDK types stay in
 the S3 adapter. Native GCS and Azure Blob adapters can therefore be added by
 implementing the same factory without changing artifact, HTTP, MCP,
-authorization, or external-runtime code. The native GCS and Azure Blob
-factories now implement that boundary and the same runtime selects them from
-deployment configuration.
+authorization, or external-runtime code. The native GCS factory is supported.
+The native Azure Blob factory implements the same boundary but remains preview
+until it passes a live Azure qualification.
 
 ## Default managed-cloud topologies
 
@@ -44,15 +46,14 @@ deployment configuration.
 | Cloudflare | Workers | D1 | R2 | Alchemy |
 | AWS | ECS Fargate | RDS PostgreSQL | S3 | Pulumi |
 | GCP | Cloud Run | Cloud SQL for PostgreSQL | Google Cloud Storage | Pulumi |
-| Azure | Container Apps | Azure Database for PostgreSQL Flexible Server | Azure Blob Storage | Pulumi |
 
-EKS, GKE, and AKS use the existing Helm chart. The first cloud packages do not
+EKS, GKE, and AKS use the existing Helm chart. The direct cloud packages do not
 create or own a Kubernetes cluster.
 
 ## State and credentials
 
 Pulumi Cloud is optional. A team can use an existing Pulumi Cloud organization
-or a customer-owned S3, GCS, or Azure Blob backend. A customer-owned backend
+or a customer-owned S3 or GCS backend. A customer-owned backend
 must exist before the main stack runs; the stack cannot safely create the
 bucket that holds its own state. The backend must have encryption, versioning,
 backup, access control, and update locking appropriate to the installation.
@@ -71,7 +72,7 @@ and Cloudflare compatibility date because Alchemy is still pre-stable.
 
 - Operators see the real infrastructure plan and can use native policy,
   approval, drift, import, and state tooling.
-- Artifact Server maintains four small deployment surfaces instead of a custom
+- Artifact Server maintains three small cloud deployment surfaces instead of a custom
   orchestration framework.
 - Provider packages can evolve independently, but they must emit the same
   product outputs and pass the same product probes.
@@ -92,7 +93,7 @@ operator must still understand during recovery.
 ### Alchemy for every cloud
 
 Rejected for the initial release. Alchemy is a strong Cloudflare fit, but the
-AWS, GCP, and Azure packages need one mature, first-party, cross-cloud resource
+AWS and GCP packages need one mature, first-party, cross-cloud resource
 surface and customer-owned state today.
 
 ### One generic object-storage SDK
@@ -103,8 +104,9 @@ Provider SDKs remain replaceable adapter details.
 
 ## Verification
 
-- Dependency checks reject AWS, Google, and Azure SDK imports outside their
-  adapters and deployment packages.
+- Dependency checks reject AWS and Google SDK imports outside their adapters
+  and deployment packages, and reject Azure SDK imports outside the preview
+  storage adapter.
 - The S3 adapter and every future native adapter run the same real-provider
   streaming, immutability, isolation, restart, authorization, and failure
   contract.

@@ -88,8 +88,9 @@ The remaining product work is:
    Agent Skill in current supported clients.
 2. Complete and qualify the separately developed one-installation Cloudflare target.
 3. Optional private Git history, including local and Cloudflare providers.
-4. Real-cloud lifecycle qualification for the implemented AWS, GCP, and Azure
-   Pulumi projects. Native S3, GCS, and Azure Blob adapters are implemented.
+4. Finish real-cloud lifecycle qualification for the implemented AWS and GCP
+   Pulumi projects. Native S3 and GCS adapters are implemented. The Azure Blob
+   adapter is preview-only until it passes a live Azure qualification.
 5. The optional `operate-artifact-server` skill after its deployment commands
    are stable.
 6. SPA fallback routing, ownership changes, expired-staging cleanup, and
@@ -288,8 +289,9 @@ of `pnpm verify:iteration`.
 
 Use this Helm path for an existing EKS, GKE, AKS, or other Kubernetes cluster.
 The chart does not create the cluster, database, object store, DNS, certificate,
-or ingress. The direct AWS, GCP, and Azure deployment projects are separate
-turnkey options for teams that do not already operate Kubernetes.
+or ingress. The direct AWS and GCP deployment projects are separate turnkey
+options for teams that do not already operate Kubernetes. Azure uses this Helm
+path on AKS; Artifact Server does not ship a separate Azure installer.
 
 ## Deploy the default AWS stack
 
@@ -306,17 +308,19 @@ release-unqualified until the remaining private-ingress, safe-destroy, and
 permanent-deletion gates pass. Real image upgrade/rollback, API credential
 rotation, ECS task replacement, and role-based publication have passed.
 
-## Deploy the GCP or Azure stack
+## Deploy the GCP stack
 
-The direct projects in [`deploy/pulumi/gcp`](./deploy/pulumi/gcp) and
-[`deploy/pulumi/azure`](./deploy/pulumi/azure) create the documented managed
-runtime, private PostgreSQL database, native object store, workload identity,
-secrets, network, DNS, TLS, logs, and support outputs. GCP's public path has
+The direct project in [`deploy/pulumi/gcp`](./deploy/pulumi/gcp) creates the
+documented managed runtime, private PostgreSQL database, native object store,
+workload identity, secrets, network, DNS, TLS, logs, and support outputs. GCP's public path has
 passed live product, bounded concurrency, upgrade, rollback, credential
 rotation, checkpoint recovery, and minimum provider backup/restore checks in a
 disposable project. It remains release-unqualified until safe destroy and the
-specified private-ingress option pass. Azure currently has only local resource
-graph and native-storage evidence. Follow each project README for prerequisites.
+specified private-ingress option pass. Follow the project README for prerequisites.
+
+Azure teams use the Helm chart on AKS. The native Azure Blob adapter is
+available as preview configuration for that path, but it is not a deployment
+installer or a supported storage claim until a live Azure contract test passes.
 
 ## Run from the source checkout
 

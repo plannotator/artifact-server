@@ -13,8 +13,8 @@ The supported storage profiles are built incrementally:
 - local disk remains the default for the local process;
 - one S3-compatible adapter covers Amazon S3, MinIO, Cloudflare R2, Tigris,
   and services that implement the required S3 behavior;
-- native Google Cloud Storage and Azure Blob Storage adapters remain required
-  by the product specification and will be implemented and proved separately;
+- native Google Cloud Storage is a supported target, while the implemented
+  Azure Blob Storage adapter remains preview until proved against real Azure;
   and
 - Cloudflare may use the S3-compatible adapter in Node-based tests, but the
   Workers deployment will receive an R2-binding adapter so it does not carry an
@@ -40,7 +40,8 @@ It is not adopted in Phase 3A because:
 - the packages are young and pre-1.0; and
 - the existing Artifact Server ports make later adoption or removal cheap.
 
-The project can reconsider Storage SDK when native GCS and Azure work begins.
+The project can reconsider Storage SDK if the native provider adapters outgrow
+the current boundary.
 It would still sit behind the existing ports.
 
 ## Adapter reuse audit
@@ -81,7 +82,7 @@ Phase 3A does not include:
 - Postgres metadata repositories;
 - direct-to-object-storage signed upload URLs;
 - garbage collection or retention policy;
-- native GCS, Azure Blob, or Workers R2 bindings;
+- native GCS, preview Azure Blob, or Workers R2 bindings;
 - CDN delivery; or
 - marking the cross-provider `DEP-011` requirement verified.
 

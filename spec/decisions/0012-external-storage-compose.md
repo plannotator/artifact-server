@@ -84,7 +84,7 @@ offer.
 ## Limits
 
 This decision does not claim online backup, automatic proxy configuration,
-autoscaling, multi-region failover, native GCS or Azure Blob support,
+autoscaling, multi-region failover, native GCS support, preview Azure Blob qualification,
 cross-version rollback, or compact-to-external-storage transfer. The current
 official external adapter supports AWS S3 and Cloudflare R2. Another
 S3-compatible provider becomes supported only after it passes the adapter

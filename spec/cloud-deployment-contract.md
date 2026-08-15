@@ -1,10 +1,10 @@
 # Cloud deployment contract
 
-Status: shared executable contract and AWS, GCP, and Azure provider packages
+Status: shared executable contract and AWS and GCP provider packages
 implemented; every target remains gated by its own unfinished real-cloud release
 qualification
 
-This document is the handoff boundary for the Cloudflare, AWS, GCP, and Azure
+This document is the handoff boundary for the Cloudflare, AWS, and GCP
 deployment work. It says exactly what every package receives, what it creates,
 what it gives the Artifact Server process, and what it returns to an operator.
 
@@ -15,7 +15,6 @@ what it gives the Artifact Server process, and what it returns to an operator.
 | Cloudflare | `alchemy plan`, `alchemy deploy`, `alchemy destroy` | `deploy/cloudflare` | Workers, D1, R2 |
 | AWS | `pulumi preview`, `pulumi up`, `pulumi destroy` | `deploy/pulumi/aws` | ECS Fargate, RDS PostgreSQL, S3 |
 | GCP | `pulumi preview`, `pulumi up`, `pulumi destroy` | `deploy/pulumi/gcp` | Cloud Run, Cloud SQL PostgreSQL, GCS |
-| Azure | `pulumi preview`, `pulumi up`, `pulumi destroy` | `deploy/pulumi/azure` | Container Apps, PostgreSQL Flexible Server, Azure Blob |
 
 There is no `artifactserver deploy` wrapper. Provider developers own only their
 package, provider tests, and provider documentation. They do not change the
@@ -60,7 +59,7 @@ but every package must expose these names and meanings.
 | `installationName` | yes | 1–40 lowercase letters, numbers, and hyphens; stable after creation |
 | `environment` | yes | `development`, `staging`, or `production` |
 | `region` | yes | One provider region supported by the selected package |
-| `imageReference` | yes for AWS/GCP/Azure | OCI image reference pinned by digest, never a floating tag |
+| `imageReference` | yes for AWS/GCP | OCI image reference pinned by digest, never a floating tag |
 | `applicationDomain` | yes | Exact application host, such as `artifacts.example.com` |
 | `contentDomain` | yes | Separate registrable content domain used for version hosts, such as `artifact-content.example.net` |
 | `bootstrapAdministratorEmail` | yes | Existing administrator email; not a public sign-up address |
@@ -84,14 +83,13 @@ before a provider write.
 
 ### Pulumi-only stack prerequisites
 
-Each major-cloud stack additionally receives:
+Each direct-cloud stack additionally receives:
 
 | Name | Required | Rule |
 | --- | --- | --- |
-| `stateBackendUrl` | yes | Existing Pulumi Cloud organization or existing `s3://`, `gs://`, or `azblob://` backend selected with `pulumi login` |
-| `secretsProvider` | yes | Pulumi Cloud default or customer KMS, Key Vault, Cloud KMS, Vault, or protected passphrase provider |
+| `stateBackendUrl` | yes | Existing Pulumi Cloud organization or existing `s3://` or `gs://` backend selected with `pulumi login` |
+| `secretsProvider` | yes | Pulumi Cloud default or customer KMS, Cloud KMS, Vault, or protected passphrase provider |
 | `stackName` | yes | Stable Pulumi stack name, normally the environment name |
-| `tlsCertificateSecretId` | Azure public ingress only | Complete, versionless Key Vault secret resource ID for one PFX certificate covering the exact application domain and wildcard content domain |
 
 The main stack does not create its own state backend. Customer-owned state is
 an explicit prerequisite because a stack cannot recoverably manage the bucket
@@ -154,25 +152,6 @@ stack.
   secret versions, Cloud SQL connection, and telemetry permissions. It uses
   Application Default Credentials; it receives no service-account key file.
 
-### Azure
-
-- `existingNetwork`, when supplied, contains a virtual network, Container Apps
-  infrastructure subnet, PostgreSQL delegated subnet, and private DNS zone
-  identifiers.
-- Without it, the package creates those resources in one resource group and
-  region.
-- `databasePlan` maps to one pinned PostgreSQL Flexible Server SKU, storage
-  policy, zone-redundancy setting, and connection limit.
-- The Container App managed identity receives only its blob container,
-  required Key Vault secrets, database connectivity, and telemetry
-  permissions. It receives no client secret or storage account key.
-- The first package supports public ingress and rejects private ingress until
-  that path is qualified. Azure Front Door cannot issue a managed wildcard
-  certificate. `tlsCertificateSecretId` therefore points to an existing Key
-  Vault PFX certificate covering both the exact application host and wildcard
-  content host. That certificate is bound at Front Door and Container Apps so
-  the original host is preserved through the edge.
-
 ## Runtime configuration the package must produce
 
 Every package supplies the running application with the common values below.
@@ -201,10 +180,10 @@ Provider storage configuration is adapter-specific:
 | --- | --- | --- |
 | S3 | `ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER=s3`, `ARTIFACT_SERVER_S3_BUCKET`, `ARTIFACT_SERVER_S3_REGION`, optional `ARTIFACT_SERVER_S3_ENDPOINT`, and optional `ARTIFACT_SERVER_S3_FORCE_PATH_STYLE` | ECS task role or AWS provider chain; `ARTIFACT_SERVER_S3_ACCESS_KEY_ID_FILE` and `ARTIFACT_SERVER_S3_SECRET_ACCESS_KEY_FILE` exist only for explicit self-hosted S3-compatible deployments |
 | GCS | `ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER=gcs`, `ARTIFACT_SERVER_GCS_PROJECT_ID`, and `ARTIFACT_SERVER_GCS_BUCKET` | Cloud Run service account through Application Default Credentials; no service-account key file |
-| Azure Blob | `ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER=azure-blob`, `ARTIFACT_SERVER_AZURE_BLOB_ACCOUNT_URL`, and `ARTIFACT_SERVER_AZURE_BLOB_CONTAINER` | Container App managed identity through the default Azure credential chain; no client secret or storage account key |
+| Azure Blob (preview) | `ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER=azure-blob`, `ARTIFACT_SERVER_AZURE_BLOB_ACCOUNT_URL`, and `ARTIFACT_SERVER_AZURE_BLOB_CONTAINER` | AKS workload identity or another identity exposed through the default Azure credential chain; no client secret or storage account key |
 | R2 Worker binding | `ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER=r2` and the typed `ARTIFACT_SERVER_R2_BUCKET` Worker binding | Cloudflare binding; no S3 or account key in the Worker |
 
-The GCS and Azure Blob names are executable configuration in the Node runtime.
+The GCS and preview Azure Blob names are executable configuration in the Node runtime.
 The R2 binding is executable only in the separate Cloudflare Worker runtime.
 All adapters implement the same provider-neutral server contract.
 
@@ -222,7 +201,7 @@ keys:
 | `healthUrl` | Liveness endpoint |
 | `readinessUrl` | Dependency-readiness endpoint |
 | `imageDigest` | Deployed OCI digest, or Worker bundle digest on Cloudflare |
-| `runtimeResourceId` | ECS service, Cloud Run service, Container App, or Worker ID |
+| `runtimeResourceId` | ECS service, Cloud Run service, or Worker ID |
 | `databaseResourceId` | RDS, Cloud SQL, PostgreSQL Flexible Server, or D1 ID |
 | `objectStorageResourceId` | S3 bucket, GCS bucket, Blob container, or R2 bucket ID |
 | `workloadIdentityResourceId` | Task role, service account, managed identity, or Worker identity boundary |
@@ -298,8 +277,9 @@ writes. Provider SDK types and errors cannot enter application, HTTP, MCP,
 repository, or artifact model types.
 
 Real MinIO qualifies the S3-compatible contract implementation. Real AWS S3
-qualifies AWS. Real GCS and Azure Blob tests are required for their native
-adapters. A provider is not supported merely because it claims compatibility.
+qualifies AWS. Real GCS tests are required for the supported native GCS adapter.
+The Azure Blob adapter remains preview until the same contract passes against
+real Azure. A provider is not supported merely because it claims compatibility.
 
 ## Primary infrastructure references
 
@@ -309,4 +289,3 @@ adapters. A provider is not supported merely because it claims compatibility.
 - [Pulumi secrets providers](https://www.pulumi.com/docs/iac/concepts/secrets/)
 - [Pulumi AWS ECS service](https://www.pulumi.com/registry/packages/aws/api-docs/ecs/service/)
 - [Pulumi GCP Cloud Run v2 service](https://www.pulumi.com/registry/packages/gcp/api-docs/cloudrunv2/service/)
-- [Pulumi Azure Native Container App](https://www.pulumi.com/registry/packages/azure-native/api-docs/app/containerapp/)

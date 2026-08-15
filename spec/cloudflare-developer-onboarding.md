@@ -1,7 +1,7 @@
 # Welcome to the Artifact Server Cloudflare track
 
 You own the first Cloudflare-native Artifact Server deployment. This work can
-run in parallel with the AWS, GCP, and Azure track because Cloudflare uses a
+run in parallel with the AWS and GCP track because Cloudflare uses a
 different runtime, database, file store, and infrastructure package. Both
 tracks must implement the same product and deployment contracts.
 
@@ -90,7 +90,7 @@ The main development track owns:
 - secret-output checks and common deployment evidence;
 - `src/storage/object-storage-provider.ts`;
 - the AWS Pulumi project; and
-- native GCS and Azure Blob adapters and their Pulumi projects.
+- the GCP Pulumi project, native GCS adapter, and preview Azure Blob adapter.
 
 The Cloudflare track owns:
 

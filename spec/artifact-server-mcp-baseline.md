@@ -364,7 +364,7 @@ Status polling remains the compatibility fallback. An open event stream with no 
 | Installation safety | user not admitted to the installation, upload handle from another principal, removed member, changed role, list filtering |
 | Publishing | expired upload, hash mismatch, multipart retry, traversal, encoded separators, `.git` paths, symlink escape, case and Unicode collisions, oversized manifest, idempotent replay, intentional identical publish, lost response after commit, concurrent current-version update, and cleanup racing a commit |
 | Hosts | fresh and stale-state tests in Codex, Claude Code, Claude.ai, and one DCR-only client |
-| Deployments | loopback for release 1; one server and multi-container Kubernetes for release 2; Cloudflare for release 3; AWS, GCP, and Azure packages for release 4 |
+| Deployments | loopback for release 1; one server and multi-container Kubernetes, including AKS, for release 2; Cloudflare for release 3; AWS and GCP packages for release 4 |
 | Optional legacy | older initialization behavior tested separately without adding sessions or old transport behavior to the modern route |
 
 ## MCP release critical path

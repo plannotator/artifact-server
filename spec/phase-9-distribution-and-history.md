@@ -7,12 +7,12 @@ can use and teams can install in their chosen environment. It covers four
 tracks:
 
 1. Cloudflare-native deployment.
-2. AWS, GCP, and Azure installers.
+2. AWS and GCP installers, with Azure using Helm on AKS.
 3. Agent Skills for publishing and operation.
 4. Optional private Git history.
 
 The tracks share product contracts, but they do not ship as one release.
-Cloudflare adds a new runtime and new storage adapters. The major-cloud
+Cloudflare adds a new runtime and new storage adapters. The direct-cloud
 installers reuse the existing external-storage runtime. Git history is an
 optional background copy. The two skills ship when the commands they describe
 are stable.
@@ -33,7 +33,7 @@ dependencies of the direct local package, server image, HTTP process, or MCP
 server.
 
 Operators use each deployment tool directly. Cloudflare uses the pinned
-Alchemy project. AWS, GCP, and Azure use pinned Pulumi projects. Kubernetes
+Alchemy project. AWS and GCP use pinned Pulumi projects. Kubernetes, including AKS,
 uses Helm, one-server installs use Compose, and local use runs the direct
 package. Artifact Server supplies shared configuration, output, evidence, and
 product-probe contracts; it does not hide infrastructure plans behind an
@@ -42,7 +42,7 @@ product-probe contracts; it does not hide infrastructure plans behind an
 The exact handoff is
 [`cloud-deployment-contract.md`](./cloud-deployment-contract.md).
 
-### Ship one default managed-container path per major cloud
+### Ship one default managed-container path for AWS and GCP
 
 The first official cloud installer does not create a Kubernetes cluster by
 default:
@@ -51,12 +51,12 @@ default:
 | --- | --- | --- | --- |
 | AWS | ECS Fargate | RDS PostgreSQL | S3 |
 | GCP | Cloud Run | Cloud SQL for PostgreSQL | Google Cloud Storage |
-| Azure | Container Apps | Azure Database for PostgreSQL | Azure Blob Storage |
 
 Teams that already use Kubernetes install the existing Helm chart on EKS, GKE,
-or AKS. A cloud package may provision the database, object storage, identity,
-DNS, and secret references for that chart. Creating and owning a managed
-Kubernetes cluster is a later, separately tested option.
+or AKS. Artifact Server does not ship a separate Azure installer. The preview
+Azure Blob adapter can be configured for an AKS deployment but is not called
+supported until a live Azure storage qualification passes. Creating and owning
+a managed Kubernetes cluster is outside these packages.
 
 ### Ship one Cloudflare installation before shared hosted tenancy
 
@@ -90,7 +90,7 @@ Operators use the native lifecycle commands:
 
 ```text
 Cloudflare:     alchemy plan | deploy | destroy
-AWS/GCP/Azure: pulumi preview | up | destroy
+AWS/GCP:       pulumi preview | up | destroy
 Kubernetes:    helm upgrade --install | rollback | uninstall
 One server:    docker compose config | up | down
 ```
@@ -193,8 +193,8 @@ writes credentials into a project.
 Location: `skills/operate-artifact-server/`
 
 The operator skill covers local packages, Compact Compose, External-storage
-Compose, Helm, Cloudflare, AWS, GCP, and Azure. It loads only the reference for
-the selected target. It always:
+Compose, Helm, Cloudflare, AWS, and GCP. AKS uses the Kubernetes reference. It
+loads only the reference for the selected target. It always:
 
 1. inspects the installed CLI and target;
 2. validates current access and configuration;
@@ -305,7 +305,7 @@ Run the complete product and hostile suite against real D1 and R2. Also prove:
 This track closes `DEP-007`, `DEP-013`, `GATE-002`, `GATE-003`, and the
 Cloudflare parts of `DEP-001`, `DEP-011`, `DEP-012`, and `GATE-009`.
 
-## Track C: AWS, GCP, and Azure installers
+## Track C: AWS and GCP installers
 
 ### Pulumi package shape
 
@@ -315,18 +315,17 @@ Use direct Pulumi TypeScript projects with separately pinned provider packages:
 src/deployment
 deploy/pulumi/aws
 deploy/pulumi/gcp
-deploy/pulumi/azure
 ```
 
 `src/deployment` defines shared TypeScript types and validation for Artifact Server
 deployment inputs, outputs, evidence, naming, tags, secret handling, image
 digests, health probes, and safe deletion. It is a library imported by the
-three Pulumi projects, not a second command runner. Provider packages map that
+two Pulumi projects, not a second command runner. Provider packages map that
 contract to native resources and operators use `pulumi preview`, `pulumi up`,
 and `pulumi destroy`.
 
 Pulumi Cloud is optional. The supported customer-owned state path uses an
-existing encrypted, versioned S3, GCS, or Azure Blob backend in the customer's
+existing encrypted, versioned S3 or GCS backend in the customer's
 cloud. The main stack does not create the store that contains its own state.
 The operator selects it with `pulumi login`, chooses a secrets provider, uses
 the cloud's standard credential chain, and records only the redacted backend
@@ -335,16 +334,16 @@ state recovery. A team may explicitly choose Pulumi Cloud instead.
 
 ### Provider scope
 
-| Concern | AWS | GCP | Azure |
-| --- | --- | --- | --- |
-| Runtime | ECS Fargate | Cloud Run | Container Apps |
-| Database | RDS PostgreSQL | Cloud SQL for PostgreSQL | Azure Database for PostgreSQL Flexible Server |
-| Files | Native S3 adapter | Native GCS adapter | Native Azure Blob adapter |
-| Workload identity | IAM task role | Service account | Managed identity |
-| Secrets | Secrets Manager or SSM | Secret Manager | Key Vault |
-| HTTPS and wildcard content | Route 53, ACM, and provider ingress/CDN | Cloud DNS, Certificate Manager, and external HTTPS load balancer | Azure DNS, a customer Key Vault wildcard certificate, Container Apps, and Front Door |
-| Logs and OTLP | CloudWatch plus OTLP option | Cloud Logging plus OTLP option | Azure Monitor plus OTLP option |
-| State backend | S3 | GCS | Azure Blob Storage |
+| Concern | AWS | GCP |
+| --- | --- | --- |
+| Runtime | ECS Fargate | Cloud Run |
+| Database | RDS PostgreSQL | Cloud SQL for PostgreSQL |
+| Files | Native S3 adapter | Native GCS adapter |
+| Workload identity | IAM task role | Service account |
+| Secrets | Secrets Manager or SSM | Secret Manager |
+| HTTPS and wildcard content | Route 53, ACM, and provider ingress/CDN | Cloud DNS, Certificate Manager, and external HTTPS load balancer |
+| Logs and OTLP | CloudWatch plus OTLP option | Cloud Logging plus OTLP option |
+| State backend | S3 | GCS |
 
 The provider package grants the application only the database, object, secret,
 and telemetry permissions it needs. The application container uses no static
@@ -387,9 +386,10 @@ Each provider passes independently:
   complete support manifest.
 
 AWS ships first because the S3 adapter already has real provider evidence. GCP
-ships after the native GCS adapter passes the storage contract. Azure ships
-after the native Blob adapter passes the same contract. Success on one provider
-does not qualify another.
+ships after the native GCS adapter passes the storage contract. Azure users use
+the independently qualified Helm path on AKS. The Azure Blob adapter remains
+preview until it passes the storage contract against real Azure. Success on one
+provider does not qualify another.
 
 This track closes `DEP-008` through `DEP-012`, `GATE-007`, `REL-004`, and the
 provider-specific parts of `DEP-001`, `DEP-014`, `DEP-016`, and `GATE-009`.
@@ -432,7 +432,7 @@ private. Public artifact access never exposes a Git URL or commit identifier.
    binding or REST interface. Ship only with beta access and completed provider
    evidence.
 3. **Private Git remote:** an administrator-configured smart-HTTP server for
-   Kubernetes and major clouds. Credentials come from the deployment secret
+   Kubernetes and direct clouds. Credentials come from the deployment secret
    manager. Concurrent push conflicts retry without changing the version.
 
 The provider interface exposes repository creation, exact-version commit,
@@ -470,7 +470,7 @@ This track closes `GIT-001` through `GIT-007` and `GATE-004`.
    are available.
 6. Build the AWS installer.
 7. Add the GCS adapter and GCP installer.
-8. Add the Azure Blob adapter and Azure installer.
+8. Keep the Azure Blob adapter preview and document AKS through Helm.
 9. Ship `operate-artifact-server` after all operations it documents are stable.
 10. Design the shared artifactserver.com Cloudflare control plane only after
     the one-installation target and D1 growth gate are complete.
@@ -485,10 +485,10 @@ not advertised until its own gate passes.
   rollouts, and remote state, but its current release line is pre-stable. Keep
   it pinned and isolated behind the Cloudflare deployment package.
 - Alchemy has new AWS support, but it does not provide the same mature,
-  supported AWS, GCP, and Azure path. Pulumi remains the cross-cloud installer
-  baseline. Reconsider only when one framework can pass all three provider
+  supported AWS and GCP path. Pulumi remains the direct-cloud installer
+  baseline. Reconsider only when one framework can pass both provider
   gates without weakening customer-owned state or lifecycle recovery.
-- Pulumi supports customer-owned S3, GCS, and Azure Blob state backends and
+- Pulumi supports customer-owned S3 and GCS state backends and
   provider-backed secrets encryption. The official packages use the Pulumi CLI
   directly. Automation API is not part of the initial deployment surface.
 - Cloudflare Artifacts is in closed beta. Its current documented limit is 10 GB

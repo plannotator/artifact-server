@@ -116,34 +116,6 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.12))
 
-  deploy/pulumi/azure:
-    dependencies:
-      '@pulumi/azure-native':
-        specifier: 3.26.0
-        version: 3.26.0(ts-node@10.9.2(@types/node@24.13.3)(typescript@6.0.3))(typescript@6.0.3)
-      '@pulumi/pulumi':
-        specifier: 3.257.0
-        version: 3.257.0(ts-node@10.9.2(@types/node@24.13.3)(typescript@6.0.3))(typescript@6.0.3)
-      '@pulumi/random':
-        specifier: 4.21.1
-        version: 4.21.1(ts-node@10.9.2(@types/node@24.13.3)(typescript@6.0.3))(typescript@6.0.3)
-      effect:
-        specifier: 4.0.0-rc.108
-        version: 4.0.0-rc.108
-    devDependencies:
-      '@types/node':
-        specifier: 24.13.3
-        version: 24.13.3
-      ts-node:
-        specifier: 10.9.2
-        version: 10.9.2(@types/node@24.13.3)(typescript@6.0.3)
-      typescript:
-        specifier: 6.0.3
-        version: 6.0.3
-      vitest:
-        specifier: 4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.12))
-
   deploy/pulumi/gcp:
     dependencies:
       '@pulumi/gcp':
@@ -1008,9 +980,6 @@ packages:
 
   '@pulumi/aws@7.42.0':
     resolution: {integrity: sha512-luw7sk0efaD0WeayAm2Hx9uJmcUzc/0fwkrd2J1GJ7FFPWf1AwacmcUayPEbhwVp+L/vFXP7h2Z3A85AVoaCow==}
-
-  '@pulumi/azure-native@3.26.0':
-    resolution: {integrity: sha512-5eBmDnTXlkMN5ovUq9u2SAYeDxk4tUZgSZw1Za2JbE6o2Fc++uQ3xX6ONDo/I2CKKmNS/vFwEv0rjojsMhXbXQ==}
 
   '@pulumi/gcp@9.34.1':
     resolution: {integrity: sha512-epv3JhSrWSjcXkFt+PAijoKzLLWny1m8IszZhV9iX28jyeTYVskKPw+eBe+N7QYxILD0NesUbcIYZZYUVa2JGQ==}
@@ -3911,14 +3880,6 @@ snapshots:
     dependencies:
       '@pulumi/pulumi': 3.257.0(ts-node@10.9.2(@types/node@24.13.3)(typescript@6.0.3))(typescript@6.0.3)
       mime: 2.6.0
-    transitivePeerDependencies:
-      - supports-color
-      - ts-node
-      - typescript
-
-  '@pulumi/azure-native@3.26.0(ts-node@10.9.2(@types/node@24.13.3)(typescript@6.0.3))(typescript@6.0.3)':
-    dependencies:
-      '@pulumi/pulumi': 3.257.0(ts-node@10.9.2(@types/node@24.13.3)(typescript@6.0.3))(typescript@6.0.3)
     transitivePeerDependencies:
       - supports-color
       - ts-node

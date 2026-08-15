@@ -20,7 +20,6 @@ describe("shared cloud deployment contract", () => {
     const inputs = [
       awsInput(),
       gcpInput(),
-      azureInput(),
       cloudflareInput(),
     ];
     const parsed = await Promise.all(inputs.map((input) =>
@@ -30,7 +29,6 @@ describe("shared cloud deployment contract", () => {
     expect(parsed.map((input) => input.target)).toEqual([
       "aws",
       "gcp",
-      "azure",
       "cloudflare",
     ]);
     expect(parsed.every((input) => input.requestLogSampleRate === 0.01)).toBe(true);
@@ -91,6 +89,13 @@ describe("shared cloud deployment contract", () => {
     })],
     ["main stack state-backend creation", awsInput({
       createStateBackend: true,
+    })],
+    ["unsupported direct Azure target", sharedInput({
+      imageReference,
+      secretsProvider: "passphrase",
+      stackName: "production",
+      stateBackendUrl: "s3://artifact-server-pulumi-state/azure-production",
+      target: "azure",
     })],
     ["local Alchemy state outside development", cloudflareInput({
       stateStore: "local",
@@ -290,24 +295,6 @@ function gcpInput(): CloudDeploymentDocument {
     stackName: "production",
     stateBackendUrl: "https://api.pulumi.com/example-team",
     target: "gcp",
-  });
-}
-
-function azureInput(): CloudDeploymentDocument {
-  return sharedInput({
-    existingNetwork: {
-      containerAppsSubnetId: "/subscriptions/example/subnets/container-apps",
-      postgresSubnetId: "/subscriptions/example/subnets/postgres",
-      privateDnsZoneId: "/subscriptions/example/privateDnsZones/database",
-      virtualNetworkId: "/subscriptions/example/virtualNetworks/artifact-server",
-    },
-    imageReference,
-    region: "westus2",
-    secretsProvider: "azurekeyvault://artifact-server-vault",
-    stackName: "production",
-    stateBackendUrl: "azblob://artifact-server-pulumi-state/azure-production",
-    target: "azure",
-    tlsCertificateSecretId: "/subscriptions/example/resourceGroups/shared/providers/Microsoft.KeyVault/vaults/certificates/secrets/artifact-server-edge",
   });
 }
 

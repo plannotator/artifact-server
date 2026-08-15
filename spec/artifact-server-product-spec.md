@@ -2,11 +2,11 @@
 
 **Product and architecture proposal**
 **Status:** Decision draft
-**Date:** August 14, 2026
+**Date:** August 15, 2026
 
 Artifact Server publishes finished browser files and gives each published item a stable link and saved history. It accepts a complete client-side site or one ordinary file. It does not build source code or run backend code for an artifact.
 
-The first release runs locally. Later releases add one-server, Kubernetes, Cloudflare, AWS, GCP, and Azure deployments without changing the artifact, version, access, or MCP contracts.
+The first release runs locally. Later releases add one-server, Kubernetes, Cloudflare, AWS, and GCP deployments without changing the artifact, version, access, or MCP contracts. Azure teams use the Kubernetes release on AKS.
 
 ## Product summary
 
@@ -21,7 +21,7 @@ The first release runs locally. Later releases add one-server, Kubernetes, Cloud
 | Who can read it? | Exactly two settings: account required, or public link. On a standalone installation, account required means every person admitted to that one installation may read it. A public link opens only the current version; history and comparisons remain account-required. |
 | Who can change it? | Its owner and installation administrators. A service principal can perform only the actions granted to its API key. |
 | How do agents use it? | Through MCP, the CLI, or the normal HTTP API. They share the same product operations and permissions. The `publish-artifact` Agent Skill uses the CLI for files on the user's computer and MCP or the CLI for server-only work. The optional `operate-artifact-server` skill handles deployment and administration. |
-| Where does it run? | Local first. Then one server and Kubernetes. Then Cloudflare. Official AWS, GCP, and Azure installers follow the same container and storage contracts. |
+| Where does it run? | Local first. Then one server and Kubernetes. Then Cloudflare. Official AWS and GCP installers follow the same container and storage contracts. Azure teams use Helm on AKS; there is no separate Azure installer. |
 | What stays outside it? | Building source code, artifact backends, comments, annotations, review workflow, workspace collaboration, and general-purpose Git hosting. Plannotator owns review and collaboration. |
 
 ## Supported content
@@ -192,7 +192,7 @@ Git history is an optional private copy chosen when the server is installed. It 
 | Deployment | Optional history provider |
 | --- | --- |
 | Laptop or one server | One private Git repository per artifact on persistent disk |
-| Kubernetes or a major cloud | Configured private Git server or an optional internal history service |
+| Kubernetes or a direct cloud | Configured private Git server or an optional internal history service |
 | Cloudflare | Cloudflare Artifacts when enabled and available |
 
 Each saved version maps to at most one Git commit. Large files may remain only in primary blob storage while the Git manifest records their paths, sizes, and fingerprints. A Git failure never blocks or deletes the saved version.
@@ -340,13 +340,12 @@ Every deployed process records request counts, handling time, and spans. It writ
 | Laptop | One process running directly on the host and SQLite. A local container is optional. | Local disk | Downloadable package and `artifactserver start` |
 | One server, compact | One container and SQLite | One persistent data directory | Compact Docker Compose |
 | One server, external storage | One or more stateless containers and Postgres | Object storage through a supported adapter | External-storage Compose |
-| Kubernetes | Stateless containers and Postgres | S3, GCS, Azure Blob, or compatible store | Helm chart |
+| Kubernetes | Stateless containers and Postgres | S3, GCS, a tested compatible store, or the preview Azure Blob adapter | Helm chart, including AKS |
 | Cloudflare | Workers and D1 | R2 | Pinned Alchemy project |
 | AWS | ECS Fargate and RDS PostgreSQL | S3 | Pinned Pulumi project |
 | GCP | Cloud Run and Cloud SQL PostgreSQL | Google Cloud Storage | Pinned Pulumi project |
-| Azure | Container Apps and Azure Database for PostgreSQL Flexible Server | Azure Blob Storage | Pinned Pulumi project |
 
-Operators use the deployment tool that owns the target: Compose for one server, Helm for Kubernetes, Alchemy for Cloudflare, and Pulumi for AWS, GCP, and Azure. Artifact Server does not add an infrastructure wrapper. It supplies complete projects, shared inputs and outputs, product probes, and recovery documentation. Pulumi Cloud is optional; a Pulumi project can use an existing customer-owned S3, GCS, or Azure Blob state backend.
+Operators use the deployment tool that owns the target: Compose for one server, Helm for Kubernetes, Alchemy for Cloudflare, and Pulumi for AWS and GCP. Artifact Server does not add an infrastructure wrapper. It supplies complete projects, shared inputs and outputs, product probes, and recovery documentation. Pulumi Cloud is optional; an official Pulumi project can use an existing customer-owned S3 or GCS state backend. Azure users deploy the Helm chart to AKS or another Kubernetes cluster.
 
 The exact cross-cloud input, output, secret, runtime-configuration, and evidence
 contract is defined in
@@ -376,9 +375,10 @@ matrix are defined in
 The blob interface can accept any provider for which a tested adapter exists.
 The first external-storage package supports AWS S3 and Cloudflare R2 through its S3
 adapter. Another S3-compatible service is supported only after it passes the
-same contract tests. Native Google Cloud Storage and Azure Blob drivers ship
-with their cloud packages; GCP and Azure do not depend on an S3 compatibility
-layer.
+same contract tests. Native Google Cloud Storage is supported by the GCP
+package. The native Azure Blob adapter is available as a preview for AKS and
+other self-managed deployments; it is not an Azure installer and is not called
+supported until a real Azure qualification passes.
 
 ## Executable conformance checklist
 
@@ -422,12 +422,12 @@ The optional Plannotator connection builds on this release. Public or already re
 
 The hosted service starts with one D1 database only after load and failure tests show it is suitable. The architecture does not claim that adding more D1 bindings is an automatic sharding system. Before a second database is needed, choose and test either a D1 installation directory and binding rollout process or an external Postgres control plane.
 
-### Release 4: major-cloud installers
+### Release 4: direct-cloud installers
 
-- Direct Pulumi projects for AWS, GCP, and Azure, each implementing the shared cloud deployment contract.
+- Direct Pulumi projects for AWS and GCP, each implementing the shared cloud deployment contract.
 - Native object storage on each cloud.
 - Upgrade, rollback, state recovery, backup, restore, private-network, and managed-container tests on each cloud.
-- The official Helm chart remains available when customers prefer Kubernetes over a provider-specific container service.
+- The official Helm chart remains available when customers prefer Kubernetes over a provider-specific container service and is the official Azure path on AKS.
 
 ## Release gates
 
@@ -462,7 +462,7 @@ These items can change implementation cost or hosting viability and must be reso
 4. **Cloudflare Artifacts:** confirm access, pricing, limits, failure behavior, and Git compatibility before making it a supported optional provider.
 5. **WorkOS MCP authorization:** complete live token, consent, refresh, revoke, CIMD, DCR, and stale-client tests before the hosted release.
 6. **Embedded self-hosted OAuth:** ship Better Auth only after its beta MCP path passes the security, compatibility, migration, and recovery matrix.
-7. **Cross-cloud installers:** prove create, upgrade, rollback, state recovery, backup, and delete on AWS, GCP, and Azure before calling those targets supported.
+7. **Direct-cloud installers:** prove create, upgrade, rollback, state recovery, backup, and delete on AWS and GCP before calling those targets supported. Azure is supported only through the separately qualified Helm path on AKS; the Azure Blob adapter remains preview until it passes a real provider test.
 8. **Public hosting abuse:** define quotas, executable-file policy, malware response, phishing and copyright reporting, domain-reputation protection, suspension, and deletion before public artifactserver.com links launch.
 9. **Capacity and cost:** choose default and maximum file count, file size, artifact size, version count, text-diff size, retention, rate, and egress limits from measured tests.
 10. **Recovery promises:** choose support tiers, availability target, backup frequency, restore-time target, and acceptable data-loss window for hosted and self-hosted team deployments.

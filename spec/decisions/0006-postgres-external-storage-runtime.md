@@ -56,7 +56,7 @@ Phase 3B is complete only when a pinned local integration environment proves:
 
 ## Not proved by Phase 3B
 
-This phase does not mark Kubernetes, AWS, Cloudflare, GCP, Azure, or the private-team release supported. It does not prove native AWS S3 or Cloudflare R2 behavior. Those targets must run their own provider and deployment checks after the external-storage runtime exists.
+This phase does not mark Kubernetes, AWS, Cloudflare, GCP, or the private-team release supported. Azure uses the Kubernetes path on AKS. It does not prove native AWS S3 or Cloudflare R2 behavior. Those targets must run their own provider and deployment checks after the external-storage runtime exists.
 
 ## Alternatives considered
 

@@ -110,7 +110,7 @@ export const CloudDeploymentEvidence = Schema.Struct({
   region: nonEmptyString,
   schemaVersion: Schema.Literal(1),
   sourceRevision: nonEmptyString,
-  target: Schema.Literals(["aws", "azure", "cloudflare", "gcp"]),
+  target: Schema.Literals(["aws", "cloudflare", "gcp"]),
   testRevision: nonEmptyString,
   tool: CloudDeploymentToolEvidence,
 });

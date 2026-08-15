@@ -33,9 +33,10 @@ The packages will not bundle a production object-storage server. Storage is
 replaceable through a narrow adapter contract. The first external-storage package includes
 the S3 adapter used for AWS S3 and Cloudflare R2. Another S3-compatible service
 is supported only after it passes the same contract tests; an S3-compatible
-label by itself is not a support guarantee. Native Google Cloud Storage and
-Azure Blob adapters ship with their cloud packages. A new provider can be added
-without changing artifact or version behavior.
+label by itself is not a support guarantee. Native Google Cloud Storage ships
+with the GCP package. The Azure Blob adapter is preview-only and is configured
+through the same external-storage runtime, including on AKS. A new provider can
+be added without changing artifact or version behavior.
 
 MinIO remains a pinned integration-test provider, not a supported production
 dependency. The former MinIO open-source server repository was archived in
@@ -508,8 +509,8 @@ phase.
 - A Kubernetes operator or custom resource.
 - The choice and implementation of a new self-hosted browser identity provider,
   optional Git history, comments, annotations, or Plannotator review features.
-- Provider-native GCS and Azure Blob drivers. They remain later deployment
-  adapters and must pass the storage contract before support.
+- Provider-native storage qualification beyond the current GCS path. Azure Blob
+  remains preview until it passes the storage contract against real Azure.
 
 ## Decisions required before implementation closes
 
