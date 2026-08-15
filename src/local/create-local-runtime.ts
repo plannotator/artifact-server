@@ -50,7 +50,8 @@ export async function createLocalRuntime(
   const blobs = new LocalBlobStore(path.join(config.dataDirectory, "blobs"));
   const staging = new LocalStagingStore(path.join(config.dataDirectory, "staging"));
   const databasePath = path.join(config.dataDirectory, "artifact-server.db");
-  const repository = new SqliteArtifactRepository(databasePath);
+  const installationId = config.installationId ?? "local";
+  const repository = new SqliteArtifactRepository(databasePath, installationId);
   const identityRepository = new SqliteIdentityRepository(databasePath);
   const resourceLayer = Layer.effectDiscard(
     Effect.acquireRelease(
@@ -70,7 +71,7 @@ export async function createLocalRuntime(
     externalBearerVerifier: config.externalBearerVerifier ?? null,
     ids: new SystemIdGenerator(),
     identityRepository,
-    installationId: config.installationId ?? "local",
+    installationId,
     interactiveIdentityProvider: config.interactiveIdentityProvider ?? null,
     localBootstrapCredential: config.localBootstrapToken === undefined
       ? null
@@ -83,7 +84,7 @@ export async function createLocalRuntime(
   const telemetryLayer = config.observability === true
     ? otlpLayer({
       deploymentMode: "local",
-      installationId: config.installationId ?? "local",
+      installationId,
       serviceVersion: config.serviceVersion ?? "0.0.0",
     }).pipe(Layer.provideMerge(structuredLoggingLayer))
     : silentLoggingLayer;

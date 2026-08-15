@@ -131,6 +131,56 @@ describe("authorization policy", () => {
     );
   });
 
+  test("project discovery follows membership and explicit service authority", async () => {
+    expect.hasAssertions();
+    const member = humanPrincipal("member", membershipRoles.member);
+    const administrator = humanPrincipal(
+      "administrator",
+      membershipRoles.administrator,
+    );
+    const reader = servicePrincipal(
+      "reader",
+      [principalCapabilities.readArtifacts],
+    );
+    const projectManager = servicePrincipal(
+      "project-manager",
+      [principalCapabilities.manageProjects],
+    );
+    const unscoped = servicePrincipal("unscoped", []);
+    const foreignAdministrator: Principal = {
+      ...administrator,
+      installationId: "installation-b",
+    };
+
+    await expectAllowed((authorization) =>
+      authorization.requireProjectAccess(member)
+    );
+    await expectAllowed((authorization) =>
+      authorization.requireProjectAccess(reader)
+    );
+    await expectAllowed((authorization) =>
+      authorization.requireProjectAccess(projectManager)
+    );
+    await expectAllowed((authorization) =>
+      authorization.requireProjectManagement(administrator)
+    );
+    await expectAllowed((authorization) =>
+      authorization.requireProjectManagement(projectManager)
+    );
+    await expectDenied((authorization) =>
+      authorization.requireProjectManagement(member)
+    );
+    await expectDenied((authorization) =>
+      authorization.requireProjectAccess(unscoped)
+    );
+    await expectDenied((authorization) =>
+      authorization.requireProjectAccess(foreignAdministrator)
+    );
+    await expectDenied((authorization) =>
+      authorization.requireProjectManagement(foreignAdministrator)
+    );
+  });
+
   async function expectAllowed(
     operation: (
       authorization: AuthorizationService["Service"],
@@ -166,6 +216,7 @@ function artifactOwnedBy(ownerPrincipalId: string): ArtifactRecord {
     id: "artifact-1",
     name: "Authorization fixture",
     ownerPrincipalId,
+    projectId: "prj_default",
     tags: [],
   };
 }

@@ -11,6 +11,7 @@ import {
 import {createServer} from "node:net";
 import {tmpdir} from "node:os";
 import path from "node:path";
+import {DatabaseSync} from "node:sqlite";
 
 import {afterEach, describe, expect, test} from "vitest";
 import {Effect} from "effect";
@@ -319,6 +320,45 @@ describe("Artifact Server lifecycle CLI", () => {
         status: "healthy",
         versionsChecked: 1,
       });
+
+      const databasePath = path.join(dataDirectory, "artifact-server.db");
+      const database = new DatabaseSync(databasePath, {
+        allowExtension: false,
+        enableForeignKeyConstraints: false,
+      });
+      try {
+        database.exec("DROP TRIGGER actions_project_update");
+        database.prepare(`
+          UPDATE actions SET project_id = 'prj_missing'
+          WHERE id = (SELECT id FROM actions ORDER BY id LIMIT 1)
+        `).run();
+      } finally {
+        database.close();
+      }
+      const crossProjectRecord = await runCli([
+        "integrity",
+        "check",
+        "--mode",
+        "compact",
+        "--data",
+        dataDirectory,
+      ]);
+      expect(crossProjectRecord.exitCode).toBe(2);
+      expect(JSON.parse(crossProjectRecord.output)).toMatchObject({
+        problems: [{code: "orphan_project"}],
+        status: "corrupt",
+      });
+      const restoredDatabase = new DatabaseSync(databasePath, {
+        allowExtension: false,
+        enableForeignKeyConstraints: false,
+      });
+      try {
+        restoredDatabase.exec(
+          "UPDATE actions SET project_id = 'prj_default' WHERE project_id = 'prj_missing'",
+        );
+      } finally {
+        restoredDatabase.close();
+      }
 
       const blobPath = await firstBlobPath(path.join(dataDirectory, "blobs"));
       await writeFile(blobPath, "corrupted bytes\n");

@@ -36,6 +36,7 @@ const principalSchema = z.object({
     principalCapabilities.issueContentSession,
     principalCapabilities.manageAnyArtifact,
     principalCapabilities.manageOwnedArtifact,
+    principalCapabilities.manageProjects,
     principalCapabilities.publishAnyArtifact,
     principalCapabilities.publishOwnedArtifact,
     principalCapabilities.readArtifacts,

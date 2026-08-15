@@ -211,6 +211,7 @@ describe("file publication client", () => {
       expiresAt: "2099-01-01T00:00:00.000Z",
       files: [],
       manifestDigest: "0".repeat(64),
+      projectId: "prj_default",
       uploadId: "incomplete-upload-plan",
     }));
     try {
@@ -363,6 +364,7 @@ async function startUnsafeUploadPlanServer(): Promise<{
         uploadUrl: "https://elsewhere.example.test/upload",
       }],
       manifestDigest: "0".repeat(64),
+      projectId: "prj_default",
       uploadId: "unsafe-upload-plan",
     }));
 }

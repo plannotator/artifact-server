@@ -17,6 +17,11 @@ export class SystemIdGenerator implements IdGenerator {
     return randomBytes(18).toString("hex");
   }
 
+  /** Create one opaque project identity. */
+  projectId(): string {
+    return `prj_${randomUUID()}`;
+  }
+
   stagedFileToken(): string {
     return randomBytes(18).toString("hex");
   }

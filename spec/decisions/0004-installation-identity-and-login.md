@@ -7,9 +7,10 @@ Status: accepted
 One Artifact Server installation represents one closed group: one person or one
 team. The installation must work on a laptop without a hosted identity service,
 on a private network with local accounts or an existing identity provider, and
-as a hosted service with WorkOS AuthKit. Plannotator may connect to the same
-installation, but Plannotator's organizations, projects, and workspaces are not
-Artifact Server's authorization model.
+as a hosted service with WorkOS AuthKit. Plannotator may connect one
+organization to the installation and pair its projects with Artifact Server
+projects. Plannotator's user accounts, workspace records, and workspace
+permissions are not copied into Artifact Server's authorization model.
 
 Authentication and authorization are separate decisions. A login provider can
 prove which person returned from a browser login. Only Artifact Server can decide

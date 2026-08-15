@@ -27,6 +27,7 @@ export const principalCapabilities = {
   publishAnyArtifact: "artifact:publish:any",
   publishOwnedArtifact: "artifact:publish:owned",
   readArtifacts: "artifact:read",
+  manageProjects: "project:manage",
 } as const;
 
 /** One explicit capability granted to a principal. */

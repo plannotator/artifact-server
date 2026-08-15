@@ -12,6 +12,7 @@ import {
   type InvalidArtifactTags,
   type InvalidIdempotencyKey,
   type PublishConflict,
+  type ProjectArchived,
   type StagingStorageFailure,
   type UploadClosed,
   type UploadExpired,
@@ -57,6 +58,7 @@ export interface PublishPreparedNewArtifactCommand {
   readonly manifest: CanonicalManifest;
   readonly name: string;
   readonly principal: Principal;
+  readonly projectId: string;
   readonly source: PublicationSource;
   readonly tags?: readonly string[];
 }
@@ -69,6 +71,7 @@ export interface PublishPreparedVersionCommand {
   readonly idempotencyKey: string;
   readonly manifest: CanonicalManifest;
   readonly principal: Principal;
+  readonly projectId: string;
   readonly source: PublicationSource;
 }
 
@@ -81,11 +84,13 @@ type SourceReadinessFailure =
 
 type CommitNewFailure =
   | IdempotencyConflict
+  | ProjectArchived
   | SourceReadinessFailure;
 
 type CommitVersionFailure =
   | ArtifactNotFound
   | IdempotencyConflict
+  | ProjectArchived
   | PublishConflict
   | SourceReadinessFailure;
 
@@ -103,10 +108,12 @@ export interface PublishArtifactRepository {
     command: CommitArtifactVersion,
   ): Effect.Effect<PublishedVersion, CommitVersionFailure>;
   findIdempotentPublication(
+    projectId: string,
     idempotencyKey: string,
     inputDigest: string,
   ): Effect.Effect<PublishedVersion | null, IdempotencyConflict | ArtifactRepositoryFailure>;
   findCurrentVersion(
+    projectId: string,
     artifactId: string,
   ): Effect.Effect<PublishedVersion | null, ArtifactRepositoryFailure>;
 }
@@ -134,6 +141,7 @@ export type PublishArtifactFailure =
   | SourceReadinessFailure
   | ArtifactNotFound
   | PublishConflict
+  | ProjectArchived
   | BlobStorageFailure
   | StagingStorageFailure
   | AuthorizationDenied;
@@ -222,9 +230,11 @@ function makePublishArtifactService(
       manifest: command.manifest,
       name,
       principalId: command.principal.id,
+      projectId: command.projectId,
       tags,
     });
     const replayed = yield* dependencies.repository.findIdempotentPublication(
+      command.projectId,
       idempotencyKey,
       inputDigest,
     );
@@ -251,6 +261,7 @@ function makePublishArtifactService(
       name,
       ownerPrincipalId: command.principal.id,
       principalId: command.principal.id,
+      projectId: command.projectId,
       authorizedByPrincipalId: command.principal.authorizedByPrincipalId,
       source: command.source,
       tags,
@@ -264,6 +275,7 @@ function makePublishArtifactService(
     command: PublishPreparedVersionCommand,
   ): Effect.fn.Return<PublishedVersion, PublishArtifactFailure> {
     const current = yield* dependencies.repository.findCurrentVersion(
+      command.projectId,
       command.artifactId,
     );
     if (current === null) {
@@ -281,8 +293,10 @@ function makePublishArtifactService(
       expectedCurrentVersionId: command.expectedCurrentVersionId,
       manifest: command.manifest,
       principalId: command.principal.id,
+      projectId: command.projectId,
     });
     const replayed = yield* dependencies.repository.findIdempotentPublication(
+      command.projectId,
       idempotencyKey,
       inputDigest,
     );
@@ -307,6 +321,7 @@ function makePublishArtifactService(
       inputDigest,
       manifest: command.manifest,
       principalId: command.principal.id,
+      projectId: command.projectId,
       authorizedByPrincipalId: command.principal.authorizedByPrincipalId,
       source: command.source,
       versionId: dependencies.ids.versionId(),
@@ -324,6 +339,7 @@ interface NewArtifactDigestInput {
   readonly manifest: CanonicalManifest;
   readonly name: string;
   readonly principalId: string;
+  readonly projectId: string;
   readonly tags: readonly string[];
 }
 
@@ -332,6 +348,7 @@ interface ArtifactVersionDigestInput {
   readonly expectedCurrentVersionId: string;
   readonly manifest: CanonicalManifest;
   readonly principalId: string;
+  readonly projectId: string;
 }
 
 function newArtifactInputDigest(input: NewArtifactDigestInput): string {
@@ -340,6 +357,7 @@ function newArtifactInputDigest(input: NewArtifactDigestInput): string {
     manifestDigest: input.manifest.digest,
     name: input.name,
     principalId: input.principalId,
+    projectId: input.projectId,
     tags: input.tags,
   });
   return createHash("sha256").update(canonicalInput).digest("hex");
@@ -351,6 +369,7 @@ function artifactVersionInputDigest(input: ArtifactVersionDigestInput): string {
     expectedCurrentVersionId: input.expectedCurrentVersionId,
     manifestDigest: input.manifest.digest,
     principalId: input.principalId,
+    projectId: input.projectId,
   });
   return createHash("sha256").update(canonicalInput).digest("hex");
 }

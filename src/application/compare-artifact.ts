@@ -5,6 +5,10 @@ import {
   AuthorizationService,
 } from "./authorization.js";
 import {
+  type ProjectManagementFailure,
+  ProjectManagementService,
+} from "./project-management.js";
+import {
   ArtifactNotFound,
   type ArtifactRepositoryFailure,
   type AuthorizationDenied,
@@ -31,6 +35,7 @@ export interface CompareArtifactVersionsCommand {
   readonly artifactId: string;
   readonly fromVersionId: string;
   readonly principal: Principal;
+  readonly projectId: string | null;
   readonly toVersionId: string;
 }
 
@@ -75,9 +80,11 @@ export interface ArtifactComparison {
 /** Persistence required to obtain comparison inputs. */
 export interface CompareArtifactRepository {
   readonly findArtifact: (
+    projectId: string,
     artifactId: string,
   ) => Effect.Effect<ArtifactRecord | null, ArtifactRepositoryFailure>;
   readonly findArtifactVersion: (
+    projectId: string,
     artifactId: string,
     versionId: string,
   ) => Effect.Effect<ArtifactVersion | null, ArtifactRepositoryFailure>;
@@ -102,7 +109,8 @@ export type CompareArtifactFailure =
   | VersionNotFound
   | AuthorizationDenied
   | ArtifactRepositoryFailure
-  | BlobStorageFailure;
+  | BlobStorageFailure
+  | ProjectManagementFailure;
 
 interface CompareArtifactOperations {
   readonly compareVersions: (
@@ -118,12 +126,17 @@ export class CompareArtifactService extends Context.Service<
   /** Construct comparison from deployment-neutral records and blob reads. */
   static readonly layer = (
     dependencies: CompareArtifactDependencies,
-  ): Layer.Layer<CompareArtifactService, never, AuthorizationService> =>
+  ): Layer.Layer<
+    CompareArtifactService,
+    never,
+    AuthorizationService | ProjectManagementService
+  > =>
     Layer.effect(
       CompareArtifactService,
       Effect.gen(function*() {
         const authorization = yield* AuthorizationService;
-        return makeCompareArtifactService(dependencies, authorization);
+        const projects = yield* ProjectManagementService;
+        return makeCompareArtifactService(dependencies, authorization, projects);
       }),
     );
 }
@@ -131,10 +144,12 @@ export class CompareArtifactService extends Context.Service<
 function makeCompareArtifactService(
   dependencies: CompareArtifactDependencies,
   authorization: AuthorizationOperations,
+  projects: ProjectManagementService["Service"],
 ): CompareArtifactOperations {
   const requireVersion = Effect.fn("CompareArtifactService.requireVersion")(
-    function*(artifactId: string, versionId: string) {
+    function*(projectId: string, artifactId: string, versionId: string) {
       const version = yield* dependencies.repository.findArtifactVersion(
+        projectId,
         artifactId,
         versionId,
       );
@@ -182,7 +197,17 @@ function makeCompareArtifactService(
 
   const compareVersions = Effect.fn("CompareArtifactService.compareVersions")(
     function*(command: CompareArtifactVersionsCommand) {
+      const project = command.projectId === null
+        ? yield* projects.resolveActiveProject({
+          principal: command.principal,
+          projectId: null,
+        })
+        : yield* projects.getProject({
+          principal: command.principal,
+          projectId: command.projectId,
+        });
       const artifact = yield* dependencies.repository.findArtifact(
+        project.id,
         command.artifactId,
       );
       if (artifact === null) {
@@ -192,8 +217,8 @@ function makeCompareArtifactService(
       }
       yield* authorization.requireArtifactRead(command.principal, artifact);
       const [from, to] = yield* Effect.all([
-        requireVersion(artifact.id, command.fromVersionId),
-        requireVersion(artifact.id, command.toVersionId),
+        requireVersion(project.id, artifact.id, command.fromVersionId),
+        requireVersion(project.id, artifact.id, command.toVersionId),
       ], {concurrency: 2});
       const structural = compareManifests(from.manifest, to.manifest);
       const changed = yield* Effect.forEach(

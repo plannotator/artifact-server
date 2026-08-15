@@ -37,6 +37,10 @@ import {
   StagedUploadService,
 } from "../application/staged-upload.js";
 import {
+  type ProjectManagementDependencies,
+  ProjectManagementService,
+} from "../application/project-management.js";
+import {
   ArtifactNotFound,
   ArtifactMutationConflict,
   ArtifactRepositoryFailure,
@@ -47,6 +51,9 @@ import {
   IdentityNotFound,
   IdentityRepositoryFailure,
   PublishConflict,
+  ProjectConflict,
+  ProjectArchived,
+  ProjectNotFound,
   LoginAttemptRejected,
   StagingStorageFailure,
   UploadClosed,
@@ -69,6 +76,7 @@ import type {
   Clock,
   ContentSessionRepository,
   IdGenerator,
+  ProjectRepository,
   StagedUploadRepository,
   StagingStore,
 } from "../core/ports.js";
@@ -90,6 +98,7 @@ export interface ApplicationAdapters {
   readonly localBootstrapCredential: Redacted.Redacted | null;
   readonly repository: ArtifactRepository &
     ContentSessionRepository &
+    ProjectRepository &
     StagedUploadRepository;
   readonly staging: StagingStore;
 }
@@ -106,6 +115,7 @@ export function createApplicationLayer(
   | InstallationAccessService
   | InteractiveLoginService
   | PublishArtifactService
+  | ProjectManagementService
   | StagedUploadService
 > {
   const clock = {
@@ -143,10 +153,11 @@ export function createApplicationLayer(
           try: () => adapters.repository.commitVersion(command),
           catch: classifyCommitVersionFailure,
         }),
-      findIdempotentPublication: (idempotencyKey, inputDigest) =>
+      findIdempotentPublication: (projectId, idempotencyKey, inputDigest) =>
         Effect.tryPromise({
           try: () =>
             adapters.repository.findIdempotentPublication(
+              projectId,
               idempotencyKey,
               inputDigest,
             ),
@@ -155,9 +166,9 @@ export function createApplicationLayer(
               ? cause
               : repositoryFailure("findIdempotentPublication", cause),
         }),
-      findCurrentVersion: (artifactId) =>
+      findCurrentVersion: (projectId, artifactId) =>
         Effect.tryPromise({
-          try: () => adapters.repository.findCurrentVersion(artifactId),
+          try: () => adapters.repository.findCurrentVersion(projectId, artifactId),
           catch: (cause) => repositoryFailure("findCurrentVersion", cause),
         }),
     },
@@ -188,15 +199,22 @@ export function createApplicationLayer(
       createStagedUpload: (command) =>
         Effect.tryPromise({
           try: () => adapters.repository.createStagedUpload(command),
-          catch: (cause) => repositoryFailure("createStagedUpload", cause),
+          catch: (cause) => cause instanceof ProjectArchived
+            ? cause
+            : repositoryFailure("createStagedUpload", cause),
         }),
-      findStagedUpload: (uploadId, principalId) =>
+      findStagedUpload: (projectId, uploadId, principalId) =>
         Effect.tryPromise({
           try: () =>
-            adapters.repository.findStagedUpload(uploadId, principalId),
+            adapters.repository.findStagedUpload(
+              projectId,
+              uploadId,
+              principalId,
+            ),
           catch: (cause) => repositoryFailure("findStagedUpload", cause),
         }),
       markStagedFileUploaded: (
+        projectId,
         uploadId,
         principalId,
         storageToken,
@@ -205,6 +223,7 @@ export function createApplicationLayer(
         Effect.tryPromise({
           try: () =>
             adapters.repository.markStagedFileUploaded(
+              projectId,
               uploadId,
               principalId,
               storageToken,
@@ -214,13 +233,48 @@ export function createApplicationLayer(
             if (
               cause instanceof UploadNotFound ||
               cause instanceof UploadClosed ||
-              cause instanceof UploadFileNotFound
+              cause instanceof UploadFileNotFound ||
+              cause instanceof ProjectArchived
             ) {
               return cause;
             }
             return repositoryFailure("markStagedFileUploaded", cause);
           },
         }),
+    },
+  };
+  const projectDependencies: ProjectManagementDependencies = {
+    clock,
+    ids: adapters.ids,
+    installationId: adapters.installationId,
+    repository: {
+      createProject: (command) => Effect.tryPromise({
+        try: () => adapters.repository.createProject(command),
+        catch: (cause) => cause instanceof ProjectConflict
+          ? cause
+          : repositoryFailure("createProject", cause),
+      }),
+      findProject: (projectId) => Effect.tryPromise({
+        try: () => adapters.repository.findProject(projectId),
+        catch: (cause) => repositoryFailure("findProject", cause),
+      }),
+      listProjects: () => Effect.tryPromise({
+        try: () => adapters.repository.listProjects(),
+        catch: (cause) => repositoryFailure("listProjects", cause),
+      }),
+      renameProject: (command) => Effect.tryPromise({
+        try: () => adapters.repository.renameProject(command),
+        catch: (cause) => cause instanceof ProjectNotFound
+          ? cause
+          : repositoryFailure("renameProject", cause),
+      }),
+      setProjectArchive: (command) => Effect.tryPromise({
+        try: () => adapters.repository.setProjectArchive(command),
+        catch: (cause) =>
+          cause instanceof ProjectNotFound || cause instanceof ProjectConflict
+            ? cause
+            : repositoryFailure("setProjectArchive", cause),
+      }),
     },
   };
   const managementDependencies: ArtifactManagementDependencies = {
@@ -241,27 +295,34 @@ export function createApplicationLayer(
           try: () => adapters.repository.deleteArtifact(command),
           catch: classifyDeleteFailure,
         }),
-      findArtifact: (artifactId) =>
+      findArtifact: (projectId, artifactId) =>
         Effect.tryPromise({
-          try: () => adapters.repository.findArtifact(artifactId),
+          try: () => adapters.repository.findArtifact(projectId, artifactId),
           catch: (cause) => repositoryFailure("findArtifact", cause),
         }),
-      findArtifactForAdministration: (artifactId) =>
+      findArtifactForAdministration: (projectId, artifactId) =>
         Effect.tryPromise({
           try: () =>
-            adapters.repository.findArtifactForAdministration(artifactId),
+            adapters.repository.findArtifactForAdministration(
+              projectId,
+              artifactId,
+            ),
           catch: (cause) =>
             repositoryFailure("findArtifactForAdministration", cause),
         }),
-      findArtifactVersion: (artifactId, versionId) =>
+      findArtifactVersion: (projectId, artifactId, versionId) =>
         Effect.tryPromise({
           try: () =>
-            adapters.repository.findArtifactVersion(artifactId, versionId),
+            adapters.repository.findArtifactVersion(
+              projectId,
+              artifactId,
+              versionId,
+            ),
           catch: (cause) => repositoryFailure("findArtifactVersion", cause),
         }),
-      listArtifactVersions: (artifactId) =>
+      listArtifactVersions: (projectId, artifactId) =>
         Effect.tryPromise({
-          try: () => adapters.repository.listArtifactVersions(artifactId),
+          try: () => adapters.repository.listArtifactVersions(projectId, artifactId),
           catch: (cause) => repositoryFailure("listArtifactVersions", cause),
         }),
       listArtifactActions: (command) =>
@@ -319,15 +380,19 @@ export function createApplicationLayer(
             ),
           catch: (cause) => repositoryFailure("findContentSession", cause),
         }),
-      findCurrentVersion: (artifactId) =>
+      findCurrentVersion: (projectId, artifactId) =>
         Effect.tryPromise({
-          try: () => adapters.repository.findCurrentVersion(artifactId),
+          try: () => adapters.repository.findCurrentVersion(projectId, artifactId),
           catch: (cause) => repositoryFailure("findCurrentVersion", cause),
         }),
-      findArtifactVersion: (artifactId, versionId) =>
+      findArtifactVersion: (projectId, artifactId, versionId) =>
         Effect.tryPromise({
           try: () =>
-            adapters.repository.findArtifactVersion(artifactId, versionId),
+            adapters.repository.findArtifactVersion(
+              projectId,
+              artifactId,
+              versionId,
+            ),
           catch: (cause) => repositoryFailure("findArtifactVersion", cause),
         }),
       findVersionContent: (contentToken, requestedPath) =>
@@ -357,6 +422,7 @@ export function createApplicationLayer(
       principalCapabilities.issueContentSession,
       principalCapabilities.manageAnyArtifact,
       principalCapabilities.manageOwnedArtifact,
+      principalCapabilities.manageProjects,
       principalCapabilities.publishAnyArtifact,
       principalCapabilities.publishOwnedArtifact,
       principalCapabilities.readArtifacts,
@@ -524,22 +590,25 @@ export function createApplicationLayer(
   const authorizationLayer = AuthorizationService.layer({
     installationId: adapters.installationId,
   });
+  const projectLayer = ProjectManagementService.layer(projectDependencies).pipe(
+    Layer.provideMerge(authorizationLayer),
+  );
 
   const publishLayer = PublishArtifactService.layer(publishDependencies).pipe(
     Layer.provideMerge(authorizationLayer),
   );
   const stagedLayer = StagedUploadService.layer(stagedDependencies).pipe(
-    Layer.provideMerge(publishLayer),
+    Layer.provideMerge(Layer.mergeAll(publishLayer, projectLayer)),
   );
   const contentLayer = ContentAccessService.layer(contentDependencies).pipe(
-    Layer.provideMerge(authorizationLayer),
+    Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)),
   );
   const managementLayer = ArtifactManagementService.layer(
     managementDependencies,
-  ).pipe(Layer.provideMerge(authorizationLayer));
+  ).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)));
   const comparisonLayer = CompareArtifactService.layer(
     comparisonDependencies,
-  ).pipe(Layer.provideMerge(authorizationLayer));
+  ).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)));
   return Layer.mergeAll(
     authenticationLayer,
     identityLayer,
@@ -548,6 +617,7 @@ export function createApplicationLayer(
     contentLayer,
     managementLayer,
     comparisonLayer,
+    projectLayer,
   );
 }
 
@@ -656,7 +726,9 @@ function classifySourceReadinessFailure(cause: unknown) {
 }
 
 function classifyCommitNewFailure(cause: unknown) {
-  if (cause instanceof IdempotencyConflict) return cause;
+  if (
+    cause instanceof IdempotencyConflict || cause instanceof ProjectArchived
+  ) return cause;
   if (
     cause instanceof UploadNotFound ||
     cause instanceof UploadClosed ||
@@ -672,6 +744,7 @@ function classifyCommitVersionFailure(cause: unknown) {
   if (
     cause instanceof ArtifactNotFound ||
     cause instanceof IdempotencyConflict ||
+    cause instanceof ProjectArchived ||
     cause instanceof PublishConflict
   ) {
     return cause;

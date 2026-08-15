@@ -29,6 +29,7 @@ import {checkExternalStorageIntegrity} from
 import {PostgresDatabase} from "../../src/storage/postgres-database.js";
 import {PostgresArtifactRepository} from "../../src/storage/postgres-artifact-repository.js";
 import {PostgresIdentityRepository} from "../../src/storage/postgres-identity-repository.js";
+import {defaultProjectId} from "../../src/core/model.js";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const externalStorageCli = path.join(repositoryRoot, "dist/cli/main.js");
@@ -46,12 +47,14 @@ const publishResponseSchema = z.object({
     currentVersionId: z.string(),
     id: z.string(),
     name: z.string(),
+    projectId: z.string(),
   }),
   links: z.object({artifact: z.url(), version: z.url()}),
   replayed: z.boolean(),
   version: z.object({
     id: z.string(),
     number: z.number().int().positive(),
+    projectId: z.string(),
   }),
 });
 
@@ -75,6 +78,7 @@ const uploadResponseSchema = z.object({
     path: z.string(),
     uploadUrl: z.url(),
   })),
+  projectId: z.string(),
   uploadId: z.string(),
 });
 
@@ -84,6 +88,7 @@ const artifactListSchema = z.object({
       currentVersionId: z.string(),
       id: z.string(),
       name: z.string(),
+      projectId: z.string(),
     }),
   })),
 });
@@ -150,15 +155,15 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(JSON.parse(before.output)).toMatchObject({
       compatibility: "missing",
       currentVersion: 0,
-      requiredVersion: 1,
+      requiredVersion: 2,
     });
 
     const applied = await runExternalCli(["migrate", "apply"], migrationEnvironment);
     expect(applied.exitCode).toBe(0);
     expect(JSON.parse(applied.output)).toMatchObject({
       compatibility: "current",
-      currentVersion: 1,
-      requiredVersion: 1,
+      currentVersion: 2,
+      requiredVersion: 2,
     });
 
     const after = await runExternalCli(["migrate", "status"], migrationEnvironment);
@@ -197,6 +202,243 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       }));
       await database.close();
     }
+  });
+
+  test("a populated Postgres v1 installation migrates without changing identity or bytes", async () => {
+    const databaseName = `artifactserver_project_migration_${randomUUID().replaceAll("-", "")}`;
+    await createPostgresDatabase(environment, databaseName);
+    const migrationEnvironment = {
+      ...environment,
+      databaseUrl: databaseUrlFor(environment.databaseUrl, databaseName),
+    };
+    const identity = {
+      apiToken: "postgres-project-migration-token-with-sufficient-entropy",
+      installationId: "postgres-project-migration-installation",
+    };
+    const applied = await runExternalCli(["migrate", "apply"], {
+      ARTIFACT_SERVER_DATABASE_URL: migrationEnvironment.databaseUrl,
+      ARTIFACT_SERVER_INSTALLATION_ID: identity.installationId,
+    });
+    expect(applied.exitCode).toBe(0);
+
+    const source = await startExternalStorageProcess(migrationEnvironment, identity);
+    const published = await publishNew(source.baseUrl, identity.apiToken, {
+      content: "<!doctype html><title>Postgres project migration</title>",
+      idempotencyKey: "postgres-project-migration-publish",
+      name: "Postgres project migration",
+    });
+    await source.stop();
+
+    const database = await PostgresDatabase.inspect({
+      applicationName: "artifact-server-project-migration-fixture",
+      maxConnections: 1,
+      url: Redacted.make(migrationEnvironment.databaseUrl),
+    });
+    try {
+      await database.run(Effect.gen(function*() {
+        const sql = yield* SqlClient;
+        const statements = [
+          "ALTER TABLE content_sessions DROP COLUMN project_id CASCADE",
+          "ALTER TABLE content_bootstraps DROP COLUMN project_id CASCADE",
+          "ALTER TABLE staged_uploads DROP COLUMN project_id CASCADE",
+          "ALTER TABLE actions DROP COLUMN project_id CASCADE",
+          "ALTER TABLE idempotency_records DROP COLUMN project_id CASCADE",
+          "ALTER TABLE versions DROP COLUMN project_id CASCADE",
+          "ALTER TABLE artifacts DROP COLUMN project_id CASCADE",
+          "DROP TABLE projects",
+          `ALTER TABLE artifacts ADD CONSTRAINT artifacts_current_version_fk
+            FOREIGN KEY (installation_id, current_version_id)
+            REFERENCES versions(installation_id, id)
+            DEFERRABLE INITIALLY DEFERRED`,
+          "ALTER TABLE idempotency_records ADD CONSTRAINT idempotency_records_pkey PRIMARY KEY (installation_id, idempotency_key)",
+          "ALTER TABLE actions ADD CONSTRAINT actions_installation_id_idempotency_key_key UNIQUE (installation_id, idempotency_key)",
+          "CREATE INDEX versions_artifact_id ON versions (installation_id, artifact_id, number)",
+          "CREATE INDEX artifacts_active_created ON artifacts (installation_id, deleted_at, created_at DESC, id DESC)",
+          "CREATE INDEX artifacts_owner_active_created ON artifacts (installation_id, owner_principal_id, deleted_at, created_at DESC, id DESC)",
+          "CREATE INDEX actions_artifact_created ON actions (installation_id, artifact_id, created_at DESC, id DESC)",
+          "DELETE FROM artifact_server_postgres_migrations WHERE migration_id = 2",
+        ] as const;
+        for (const statement of statements) {
+          yield* sql.unsafe(statement);
+        }
+      }));
+    } finally {
+      await database.close();
+    }
+
+    const pending = await runExternalCli(["migrate", "status"], {
+      ARTIFACT_SERVER_DATABASE_URL: migrationEnvironment.databaseUrl,
+      ARTIFACT_SERVER_INSTALLATION_ID: identity.installationId,
+    });
+    expect(JSON.parse(pending.output)).toMatchObject({
+      compatibility: "pending",
+      currentVersion: 1,
+      requiredVersion: 2,
+    });
+    const migrated = await runExternalCli(["migrate", "apply"], {
+      ARTIFACT_SERVER_DATABASE_URL: migrationEnvironment.databaseUrl,
+      ARTIFACT_SERVER_INSTALLATION_ID: identity.installationId,
+    });
+    expect(migrated.exitCode).toBe(0);
+    expect(JSON.parse(migrated.output)).toMatchObject({
+      compatibility: "current",
+      currentVersion: 2,
+    });
+
+    const restored = await startExternalStorageProcess(migrationEnvironment, identity);
+    const detailsResponse = await authenticatedFetch(
+      restored.baseUrl,
+      identity.apiToken,
+      `/api/v1/artifacts/${published.body.artifact.id}`,
+    );
+    expect(detailsResponse.status).toBe(200);
+    const details = z.object({
+      artifact: z.object({
+        id: z.string(),
+        projectId: z.string(),
+        tags: z.array(z.string()),
+      }),
+      current: z.object({
+        links: z.object({version: z.url()}),
+        manifest: z.object({digest: z.string()}),
+        version: z.object({id: z.string(), projectId: z.string()}),
+      }),
+    }).parse(await detailsResponse.json());
+    expect(details).toMatchObject({
+      artifact: {
+        id: published.body.artifact.id,
+        projectId: defaultProjectId,
+        tags: ["external-storage-runtime"],
+      },
+      current: {
+        version: {
+          id: published.body.version.id,
+          projectId: defaultProjectId,
+        },
+      },
+    });
+    const rendered = await fetchContentThroughServer(
+      restored.baseUrl,
+      details.current.links.version,
+    );
+    expect(rendered.status).toBe(200);
+    expect(await rendered.text()).toBe(
+      "<!doctype html><title>Postgres project migration</title>",
+    );
+    await restored.stop();
+
+    const repeated = await runExternalCli(["migrate", "apply"], {
+      ARTIFACT_SERVER_DATABASE_URL: migrationEnvironment.databaseUrl,
+      ARTIFACT_SERVER_INSTALLATION_ID: identity.installationId,
+    });
+    expect(repeated.exitCode).toBe(0);
+    expect(JSON.parse(repeated.output)).toMatchObject({
+      compatibility: "current",
+      currentVersion: 2,
+    });
+  });
+
+  test("Postgres project scope survives restart", async () => {
+    const identity = {
+      apiToken: "postgres-project-api-token-with-sufficient-entropy-000",
+      installationId: "postgres-project-scope",
+    };
+    let server = await startInProcessExternalStorageServer(environment, identity);
+    const createdResponse = await fetch(`${server.baseUrl}/api/v1/projects`, {
+      body: JSON.stringify({name: "Postgres project"}),
+      headers: mutationHeaders(identity.apiToken, `project-${randomUUID()}`),
+      method: "POST",
+    });
+    expect(createdResponse.status).toBe(201);
+    const created = z.object({
+      project: z.object({id: z.string(), name: z.string()}),
+    }).parse(await createdResponse.json()).project;
+
+    const sharedKey = `project-local-idempotency-${randomUUID()}`;
+    const [defaultArtifact, projectArtifact] = await Promise.all([
+      publishNew(server.baseUrl, identity.apiToken, {
+        content: "default Postgres project",
+        idempotencyKey: sharedKey,
+        name: "Default Postgres artifact",
+        projectId: defaultProjectId,
+      }),
+      publishNew(server.baseUrl, identity.apiToken, {
+        content: "named Postgres project",
+        idempotencyKey: sharedKey,
+        name: "Named Postgres artifact",
+        projectId: created.id,
+      }),
+    ]);
+    expect(defaultArtifact.response.status).toBe(201);
+    expect(projectArtifact.response.status).toBe(201);
+    expect(defaultArtifact.body.artifact.projectId).toBe(defaultProjectId);
+    expect(projectArtifact.body.artifact.projectId).toBe(created.id);
+
+    const database = await PostgresDatabase.inspect({
+      applicationName: "artifact-server-project-fk-proof",
+      maxConnections: 1,
+      url: Redacted.make(environment.databaseUrl),
+    });
+    try {
+      await expect(database.run(Effect.gen(function*() {
+        const sql = yield* SqlClient;
+        return yield* sql.withTransaction(sql`
+          UPDATE artifacts
+          SET current_version_id = ${projectArtifact.body.version.id}
+          WHERE installation_id = ${identity.installationId}
+            AND project_id = ${defaultProjectId}
+            AND id = ${defaultArtifact.body.artifact.id}
+        `);
+      }))).rejects.toBeDefined();
+    } finally {
+      await database.close();
+    }
+
+    await server.stop();
+    server = await startInProcessExternalStorageServer(environment, identity);
+    const namedList = await fetch(
+      `${server.baseUrl}/api/v1/artifacts?projectId=${created.id}`,
+      {headers: bearerHeaders(identity.apiToken)},
+    );
+    expect(namedList.status).toBe(200);
+    expect(artifactListSchema.parse(await namedList.json()).artifacts)
+      .toEqual([expect.objectContaining({
+        artifact: expect.objectContaining({id: projectArtifact.body.artifact.id}),
+      })]);
+
+    const crossProjectRead = await fetch(
+      `${server.baseUrl}/api/v1/artifacts/${projectArtifact.body.artifact.id}?projectId=${defaultProjectId}`,
+      {headers: bearerHeaders(identity.apiToken)},
+    );
+    expect(crossProjectRead.status).toBe(404);
+
+    const archive = await fetch(
+      `${server.baseUrl}/api/v1/projects/${created.id}/archive`,
+      {headers: bearerHeaders(identity.apiToken), method: "POST"},
+    );
+    expect(archive.status).toBe(200);
+    const archivedWrite = await fetch(`${server.baseUrl}/api/v1/uploads`, {
+      body: JSON.stringify({
+        entryPath: "index.html",
+        files: [{
+          mediaType: "text/html",
+          path: "index.html",
+          sha256: "0".repeat(64),
+          size: 0,
+        }],
+        projectId: created.id,
+      }),
+      headers: mutationHeaders(identity.apiToken, `archived-${randomUUID()}`),
+      method: "POST",
+    });
+    expect(archivedWrite.status).toBe(409);
+    await expect(archivedWrite.json()).resolves.toMatchObject({
+      error: {code: "PROJECT_ARCHIVED"},
+    });
+    expect((await fetch(
+      `${server.baseUrl}/api/v1/artifacts/${projectArtifact.body.artifact.id}?projectId=${created.id}`,
+      {headers: bearerHeaders(identity.apiToken)},
+    )).status).toBe(200);
   });
 
   afterAll(() => {
@@ -893,10 +1135,27 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       installationId: "backup-restore-installation",
     };
     const source = await startExternalStorageProcess(environment, backupIdentity);
+    const projectResponse = await fetch(`${source.baseUrl}/api/v1/projects`, {
+      body: JSON.stringify({name: "Backup project"}),
+      headers: mutationHeaders(
+        backupIdentity.apiToken,
+        `backup-project-${randomUUID()}`,
+      ),
+      method: "POST",
+    });
+    expect(projectResponse.status).toBe(201);
+    const backupProject = z.object({
+      project: z.object({
+        archivedAt: z.string().nullable(),
+        id: z.string(),
+        name: z.string(),
+      }),
+    }).parse(await projectResponse.json()).project;
     const published = await publishNew(source.baseUrl, backupIdentity.apiToken, {
       content: "<article>logical backup survives</article>",
       idempotencyKey: `backup-create-${randomUUID()}`,
       name: "Backup proof",
+      projectId: backupProject.id,
     });
     expect(published.response.status).toBe(201);
     const login = await fetch(
@@ -917,7 +1176,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(issueResponse.status).toBe(201);
     const issued = issuedKeySchema.parse(await issueResponse.json());
     const actionPath =
-      `/api/v1/artifacts/${published.body.artifact.id}/actions`;
+      `/api/v1/artifacts/${published.body.artifact.id}/actions?projectId=${backupProject.id}`;
     const sourceActions = z.object({
       actions: z.array(z.object({
         action: z.string(),
@@ -930,6 +1189,14 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       backupIdentity.apiToken,
       actionPath,
     )).json()).actions;
+    const archivedProjectResponse = await fetch(
+      `${source.baseUrl}/api/v1/projects/${backupProject.id}/archive`,
+      {headers: bearerHeaders(backupIdentity.apiToken), method: "POST"},
+    );
+    expect(archivedProjectResponse.status).toBe(200);
+    const archivedProject = z.object({
+      project: z.object({archivedAt: z.string(), id: z.string()}),
+    }).parse(await archivedProjectResponse.json()).project;
     await source.stop();
 
     const [databaseDump, objectBackup] = await Promise.all([
@@ -954,13 +1221,31 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       ...backupIdentity,
       storageBucket: restoreBucket,
     });
-    const listed = await listArtifacts(restored.baseUrl, backupIdentity.apiToken);
+    const restoredProjectResponse = await authenticatedFetch(
+      restored.baseUrl,
+      backupIdentity.apiToken,
+      `/api/v1/projects/${backupProject.id}`,
+    );
+    expect(restoredProjectResponse.status).toBe(200);
+    await expect(restoredProjectResponse.json()).resolves.toMatchObject({
+      project: {
+        archivedAt: archivedProject.archivedAt,
+        id: backupProject.id,
+        name: "Backup project",
+      },
+    });
+    const listed = await listArtifacts(
+      restored.baseUrl,
+      backupIdentity.apiToken,
+      backupProject.id,
+    );
     expect(listed.body.artifacts).toEqual([
       expect.objectContaining({
         artifact: expect.objectContaining({
           currentVersionId: published.body.version.id,
           id: published.body.artifact.id,
           name: "Backup proof",
+          projectId: backupProject.id,
         }),
       }),
     ]);
@@ -1256,9 +1541,15 @@ async function publishNew(
     readonly content: string;
     readonly idempotencyKey: string;
     readonly name: string;
+    readonly projectId?: string;
   },
 ) {
-  const upload = await stageExternalStorageFile(baseUrl, token, input.content);
+  const upload = await stageExternalStorageFile(
+    baseUrl,
+    token,
+    input.content,
+    input.projectId,
+  );
   const response = await fetch(upload.commitUrl, {
     body: JSON.stringify({target: {
       accessSetting: "public_link",
@@ -1281,9 +1572,15 @@ async function publishVersion(
     readonly content: string;
     readonly expectedCurrentVersionId: string;
     readonly idempotencyKey: string;
+    readonly projectId?: string;
   },
 ) {
-  const upload = await stageExternalStorageFile(baseUrl, token, input.content);
+  const upload = await stageExternalStorageFile(
+    baseUrl,
+    token,
+    input.content,
+    input.projectId,
+  );
   const response = await fetch(upload.commitUrl, {
       body: JSON.stringify({target: {
         artifactId: input.artifactId,
@@ -1301,18 +1598,20 @@ async function stageExternalStorageFile(
   baseUrl: string,
   token: string,
   content: string,
+  projectId?: string,
 ): Promise<z.infer<typeof uploadResponseSchema>> {
   const bytes = new TextEncoder().encode(content);
+  const files = [{
+    mediaType: "text/html; charset=utf-8",
+    path: "index.html",
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    size: bytes.byteLength,
+  }];
+  const body = projectId === undefined
+    ? {entryPath: "index.html", files}
+    : {entryPath: "index.html", files, projectId};
   const createUpload = await fetch(`${baseUrl}/api/v1/uploads`, {
-    body: JSON.stringify({
-      entryPath: "index.html",
-      files: [{
-        mediaType: "text/html; charset=utf-8",
-        path: "index.html",
-        sha256: createHash("sha256").update(bytes).digest("hex"),
-        size: bytes.byteLength,
-      }],
-    }),
+    body: JSON.stringify(body),
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -1335,8 +1634,14 @@ async function stageExternalStorageFile(
   return upload;
 }
 
-async function listArtifacts(baseUrl: string, token: string) {
-  const response = await fetch(`${baseUrl}/api/v1/artifacts`, {
+async function listArtifacts(
+  baseUrl: string,
+  token: string,
+  projectId?: string,
+) {
+  const url = new URL("/api/v1/artifacts", baseUrl);
+  if (projectId !== undefined) url.searchParams.set("projectId", projectId);
+  const response = await fetch(url, {
     headers: {Authorization: `Bearer ${token}`},
   });
   const body: unknown = await response.json();
@@ -1625,6 +1930,20 @@ async function restorePostgres(
     ],
     dump,
   );
+}
+
+async function createPostgresDatabase(
+  environment: IntegrationEnvironment,
+  database: string,
+): Promise<void> {
+  await runCommand("docker", [
+    "exec",
+    environment.postgresContainer,
+    "createdb",
+    "--username",
+    environment.postgresUser,
+    database,
+  ]);
 }
 
 function databaseUrlFor(databaseUrl: string, database: string): string {

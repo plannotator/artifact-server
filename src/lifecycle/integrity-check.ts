@@ -19,12 +19,22 @@ import type {ExternalObjectStorageConfig} from
 const artifactRowSchema = Schema.Struct({
   currentVersionId: Schema.NullOr(Schema.String),
   id: Schema.String,
+  projectId: Schema.String,
 });
 const versionRowSchema = Schema.Struct({
   artifactId: Schema.String,
   entryPath: Schema.String,
   id: Schema.String,
   manifestDigest: Schema.String,
+  projectId: Schema.String,
+});
+const projectRowSchema = Schema.Struct({id: Schema.String});
+const projectReferenceRowSchema = Schema.Struct({
+  artifactId: Schema.NullOr(Schema.String),
+  id: Schema.String,
+  kind: Schema.String,
+  projectId: Schema.String,
+  versionId: Schema.NullOr(Schema.String),
 });
 const entryRowSchema = Schema.Struct({
   disposition: Schema.String,
@@ -37,14 +47,22 @@ const entryRowSchema = Schema.Struct({
 const decodeArtifactRows = Schema.decodeUnknownSync(Schema.Array(artifactRowSchema));
 const decodeVersionRows = Schema.decodeUnknownSync(Schema.Array(versionRowSchema));
 const decodeEntryRows = Schema.decodeUnknownSync(Schema.Array(entryRowSchema));
+const decodeProjectRows = Schema.decodeUnknownSync(Schema.Array(projectRowSchema));
+const decodeProjectReferenceRows = Schema.decodeUnknownSync(
+  Schema.Array(projectReferenceRowSchema),
+);
 
 type ArtifactRow = typeof artifactRowSchema.Type;
 type VersionRow = typeof versionRowSchema.Type;
 type EntryRow = typeof entryRowSchema.Type;
+type ProjectRow = typeof projectRowSchema.Type;
+type ProjectReferenceRow = typeof projectReferenceRowSchema.Type;
 
 interface IntegrityCatalog {
   readonly artifacts: readonly ArtifactRow[];
   readonly entries: readonly EntryRow[];
+  readonly projects: readonly ProjectRow[];
+  readonly projectReferences: readonly ProjectReferenceRow[];
   readonly versions: readonly VersionRow[];
 }
 
@@ -58,8 +76,10 @@ export interface IntegrityProblem {
     | "blob_unreadable"
     | "current_pointer_missing"
     | "manifest_invalid"
+    | "orphan_project"
     | "orphan_entry"
-    | "orphan_version";
+    | "orphan_version"
+    | "project_scope_mismatch";
   readonly message: string;
   readonly path: string | null;
   readonly versionId: string | null;
@@ -179,7 +199,8 @@ function readCompactCatalog(databasePath: string): IntegrityCatalog {
     }
     return {
       artifacts: decodeArtifactRows(database.prepare(`
-        SELECT id, current_version_id AS currentVersionId
+        SELECT id, project_id AS projectId,
+          current_version_id AS currentVersionId
         FROM artifacts
         ORDER BY id
       `).all()),
@@ -194,10 +215,35 @@ function readCompactCatalog(databasePath: string): IntegrityCatalog {
         FROM manifest_entries
         ORDER BY version_id, path
       `).all()),
+      projects: decodeProjectRows(database.prepare(`
+        SELECT id FROM projects ORDER BY id
+      `).all()),
+      projectReferences: decodeProjectReferenceRows(database.prepare(`
+        SELECT 'action' AS kind, id, project_id AS projectId,
+          artifact_id AS artifactId, version_id AS versionId
+        FROM actions
+        UNION ALL
+        SELECT 'idempotency', idempotency_key, project_id,
+          artifact_id, version_id
+        FROM idempotency_records
+        UNION ALL
+        SELECT 'staged_upload', id, project_id, NULL, committed_version_id
+        FROM staged_uploads
+        UNION ALL
+        SELECT 'content_bootstrap', token_digest, project_id,
+          artifact_id, version_id
+        FROM content_bootstraps
+        UNION ALL
+        SELECT 'content_session', token_digest, project_id,
+          artifact_id, version_id
+        FROM content_sessions
+        ORDER BY kind, id
+      `).all()),
       versions: decodeVersionRows(database.prepare(`
         SELECT
           id,
           artifact_id AS artifactId,
+          project_id AS projectId,
           manifest_digest AS manifestDigest,
           entry_path AS entryPath
         FROM versions
@@ -212,9 +258,11 @@ function readCompactCatalog(databasePath: string): IntegrityCatalog {
 function readExternalCatalog(installationId: string) {
   return Effect.gen(function*() {
     const sql = yield* SqlClient;
-    const [artifacts, versions, entries] = yield* Effect.all([
+    const [artifacts, versions, entries, projects, projectReferences] =
+      yield* Effect.all([
       sql<ArtifactRow>`
-        SELECT id, current_version_id AS "currentVersionId"
+        SELECT id, project_id AS "projectId",
+          current_version_id AS "currentVersionId"
         FROM artifacts
         WHERE installation_id = ${installationId}
         ORDER BY id
@@ -223,6 +271,7 @@ function readExternalCatalog(installationId: string) {
         SELECT
           id,
           artifact_id AS "artifactId",
+          project_id AS "projectId",
           manifest_digest AS "manifestDigest",
           entry_path AS "entryPath"
         FROM versions
@@ -241,10 +290,38 @@ function readExternalCatalog(installationId: string) {
         WHERE installation_id = ${installationId}
         ORDER BY version_id, path
       `.withoutTransform,
+      sql<ProjectRow>`
+        SELECT id FROM projects
+        WHERE installation_id = ${installationId}
+        ORDER BY id
+      `.withoutTransform,
+      sql<ProjectReferenceRow>`
+        SELECT 'action' AS kind, id, project_id AS "projectId",
+          artifact_id AS "artifactId", version_id AS "versionId"
+        FROM actions WHERE installation_id = ${installationId}
+        UNION ALL
+        SELECT 'idempotency', idempotency_key, project_id,
+          artifact_id, version_id
+        FROM idempotency_records WHERE installation_id = ${installationId}
+        UNION ALL
+        SELECT 'staged_upload', id, project_id, NULL, committed_version_id
+        FROM staged_uploads WHERE installation_id = ${installationId}
+        UNION ALL
+        SELECT 'content_bootstrap', token_digest, project_id,
+          artifact_id, version_id
+        FROM content_bootstraps WHERE installation_id = ${installationId}
+        UNION ALL
+        SELECT 'content_session', token_digest, project_id,
+          artifact_id, version_id
+        FROM content_sessions WHERE installation_id = ${installationId}
+        ORDER BY kind, id
+      `.withoutTransform,
     ]);
     return {
       artifacts: decodeArtifactRows(artifacts),
       entries: decodeEntryRows(entries),
+      projects: decodeProjectRows(projects),
+      projectReferences: decodeProjectReferenceRows(projectReferences),
       versions: decodeVersionRows(versions),
     } satisfies IntegrityCatalog;
   });
@@ -256,11 +333,13 @@ const checkCatalog = Effect.fn("checkIntegrityCatalog")(function*(
 ): Effect.fn.Return<IntegrityReport> {
   const problems: IntegrityProblem[] = [];
   const artifacts = new Map(catalog.artifacts.map((artifact) => [artifact.id, artifact]));
+  const projects = new Set(catalog.projects.map((project) => project.id));
   const versions = new Map(catalog.versions.map((version) => [version.id, version]));
   const entriesByVersion = new Map<string, EntryRow[]>();
 
   for (const version of catalog.versions) {
-    if (!artifacts.has(version.artifactId)) {
+    const artifact = artifacts.get(version.artifactId);
+    if (artifact === undefined) {
       problems.push({
         artifactId: version.artifactId,
         code: "orphan_version",
@@ -268,7 +347,51 @@ const checkCatalog = Effect.fn("checkIntegrityCatalog")(function*(
         path: null,
         versionId: version.id,
       });
+    } else if (artifact.projectId !== version.projectId) {
+      problems.push({
+        artifactId: version.artifactId,
+        code: "project_scope_mismatch",
+        message: "A saved version belongs to a different project than its artifact.",
+        path: null,
+        versionId: version.id,
+      });
     }
+  }
+  for (const artifact of catalog.artifacts) {
+    if (projects.has(artifact.projectId)) continue;
+    problems.push({
+      artifactId: artifact.id,
+      code: "orphan_project",
+      message: "An artifact refers to a project that does not exist.",
+      path: null,
+      versionId: artifact.currentVersionId,
+    });
+  }
+  for (const reference of catalog.projectReferences) {
+    const artifact = reference.artifactId === null
+      ? undefined
+      : artifacts.get(reference.artifactId);
+    const version = reference.versionId === null
+      ? undefined
+      : versions.get(reference.versionId);
+    const projectMissing = !projects.has(reference.projectId);
+    const artifactMismatch = reference.artifactId !== null &&
+      (artifact === undefined || artifact.projectId !== reference.projectId);
+    const versionMismatch = reference.versionId !== null &&
+      (version === undefined ||
+        version.projectId !== reference.projectId ||
+        (reference.artifactId !== null &&
+          version.artifactId !== reference.artifactId));
+    if (!projectMissing && !artifactMismatch && !versionMismatch) continue;
+    problems.push({
+      artifactId: reference.artifactId ?? version?.artifactId ?? "unknown",
+      code: projectMissing ? "orphan_project" : "project_scope_mismatch",
+      message: projectMissing
+        ? `A ${reference.kind} record refers to a project that does not exist.`
+        : `A ${reference.kind} record crosses an artifact project boundary.`,
+      path: null,
+      versionId: reference.versionId,
+    });
   }
   for (const entry of catalog.entries) {
     const version = versions.get(entry.versionId);
@@ -288,7 +411,12 @@ const checkCatalog = Effect.fn("checkIntegrityCatalog")(function*(
   }
   for (const artifact of catalog.artifacts) {
     const current = artifact.currentVersionId;
-    if (current !== null && versions.get(current)?.artifactId !== artifact.id) {
+    const currentVersion = current === null ? undefined : versions.get(current);
+    if (
+      current !== null &&
+      (currentVersion?.artifactId !== artifact.id ||
+        currentVersion.projectId !== artifact.projectId)
+    ) {
       problems.push({
         artifactId: artifact.id,
         code: "current_pointer_missing",

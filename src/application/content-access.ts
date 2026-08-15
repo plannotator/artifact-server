@@ -32,6 +32,10 @@ import {
   AuthorizationService,
 } from "./authorization.js";
 import type { ApplicationClock } from "./application-clock.js";
+import {
+  type ProjectManagementFailure,
+  ProjectManagementService,
+} from "./project-management.js";
 
 const bootstrapLifetimeMilliseconds = 2 * 60 * 1_000;
 const contentSessionLifetimeMilliseconds = 15 * 60 * 1_000;
@@ -62,9 +66,11 @@ export interface ContentAccessRepository {
     requestTime: string,
   ) => Effect.Effect<ContentSessionRecord | null, ArtifactRepositoryFailure>;
   readonly findCurrentVersion: (
+    projectId: string | null,
     artifactId: string,
   ) => Effect.Effect<PublishedVersion | null, ArtifactRepositoryFailure>;
   readonly findArtifactVersion: (
+    projectId: string,
     artifactId: string,
     versionId: string,
   ) => Effect.Effect<ArtifactVersion | null, ArtifactRepositoryFailure>;
@@ -99,6 +105,7 @@ export interface IssuedContentSession {
 export interface IssueContentBootstrapCommand {
   readonly artifactId: string;
   readonly principal: Principal;
+  readonly projectId: string | null;
   readonly target:
     | {readonly kind: "current"}
     | {readonly kind: "version"; readonly versionId: string};
@@ -124,7 +131,8 @@ export type ContentAccessFailure =
   | ContentBootstrapRejected
   | ContentSessionRequired
   | VersionNotFound
-  | ArtifactRepositoryFailure;
+  | ArtifactRepositoryFailure
+  | ProjectManagementFailure;
 
 interface ContentAccessOperations {
   readonly authorizeVersionContent: (
@@ -149,12 +157,17 @@ export class ContentAccessService extends Context.Service<
   /** Construct content access from deployment-neutral storage and secret ports. */
   static readonly layer = (
     dependencies: ContentAccessDependencies,
-  ): Layer.Layer<ContentAccessService, never, AuthorizationService> =>
+  ): Layer.Layer<
+    ContentAccessService,
+    never,
+    AuthorizationService | ProjectManagementService
+  > =>
     Layer.effect(
       ContentAccessService,
       Effect.gen(function*() {
         const authorization = yield* AuthorizationService;
-        return makeContentAccessService(dependencies, authorization);
+        const projects = yield* ProjectManagementService;
+        return makeContentAccessService(dependencies, authorization, projects);
       }),
     );
 }
@@ -162,11 +175,22 @@ export class ContentAccessService extends Context.Service<
 function makeContentAccessService(
   dependencies: ContentAccessDependencies,
   authorization: AuthorizationOperations,
+  projects: ProjectManagementService["Service"],
 ): ContentAccessOperations {
   const issueContentBootstrap = Effect.fn(
     "ContentAccessService.issueContentBootstrap",
   )(function*(command: IssueContentBootstrapCommand) {
+    const project = command.projectId === null
+      ? yield* projects.resolveActiveProject({
+        principal: command.principal,
+        projectId: null,
+      })
+      : yield* projects.getProject({
+        principal: command.principal,
+        projectId: command.projectId,
+      });
     const current = yield* dependencies.repository.findCurrentVersion(
+      project.id,
       command.artifactId,
     );
     if (current === null) {
@@ -181,6 +205,7 @@ function makeContentAccessService(
     const target = command.target.kind === "current"
       ? current.version
       : (yield* dependencies.repository.findArtifactVersion(
+        project.id,
         current.artifact.id,
         command.target.versionId,
       ))?.version;
@@ -201,6 +226,7 @@ function makeContentAccessService(
       createdAt: DateTime.formatIso(now),
       expiresAt,
       principalId: command.principal.id,
+      projectId: project.id,
       tokenDigest: secret.digest,
       versionId: target.id,
     });
@@ -246,6 +272,7 @@ function makeContentAccessService(
       command.path,
     );
     if (content === null) return null;
+    yield* Effect.annotateCurrentSpan({"artifact.project.id": content.projectId});
     if (
       content.accessSetting === accessSettings.publicLink &&
       content.isCurrent
@@ -267,12 +294,15 @@ function makeContentAccessService(
   const resolvePublicArtifact = Effect.fn(
     "ContentAccessService.resolvePublicArtifact",
   )(function*(artifactId: string) {
-    const current = yield* dependencies.repository.findCurrentVersion(artifactId);
+    const current = yield* dependencies.repository.findCurrentVersion(null, artifactId);
     if (current === null) {
       return yield* Effect.fail(
         new ArtifactNotFound({message: "The artifact does not exist."}),
       );
     }
+    yield* Effect.annotateCurrentSpan({
+      "artifact.project.id": current.artifact.projectId,
+    });
     if (current.artifact.accessSetting !== accessSettings.publicLink) {
       return yield* sessionRequired();
     }

@@ -32,6 +32,7 @@ export function artifactServerFailureResponse(failure: ArtifactServerFailure) {
     case "ContentNotPublic":
       return {code: errorCodes.contentNotPublic, message: failure.message, status: 401};
     case "InvalidArtifactName":
+    case "InvalidProjectName":
     case "InvalidArtifactTags":
     case "InvalidIdempotencyKey":
     case "InvalidPagination":
@@ -46,6 +47,18 @@ export function artifactServerFailureResponse(failure: ArtifactServerFailure) {
       return {code: errorCodes.idempotencyConflict, message: failure.message, status: 409};
     case "PublishConflict":
       return {code: errorCodes.publishConflict, message: failure.message, status: 409};
+    case "ProjectArchived":
+      return {code: errorCodes.projectArchived, message: failure.message, status: 409};
+    case "ProjectConflict":
+      return {code: errorCodes.projectConflict, message: failure.message, status: 409};
+    case "ProjectNotFound":
+      return {code: errorCodes.projectNotFound, message: failure.message, status: 404};
+    case "ProjectSelectionRequired":
+      return {
+        code: errorCodes.projectSelectionRequired,
+        message: failure.message,
+        status: 409,
+      };
     case "UploadClosed":
       return {code: errorCodes.uploadClosed, message: failure.message, status: 409};
     case "UploadExpired":

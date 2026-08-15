@@ -11,6 +11,7 @@ import type {
   ContentSessionRecord,
   PageCursor,
   PublishedVersion,
+  ProjectRecord,
   StagedUpload,
   VersionRecord,
   VersionContent,
@@ -53,6 +54,7 @@ export interface StagingStore {
 export interface PublicationSource {
   readonly kind: "staged_upload";
   readonly principalId: string;
+  readonly projectId: string;
   readonly uploadId: string;
 }
 
@@ -67,6 +69,7 @@ export interface CommitNewArtifact {
   readonly name: string;
   readonly ownerPrincipalId: string;
   readonly principalId: string;
+  readonly projectId: string;
   readonly authorizedByPrincipalId: string | null;
   readonly source: PublicationSource;
   readonly tags: readonly string[];
@@ -82,6 +85,7 @@ export interface CommitArtifactVersion {
   readonly inputDigest: string;
   readonly manifest: CanonicalManifest;
   readonly principalId: string;
+  readonly projectId: string;
   readonly authorizedByPrincipalId: string | null;
   readonly source: PublicationSource;
   readonly versionId: string;
@@ -96,6 +100,7 @@ export interface RestoreArtifactVersion {
   readonly idempotencyKey: string;
   readonly inputDigest: string;
   readonly principalId: string;
+  readonly projectId: string;
   readonly versionId: string;
 }
 
@@ -109,6 +114,7 @@ export interface ChangeArtifactAccessSetting {
   readonly idempotencyKey: string;
   readonly inputDigest: string;
   readonly principalId: string;
+  readonly projectId: string;
 }
 
 /** Values used to atomically replace one artifact's complete tag set. */
@@ -120,6 +126,7 @@ export interface ChangeArtifactTags {
   readonly idempotencyKey: string;
   readonly inputDigest: string;
   readonly principalId: string;
+  readonly projectId: string;
   readonly tags: readonly string[];
 }
 
@@ -132,6 +139,7 @@ export interface DeleteArtifact {
   readonly idempotencyKey: string;
   readonly inputDigest: string;
   readonly principalId: string;
+  readonly projectId: string;
 }
 
 /** Values used to read one bounded page of active artifacts. */
@@ -139,6 +147,7 @@ export interface ListArtifacts {
   readonly cursor: PageCursor | null;
   readonly limit: number;
   readonly ownerPrincipalId: string | null;
+  readonly projectId: string;
   readonly tag: string | null;
 }
 
@@ -147,6 +156,7 @@ export interface ListArtifactActions {
   readonly artifactId: string;
   readonly cursor: PageCursor | null;
   readonly limit: number;
+  readonly projectId: string;
 }
 
 /** Values persisted when issuing a one-time private-content bootstrap. */
@@ -174,6 +184,31 @@ export interface CreateStagedUpload {
   readonly id: string;
   readonly manifest: CanonicalManifest;
   readonly principalId: string;
+  readonly projectId: string;
+}
+
+/** Values persisted when creating one project. */
+export type CreateProject = ProjectRecord;
+
+/** Values used to change one project's label. */
+export interface RenameProject {
+  readonly name: string;
+  readonly projectId: string;
+}
+
+/** Values used to archive or unarchive one project. */
+export interface SetProjectArchive {
+  readonly archivedAt: string | null;
+  readonly projectId: string;
+}
+
+/** Persistent project operations required by the project application service. */
+export interface ProjectRepository {
+  createProject(command: CreateProject): Promise<ProjectRecord>;
+  findProject(projectId: string): Promise<ProjectRecord | null>;
+  listProjects(): Promise<readonly ProjectRecord[]>;
+  renameProject(command: RenameProject): Promise<ProjectRecord>;
+  setProjectArchive(command: SetProjectArchive): Promise<ProjectRecord>;
 }
 
 export interface ArtifactRepository {
@@ -188,21 +223,32 @@ export interface ArtifactRepository {
   changeAccessSetting(command: ChangeArtifactAccessSetting): Promise<ArtifactState>;
   changeTags(command: ChangeArtifactTags): Promise<ArtifactState>;
   deleteArtifact(command: DeleteArtifact): Promise<ArtifactDeletion>;
-  findArtifact(artifactId: string): Promise<ArtifactRecord | null>;
-  findArtifactForAdministration(artifactId: string): Promise<ArtifactRecord | null>;
+  findArtifact(projectId: string, artifactId: string): Promise<ArtifactRecord | null>;
+  findArtifactForAdministration(
+    projectId: string,
+    artifactId: string,
+  ): Promise<ArtifactRecord | null>;
   findArtifactVersion(
+    projectId: string,
     artifactId: string,
     versionId: string,
   ): Promise<ArtifactVersion | null>;
-  findCurrentVersion(artifactId: string): Promise<PublishedVersion | null>;
+  findCurrentVersion(
+    projectId: string | null,
+    artifactId: string,
+  ): Promise<PublishedVersion | null>;
   findIdempotentPublication(
+    projectId: string,
     idempotencyKey: string,
     inputDigest: string,
   ): Promise<PublishedVersion | null>;
   findVersionContent(contentToken: string, path: string): Promise<VersionContent | null>;
   listArtifactActions(command: ListArtifactActions): Promise<ArtifactActionPage>;
   listArtifacts(command: ListArtifacts): Promise<ArtifactPage>;
-  listArtifactVersions(artifactId: string): Promise<readonly VersionRecord[]>;
+  listArtifactVersions(
+    projectId: string,
+    artifactId: string,
+  ): Promise<readonly VersionRecord[]>;
   restoreVersion(command: RestoreArtifactVersion): Promise<ArtifactState>;
 }
 
@@ -223,8 +269,13 @@ export interface ContentSessionRepository {
 
 export interface StagedUploadRepository {
   createStagedUpload(command: CreateStagedUpload): Promise<StagedUpload>;
-  findStagedUpload(uploadId: string, principalId: string): Promise<StagedUpload | null>;
+  findStagedUpload(
+    projectId: string,
+    uploadId: string,
+    principalId: string,
+  ): Promise<StagedUpload | null>;
   markStagedFileUploaded(
+    projectId: string,
     uploadId: string,
     principalId: string,
     storageToken: string,
@@ -239,6 +290,7 @@ export interface Clock {
 export interface IdGenerator {
   artifactId(): string;
   contentToken(): string;
+  projectId(): string;
   stagedFileToken(): string;
   uploadId(): string;
   versionId(): string;

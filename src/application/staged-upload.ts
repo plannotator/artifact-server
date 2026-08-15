@@ -4,6 +4,7 @@ import {
   type ArtifactRepositoryFailure,
   type AuthorizationDenied,
   StagingStorageFailure,
+  type ProjectArchived,
   UploadClosed,
   UploadExpired,
   UploadFileNotFound,
@@ -37,6 +38,10 @@ import {
   type AuthorizationOperations,
   AuthorizationService,
 } from "./authorization.js";
+import {
+  type ProjectManagementFailure,
+  ProjectManagementService,
+} from "./project-management.js";
 
 const uploadLifetimeMilliseconds = 60 * 60 * 1_000;
 
@@ -45,12 +50,14 @@ export interface CreateStagedUploadCommand {
   readonly entryPath: string;
   readonly files: readonly DeclaredManifestFile[];
   readonly principal: Principal;
+  readonly projectId?: string | null;
 }
 
 /** Input for streaming one file into a staged upload slot. */
 export interface UploadStagedFileCommand {
   readonly body: ReadableStream<Uint8Array>;
   readonly principal: Principal;
+  readonly projectId?: string | null;
   readonly storageToken: string;
   readonly uploadId: string;
 }
@@ -73,6 +80,7 @@ export type CommitStagedUploadTarget =
 export interface CommitStagedUploadCommand {
   readonly idempotencyKey: string;
   readonly principal: Principal;
+  readonly projectId?: string | null;
   readonly target: CommitStagedUploadTarget;
   readonly uploadId: string;
 }
@@ -81,12 +89,14 @@ export interface CommitStagedUploadCommand {
 export interface StagedUploadRepositoryPort {
   createStagedUpload(
     command: CreateStagedUpload,
-  ): Effect.Effect<StagedUpload, ArtifactRepositoryFailure>;
+  ): Effect.Effect<StagedUpload, ArtifactRepositoryFailure | ProjectArchived>;
   findStagedUpload(
+    projectId: string,
     uploadId: string,
     principalId: string,
   ): Effect.Effect<StagedUpload | null, ArtifactRepositoryFailure>;
   markStagedFileUploaded(
+    projectId: string,
     uploadId: string,
     principalId: string,
     storageToken: string,
@@ -96,6 +106,7 @@ export interface StagedUploadRepositoryPort {
     | UploadNotFound
     | UploadClosed
     | UploadFileNotFound
+    | ProjectArchived
     | ArtifactRepositoryFailure
   >;
 }
@@ -131,6 +142,7 @@ export type StagedUploadFailure =
   | ArtifactRepositoryFailure
   | StagingStorageFailure
   | PublishArtifactFailure
+  | ProjectManagementFailure
   | AuthorizationDenied;
 
 interface StagedUploadOperations {
@@ -157,13 +169,20 @@ export class StagedUploadService extends Context.Service<
     StagedUploadService,
     never,
     PublishArtifactService | AuthorizationService
+      | ProjectManagementService
   > =>
     Layer.effect(
       StagedUploadService,
       Effect.gen(function*() {
         const authorization = yield* AuthorizationService;
         const publish = yield* PublishArtifactService;
-        return makeStagedUploadService(dependencies, publish, authorization);
+        const projects = yield* ProjectManagementService;
+        return makeStagedUploadService(
+          dependencies,
+          publish,
+          authorization,
+          projects,
+        );
       }),
     );
 }
@@ -172,10 +191,12 @@ function makeStagedUploadService(
   dependencies: StagedUploadDependencies,
   publish: PublishArtifactService["Service"],
   authorization: AuthorizationOperations,
+  projects: ProjectManagementService["Service"],
 ): StagedUploadOperations {
   const requiredUpload = Effect.fn("StagedUploadService.requiredUpload")(
-    function*(uploadId: string, principalId: string) {
+    function*(projectId: string, uploadId: string, principalId: string) {
       const upload = yield* dependencies.uploads.findStagedUpload(
+        projectId,
         uploadId,
         principalId,
       );
@@ -193,6 +214,10 @@ function makeStagedUploadService(
     command: CreateStagedUploadCommand,
   ): Effect.fn.Return<StagedUpload, StagedUploadFailure> {
       yield* authorization.requirePublicationPreparation(command.principal);
+      const project = yield* projects.resolveActiveProject({
+        principal: command.principal,
+        projectId: command.projectId ?? null,
+      });
       const manifest = yield* parseManifest({
         entryPath: command.entryPath,
         files: command.files,
@@ -211,6 +236,7 @@ function makeStagedUploadService(
         id: dependencies.ids.uploadId(),
         manifest,
         principalId: command.principal.id,
+        projectId: project.id,
       });
     },
   );
@@ -220,7 +246,15 @@ function makeStagedUploadService(
     command: UploadStagedFileCommand,
   ): Effect.fn.Return<StagedUpload, StagedUploadFailure> {
       yield* authorization.requirePublicationPreparation(command.principal);
-      const upload = yield* requiredUpload(command.uploadId, command.principal.id);
+      const project = yield* projects.resolveActiveProject({
+        principal: command.principal,
+        projectId: command.projectId ?? null,
+      });
+      const upload = yield* requiredUpload(
+        project.id,
+        command.uploadId,
+        command.principal.id,
+      );
       yield* ensureUploadAcceptsFiles(upload, yield* dependencies.clock.now);
       const file = upload.files.find(
         (candidate) => candidate.storageToken === command.storageToken,
@@ -240,6 +274,7 @@ function makeStagedUploadService(
       });
       const uploadedAt = DateTime.formatIso(yield* dependencies.clock.now);
       return yield* dependencies.uploads.markStagedFileUploaded(
+        project.id,
         upload.id,
         command.principal.id,
         file.storageToken,
@@ -287,7 +322,23 @@ function makeStagedUploadService(
     command: CommitStagedUploadCommand,
   ): Effect.fn.Return<PublishedVersion, StagedUploadFailure> {
       yield* authorization.requirePublicationPreparation(command.principal);
-      const upload = yield* requiredUpload(command.uploadId, command.principal.id);
+      // An explicit project can be archived after a successful commit. Let the
+      // repository replay that exact idempotent result; it still rejects every
+      // genuinely new publication into the archived project.
+      const project = command.projectId === undefined || command.projectId === null
+        ? yield* projects.resolveActiveProject({
+          principal: command.principal,
+          projectId: null,
+        })
+        : yield* projects.getProject({
+          principal: command.principal,
+          projectId: command.projectId,
+        });
+      const upload = yield* requiredUpload(
+        project.id,
+        command.uploadId,
+        command.principal.id,
+      );
       if (upload.status === uploadStatuses.open) {
         yield* ensureUploadNotExpired(upload, yield* dependencies.clock.now);
       }
@@ -300,6 +351,7 @@ function makeStagedUploadService(
       const source = {
         kind: "staged_upload" as const,
         principalId: command.principal.id,
+        projectId: project.id,
         uploadId: upload.id,
       };
       switch (command.target.kind) {
@@ -311,6 +363,7 @@ function makeStagedUploadService(
             manifest: upload.manifest,
             name: command.target.name,
             principal: command.principal,
+            projectId: project.id,
             source,
             tags: command.target.tags ?? [],
           });
@@ -322,6 +375,7 @@ function makeStagedUploadService(
             idempotencyKey: command.idempotencyKey,
             manifest: upload.manifest,
             principal: command.principal,
+            projectId: project.id,
             source,
           });
       }

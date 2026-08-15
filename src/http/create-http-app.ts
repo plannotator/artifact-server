@@ -17,6 +17,7 @@ import {
   InstallationAccessService,
 } from "../application/installation-access.js";
 import { InteractiveLoginService } from "../application/interactive-login.js";
+import { ProjectManagementService } from "../application/project-management.js";
 import {
   type ArtifactDetails,
   ArtifactManagementService,
@@ -79,6 +80,11 @@ const accessSettingSchema = z.enum([
   accessSettings.publicLink,
 ]);
 const artifactTagsSchema = z.array(z.string()).default([]);
+const projectIdSchema = z.string().trim().min(1).max(200);
+const createProjectSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+}).strict();
+const renameProjectSchema = createProjectSchema;
 const declaredFileSchema = z.object({
   mediaType: z.string().trim().min(1).max(200),
   path: z.string().min(1).max(1_024),
@@ -88,6 +94,7 @@ const declaredFileSchema = z.object({
 const createUploadSchema = z.object({
   entryPath: z.string().min(1).max(1_024),
   files: z.array(declaredFileSchema).min(1).max(maximumDeclaredFiles),
+  projectId: projectIdSchema.optional(),
 }).strict();
 const commitUploadSchema = z.object({
   target: z.discriminatedUnion("kind", [
@@ -166,6 +173,7 @@ const principalCapabilitySchema = z.enum([
   principalCapabilities.issueContentSession,
   principalCapabilities.manageAnyArtifact,
   principalCapabilities.manageOwnedArtifact,
+  principalCapabilities.manageProjects,
   principalCapabilities.publishAnyArtifact,
   principalCapabilities.publishOwnedArtifact,
   principalCapabilities.readArtifacts,
@@ -622,6 +630,94 @@ export function createHttpApp(
     return context.json(issued, 201);
   });
 
+  app.get("/api/v1/projects", async (context) => {
+    const projects = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      ProjectManagementService.use((management) =>
+        management.listProjects(context.get("principal"))
+      ),
+    );
+    return context.json({projects});
+  });
+
+  app.post("/api/v1/projects", boundedJsonBody, async (context) => {
+    const body = createProjectSchema.parse(await context.req.json());
+    const project = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      ProjectManagementService.use((management) =>
+        management.createProject({
+          name: body.name,
+          principal: context.get("principal"),
+        })
+      ),
+    );
+    return context.json({project}, 201);
+  });
+
+  app.get("/api/v1/projects/:projectId", async (context) => {
+    const project = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      ProjectManagementService.use((management) =>
+        management.getProject({
+          principal: context.get("principal"),
+          projectId: projectIdSchema.parse(context.req.param("projectId")),
+        })
+      ),
+    );
+    return context.json({project});
+  });
+
+  app.patch(
+    "/api/v1/projects/:projectId",
+    boundedJsonBody,
+    async (context) => {
+      const body = renameProjectSchema.parse(await context.req.json());
+      const project = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ProjectManagementService.use((management) =>
+          management.renameProject({
+            name: body.name,
+            principal: context.get("principal"),
+            projectId: projectIdSchema.parse(context.req.param("projectId")),
+          })
+        ),
+      );
+      return context.json({project});
+    },
+  );
+
+  app.post("/api/v1/projects/:projectId/archive", async (context) => {
+    const project = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      ProjectManagementService.use((management) =>
+        management.archiveProject({
+          principal: context.get("principal"),
+          projectId: projectIdSchema.parse(context.req.param("projectId")),
+        })
+      ),
+    );
+    return context.json({project});
+  });
+
+  app.post("/api/v1/projects/:projectId/unarchive", async (context) => {
+    const project = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      ProjectManagementService.use((management) =>
+        management.unarchiveProject({
+          principal: context.get("principal"),
+          projectId: projectIdSchema.parse(context.req.param("projectId")),
+        })
+      ),
+    );
+    return context.json({project});
+  });
+
   app.post("/api/v1/artifacts", (context) => {
     context.header("Allow", "GET");
     return context.json({
@@ -642,6 +738,7 @@ export function createHttpApp(
           cursor: decodePageCursor(query.cursor),
           limit: query.limit,
           principal: context.get("principal"),
+          projectId: requestedProjectId(context),
           tag: query.tag ?? null,
         })
       ),
@@ -660,6 +757,7 @@ export function createHttpApp(
         management.getArtifact({
           artifactId: context.req.param("artifactId"),
           principal: context.get("principal"),
+          projectId: requestedProjectId(context),
         })
       ),
     );
@@ -678,6 +776,7 @@ export function createHttpApp(
         management.listVersions({
           artifactId: context.req.param("artifactId"),
           principal: context.get("principal"),
+          projectId: requestedProjectId(context),
         })
       ),
     );
@@ -703,6 +802,7 @@ export function createHttpApp(
           cursor: decodePageCursor(query.cursor),
           limit: query.limit,
           principal: context.get("principal"),
+          projectId: requestedProjectId(context),
         })
       ),
     );
@@ -719,6 +819,7 @@ export function createHttpApp(
           management.getVersion({
             artifactId: context.req.param("artifactId"),
             principal: context.get("principal"),
+            projectId: requestedProjectId(context),
             versionId: context.req.param("versionId"),
           })
         ),
@@ -741,6 +842,7 @@ export function createHttpApp(
           artifactId: context.req.param("artifactId"),
           fromVersionId: query.fromVersionId,
           principal: context.get("principal"),
+          projectId: requestedProjectId(context),
           toVersionId: query.toVersionId,
         })
       ),
@@ -768,6 +870,7 @@ export function createHttpApp(
               context.req.header("idempotency-key"),
             ),
             principal: context.get("principal"),
+            projectId: requestedProjectId(context),
             versionId: body.versionId,
           })
         ),
@@ -797,6 +900,7 @@ export function createHttpApp(
               context.req.header("idempotency-key"),
             ),
             principal: context.get("principal"),
+            projectId: requestedProjectId(context),
           })
         ),
       );
@@ -829,6 +933,7 @@ export function createHttpApp(
               context.req.header("idempotency-key"),
             ),
             principal: context.get("principal"),
+            projectId: requestedProjectId(context),
             tags: body.tags,
           })
         ),
@@ -857,6 +962,7 @@ export function createHttpApp(
               context.req.header("idempotency-key"),
             ),
             principal: context.get("principal"),
+            projectId: requestedProjectId(context),
           })
         ),
       );
@@ -884,23 +990,29 @@ export function createHttpApp(
           entryPath: body.entryPath,
           files: body.files,
           principal: context.get("principal"),
+          projectId: body.projectId ?? null,
         })
       ),
     );
     const requestUrl = new URL(context.req.url);
+    const projectQuery = `?projectId=${encodeURIComponent(upload.projectId)}`;
     return context.json({
-      commitUrl: new URL(`/api/v1/uploads/${upload.id}/commit`, requestUrl).toString(),
+      commitUrl: new URL(
+        `/api/v1/uploads/${upload.id}/commit${projectQuery}`,
+        requestUrl,
+      ).toString(),
       expiresAt: upload.expiresAt,
       files: upload.files.map((file) => ({
         method: "PUT" as const,
         path: file.entry.path,
         size: file.entry.size,
         uploadUrl: new URL(
-          `/api/v1/uploads/${upload.id}/files/${file.storageToken}`,
+          `/api/v1/uploads/${upload.id}/files/${file.storageToken}${projectQuery}`,
           requestUrl,
         ).toString(),
       })),
       manifestDigest: upload.manifest.digest,
+      projectId: upload.projectId,
       uploadId: upload.id,
     }, 201);
   });
@@ -914,6 +1026,7 @@ export function createHttpApp(
         stagedUploads.uploadFile({
           body,
           principal: context.get("principal"),
+          projectId: requestedProjectId(context),
           storageToken: context.req.param("storageToken"),
           uploadId: context.req.param("uploadId"),
         })
@@ -946,6 +1059,7 @@ export function createHttpApp(
               context.req.header("idempotency-key"),
             ),
             principal: context.get("principal"),
+            projectId: requestedProjectId(context),
             target: body.target,
             uploadId: context.req.param("uploadId"),
           })
@@ -970,6 +1084,7 @@ export function createHttpApp(
         contentAccess.issueContentBootstrap({
           artifactId: context.req.param("artifactId"),
           principal: context.get("principal"),
+          projectId: requestedProjectId(context),
           target: {kind: "current"},
         })
       ),
@@ -996,6 +1111,7 @@ export function createHttpApp(
           contentAccess.issueContentBootstrap({
             artifactId: context.req.param("artifactId"),
             principal: context.get("principal"),
+            projectId: requestedProjectId(context),
             target: {
               kind: "version",
               versionId: context.req.param("versionId"),
@@ -1189,6 +1305,11 @@ function requireBrowserMutationSecurity(
 
 function isUnsafeMethod(method: string): boolean {
   return method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+}
+
+function requestedProjectId(context: Context<HttpEnvironment>): string | null {
+  const projectId = context.req.query("projectId");
+  return projectId === undefined ? null : projectIdSchema.parse(projectId);
 }
 
 function isLoopbackHostname(hostname: string): boolean {

@@ -53,26 +53,42 @@ This repository contains the local publication foundation and the first external
   storage, including rollout, pod loss, provider outage, node drain, private
   delivery, uninstall, and reinstall.
 
-## Remaining implementation
+## Current implementation
 
-Packaging is now in progress. The direct local archive, shared lifecycle CLI,
-production OCI image, Compact Compose, and External-storage Compose packages now
-exist. The remaining executable scope is in
-[`spec/phase-6-packaging.md`](./spec/phase-6-packaging.md). It defines a native
-local package that does not require Docker, one optional OCI image, Compact
-Compose, External-storage Compose, a Helm chart, recovery, release evidence,
-and the tests that make those targets supportable. The next packaging target is
-compact-to-external-storage export and import.
+The backend foundation, direct local archive, lifecycle CLI, production OCI
+image, Compact Compose, External-storage Compose, and Helm chart exist and pass
+their current release gates.
 
-After that foundation passes, the remaining work is:
+Project-scoped artifacts are now implemented:
+
+```text
+Artifact Server installation
+└── Project
+    └── Artifact
+        └── Immutable version
+```
+
+One installation represents one person, team, or company. A new installation
+creates one default project. There is no organization switcher or separate
+Artifact Store object. The accepted decision and migration constraints are in
+[`0015-project-scoped-artifacts.md`](./spec/decisions/0015-project-scoped-artifacts.md).
+The implementation contract and proof gates are in
+[`phase-8-project-scoped-artifacts.md`](./spec/phase-8-project-scoped-artifacts.md).
+The local SQLite and external Postgres/S3-compatible paths have explicit
+project behavior and populated-database migration tests. The complete local,
+package, Compose, external-storage, bounded-capacity, and live Kubernetes/Helm
+iteration gates pass. The conformance ledger still distinguishes this working
+implementation from deployment-specific release verification.
+
+The remaining product work is:
 
 1. The `publish-artifact` and optional `operate-artifact-server` Agent Skills.
 2. SPA fallback routing, ownership changes, expired-staging cleanup, permanent
    deletion, direct signed uploads, and optional private Git history.
 3. Cloudflare Workers, D1, and R2 adapters and installer.
 4. AWS, GCP, and Azure installers plus native GCS and Azure Blob adapters.
-5. The Plannotator connection and review bridge after its separate integration
-   contract passes.
+5. Direct Plannotator project pairing and the review bridge after the separate
+   integration contract passes.
 
 ## Install the direct local package
 

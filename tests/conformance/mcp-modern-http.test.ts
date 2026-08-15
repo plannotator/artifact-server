@@ -147,6 +147,11 @@ describe("modern MCP HTTP", () => {
     }).loose().parse(listedBody.result).tools;
     expect(tools.map((tool) => tool.name)).toEqual([
       "artifact_capabilities",
+      "project_list",
+      "project_create",
+      "project_rename",
+      "project_archive",
+      "project_unarchive",
       "artifact_list",
       "artifact_get",
       "artifact_open",
@@ -200,7 +205,8 @@ describe("modern MCP HTTP", () => {
     }).loose().parse(templatesBody.result).resourceTemplates;
     expect(templates).toContainEqual(expect.objectContaining({
       name: "artifact-version-manifest",
-      uriTemplate: "artifact://artifacts/{artifactId}/versions/{versionId}/manifest",
+      uriTemplate:
+        "artifact://projects/{projectId}/artifacts/{artifactId}/versions/{versionId}/manifest",
     }));
 
     const mismatchedName = await mcpRequest(
@@ -386,7 +392,7 @@ describe("modern MCP HTTP", () => {
     expect(opened.exactVersion).toBe(false);
     expect(opened.browserUrl).toContain("__artifact_bootstrap=");
 
-    const resourceUri = `artifact://artifacts/${committed.artifact.id}/versions/${committed.version.id}/manifest`;
+    const resourceUri = `artifact://projects/${String(committed.artifact["projectId"])}/artifacts/${committed.artifact.id}/versions/${committed.version.id}/manifest`;
     const resourceResponse = await mcpRequest(
       server,
       installation.apiToken,
@@ -564,6 +570,57 @@ describe("modern MCP HTTP", () => {
     });
     expect(missingArtifact.isError).toBe(true);
     expect(missingArtifact.content[0]?.text).toContain("ARTIFACT_NOT_FOUND");
+  });
+
+  test("MCP manages projects and refuses ambiguous artifact scope", async () => {
+    const initial = await callTool(server, installation.apiToken, {
+      arguments: {},
+      name: "project_list",
+    });
+    expect(initial.structuredContent).toMatchObject({
+      projects: [expect.objectContaining({id: "prj_default", name: "Default"})],
+    });
+
+    const created = await callTool(server, installation.apiToken, {
+      arguments: {name: "MCP project"},
+      name: "project_create",
+    });
+    const project = z.object({
+      project: z.object({id: z.string(), name: z.literal("MCP project")}),
+    }).parse(created.structuredContent).project;
+
+    const ambiguous = await callTool(server, installation.apiToken, {
+      arguments: {cursor: null, limit: 10, projectId: null, tag: null},
+      name: "artifact_list",
+    });
+    expect(ambiguous).toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: {code: "PROJECT_SELECTION_REQUIRED"},
+      },
+    });
+
+    const renamed = await callTool(server, installation.apiToken, {
+      arguments: {name: "Renamed MCP project", projectId: project.id},
+      name: "project_rename",
+    });
+    expect(renamed.structuredContent).toMatchObject({
+      project: {id: project.id, name: "Renamed MCP project"},
+    });
+    const archived = await callTool(server, installation.apiToken, {
+      arguments: {projectId: project.id},
+      name: "project_archive",
+    });
+    expect(archived.structuredContent).toMatchObject({
+      project: {archivedAt: expect.any(String), id: project.id},
+    });
+    const unarchived = await callTool(server, installation.apiToken, {
+      arguments: {projectId: project.id},
+      name: "project_unarchive",
+    });
+    expect(unarchived.structuredContent).toMatchObject({
+      project: {archivedAt: null, id: project.id},
+    });
   });
 
   test("MCP-009-B MCP-009-F: external credentials use the same installation and capability policy as HTTP", async () => {

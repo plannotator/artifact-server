@@ -18,6 +18,10 @@ export const errorCodes = {
   invalidManifestPath: "INVALID_MANIFEST_PATH",
   methodNotAllowed: "METHOD_NOT_ALLOWED",
   publishConflict: "PUBLISH_CONFLICT",
+  projectArchived: "PROJECT_ARCHIVED",
+  projectConflict: "PROJECT_CONFLICT",
+  projectNotFound: "PROJECT_NOT_FOUND",
+  projectSelectionRequired: "PROJECT_SELECTION_REQUIRED",
   uploadClosed: "UPLOAD_CLOSED",
   uploadExpired: "UPLOAD_EXPIRED",
   uploadFileNotFound: "UPLOAD_FILE_NOT_FOUND",
@@ -113,6 +117,36 @@ export class VersionNotFound extends Schema.TaggedError<VersionNotFound>()(
 export class InvalidArtifactName extends Schema.TaggedError<InvalidArtifactName>()(
   "InvalidArtifactName",
   messageField,
+) {}
+
+/** A project name cannot be parsed into the supported domain value. */
+export class InvalidProjectName extends Schema.TaggedError<InvalidProjectName>()(
+  "InvalidProjectName",
+  messageField,
+) {}
+
+/** The requested project does not exist in this installation. */
+export class ProjectNotFound extends Schema.TaggedError<ProjectNotFound>()(
+  "ProjectNotFound",
+  messageField,
+) {}
+
+/** The selected project is archived and cannot accept new work. */
+export class ProjectArchived extends Schema.TaggedError<ProjectArchived>()(
+  "ProjectArchived",
+  messageField,
+) {}
+
+/** A project management command conflicts with its current lifecycle state. */
+export class ProjectConflict extends Schema.TaggedError<ProjectConflict>()(
+  "ProjectConflict",
+  messageField,
+) {}
+
+/** More than one active project exists and the caller must choose one. */
+export class ProjectSelectionRequired extends Schema.TaggedError<ProjectSelectionRequired>()(
+  "ProjectSelectionRequired",
+  {message: Schema.String, projects: Schema.Array(Schema.Struct({id: Schema.String, name: Schema.String}))},
 ) {}
 
 /** Artifact tags cannot be normalized into the supported metadata contract. */
@@ -239,6 +273,11 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
       "listArtifactVersions",
       "markStagedFileUploaded",
       "restoreVersion",
+      "createProject",
+      "findProject",
+      "listProjects",
+      "renameProject",
+      "setProjectArchive",
     ]),
   },
 ) {}
@@ -303,6 +342,7 @@ const artifactServerFailureSchema = Schema.Union([
   ContentBootstrapRejected,
   ContentSessionRequired,
   InvalidArtifactName,
+  InvalidProjectName,
   InvalidArtifactTags,
   InvalidIdempotencyKey,
   InvalidPagination,
@@ -313,6 +353,10 @@ const artifactServerFailureSchema = Schema.Union([
   UploadedFileMismatch,
   IdempotencyConflict,
   PublishConflict,
+  ProjectArchived,
+  ProjectConflict,
+  ProjectNotFound,
+  ProjectSelectionRequired,
   UploadClosed,
   UploadExpired,
   UploadFileNotFound,

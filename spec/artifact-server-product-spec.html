@@ -1555,7 +1555,7 @@
             backend code, convert media, or provide specialized document viewers.
           </p>
           <div class="hero-meta">
-            <span>August 12, 2026</span>
+            <span>August 14, 2026</span>
             <span>Product proposal</span>
             <span>Local, private network, server, Kubernetes, Cloudflare, AWS, GCP, Azure</span>
           </div>
@@ -1584,8 +1584,8 @@
             </p>
           </article>
           <article class="answer">
-            <span class="answer-label">What gets saved</span>
-            <p class="answer-value">For a website or web application, the server saves the complete directory of finished runtime files and the HTML file that opens first, usually <code>index.html</code>. Publishing again creates a new saved copy and never alters a previous copy. The server compares file lists and changed text without Git. Optional Git history is a second, private copy.</p>
+            <span class="answer-label">Organization and projects</span>
+            <p class="answer-value">One installation represents one person, team, or company. It contains projects, and every artifact belongs to one project. A new installation creates a default project. There is no organization switcher or separate Artifact Store object. Publishing again creates a new version without changing an earlier version.</p>
           </article>
           <article class="answer">
             <span class="answer-label">Agents</span>
@@ -1609,7 +1609,7 @@
         <nav>
           <ul class="toc-list">
             <li><a href="#product">The product</a></li>
-            <li><a href="#artifact">An artifact</a></li>
+            <li><a href="#artifact">Projects and artifacts</a></li>
             <li><a href="#experience">Customer experience</a></li>
             <li><a href="#sharing">Sharing</a></li>
             <li><a href="#plannotator">Plannotator connection</a></li>
@@ -1630,7 +1630,7 @@
           <div class="detail-body">
             <nav>
               <a href="#product">The product</a>
-              <a href="#artifact">An artifact</a>
+              <a href="#artifact">Projects and artifacts</a>
               <a href="#experience">Customer experience</a>
               <a href="#sharing">Sharing</a>
               <a href="#plannotator">Plannotator connection</a>
@@ -1657,8 +1657,9 @@
           </div>
 
           <p class="editorial-lead">
-            No separate hosting project is created for each artifact. The server already owns the
-            link, browser view, saved versions, comparisons, and sharing. It does not store comments or annotations.
+            A project contains related artifacts. Publishing an artifact does not create a separate
+            hosting deployment. Artifact Server owns the link, browser view, saved versions,
+            comparisons, and sharing. It does not store comments or annotations.
           </p>
 
           <div class="pathway" aria-label="The four steps in the normal artifact workflow">
@@ -1691,17 +1692,23 @@
 
         <section class="section" id="artifact" aria-labelledby="artifact-title">
           <div class="section-heading">
-            <span class="section-label">The object</span>
-            <h2 id="artifact-title">Artifact and version model</h2>
+            <span class="section-label">The objects</span>
+            <h2 id="artifact-title">Project, artifact, and version model</h2>
             <p>
-              An artifact is one published item that keeps the same identity over time. It has a
-              name, an owner, an access setting, optional tags, a link, and a history of saved versions.
+              One installation represents one person, team, or company. It contains projects. An
+              artifact belongs to one project and keeps the same identity over time. Each publish
+              adds an immutable version.
             </p>
           </div>
 
           <div class="definition">
-            <p class="definition-term">An artifact is one item that can be published more than once.</p>
+            <p class="definition-term">One installation contains projects. A project contains artifacts. An artifact contains immutable versions.</p>
             <div class="definition-copy">
+              <p>
+                A new installation creates one default project. Local publishing selects it
+                automatically. Teams can create more projects without creating another member list,
+                organization, storage bucket, or Artifact Store object.
+              </p>
               <p>
                 Each intentional publish saves a new version. That saved version never changes. It
                 contains one or more files and names which file should open first. A retry with the
@@ -1752,9 +1759,10 @@
             <details>
               <summary>How the server stores an artifact</summary>
               <div class="detail-body">
-                <p>The server stores six kinds of records:</p>
+                <p>The server stores seven kinds of records:</p>
                 <ul>
-                  <li><strong>Artifact:</strong> the same item over time, including its name, owner, access setting, optional tags, and current version.</li>
+                  <li><strong>Project:</strong> a stable project ID, name, installation ID, creation time, and archive state.</li>
+                  <li><strong>Artifact:</strong> the same item over time, including its project, name, owner, access setting, optional tags, and current version.</li>
                   <li><strong>Version:</strong> the saved copy created when someone publishes. It never changes and points to one manifest.</li>
                   <li><strong>Manifest:</strong> the canonical, ordered list of file paths, fingerprints, sizes, media types, and the entry file.</li>
                   <li><strong>File:</strong> one file in a version, including its name, folder path, file type, size, and SHA-256 fingerprint.</li>
@@ -1764,6 +1772,12 @@
                 <p>
                   A SHA-256 fingerprint is calculated from a file's exact contents. If one byte
                   changes, the fingerprint changes.
+                </p>
+                <p>
+                  Project identity is enforced by every repository query, upload, browser session,
+                  HTTP request, MCP tool, action record, backup, and restore. Archiving a project
+                  stops new artifacts and versions but preserves existing links and history. The
+                  first release does not destructively delete a nonempty project.
                 </p>
                 <p>
                   Paths are portable relative paths. The server rejects absolute paths, dot
@@ -1882,9 +1896,10 @@
               <div class="feature-copy">
                 <p>
                   One Artifact Server installation can connect to one Plannotator organization.
-                  Plannotator owns sign-in, workspaces, workspace permissions, comments, and review
-                  state. Artifact Server owns artifact files, saved versions, browser delivery, and
-                  comparisons.
+                  Each Plannotator project maps to one Artifact Server project. Workspaces reference
+                  artifacts and exact versions from that project. Plannotator owns workspace
+                  permissions, comments, and review state. Artifact Server owns the paired project,
+                  artifact files, saved versions, browser delivery, and comparisons.
                 </p>
                 <p>
                   Example: a reviewer comments on a button in version 12. Plannotator saves the
@@ -1935,10 +1950,10 @@
                 <h3>1. Account required</h3>
                 <p>
                   This is the default. Only people admitted to this installation can open the item.
-                  In the standalone namespace, every admitted person can read every account-required
-                  item. A person outside that group cannot open it. Plannotator-managed artifacts
-                  live in a separate area controlled through the Plannotator connection and do not
-                  inherit this standalone read rule.
+                  Every admitted person can read every account-required artifact in its projects. A
+                  person outside that group cannot open it. A workspace reference may grant a
+                  short-lived read-only session for one exact artifact version without granting
+                  access to the project artifact list.
                 </p>
               </div>
             </article>
@@ -2003,7 +2018,7 @@
             <details>
               <summary>How this fits with Plannotator organizations, projects, and workspaces</summary>
               <div class="detail-body">
-                <p>Artifact Server does not copy Plannotator's organization or workspace permission model.</p>
+                <p>One Plannotator organization connects to one Artifact Server installation. Each Plannotator project pairs with one Artifact Server project.</p>
                 <div class="table-wrap">
                   <table>
                     <thead>
@@ -2014,8 +2029,12 @@
                     </thead>
                     <tbody>
                       <tr>
-                        <td>Sign-in, organizations, projects, workspaces, and workspace permissions</td>
+                        <td>Sign-in, organization membership, Plannotator project and workspace records, and workspace permissions</td>
                         <td>Plannotator</td>
+                      </tr>
+                      <tr>
+                        <td>Paired Artifact Server project records</td>
+                        <td>Artifact Server</td>
                       </tr>
                       <tr>
                         <td>Comments, annotations, replies, notifications, and review state</td>
@@ -2029,21 +2048,21 @@
                   </table>
                 </div>
                 <p>
-                  The first Plannotator integration release connects one Artifact Server installation
-                  to one Plannotator organization. Artifacts controlled by Plannotator live in a
-                  separate logical area and are bound to a Plannotator workspace ID. Normal Artifact
-                  Server sessions cannot browse that area.
+                  Artifacts belong to projects, not workspaces. A workspace stores references to
+                  artifacts and exact versions in its project. Moving, unfiling, or deleting a
+                  workspace does not move or delete the project artifact.
                 </p>
                 <p>
-                  Plannotator first decides whether a person or agent may use the workspace. It then
-                  sends Artifact Server a short-lived signed request limited to one operation,
-                  workspace, artifact, or exact version. WorkOS tokens and browser cookies are not
-                  forwarded.
+                  Plannotator checks whether a person or agent may use the project or workspace. It
+                  then sends Artifact Server a short-lived signed request limited to the paired
+                  project and one operation. A workspace viewer may open one referenced artifact or
+                  exact version but cannot list or change the project artifact library. WorkOS
+                  tokens and browser cookies are not forwarded.
                 </p>
                 <p>
-                  Connecting a server does not silently move existing standalone artifacts. A
-                  separate attach action lets an administrator choose an artifact and its destination
-                  workspace after the migration behavior has passed its release tests.
+                  Connecting a server does not silently move existing artifacts. Pairing an existing
+                  Artifact Server project with a Plannotator project requires an explicit
+                  administrator action and preserves all artifact and version IDs.
                 </p>
                 <p>
                   The complete connection and review behavior is described in the
@@ -2060,8 +2079,9 @@
             <h2 id="plannotator-title">One approval connects the products</h2>
             <p>
               A reachable Artifact Server connects to one Plannotator organization from one approval
-              screen. Plannotator controls who may use a workspace. Artifact Server still verifies
-              every request and serves only the named artifact or version.
+              screen. Plannotator projects pair with Artifact Server projects. Workspaces reference
+              artifacts from their project. Artifact Server verifies every request and serves only
+              the paired project and named artifact or version.
             </p>
           </div>
 
@@ -2075,7 +2095,7 @@
             <article class="pathway-step">
               <div class="pathway-copy">
                 <h3>Authorize</h3>
-                <p>Plannotator checks the workspace permission and signs a short-lived request for one operation.</p>
+                <p>Plannotator checks project or workspace permission and signs a short-lived request for one operation.</p>
               </div>
             </article>
             <article class="pathway-step">
@@ -2096,8 +2116,8 @@
             <div class="architecture-top">
               <strong class="architecture-title" id="plannotator-diagram-title">Connection and private artifact opening</strong>
               <p class="architecture-caption">
-                Plannotator makes the workspace decision. Artifact Server enforces a narrow request
-                and creates its own browser session. No user account is copied.
+                Plannotator identifies the paired project and checks the caller. Artifact Server
+                enforces a narrow request and creates its own browser session. No user account is copied.
               </p>
             </div>
             <div class="diagram-shell">
@@ -2108,7 +2128,7 @@
               <div class="diagram-scroll">
                 <svg class="architecture-diagram" viewBox="0 0 1040 520" role="img" aria-labelledby="plannotator-flow-title plannotator-flow-desc">
                   <title id="plannotator-flow-title">Plannotator and Artifact Server connection flow</title>
-                  <desc id="plannotator-flow-desc">A person signs in to Plannotator. Plannotator checks the workspace and sends a signed operation request through a direct connection or optional outbound connector. Artifact Server verifies the request, reads the exact saved version, and returns a one-use browser address. Review mode adds a temporary bridge while comments remain in Plannotator.</desc>
+                  <desc id="plannotator-flow-desc">A person signs in to Plannotator. Plannotator identifies the paired project, checks project or workspace access, and sends a signed operation request through a direct connection or optional outbound connector. Artifact Server verifies the project-scoped request, reads the exact saved version, and returns a one-use browser address. Review mode adds a temporary bridge while comments remain in Plannotator.</desc>
                   <defs>
                     <marker id="plannotator-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
                       <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
@@ -2137,8 +2157,8 @@
                   <text class="svg-copy" x="302" y="153">WorkOS session stays here</text>
                   <text class="svg-small" x="302" y="170">NO ACCOUNT COPY</text>
                   <rect class="svg-node-primary" x="282" y="214" width="238" height="90" rx="8"></rect>
-                  <text class="svg-title" x="302" y="245">Workspace permission</text>
-                  <text class="svg-copy" x="302" y="269">Allow or reject the action</text>
+                  <text class="svg-title" x="302" y="245">Project or workspace check</text>
+                  <text class="svg-copy" x="302" y="269">Allow the narrow action</text>
                   <text class="svg-small" x="302" y="286">SIGNED REQUEST · FIVE MINUTES OR LESS</text>
                   <rect class="svg-node" x="282" y="334" width="238" height="84" rx="8"></rect>
                   <text class="svg-title" x="302" y="365">Comments and review state</text>
@@ -2156,9 +2176,9 @@
                   <text class="svg-copy" x="776" y="153">Connection, scope, expiry</text>
                   <text class="svg-small" x="776" y="170">REJECT EVERYTHING ELSE</text>
                   <rect class="svg-node-store" x="756" y="214" width="236" height="90" rx="8"></rect>
-                  <text class="svg-title" x="776" y="245">Saved version</text>
-                  <text class="svg-copy" x="776" y="269">Manifest, files and comparison</text>
-                  <text class="svg-small" x="776" y="286">ONE WORKSPACE BINDING</text>
+                  <text class="svg-title" x="776" y="245">Project artifact</text>
+                  <text class="svg-copy" x="776" y="269">Manifest, versions and comparison</text>
+                  <text class="svg-small" x="776" y="286">PAIRED PROJECT · EXACT VERSION</text>
                   <rect class="svg-node-primary" x="756" y="334" width="236" height="84" rx="8"></rect>
                   <text class="svg-title" x="776" y="365">Browser response</text>
                   <text class="svg-copy" x="776" y="389">Normal or explicit review mode</text>
@@ -2199,13 +2219,13 @@
               </div>
             </article>
             <article class="feature-row">
-              <h3>Separate storage areas</h3>
+              <h3>Projects own artifacts</h3>
               <div class="feature-copy">
                 <p>
-                  Standalone artifacts keep normal Artifact Server access. Plannotator-managed
-                  artifacts are bound to a workspace and cannot be browsed through a normal
-                  standalone session. Connecting the products does not silently migrate existing
-                  artifacts.
+                  Each Plannotator project maps to one Artifact Server project. Its workspaces
+                  reference project artifacts and exact versions. The connection adds no separate
+                  storage area, Artifact Store, or workspace-owned artifact model. Pairing an
+                  existing project is explicit and preserves artifact and version IDs.
                 </p>
               </div>
             </article>
@@ -2277,7 +2297,7 @@
                 <div class="diagram-scroll">
                   <svg class="architecture-diagram" viewBox="0 0 1040 570" role="img" aria-labelledby="runtime-title runtime-desc">
                     <title id="runtime-title">Artifact Server runtime architecture</title>
-                    <desc id="runtime-desc">People and agents call the Artifact Server application. The application stores artifact records and files, computes comparisons, and serves artifacts from an isolated content address. Optional Git stores a private history copy. Plannotator remains a separate product that owns organizations, workspaces, comments, and review state; it calls Artifact Server as a content service and receives stable artifact and version identifiers.</desc>
+                    <desc id="runtime-desc">People and agents call the Artifact Server application. One installation contains projects, projects contain artifacts, and artifacts contain immutable versions. The application stores records and files, computes comparisons, and serves artifacts from an isolated content address. Optional Git stores a private history copy. Plannotator remains a separate product that owns its organization membership, project and workspace records, comments, and review state; each Plannotator project pairs with one Artifact Server project.</desc>
                     <defs>
                       <marker id="arrow-required" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
                         <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
@@ -2347,7 +2367,7 @@
                     <text class="svg-label" x="794" y="418">SEPARATE PRODUCT</text>
                     <rect class="svg-node" x="794" y="438" width="194" height="76" rx="8"></rect>
                     <text class="svg-title" x="814" y="464">Plannotator</text>
-                    <text class="svg-copy" x="814" y="486">Organizations + workspaces</text>
+                    <text class="svg-copy" x="814" y="486">Organization + project records</text>
                     <text class="svg-small" x="814" y="504">Sharing, comments and review</text>
 
                     <path class="svg-line" d="M192 100 H226 V124 H260" marker-end="url(#arrow-required)"></path>
@@ -3632,7 +3652,7 @@ artifact_delete</code></pre>
                 <li>Media conversion, thumbnails, ZIP extraction, Markdown rendering, source-code highlighting, custom PDF viewing, or specialized binary comparisons in the first release.</li>
                 <li>Fetching arbitrary source URLs from the server.</li>
                 <li>Add-ons that run inside Artifact Server.</li>
-                <li>A separate Artifact Server-managed user list for every standalone artifact. Plannotator may apply its workspace rules before sending a managed request.</li>
+                <li>A separate Artifact Server-managed member list for every project or artifact. Projects use installation membership. Plannotator may authorize a narrow delegated request before sending it.</li>
                 <li>Automatic firewall changes or a general-purpose tunnel into a customer's network. An optional connector may expose only the paired Artifact Server service.</li>
               </ul>
             </article>
@@ -3667,7 +3687,10 @@ artifact_delete</code></pre>
               <div class="roadmap-copy">
                 <h3>One complete local product</h3>
                 <p>
-                  Build saved versions that never change, comparisons between versions, support for complete client-side output directories, the separate artifact website, SQLite and
+                  Start with one installation and one default project. Add more projects without
+                  adding an organization or Artifact Store layer. Build saved versions that never
+                  change, comparisons between versions, support for complete client-side output
+                  directories, the separate artifact website, SQLite and
                   local file storage, the modern stateless MCP route, web publishing,
                   <code>artifactserver connect</code> and the credential-hidden local stdio bridge,
                   the two sharing modes, and optional Git repositories in the local data
@@ -3699,9 +3722,11 @@ artifact_delete</code></pre>
               <div class="roadmap-copy">
                 <h3>The Plannotator connection</h3>
                 <p>
-                  Add browser approval for one Plannotator organization, signed requests limited to
-                  one workspace and operation, a single-use private artifact address, disconnect and
-                  key rotation, and connection audit records. Ship top-level private opening first.
+                  Add browser approval for one Plannotator organization, direct project pairing,
+                  signed requests limited to one project and operation, a single-use private
+                  artifact address, disconnect and key rotation, and connection audit records. A
+                  workspace reference may open one exact version but cannot manage the project
+                  library. Ship top-level private opening first.
                   Add review mode only after the bridge passes hostile-artifact and browser tests.
                   Use customer-provided networking or an established tunnel before building a
                   product-owned connector.
@@ -3771,8 +3796,10 @@ artifact_delete</code></pre>
             <article class="decision-item"><p>Comparisons use canonical manifests and changed text. Binary comparison shows metadata and links. Git is not required.</p></article>
             <article class="decision-item"><p>Git history is an optional private copy. The normal object store remains authoritative, and Git failure never blocks or loses a saved version.</p></article>
             <article class="decision-item"><p>Account required and public link are the only two read settings. A public link opens only the current version; history and comparisons still require an account. Publishing, access changes, and deletion follow a separate owner, administrator, and scoped-service authorization matrix.</p></article>
-            <article class="decision-item"><p>A standalone installation is one person or one team. One installation may connect to one Plannotator organization. Plannotator-managed artifacts use a separate logical area that normal standalone sessions cannot read.</p></article>
-            <article class="decision-item"><p>Plannotator checks workspace access and sends a short-lived, audience-restricted request. Artifact Server verifies it and creates its own one-use browser address and read-only content session. User accounts and browser login cookies are not copied.</p></article>
+            <article class="decision-item"><p>One installation represents one person, team, or company and contains projects. Every artifact belongs to one project. A new installation creates a default project. There is no organization switcher or separate Artifact Store object.</p></article>
+            <article class="decision-item"><p>Projects use installation membership and have no separate member list or access-control list in the first release. Project identity is enforced by storage, authorization, HTTP, MCP, browser sessions, audit, backup, and restore.</p></article>
+            <article class="decision-item"><p>One Artifact Server installation may connect to one Plannotator organization. Each Plannotator project pairs with one Artifact Server project. Workspaces reference project artifacts and versions; they do not own artifact storage.</p></article>
+            <article class="decision-item"><p>Plannotator checks project or workspace access and sends a short-lived, audience-restricted request. A workspace reference may open one exact version but cannot list or mutate the project artifact library. Artifact Server verifies the request and creates its own one-use browser address and read-only content session. User accounts and browser login cookies are not copied.</p></article>
             <article class="decision-item"><p>An explicit review address may add a credential-free review bridge to HTML responses for that session. Normal responses and stored versions remain unchanged. Plannotator stores every comment and review record.</p></article>
             <article class="decision-item"><p>A private connected server uses a customer-provided route or an outbound-only connector limited to Artifact Server. Connecting never changes firewall rules or exposes the rest of the private network.</p></article>
             <article class="decision-item"><p>Every saved version uses a unique host on a content domain separate from the application domain. Private subresources use a version-scoped content session; public content may use immutable CDN caching.</p></article>
@@ -3801,7 +3828,7 @@ artifact_delete</code></pre>
               <li><strong>Enterprise data controls:</strong> decide encryption-key ownership, regional placement, audit export, legal hold, deletion proof, data residency, and regulated-content boundaries.</li>
               <li><strong>Custom domains:</strong> decide whether customer domains are supported and, if so, how certificates, version isolation, cookies, cache purge, domain takeover, and service workers remain safe.</li>
               <li><strong>Plannotator review bridge:</strong> test the isolated review response against hostile artifact JavaScript, strict content policies, multi-page sites, single-page routes, service workers, anchor stability, session expiry, and browsers without third-party cookies. Use a browser extension if the bridge cannot pass without exposing a reusable credential.</li>
-              <li><strong>Existing artifact attachment:</strong> decide whether attaching a standalone artifact to a Plannotator workspace moves it or copies it, and prove permissions, IDs, links, rollback, and disconnect behavior.</li>
+              <li><strong>Existing project binding:</strong> decide how an existing Artifact Server project pairs with a Plannotator project, including name conflicts, existing artifacts, unlinking, rollback, archival, and reconnect behavior. Pairing must not silently move artifacts or change IDs.</li>
               <li><strong>Private Plannotator route:</strong> choose the first supported path among customer-provided networking, Cloudflare Tunnel, or a product-owned connector. Define health, upgrades, replicas, egress addresses, and failure behavior before advertising one-click private connection.</li>
             </ol>
           </article>
@@ -3813,7 +3840,7 @@ artifact_delete</code></pre>
   <footer class="document-footer">
     <div class="footer-inner">
       <span>Artifact Server product proposal</span>
-      <span>Decision draft · August 12, 2026</span>
+      <span>Decision draft · August 14, 2026</span>
     </div>
   </footer>
 

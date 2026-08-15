@@ -246,12 +246,110 @@ const initialSchema = Effect.gen(function*() {
   }
 });
 
+const addProjectScope = Effect.gen(function*() {
+  const sql = yield* SqlClient;
+  const statements = [
+    `CREATE TABLE projects (
+      installation_id TEXT NOT NULL REFERENCES artifact_installations(id),
+      id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      archived_at TEXT,
+      PRIMARY KEY (installation_id, id)
+    )`,
+    `INSERT INTO projects (installation_id, id, name, created_at, archived_at)
+      SELECT installation.id, 'prj_default', 'Default',
+        COALESCE(MIN(artifact.created_at), installation.created_at), NULL
+      FROM artifact_installations installation
+      LEFT JOIN artifacts artifact
+        ON artifact.installation_id = installation.id
+      GROUP BY installation.id, installation.created_at`,
+    `ALTER TABLE artifacts ADD COLUMN project_id TEXT NOT NULL DEFAULT 'prj_default'`,
+    `ALTER TABLE versions ADD COLUMN project_id TEXT NOT NULL DEFAULT 'prj_default'`,
+    `ALTER TABLE idempotency_records ADD COLUMN project_id TEXT NOT NULL DEFAULT 'prj_default'`,
+    `ALTER TABLE actions ADD COLUMN project_id TEXT NOT NULL DEFAULT 'prj_default'`,
+    `ALTER TABLE staged_uploads ADD COLUMN project_id TEXT NOT NULL DEFAULT 'prj_default'`,
+    `ALTER TABLE content_bootstraps ADD COLUMN project_id TEXT NOT NULL DEFAULT 'prj_default'`,
+    `ALTER TABLE content_sessions ADD COLUMN project_id TEXT NOT NULL DEFAULT 'prj_default'`,
+    `ALTER TABLE artifacts ADD CONSTRAINT artifacts_project_fk
+      FOREIGN KEY (installation_id, project_id)
+      REFERENCES projects(installation_id, id)`,
+    `ALTER TABLE versions ADD CONSTRAINT versions_project_fk
+      FOREIGN KEY (installation_id, project_id)
+      REFERENCES projects(installation_id, id)`,
+    `ALTER TABLE staged_uploads ADD CONSTRAINT staged_uploads_project_fk
+      FOREIGN KEY (installation_id, project_id)
+      REFERENCES projects(installation_id, id)`,
+    `ALTER TABLE artifacts ADD CONSTRAINT artifacts_project_identity
+      UNIQUE (installation_id, project_id, id)`,
+    `ALTER TABLE versions ADD CONSTRAINT versions_project_identity
+      UNIQUE (installation_id, project_id, id)`,
+    `ALTER TABLE versions ADD CONSTRAINT versions_project_artifact_version_identity
+      UNIQUE (installation_id, project_id, artifact_id, id)`,
+    `ALTER TABLE versions ADD CONSTRAINT versions_project_artifact_fk
+      FOREIGN KEY (installation_id, project_id, artifact_id)
+      REFERENCES artifacts(installation_id, project_id, id)`,
+    `ALTER TABLE artifacts DROP CONSTRAINT artifacts_current_version_fk`,
+    `ALTER TABLE artifacts ADD CONSTRAINT artifacts_current_version_fk
+      FOREIGN KEY (installation_id, project_id, id, current_version_id)
+      REFERENCES versions(installation_id, project_id, artifact_id, id)
+      DEFERRABLE INITIALLY DEFERRED`,
+    `ALTER TABLE idempotency_records ADD CONSTRAINT idempotency_project_artifact_fk
+      FOREIGN KEY (installation_id, project_id, artifact_id)
+      REFERENCES artifacts(installation_id, project_id, id)`,
+    `ALTER TABLE idempotency_records ADD CONSTRAINT idempotency_project_version_fk
+      FOREIGN KEY (installation_id, project_id, version_id)
+      REFERENCES versions(installation_id, project_id, id)`,
+    `ALTER TABLE actions ADD CONSTRAINT actions_project_artifact_fk
+      FOREIGN KEY (installation_id, project_id, artifact_id)
+      REFERENCES artifacts(installation_id, project_id, id)`,
+    `ALTER TABLE actions ADD CONSTRAINT actions_project_version_fk
+      FOREIGN KEY (installation_id, project_id, version_id)
+      REFERENCES versions(installation_id, project_id, id)`,
+    `ALTER TABLE staged_uploads ADD CONSTRAINT staged_uploads_project_version_fk
+      FOREIGN KEY (installation_id, project_id, committed_version_id)
+      REFERENCES versions(installation_id, project_id, id)`,
+    `ALTER TABLE content_bootstraps ADD CONSTRAINT content_bootstraps_project_artifact_fk
+      FOREIGN KEY (installation_id, project_id, artifact_id)
+      REFERENCES artifacts(installation_id, project_id, id)`,
+    `ALTER TABLE content_bootstraps ADD CONSTRAINT content_bootstraps_project_version_fk
+      FOREIGN KEY (installation_id, project_id, version_id)
+      REFERENCES versions(installation_id, project_id, id)`,
+    `ALTER TABLE content_sessions ADD CONSTRAINT content_sessions_project_artifact_fk
+      FOREIGN KEY (installation_id, project_id, artifact_id)
+      REFERENCES artifacts(installation_id, project_id, id)`,
+    `ALTER TABLE content_sessions ADD CONSTRAINT content_sessions_project_version_fk
+      FOREIGN KEY (installation_id, project_id, version_id)
+      REFERENCES versions(installation_id, project_id, id)`,
+    `ALTER TABLE idempotency_records DROP CONSTRAINT idempotency_records_pkey`,
+    `ALTER TABLE idempotency_records ADD PRIMARY KEY (
+      installation_id, project_id, idempotency_key
+    )`,
+    `ALTER TABLE actions DROP CONSTRAINT actions_installation_id_idempotency_key_key`,
+    `ALTER TABLE actions ADD CONSTRAINT actions_project_idempotency_key
+      UNIQUE (installation_id, project_id, idempotency_key)`,
+    "DROP INDEX versions_artifact_id",
+    "DROP INDEX artifacts_active_created",
+    "DROP INDEX artifacts_owner_active_created",
+    "DROP INDEX actions_artifact_created",
+    "CREATE INDEX versions_project_artifact_id ON versions (installation_id, project_id, artifact_id, number)",
+    "CREATE INDEX artifacts_project_active_created ON artifacts (installation_id, project_id, deleted_at, created_at DESC, id DESC)",
+    "CREATE INDEX artifacts_project_owner_active_created ON artifacts (installation_id, project_id, owner_principal_id, deleted_at, created_at DESC, id DESC)",
+    "CREATE INDEX actions_project_artifact_created ON actions (installation_id, project_id, artifact_id, created_at DESC, id DESC)",
+  ] as const;
+
+  for (const statement of statements) {
+    yield* sql.unsafe(statement);
+  }
+});
+
 const migrationLoader = Migrator.fromRecord({
   "0001_initial_shared_schema": initialSchema,
+  "0002_project_scoped_artifacts": addProjectScope,
 });
 
 /** Schema revision required by this Artifact Server build. */
-export const requiredPostgresSchemaVersion = 1;
+export const requiredPostgresSchemaVersion = 2;
 
 /** Migration compatibility observed without changing Postgres. */
 export interface PostgresMigrationStatus {
@@ -309,6 +407,9 @@ export const readPostgresMigrationStatus = Effect.gen(function*() {
   const expectedHistory = [{
     migration_id: 1,
     name: "initial_shared_schema",
+  }, {
+    migration_id: 2,
+    name: "project_scoped_artifacts",
   }] as const;
   const observedRequiredHistory = rows.filter(
     (row) => row.migration_id <= requiredPostgresSchemaVersion,

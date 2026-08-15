@@ -3,6 +3,7 @@ import {createServer} from "node:http";
 import {afterEach, describe, expect, test} from "vitest";
 import {z} from "zod";
 
+import {defaultProjectId} from "../../src/core/model.js";
 import {
   createTestInstallation,
   removeTestInstallation,
@@ -85,6 +86,11 @@ describe("Effect OTLP observability", () => {
     expect(health.status).toBe(200);
     const requestId = z.uuid().parse(health.headers.get("x-request-id"));
     expect(requestId).not.toBe("caller-controlled-request-id");
+    const project = await fetch(
+      `${artifactServer.baseUrl}/api/v1/projects/${defaultProjectId}`,
+      {headers: {Authorization: `Bearer ${installation.apiToken}`}},
+    );
+    expect(project.status).toBe(200);
     const mcp = await fetch(`${artifactServer.baseUrl}/mcp`, {
       body: JSON.stringify({jsonrpc: "2.0", id: 1, method: "server/discover"}),
       headers: {
@@ -102,7 +108,7 @@ describe("Effect OTLP observability", () => {
     );
     expect(unmatched.status).toBe(404);
 
-    await waitForSignals(signals, ["unmatched"]);
+    await waitForSignals(signals, ["artifact.project.id", defaultProjectId, "unmatched"]);
     expect(signals.map((signal) => signal.path)).toEqual(
       expect.arrayContaining(["/v1/logs", "/v1/metrics", "/v1/traces"]),
     );
@@ -111,6 +117,8 @@ describe("Effect OTLP observability", () => {
     expect(serialized).toContain("artifact_server_http_request_duration");
     expect(serialized).toContain("http.request.completed");
     expect(serialized).toContain("http.request");
+    expect(serialized).toContain("artifact.project.id");
+    expect(serialized).toContain(defaultProjectId);
     expect(serialized).toContain(requestId);
     expect(serialized).toContain("/health");
     expect(serialized).toContain("/mcp");

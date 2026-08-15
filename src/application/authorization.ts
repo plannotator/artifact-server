@@ -43,6 +43,12 @@ export interface AuthorizationOperations {
   readonly requirePublicationPreparation: (
     principal: Principal,
   ) => Effect.Effect<void, AuthorizationDenied>;
+  readonly requireProjectAccess: (
+    principal: Principal,
+  ) => Effect.Effect<void, AuthorizationDenied>;
+  readonly requireProjectManagement: (
+    principal: Principal,
+  ) => Effect.Effect<void, AuthorizationDenied>;
   readonly requireVersionPublication: (
     principal: Principal,
     artifact: ArtifactRecord,
@@ -173,6 +179,39 @@ function makeAuthorizationService(
     yield* denied();
   });
 
+  const requireProjectAccess = Effect.fn(
+    "AuthorizationService.requireProjectAccess",
+  )(function*(principal: Principal) {
+    yield* requireInstallation(principal);
+    if (
+      isDirectHumanPrincipal(principal) ||
+      hasCapability(principal, principalCapabilities.createArtifact) ||
+      hasCapability(principal, principalCapabilities.issueContentSession) ||
+      hasCapability(principal, principalCapabilities.manageAnyArtifact) ||
+      hasCapability(principal, principalCapabilities.manageOwnedArtifact) ||
+      hasCapability(principal, principalCapabilities.manageProjects) ||
+      hasCapability(principal, principalCapabilities.publishAnyArtifact) ||
+      hasCapability(principal, principalCapabilities.publishOwnedArtifact) ||
+      hasCapability(principal, principalCapabilities.readArtifacts)
+    ) {
+      return;
+    }
+    yield* denied();
+  });
+
+  const requireProjectManagement = Effect.fn(
+    "AuthorizationService.requireProjectManagement",
+  )(function*(principal: Principal) {
+    yield* requireInstallation(principal);
+    if (
+      isHumanAdministrator(principal) ||
+      hasCapability(principal, principalCapabilities.manageProjects)
+    ) {
+      return;
+    }
+    yield* denied();
+  });
+
   const requireVersionPublication = Effect.fn(
     "AuthorizationService.requireVersionPublication",
   )(function*(principal: Principal, artifact: ArtifactRecord) {
@@ -203,6 +242,8 @@ function makeAuthorizationService(
     requireArtifactRead,
     requireContentSession,
     requirePublicationPreparation,
+    requireProjectAccess,
+    requireProjectManagement,
     requireVersionPublication,
   });
 }

@@ -9,6 +9,7 @@ import type { ArtifactManagementService } from "./artifact-management.js";
 import type { CompareArtifactService } from "./compare-artifact.js";
 import type { InstallationAccessService } from "./installation-access.js";
 import type { InteractiveLoginService } from "./interactive-login.js";
+import type {ProjectManagementService} from "./project-management.js";
 
 /** Application services shared by every Artifact Server entry point. */
 export type ApplicationServices =
@@ -20,6 +21,7 @@ export type ApplicationServices =
   | InstallationAccessService
   | InteractiveLoginService
   | PublishArtifactService
+  | ProjectManagementService
   | StagedUploadService;
 
 /** One reusable runtime for an Artifact Server installation. */

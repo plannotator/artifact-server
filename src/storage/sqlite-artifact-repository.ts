@@ -13,6 +13,9 @@ import {
   UploadIncomplete,
   UploadNotFound,
   VersionNotFound,
+  ProjectConflict,
+  ProjectArchived,
+  ProjectNotFound,
 } from "../core/errors.js";
 import {
   accessSettings,
@@ -20,6 +23,8 @@ import {
   fileDispositions,
   routingModes,
   uploadStatuses,
+  defaultProjectId,
+  defaultProjectName,
   type ArtifactActionPage,
   type ArtifactActionRecord,
   type ArtifactDeletion,
@@ -33,6 +38,7 @@ import {
   type ManifestEntry,
   type PageCursor,
   type PublishedVersion,
+  type ProjectRecord,
   type StagedUpload,
   type StagedUploadFile,
   type VersionContent,
@@ -52,10 +58,14 @@ import type {
   ListArtifactActions,
   ListArtifacts,
   PublicationSource,
+  ProjectRepository,
+  RenameProject,
   RestoreArtifactVersion,
+  SetProjectArchive,
   StagedUploadRepository,
 } from "../core/ports.js";
 import { createManifest } from "../manifest/create-manifest.js";
+import {requiredSqliteSchemaVersion} from "./sqlite-schema.js";
 
 const accessSettingSchema = z.enum([
   accessSettings.accountRequired,
@@ -89,6 +99,7 @@ const publishedRowSchema = z.object({
   manifestDigest: z.string(),
   ownerPrincipalId: z.string(),
   publisherPrincipalId: z.string(),
+  projectId: z.string(),
   routingMode: routingModeSchema,
   versionCreatedAt: z.string(),
   versionId: z.string(),
@@ -100,6 +111,7 @@ const contentBootstrapRowSchema = z.object({
   createdAt: z.string(),
   expiresAt: z.string(),
   principalId: z.string(),
+  projectId: z.string(),
   tokenDigest: z.string(),
   versionId: z.string(),
 });
@@ -126,6 +138,7 @@ const artifactActionRowSchema = z.object({
   id: z.string(),
   idempotencyKey: z.string(),
   principalId: z.string(),
+  projectId: z.string(),
   versionId: z.string(),
 });
 const artifactRowSchema = z.object({
@@ -136,6 +149,7 @@ const artifactRowSchema = z.object({
   id: z.string(),
   name: z.string(),
   ownerPrincipalId: z.string(),
+  projectId: z.string(),
 });
 const artifactTagRowSchema = z.object({
   artifactId: z.string(),
@@ -150,6 +164,7 @@ const versionRowSchema = z.object({
   manifestDigest: z.string(),
   number: z.number().int().positive(),
   publisherPrincipalId: z.string(),
+  projectId: z.string(),
   routingMode: routingModeSchema,
 });
 const storedManifestEntryRowSchema = z.object({
@@ -167,6 +182,7 @@ const versionContentRowSchema = z.object({
   isCurrent: z.union([z.literal(0), z.literal(1)]).transform((value) => value === 1),
   mediaType: z.string(),
   path: z.string(),
+  projectId: z.string(),
   sha256: z.string(),
   size: z.number().int().nonnegative(),
   versionId: z.string(),
@@ -178,6 +194,7 @@ const stagedUploadBaseRowSchema = z.object({
   id: z.string(),
   manifestDigest: z.string(),
   principalId: z.string(),
+  projectId: z.string(),
   routingMode: routingModeSchema,
 });
 const stagedUploadRowSchema = z.discriminatedUnion("status", [
@@ -206,6 +223,13 @@ const stagedUploadCommitRowSchema = z.object({
   readyCount: z.number().int().nonnegative(),
   status: uploadStatusSchema,
 });
+const projectRowSchema = z.object({
+  archivedAt: z.string().nullable(),
+  createdAt: z.string(),
+  id: z.string(),
+  installationId: z.string(),
+  name: z.string(),
+});
 
 interface PageResult<Item> {
   readonly items: readonly Item[];
@@ -215,11 +239,14 @@ interface PageResult<Item> {
 export class SqliteArtifactRepository implements
   ArtifactRepository,
   ContentSessionRepository,
+  ProjectRepository,
   StagedUploadRepository
 {
   readonly #database: DatabaseSync;
+  readonly #installationId: string;
 
-  constructor(databasePath: string) {
+  constructor(databasePath: string, installationId = "local") {
+    this.#installationId = installationId;
     this.#database = new DatabaseSync(databasePath, {
       allowExtension: false,
       enableForeignKeyConstraints: true,
@@ -228,7 +255,69 @@ export class SqliteArtifactRepository implements
     this.#database.enableDefensive(true);
     this.#database.exec("PRAGMA journal_mode = WAL;");
     this.#database.exec("PRAGMA synchronous = FULL;");
-    this.#migrate();
+    this.#migrate(installationId);
+  }
+
+  createProject(command: ProjectRecord): Promise<ProjectRecord> {
+    return Promise.resolve().then(() => {
+      try {
+        this.#database.prepare(`
+          INSERT INTO projects (id, installation_id, name, created_at, archived_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(
+          command.id,
+          this.#installationId,
+          command.name,
+          command.createdAt,
+          command.archivedAt,
+        );
+      } catch (cause) {
+        if (isSqliteConstraint(cause)) {
+          throw new ProjectConflict({message: "The project identity is already in use."});
+        }
+        throw cause;
+      }
+      return this.#readProject(command.id);
+    });
+  }
+
+  findProject(projectId: string): Promise<ProjectRecord | null> {
+    return Promise.resolve().then(() => this.#readProjectOrNull(projectId));
+  }
+
+  listProjects(): Promise<readonly ProjectRecord[]> {
+    return Promise.resolve().then(() => projectRowSchema.array().parse(
+      this.#database.prepare(`
+        SELECT id, installation_id AS installationId, name,
+          created_at AS createdAt, archived_at AS archivedAt
+        FROM projects
+        ORDER BY created_at, id
+      `).all(),
+    ));
+  }
+
+  renameProject(command: RenameProject): Promise<ProjectRecord> {
+    return Promise.resolve().then(() => {
+      const result = this.#database.prepare(
+        "UPDATE projects SET name = ? WHERE id = ?",
+      ).run(command.name, command.projectId);
+      if (result.changes !== 1) {
+        throw new ProjectNotFound({message: "The project does not exist."});
+      }
+      return this.#readProject(command.projectId);
+    });
+  }
+
+  setProjectArchive(command: SetProjectArchive): Promise<ProjectRecord> {
+    return Promise.resolve().then(() => {
+      const result = this.#database.prepare(
+        "UPDATE projects SET archived_at = ? WHERE id = ?",
+      ).run(command.archivedAt, command.projectId);
+      if (result.changes !== 1) {
+        throw new ProjectNotFound({message: "The project does not exist."});
+      }
+      return this.#readProject(command.projectId);
+    });
   }
 
   close(): void {
@@ -250,10 +339,12 @@ export class SqliteArtifactRepository implements
     return Promise.resolve().then(() =>
       this.#transaction(() => {
         const replayed = this.#findIdempotentResult(
+          command.projectId,
           command.idempotencyKey,
           command.inputDigest,
         );
         if (replayed !== null) return replayed;
+        this.#assertProjectActive(command.projectId);
         this.#assertStagedUploadReady(
           command.source,
           command.manifest.digest,
@@ -263,12 +354,13 @@ export class SqliteArtifactRepository implements
         this.#database
           .prepare(
             `INSERT INTO artifacts (
-              id, name, owner_principal_id, access_setting,
+              id, project_id, name, owner_principal_id, access_setting,
               current_version_id, created_at, deleted_at
-            ) VALUES (?, ?, ?, ?, NULL, ?, NULL)`,
+            ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL)`,
           )
           .run(
             command.artifactId,
+            command.projectId,
             command.name,
             command.ownerPrincipalId,
             command.accessSetting,
@@ -278,6 +370,7 @@ export class SqliteArtifactRepository implements
         this.#replaceTags(command.artifactId, command.tags);
 
         this.#insertVersion(
+          command.projectId,
           command.artifactId,
           command.versionId,
           command.contentToken,
@@ -290,6 +383,7 @@ export class SqliteArtifactRepository implements
           .prepare("UPDATE artifacts SET current_version_id = ? WHERE id = ?")
           .run(command.versionId, command.artifactId);
         this.#insertAction(
+          command.projectId,
           command.artifactId,
           command.versionId,
           command.idempotencyKey,
@@ -299,6 +393,7 @@ export class SqliteArtifactRepository implements
           command.authorizedByPrincipalId,
         );
         this.#insertIdempotency(
+          command.projectId,
           command.idempotencyKey,
           command.inputDigest,
           command.artifactId,
@@ -307,7 +402,7 @@ export class SqliteArtifactRepository implements
         );
         this.#sealStagedUpload(command.source, command.versionId);
 
-        return this.#readPublishedVersion(command.versionId, false);
+        return this.#readPublishedVersion(command.projectId, command.versionId, false);
       }),
     );
   }
@@ -316,10 +411,12 @@ export class SqliteArtifactRepository implements
     return Promise.resolve().then(() =>
       this.#transaction(() => {
         const replayed = this.#findIdempotentResult(
+          command.projectId,
           command.idempotencyKey,
           command.inputDigest,
         );
         if (replayed !== null) return replayed;
+        this.#assertProjectActive(command.projectId);
         this.#assertStagedUploadReady(
           command.source,
           command.manifest.digest,
@@ -330,9 +427,9 @@ export class SqliteArtifactRepository implements
           .prepare(
             `SELECT current_version_id AS currentVersionId
              FROM artifacts
-             WHERE id = ? AND deleted_at IS NULL`,
+             WHERE project_id = ? AND id = ? AND deleted_at IS NULL`,
           )
-          .get(command.artifactId);
+          .get(command.projectId, command.artifactId);
         const current = z
           .object({currentVersionId: z.string()})
           .nullable()
@@ -358,6 +455,7 @@ export class SqliteArtifactRepository implements
           .parse(numberRow);
 
         this.#insertVersion(
+          command.projectId,
           command.artifactId,
           command.versionId,
           command.contentToken,
@@ -370,10 +468,11 @@ export class SqliteArtifactRepository implements
           .prepare(
             `UPDATE artifacts
              SET current_version_id = ?
-             WHERE id = ? AND current_version_id = ? AND deleted_at IS NULL`,
+             WHERE project_id = ? AND id = ? AND current_version_id = ? AND deleted_at IS NULL`,
           )
           .run(
             command.versionId,
+            command.projectId,
             command.artifactId,
             command.expectedCurrentVersionId,
           );
@@ -384,6 +483,7 @@ export class SqliteArtifactRepository implements
         }
 
         this.#insertAction(
+          command.projectId,
           command.artifactId,
           command.versionId,
           command.idempotencyKey,
@@ -393,6 +493,7 @@ export class SqliteArtifactRepository implements
           command.authorizedByPrincipalId,
         );
         this.#insertIdempotency(
+          command.projectId,
           command.idempotencyKey,
           command.inputDigest,
           command.artifactId,
@@ -401,7 +502,7 @@ export class SqliteArtifactRepository implements
         );
         this.#sealStagedUpload(command.source, command.versionId);
 
-        return this.#readPublishedVersion(command.versionId, false);
+        return this.#readPublishedVersion(command.projectId, command.versionId, false);
       }),
     );
   }
@@ -412,12 +513,13 @@ export class SqliteArtifactRepository implements
     return Promise.resolve().then(() =>
       this.#transaction(() => {
         const replayed = this.#findIdempotentManagementResult(
+          command.projectId,
           "change_access",
           command.idempotencyKey,
           command.inputDigest,
         );
         if (replayed !== null) return replayed;
-        const artifact = this.#readArtifact(command.artifactId);
+        const artifact = this.#readArtifact(command.projectId, command.artifactId);
         this.#assertExpectedCurrentVersion(
           artifact,
           command.expectedCurrentVersionId,
@@ -426,10 +528,11 @@ export class SqliteArtifactRepository implements
           .prepare(
             `UPDATE artifacts
              SET access_setting = ?
-             WHERE id = ? AND current_version_id = ? AND deleted_at IS NULL`,
+             WHERE project_id = ? AND id = ? AND current_version_id = ? AND deleted_at IS NULL`,
           )
           .run(
             command.accessSetting,
+            command.projectId,
             command.artifactId,
             command.expectedCurrentVersionId,
           );
@@ -437,6 +540,7 @@ export class SqliteArtifactRepository implements
           throw changedDuringManagement();
         }
         this.#insertAction(
+          command.projectId,
           command.artifactId,
           command.expectedCurrentVersionId,
           command.idempotencyKey,
@@ -446,6 +550,7 @@ export class SqliteArtifactRepository implements
           command.authorizedByPrincipalId,
         );
         this.#insertIdempotency(
+          command.projectId,
           command.idempotencyKey,
           command.inputDigest,
           command.artifactId,
@@ -455,6 +560,7 @@ export class SqliteArtifactRepository implements
           command.accessSetting,
         );
         return this.#readArtifactState(
+          command.projectId,
           command.artifactId,
           command.expectedCurrentVersionId,
           command.accessSetting,
@@ -468,17 +574,19 @@ export class SqliteArtifactRepository implements
     return Promise.resolve().then(() =>
       this.#transaction(() => {
         const replayed = this.#findIdempotentTagResult(
+          command.projectId,
           command.idempotencyKey,
           command.inputDigest,
         );
         if (replayed !== null) return replayed;
-        const artifact = this.#readArtifact(command.artifactId);
+        const artifact = this.#readArtifact(command.projectId, command.artifactId);
         this.#assertExpectedCurrentVersion(
           artifact,
           command.expectedCurrentVersionId,
         );
         this.#replaceTags(command.artifactId, command.tags);
         this.#insertAction(
+          command.projectId,
           command.artifactId,
           command.expectedCurrentVersionId,
           command.idempotencyKey,
@@ -488,6 +596,7 @@ export class SqliteArtifactRepository implements
           command.authorizedByPrincipalId,
         );
         this.#insertIdempotency(
+          command.projectId,
           command.idempotencyKey,
           command.inputDigest,
           command.artifactId,
@@ -498,6 +607,7 @@ export class SqliteArtifactRepository implements
           JSON.stringify(command.tags),
         );
         return this.#readArtifactState(
+          command.projectId,
           command.artifactId,
           command.expectedCurrentVersionId,
           artifact.accessSetting,
@@ -512,12 +622,13 @@ export class SqliteArtifactRepository implements
     return Promise.resolve().then(() =>
       this.#transaction(() => {
         const replayed = this.#findIdempotentDeletion(
+          command.projectId,
           command.idempotencyKey,
           command.inputDigest,
         );
         if (replayed !== null) return replayed;
 
-        const artifact = this.#readArtifact(command.artifactId);
+        const artifact = this.#readArtifact(command.projectId, command.artifactId);
         this.#assertExpectedCurrentVersion(
           artifact,
           command.expectedCurrentVersionId,
@@ -526,10 +637,11 @@ export class SqliteArtifactRepository implements
           .prepare(
             `UPDATE artifacts
              SET deleted_at = ?
-             WHERE id = ? AND current_version_id = ? AND deleted_at IS NULL`,
+             WHERE project_id = ? AND id = ? AND current_version_id = ? AND deleted_at IS NULL`,
           )
           .run(
             command.createdAt,
+            command.projectId,
             command.artifactId,
             command.expectedCurrentVersionId,
           );
@@ -537,6 +649,7 @@ export class SqliteArtifactRepository implements
           throw changedDuringManagement();
         }
         this.#insertAction(
+          command.projectId,
           command.artifactId,
           command.expectedCurrentVersionId,
           command.idempotencyKey,
@@ -546,6 +659,7 @@ export class SqliteArtifactRepository implements
           command.authorizedByPrincipalId,
         );
         this.#insertIdempotency(
+          command.projectId,
           command.idempotencyKey,
           command.inputDigest,
           command.artifactId,
@@ -554,30 +668,32 @@ export class SqliteArtifactRepository implements
           "delete",
           artifact.accessSetting,
         );
-        return this.#readDeletionResult(command.artifactId, false);
+        return this.#readDeletionResult(command.projectId, command.artifactId, false);
       }),
     );
   }
 
-  findArtifact(artifactId: string): Promise<ArtifactRecord | null> {
-    return Promise.resolve().then(() => this.#readArtifactOrNull(artifactId));
+  findArtifact(projectId: string, artifactId: string): Promise<ArtifactRecord | null> {
+    return Promise.resolve().then(() => this.#readArtifactOrNull(projectId, artifactId));
   }
 
   findArtifactForAdministration(
+    projectId: string,
     artifactId: string,
   ): Promise<ArtifactRecord | null> {
     return Promise.resolve().then(() =>
-      this.#readArtifactIncludingDeletedOrNull(artifactId)
+      this.#readArtifactIncludingDeletedOrNull(projectId, artifactId)
     );
   }
 
   findArtifactVersion(
+    projectId: string,
     artifactId: string,
     versionId: string,
   ): Promise<ArtifactVersion | null> {
     return Promise.resolve().then(() => {
-      if (this.#readArtifactOrNull(artifactId) === null) return null;
-      const version = this.#readVersionOrNull(versionId, artifactId);
+      if (this.#readArtifactOrNull(projectId, artifactId) === null) return null;
+      const version = this.#readVersionOrNull(projectId, versionId, artifactId);
       if (version === null) return null;
       return {
         manifest: this.#readManifest(version),
@@ -586,32 +702,41 @@ export class SqliteArtifactRepository implements
     });
   }
 
-  findCurrentVersion(artifactId: string): Promise<PublishedVersion | null> {
+  findCurrentVersion(
+    projectId: string | null,
+    artifactId: string,
+  ): Promise<PublishedVersion | null> {
     return Promise.resolve().then(() => {
       const row = this.#database
         .prepare(
           `SELECT current_version_id AS currentVersionId
            FROM artifacts
-           WHERE id = ? AND deleted_at IS NULL`,
+           WHERE (? IS NULL OR project_id = ?) AND id = ? AND deleted_at IS NULL`,
         )
-        .get(artifactId);
+        .get(projectId, projectId, artifactId);
       const result = z
         .object({currentVersionId: z.string()})
         .nullable()
         .parse(row ?? null);
       return result === null
         ? null
-        : this.#readPublishedVersion(result.currentVersionId, false);
+        : projectId === null
+        ? this.#readPublishedVersionById(result.currentVersionId, false)
+        : this.#readPublishedVersion(projectId, result.currentVersionId, false);
     });
   }
 
-  listArtifactVersions(artifactId: string): Promise<readonly VersionRecord[]> {
+  listArtifactVersions(
+    projectId: string,
+    artifactId: string,
+  ): Promise<readonly VersionRecord[]> {
     return Promise.resolve().then(() => {
-      if (this.#readArtifactOrNull(artifactId) === null) return [];
+      if (this.#readArtifactOrNull(projectId, artifactId) === null) return [];
       const rows = this.#database
         .prepare(
           `SELECT
             id,
+            project_id AS projectId,
             artifact_id AS artifactId,
             number,
             manifest_digest AS manifestDigest,
@@ -621,10 +746,10 @@ export class SqliteArtifactRepository implements
             publisher_principal_id AS publisherPrincipalId,
             created_at AS createdAt
            FROM versions
-           WHERE artifact_id = ?
+           WHERE project_id = ? AND artifact_id = ?
            ORDER BY number DESC`,
         )
-        .all(artifactId);
+        .all(projectId, artifactId);
       return z.array(versionRowSchema).parse(rows);
     });
   }
@@ -637,6 +762,7 @@ export class SqliteArtifactRepository implements
         .prepare(
           `SELECT
             id,
+            project_id AS projectId,
             name,
             owner_principal_id AS ownerPrincipalId,
             access_setting AS accessSetting,
@@ -644,7 +770,8 @@ export class SqliteArtifactRepository implements
             created_at AS createdAt,
             deleted_at AS deletedAt
            FROM artifacts
-           WHERE deleted_at IS NULL
+           WHERE project_id = ?
+             AND deleted_at IS NULL
              AND (? IS NULL OR owner_principal_id = ?)
              AND (
                ? IS NULL
@@ -663,6 +790,7 @@ export class SqliteArtifactRepository implements
            LIMIT ?`,
         )
         .all(
+          command.projectId,
           command.ownerPrincipalId,
           command.ownerPrincipalId,
           command.tag,
@@ -688,6 +816,7 @@ export class SqliteArtifactRepository implements
         .prepare(
           `SELECT
             id,
+            project_id AS projectId,
             artifact_id AS artifactId,
             version_id AS versionId,
             action,
@@ -696,7 +825,7 @@ export class SqliteArtifactRepository implements
             idempotency_key AS idempotencyKey,
             created_at AS createdAt
            FROM actions
-           WHERE artifact_id = ?
+           WHERE project_id = ? AND artifact_id = ?
              AND (
                ? IS NULL
                OR created_at < ?
@@ -706,6 +835,7 @@ export class SqliteArtifactRepository implements
            LIMIT ?`,
         )
         .all(
+          command.projectId,
           command.artifactId,
           cursorCreatedAt,
           cursorCreatedAt,
@@ -724,17 +854,22 @@ export class SqliteArtifactRepository implements
     return Promise.resolve().then(() =>
       this.#transaction(() => {
         const replayed = this.#findIdempotentManagementResult(
+          command.projectId,
           "restore",
           command.idempotencyKey,
           command.inputDigest,
         );
         if (replayed !== null) return replayed;
-        const artifact = this.#readArtifact(command.artifactId);
+        const artifact = this.#readArtifact(command.projectId, command.artifactId);
         this.#assertExpectedCurrentVersion(
           artifact,
           command.expectedCurrentVersionId,
         );
-        if (this.#readVersionOrNull(command.versionId, command.artifactId) === null) {
+        if (this.#readVersionOrNull(
+          command.projectId,
+          command.versionId,
+          command.artifactId,
+        ) === null) {
           throw new VersionNotFound({
             message: "The saved version does not exist on this artifact.",
           });
@@ -743,10 +878,11 @@ export class SqliteArtifactRepository implements
           .prepare(
             `UPDATE artifacts
              SET current_version_id = ?
-             WHERE id = ? AND current_version_id = ? AND deleted_at IS NULL`,
+             WHERE project_id = ? AND id = ? AND current_version_id = ? AND deleted_at IS NULL`,
           )
           .run(
             command.versionId,
+            command.projectId,
             command.artifactId,
             command.expectedCurrentVersionId,
           );
@@ -754,6 +890,7 @@ export class SqliteArtifactRepository implements
           throw changedDuringManagement();
         }
         this.#insertAction(
+          command.projectId,
           command.artifactId,
           command.versionId,
           command.idempotencyKey,
@@ -763,6 +900,7 @@ export class SqliteArtifactRepository implements
           command.authorizedByPrincipalId,
         );
         this.#insertIdempotency(
+          command.projectId,
           command.idempotencyKey,
           command.inputDigest,
           command.artifactId,
@@ -772,6 +910,7 @@ export class SqliteArtifactRepository implements
           artifact.accessSetting,
         );
         return this.#readArtifactState(
+          command.projectId,
           command.artifactId,
           command.versionId,
           artifact.accessSetting,
@@ -782,11 +921,12 @@ export class SqliteArtifactRepository implements
   }
 
   findIdempotentPublication(
+    projectId: string,
     idempotencyKey: string,
     inputDigest: string,
   ): Promise<PublishedVersion | null> {
     return Promise.resolve().then(() =>
-      this.#findIdempotentResult(idempotencyKey, inputDigest),
+      this.#findIdempotentResult(projectId, idempotencyKey, inputDigest),
     );
   }
 
@@ -800,6 +940,7 @@ export class SqliteArtifactRepository implements
           `SELECT
             a.access_setting AS accessSetting,
             a.id AS artifactId,
+            a.project_id AS projectId,
             v.content_token AS contentToken,
             v.id AS versionId,
             e.path AS path,
@@ -831,6 +972,7 @@ export class SqliteArtifactRepository implements
         contentToken: parsed.contentToken,
         entry,
         isCurrent: parsed.isCurrent,
+        projectId: parsed.projectId,
         versionId: parsed.versionId,
       };
     });
@@ -843,13 +985,14 @@ export class SqliteArtifactRepository implements
       this.#database
         .prepare(
           `INSERT INTO content_bootstraps (
-            token_digest, principal_id, artifact_id, version_id,
+            token_digest, principal_id, project_id, artifact_id, version_id,
             content_token, created_at, expires_at, consumed_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
         )
         .run(
           command.tokenDigest,
           command.principalId,
+          command.projectId,
           command.artifactId,
           command.versionId,
           command.contentToken,
@@ -870,6 +1013,7 @@ export class SqliteArtifactRepository implements
             `SELECT
               b.token_digest AS tokenDigest,
               b.principal_id AS principalId,
+              b.project_id AS projectId,
               b.artifact_id AS artifactId,
               b.version_id AS versionId,
               b.content_token AS contentToken,
@@ -906,19 +1050,21 @@ export class SqliteArtifactRepository implements
           createdAt: command.session.createdAt,
           expiresAt: command.session.expiresAt,
           principalId: bootstrap.principalId,
+          projectId: bootstrap.projectId,
           tokenDigest: command.session.tokenDigest,
           versionId: bootstrap.versionId,
         };
         this.#database
           .prepare(
             `INSERT INTO content_sessions (
-              token_digest, principal_id, artifact_id, version_id,
+              token_digest, principal_id, project_id, artifact_id, version_id,
               content_token, created_at, expires_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             session.tokenDigest,
             session.principalId,
+            session.projectId,
             session.artifactId,
             session.versionId,
             session.contentToken,
@@ -941,6 +1087,7 @@ export class SqliteArtifactRepository implements
           `SELECT
             s.token_digest AS tokenDigest,
             s.principal_id AS principalId,
+            s.project_id AS projectId,
             s.artifact_id AS artifactId,
             s.version_id AS versionId,
             s.content_token AS contentToken,
@@ -961,15 +1108,17 @@ export class SqliteArtifactRepository implements
   createStagedUpload(command: CreateStagedUpload): Promise<StagedUpload> {
     return Promise.resolve().then(() =>
       this.#transaction(() => {
+        this.#assertProjectActive(command.projectId);
         this.#database
           .prepare(
             `INSERT INTO staged_uploads (
-              id, principal_id, status, manifest_digest, entry_path,
+              id, project_id, principal_id, status, manifest_digest, entry_path,
               routing_mode, created_at, expires_at, committed_version_id
-            ) VALUES (?, ?, 'open', ?, ?, ?, ?, ?, NULL)`,
+            ) VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, NULL)`,
           )
           .run(
             command.id,
+            command.projectId,
             command.principalId,
             command.manifest.digest,
             command.manifest.entryPath,
@@ -995,21 +1144,27 @@ export class SqliteArtifactRepository implements
             file.entry.disposition,
           );
         }
-        return this.#readStagedUpload(command.id, command.principalId);
+        return this.#readStagedUpload(
+          command.projectId,
+          command.id,
+          command.principalId,
+        );
       }),
     );
   }
 
   findStagedUpload(
+    projectId: string,
     uploadId: string,
     principalId: string,
   ): Promise<StagedUpload | null> {
     return Promise.resolve().then(() =>
-      this.#readStagedUploadOrNull(uploadId, principalId),
+      this.#readStagedUploadOrNull(projectId, uploadId, principalId),
     );
   }
 
   markStagedFileUploaded(
+    projectId: string,
     uploadId: string,
     principalId: string,
     storageToken: string,
@@ -1017,6 +1172,7 @@ export class SqliteArtifactRepository implements
   ): Promise<StagedUpload> {
     return Promise.resolve().then(() =>
       this.#transaction(() => {
+        this.#assertProjectActive(projectId);
         const update = this.#database
           .prepare(
             `UPDATE staged_upload_files
@@ -1026,13 +1182,18 @@ export class SqliteArtifactRepository implements
                AND EXISTS (
                  SELECT 1 FROM staged_uploads u
                  WHERE u.id = staged_upload_files.upload_id
+                   AND u.project_id = ?
                    AND u.principal_id = ?
                    AND u.status = 'open'
                )`,
           )
-          .run(uploadedAt, uploadId, storageToken, principalId);
+          .run(uploadedAt, uploadId, storageToken, projectId, principalId);
         if (update.changes !== 1) {
-          const upload = this.#readStagedUploadOrNull(uploadId, principalId);
+          const upload = this.#readStagedUploadOrNull(
+            projectId,
+            uploadId,
+            principalId,
+          );
           if (upload === null) {
             throw new UploadNotFound({
               message: "The staged upload does not exist.",
@@ -1047,7 +1208,7 @@ export class SqliteArtifactRepository implements
             message: "The staged upload file does not exist.",
           });
         }
-        return this.#readStagedUpload(uploadId, principalId);
+        return this.#readStagedUpload(projectId, uploadId, principalId);
       }),
     );
   }
@@ -1063,7 +1224,22 @@ export class SqliteArtifactRepository implements
     }
   }
 
+  #assertProjectActive(projectId: string): void {
+    const row = this.#database.prepare(
+      "SELECT archived_at AS archivedAt FROM projects WHERE id = ?",
+    ).get(projectId);
+    const project = z.object({archivedAt: z.string().nullable()})
+      .nullable()
+      .parse(row ?? null);
+    if (project === null || project.archivedAt !== null) {
+      throw new ProjectArchived({
+        message: "The project is archived and cannot accept new work.",
+      });
+    }
+  }
+
   #findIdempotentManagementResult(
+    projectId: string,
     operation: "change_access" | "restore",
     idempotencyKey: string,
     inputDigest: string,
@@ -1078,9 +1254,9 @@ export class SqliteArtifactRepository implements
           tags_json AS tagsJson,
           version_id AS versionId
          FROM idempotency_records
-         WHERE idempotency_key = ?`,
+         WHERE project_id = ? AND idempotency_key = ?`,
       )
-      .get(idempotencyKey);
+      .get(projectId, idempotencyKey);
     const parsed = idempotencyRowSchema.nullable().parse(row ?? null);
     if (parsed === null) return null;
     if (
@@ -1093,6 +1269,7 @@ export class SqliteArtifactRepository implements
       });
     }
     return this.#readArtifactState(
+      projectId,
       parsed.artifactId,
       parsed.versionId,
       parsed.accessSetting,
@@ -1101,6 +1278,7 @@ export class SqliteArtifactRepository implements
   }
 
   #findIdempotentTagResult(
+    projectId: string,
     idempotencyKey: string,
     inputDigest: string,
   ): ArtifactState | null {
@@ -1114,9 +1292,9 @@ export class SqliteArtifactRepository implements
           tags_json AS tagsJson,
           version_id AS versionId
          FROM idempotency_records
-         WHERE idempotency_key = ?`,
+         WHERE project_id = ? AND idempotency_key = ?`,
       )
-      .get(idempotencyKey);
+      .get(projectId, idempotencyKey);
     const parsed = idempotencyRowSchema.nullable().parse(row ?? null);
     if (parsed === null) return null;
     if (
@@ -1132,6 +1310,7 @@ export class SqliteArtifactRepository implements
     const decoded: unknown = JSON.parse(parsed.tagsJson);
     const tags = z.array(z.string()).parse(decoded);
     return this.#readArtifactState(
+      projectId,
       parsed.artifactId,
       parsed.versionId,
       parsed.accessSetting,
@@ -1141,6 +1320,7 @@ export class SqliteArtifactRepository implements
   }
 
   #findIdempotentDeletion(
+    projectId: string,
     idempotencyKey: string,
     inputDigest: string,
   ): ArtifactDeletion | null {
@@ -1154,9 +1334,9 @@ export class SqliteArtifactRepository implements
           tags_json AS tagsJson,
           version_id AS versionId
          FROM idempotency_records
-         WHERE idempotency_key = ?`,
+         WHERE project_id = ? AND idempotency_key = ?`,
       )
-      .get(idempotencyKey);
+      .get(projectId, idempotencyKey);
     const parsed = idempotencyRowSchema.nullable().parse(row ?? null);
     if (parsed === null) return null;
     if (parsed.inputDigest !== inputDigest || parsed.operation !== "delete") {
@@ -1164,22 +1344,23 @@ export class SqliteArtifactRepository implements
         message: "The idempotency key was already used with different input.",
       });
     }
-    return this.#readDeletionResult(parsed.artifactId, true);
+    return this.#readDeletionResult(projectId, parsed.artifactId, true);
   }
 
-  #readArtifact(artifactId: string): ArtifactRecord {
-    const artifact = this.#readArtifactOrNull(artifactId);
+  #readArtifact(projectId: string, artifactId: string): ArtifactRecord {
+    const artifact = this.#readArtifactOrNull(projectId, artifactId);
     if (artifact === null) {
       throw new ArtifactNotFound({message: "The artifact does not exist."});
     }
     return artifact;
   }
 
-  #readArtifactOrNull(artifactId: string): ArtifactRecord | null {
+  #readArtifactOrNull(projectId: string, artifactId: string): ArtifactRecord | null {
     const row = this.#database
       .prepare(
         `SELECT
           id,
+          project_id AS projectId,
           name,
           owner_principal_id AS ownerPrincipalId,
           access_setting AS accessSetting,
@@ -1187,20 +1368,22 @@ export class SqliteArtifactRepository implements
           created_at AS createdAt,
           deleted_at AS deletedAt
          FROM artifacts
-         WHERE id = ? AND deleted_at IS NULL`,
+         WHERE project_id = ? AND id = ? AND deleted_at IS NULL`,
       )
-      .get(artifactId);
+      .get(projectId, artifactId);
     const artifact = artifactRowSchema.nullable().parse(row ?? null);
     return artifact === null ? null : this.#withTags(artifact);
   }
 
   #readArtifactIncludingDeletedOrNull(
+    projectId: string,
     artifactId: string,
   ): ArtifactRecord | null {
     const row = this.#database
       .prepare(
         `SELECT
           id,
+          project_id AS projectId,
           name,
           owner_principal_id AS ownerPrincipalId,
           access_setting AS accessSetting,
@@ -1208,9 +1391,9 @@ export class SqliteArtifactRepository implements
           created_at AS createdAt,
           deleted_at AS deletedAt
          FROM artifacts
-         WHERE id = ?`,
+         WHERE project_id = ? AND id = ?`,
       )
-      .get(artifactId);
+      .get(projectId, artifactId);
     const artifact = artifactRowSchema.nullable().parse(row ?? null);
     return artifact === null ? null : this.#withTags(artifact);
   }
@@ -1265,10 +1448,11 @@ export class SqliteArtifactRepository implements
   }
 
   #readDeletionResult(
+    projectId: string,
     artifactId: string,
     replayed: boolean,
   ): ArtifactDeletion {
-    const artifact = this.#readArtifactIncludingDeletedOrNull(artifactId);
+    const artifact = this.#readArtifactIncludingDeletedOrNull(projectId, artifactId);
     if (artifact === null || artifact.deletedAt === null) {
       throw new Error(`Artifact ${artifactId} has no persisted tombstone.`);
     }
@@ -1280,9 +1464,9 @@ export class SqliteArtifactRepository implements
       .prepare(
         `SELECT COUNT(*) AS retainedVersionCount
          FROM versions
-         WHERE artifact_id = ?`,
+         WHERE project_id = ? AND artifact_id = ?`,
       )
-      .get(artifactId);
+      .get(projectId, artifactId);
     const {retainedVersionCount} = z.object({
       retainedVersionCount: z.number().int().nonnegative(),
     }).parse(row);
@@ -1290,14 +1474,15 @@ export class SqliteArtifactRepository implements
   }
 
   #readArtifactState(
+    projectId: string,
     artifactId: string,
     versionId: string,
     accessSetting: ArtifactRecord["accessSetting"],
     replayed: boolean,
     tags: readonly string[] | null = null,
   ): ArtifactState {
-    const artifact = this.#readArtifact(artifactId);
-    const version = this.#readVersionOrNull(versionId, artifactId);
+    const artifact = this.#readArtifact(projectId, artifactId);
+    const version = this.#readVersionOrNull(projectId, versionId, artifactId);
     if (version === null) {
       throw new Error(`Artifact state references missing version ${versionId}.`);
     }
@@ -1354,6 +1539,7 @@ export class SqliteArtifactRepository implements
   }
 
   #readVersionOrNull(
+    projectId: string,
     versionId: string,
     artifactId: string,
   ): VersionRecord | null {
@@ -1361,6 +1547,7 @@ export class SqliteArtifactRepository implements
       .prepare(
         `SELECT
           id,
+          project_id AS projectId,
           artifact_id AS artifactId,
           number,
           manifest_digest AS manifestDigest,
@@ -1370,13 +1557,14 @@ export class SqliteArtifactRepository implements
           publisher_principal_id AS publisherPrincipalId,
           created_at AS createdAt
          FROM versions
-         WHERE id = ? AND artifact_id = ?`,
+         WHERE project_id = ? AND id = ? AND artifact_id = ?`,
       )
-      .get(versionId, artifactId);
+      .get(projectId, versionId, artifactId);
     return versionRowSchema.nullable().parse(row ?? null);
   }
 
   #findIdempotentResult(
+    projectId: string,
     idempotencyKey: string,
     inputDigest: string,
   ): PublishedVersion | null {
@@ -1390,9 +1578,9 @@ export class SqliteArtifactRepository implements
           tags_json AS tagsJson,
           version_id AS versionId
          FROM idempotency_records
-         WHERE idempotency_key = ?`,
+         WHERE project_id = ? AND idempotency_key = ?`,
       )
-      .get(idempotencyKey);
+      .get(projectId, idempotencyKey);
     const parsed = idempotencyRowSchema.nullable().parse(row ?? null);
     if (parsed === null) return null;
     if (parsed.inputDigest !== inputDigest || parsed.operation !== "publish") {
@@ -1400,10 +1588,11 @@ export class SqliteArtifactRepository implements
         message: "The idempotency key was already used with different input.",
       });
     }
-    return this.#readPublishedVersion(parsed.versionId, true);
+    return this.#readPublishedVersion(projectId, parsed.versionId, true);
   }
 
   #insertAction(
+    projectId: string,
     artifactId: string,
     versionId: string,
     idempotencyKey: string,
@@ -1415,11 +1604,12 @@ export class SqliteArtifactRepository implements
     this.#database
       .prepare(
         `INSERT INTO actions (
-          id, artifact_id, version_id, action, principal_id,
+          id, project_id, artifact_id, version_id, action, principal_id,
           authorized_by_principal_id, idempotency_key, created_at
-        ) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
+        projectId,
         artifactId,
         versionId,
         action,
@@ -1445,10 +1635,10 @@ export class SqliteArtifactRepository implements
           COALESCE(SUM(CASE WHEN f.uploaded_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS readyCount
         FROM staged_uploads u
         LEFT JOIN staged_upload_files f ON f.upload_id = u.id
-        WHERE u.id = ? AND u.principal_id = ?
+        WHERE u.project_id = ? AND u.id = ? AND u.principal_id = ?
         GROUP BY u.id`,
       )
-      .get(source.uploadId, source.principalId);
+      .get(source.projectId, source.uploadId, source.principalId);
     const upload = stagedUploadCommitRowSchema.nullable().parse(row ?? null);
     if (upload === null) {
       throw new UploadNotFound({message: "The staged upload does not exist."});
@@ -1477,9 +1667,9 @@ export class SqliteArtifactRepository implements
       .prepare(
         `UPDATE staged_uploads
          SET status = 'committed', committed_version_id = ?
-         WHERE id = ? AND principal_id = ? AND status = 'open'`,
+         WHERE project_id = ? AND id = ? AND principal_id = ? AND status = 'open'`,
       )
-      .run(versionId, source.uploadId, source.principalId);
+      .run(versionId, source.projectId, source.uploadId, source.principalId);
     if (update.changes !== 1) {
       throw new UploadClosed({
         message: "The staged upload changed during commit.",
@@ -1488,6 +1678,7 @@ export class SqliteArtifactRepository implements
   }
 
   #insertIdempotency(
+    projectId: string,
     idempotencyKey: string,
     inputDigest: string,
     artifactId: string,
@@ -1505,11 +1696,12 @@ export class SqliteArtifactRepository implements
     this.#database
       .prepare(
         `INSERT INTO idempotency_records (
-          idempotency_key, input_digest, artifact_id, version_id,
+          project_id, idempotency_key, input_digest, artifact_id, version_id,
           operation, access_setting, tags_json, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
+        projectId,
         idempotencyKey,
         inputDigest,
         artifactId,
@@ -1522,6 +1714,7 @@ export class SqliteArtifactRepository implements
   }
 
   #insertVersion(
+    projectId: string,
     artifactId: string,
     versionId: string,
     contentToken: string,
@@ -1533,12 +1726,13 @@ export class SqliteArtifactRepository implements
     this.#database
       .prepare(
         `INSERT INTO versions (
-          id, artifact_id, number, manifest_digest, entry_path,
+          id, project_id, artifact_id, number, manifest_digest, entry_path,
           routing_mode, content_token, publisher_principal_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         versionId,
+        projectId,
         artifactId,
         number,
         manifest.digest,
@@ -1566,10 +1760,19 @@ export class SqliteArtifactRepository implements
     }
   }
 
-  #migrate(): void {
+  #migrate(installationId: string): void {
     this.#database.exec(`
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        installation_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        archived_at TEXT
+      ) STRICT;
+
       CREATE TABLE IF NOT EXISTS artifacts (
         id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id),
         name TEXT NOT NULL,
         owner_principal_id TEXT NOT NULL,
         access_setting TEXT NOT NULL CHECK (access_setting IN ('account_required', 'public_link')),
@@ -1580,6 +1783,7 @@ export class SqliteArtifactRepository implements
 
       CREATE TABLE IF NOT EXISTS versions (
         id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id),
         artifact_id TEXT NOT NULL REFERENCES artifacts(id),
         number INTEGER NOT NULL CHECK (number > 0),
         manifest_digest TEXT NOT NULL,
@@ -1608,18 +1812,21 @@ export class SqliteArtifactRepository implements
       ) STRICT;
 
       CREATE TABLE IF NOT EXISTS idempotency_records (
-        idempotency_key TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id),
+        idempotency_key TEXT NOT NULL,
         input_digest TEXT NOT NULL,
         artifact_id TEXT NOT NULL REFERENCES artifacts(id),
         version_id TEXT NOT NULL REFERENCES versions(id),
         operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access', 'change_tags', 'delete')),
         access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
         tags_json TEXT,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (project_id, idempotency_key)
       ) STRICT;
 
       CREATE TABLE IF NOT EXISTS actions (
         id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id),
         artifact_id TEXT NOT NULL REFERENCES artifacts(id),
         version_id TEXT NOT NULL REFERENCES versions(id),
         action TEXT NOT NULL,
@@ -1631,6 +1838,7 @@ export class SqliteArtifactRepository implements
 
       CREATE TABLE IF NOT EXISTS staged_uploads (
         id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id),
         principal_id TEXT NOT NULL,
         status TEXT NOT NULL CHECK (status IN ('open', 'committed')),
         manifest_digest TEXT NOT NULL,
@@ -1660,6 +1868,7 @@ export class SqliteArtifactRepository implements
       CREATE TABLE IF NOT EXISTS content_bootstraps (
         token_digest TEXT PRIMARY KEY,
         principal_id TEXT NOT NULL,
+        project_id TEXT NOT NULL REFERENCES projects(id),
         artifact_id TEXT NOT NULL REFERENCES artifacts(id),
         version_id TEXT NOT NULL REFERENCES versions(id),
         content_token TEXT NOT NULL,
@@ -1671,6 +1880,7 @@ export class SqliteArtifactRepository implements
       CREATE TABLE IF NOT EXISTS content_sessions (
         token_digest TEXT PRIMARY KEY,
         principal_id TEXT NOT NULL,
+        project_id TEXT NOT NULL REFERENCES projects(id),
         artifact_id TEXT NOT NULL REFERENCES artifacts(id),
         version_id TEXT NOT NULL REFERENCES versions(id),
         content_token TEXT NOT NULL,
@@ -1700,9 +1910,14 @@ export class SqliteArtifactRepository implements
     this.#addActionAuthorizerColumnIfMissing();
     this.#addIdempotencyOperationColumnsIfMissing();
     this.#addTagIdempotencyOperationIfMissing();
+    this.#addProjectScopeIfMissing(installationId);
     this.#database.exec(`
       CREATE INDEX IF NOT EXISTS artifacts_owner_active_created
-        ON artifacts (owner_principal_id, deleted_at, created_at DESC, id DESC);
+        ON artifacts (
+          project_id, owner_principal_id, deleted_at, created_at DESC, id DESC
+        );
+      CREATE INDEX IF NOT EXISTS projects_active_created
+        ON projects (archived_at, created_at, id);
     `);
   }
 
@@ -1740,6 +1955,245 @@ export class SqliteArtifactRepository implements
         ALTER TABLE idempotency_records_next RENAME TO idempotency_records;
       `);
     });
+  }
+
+  #addProjectScopeIfMissing(installationId: string): void {
+    this.#transaction(() => {
+      this.#database.prepare(`
+        INSERT OR IGNORE INTO projects (
+          id, installation_id, name, created_at, archived_at
+        )
+        SELECT ?, ?, ?,
+          COALESCE(MIN(created_at), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+          NULL
+        FROM artifacts
+      `).run(defaultProjectId, installationId, defaultProjectName);
+
+      if (!this.#tableColumns("artifacts").includes("project_id")) {
+        this.#database.exec(
+          `ALTER TABLE artifacts ADD COLUMN project_id TEXT NOT NULL DEFAULT '${defaultProjectId}'`,
+        );
+      }
+      if (!this.#tableColumns("versions").includes("project_id")) {
+        this.#database.exec(
+          `ALTER TABLE versions ADD COLUMN project_id TEXT NOT NULL DEFAULT '${defaultProjectId}'`,
+        );
+      }
+      if (!this.#tableColumns("actions").includes("project_id")) {
+        this.#database.exec(
+          `ALTER TABLE actions ADD COLUMN project_id TEXT NOT NULL DEFAULT '${defaultProjectId}'`,
+        );
+      }
+      if (!this.#tableColumns("staged_uploads").includes("project_id")) {
+        this.#database.exec(
+          `ALTER TABLE staged_uploads ADD COLUMN project_id TEXT NOT NULL DEFAULT '${defaultProjectId}'`,
+        );
+      }
+      if (!this.#tableColumns("content_bootstraps").includes("project_id")) {
+        this.#database.exec(
+          `ALTER TABLE content_bootstraps ADD COLUMN project_id TEXT NOT NULL DEFAULT '${defaultProjectId}'`,
+        );
+      }
+      if (!this.#tableColumns("content_sessions").includes("project_id")) {
+        this.#database.exec(
+          `ALTER TABLE content_sessions ADD COLUMN project_id TEXT NOT NULL DEFAULT '${defaultProjectId}'`,
+        );
+      }
+      if (!this.#tableColumns("idempotency_records").includes("project_id")) {
+        this.#database.exec(`
+          CREATE TABLE idempotency_records_projected (
+            project_id TEXT NOT NULL REFERENCES projects(id),
+            idempotency_key TEXT NOT NULL,
+            input_digest TEXT NOT NULL,
+            artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+            version_id TEXT NOT NULL REFERENCES versions(id),
+            operation TEXT NOT NULL DEFAULT 'publish'
+              CHECK (operation IN ('publish', 'restore', 'change_access', 'change_tags', 'delete')),
+            access_setting TEXT
+              CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
+            tags_json TEXT,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (project_id, idempotency_key)
+          ) STRICT;
+
+          INSERT INTO idempotency_records_projected (
+            project_id, idempotency_key, input_digest, artifact_id, version_id,
+            operation, access_setting, tags_json, created_at
+          )
+          SELECT
+            '${defaultProjectId}', idempotency_key, input_digest, artifact_id,
+            version_id, operation, access_setting, tags_json, created_at
+          FROM idempotency_records;
+
+          DROP TABLE idempotency_records;
+          ALTER TABLE idempotency_records_projected
+            RENAME TO idempotency_records;
+        `);
+      }
+
+      this.#database.exec(`
+        DROP INDEX IF EXISTS versions_artifact_id;
+        DROP INDEX IF EXISTS artifacts_active_created;
+        DROP INDEX IF EXISTS artifacts_owner_active_created;
+        DROP INDEX IF EXISTS actions_artifact_created;
+        DROP INDEX IF EXISTS staged_uploads_expiry;
+
+        CREATE INDEX versions_artifact_id
+          ON versions (project_id, artifact_id, number);
+        CREATE INDEX artifacts_active_created
+          ON artifacts (project_id, deleted_at, created_at DESC, id DESC);
+        CREATE INDEX artifacts_owner_active_created
+          ON artifacts (
+            project_id, owner_principal_id, deleted_at, created_at DESC, id DESC
+          );
+        CREATE INDEX actions_artifact_created
+          ON actions (project_id, artifact_id, created_at DESC, id DESC);
+        CREATE INDEX staged_uploads_expiry
+          ON staged_uploads (project_id, status, expires_at);
+
+        CREATE TRIGGER IF NOT EXISTS artifacts_project_insert
+        BEFORE INSERT ON artifacts
+        WHEN NOT EXISTS (
+          SELECT 1 FROM projects WHERE id = NEW.project_id
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'artifact project not found');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS artifacts_project_update
+        BEFORE UPDATE OF project_id ON artifacts
+        WHEN NEW.project_id <> OLD.project_id
+        BEGIN
+          SELECT RAISE(ABORT, 'artifact project cannot change');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS artifacts_current_version_update
+        BEFORE UPDATE OF current_version_id ON artifacts
+        WHEN NEW.current_version_id IS NOT NULL AND NOT EXISTS (
+          SELECT 1 FROM versions
+          WHERE id = NEW.current_version_id
+            AND artifact_id = NEW.id
+            AND project_id = NEW.project_id
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'artifact current version project mismatch');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS staged_uploads_project_insert
+        BEFORE INSERT ON staged_uploads
+        WHEN NOT EXISTS (
+          SELECT 1 FROM projects WHERE id = NEW.project_id
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'staged upload project not found');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS staged_uploads_project_update
+        BEFORE UPDATE OF project_id ON staged_uploads
+        WHEN NEW.project_id <> OLD.project_id
+        BEGIN
+          SELECT RAISE(ABORT, 'staged upload project cannot change');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS versions_project_insert
+        BEFORE INSERT ON versions
+        WHEN NOT EXISTS (
+          SELECT 1 FROM artifacts
+          WHERE id = NEW.artifact_id AND project_id = NEW.project_id
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'version project mismatch');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS versions_project_update
+        BEFORE UPDATE OF project_id ON versions
+        WHEN NEW.project_id <> OLD.project_id
+        BEGIN
+          SELECT RAISE(ABORT, 'version project cannot change');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS actions_project_insert
+        BEFORE INSERT ON actions
+        WHEN NOT EXISTS (
+          SELECT 1 FROM artifacts
+          WHERE id = NEW.artifact_id AND project_id = NEW.project_id
+        ) OR NOT EXISTS (
+          SELECT 1 FROM versions
+          WHERE id = NEW.version_id AND project_id = NEW.project_id
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'action project mismatch');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS actions_project_update
+        BEFORE UPDATE OF project_id ON actions
+        WHEN NEW.project_id <> OLD.project_id
+        BEGIN
+          SELECT RAISE(ABORT, 'action project cannot change');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS idempotency_project_insert
+        BEFORE INSERT ON idempotency_records
+        WHEN NOT EXISTS (
+          SELECT 1 FROM artifacts
+          WHERE id = NEW.artifact_id AND project_id = NEW.project_id
+        ) OR NOT EXISTS (
+          SELECT 1 FROM versions
+          WHERE id = NEW.version_id AND project_id = NEW.project_id
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'idempotency project mismatch');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS idempotency_project_update
+        BEFORE UPDATE OF project_id ON idempotency_records
+        WHEN NEW.project_id <> OLD.project_id
+        BEGIN
+          SELECT RAISE(ABORT, 'idempotency project cannot change');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS content_bootstrap_project_insert
+        BEFORE INSERT ON content_bootstraps
+        WHEN NOT EXISTS (
+          SELECT 1 FROM artifacts
+          WHERE id = NEW.artifact_id AND project_id = NEW.project_id
+        ) OR NOT EXISTS (
+          SELECT 1 FROM versions
+          WHERE id = NEW.version_id AND project_id = NEW.project_id
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'content bootstrap project mismatch');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS content_bootstrap_project_update
+        BEFORE UPDATE OF project_id ON content_bootstraps
+        WHEN NEW.project_id <> OLD.project_id
+        BEGIN
+          SELECT RAISE(ABORT, 'content bootstrap project cannot change');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS content_session_project_insert
+        BEFORE INSERT ON content_sessions
+        WHEN NOT EXISTS (
+          SELECT 1 FROM artifacts
+          WHERE id = NEW.artifact_id AND project_id = NEW.project_id
+        ) OR NOT EXISTS (
+          SELECT 1 FROM versions
+          WHERE id = NEW.version_id AND project_id = NEW.project_id
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'content session project mismatch');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS content_session_project_update
+        BEFORE UPDATE OF project_id ON content_sessions
+        WHEN NEW.project_id <> OLD.project_id
+        BEGIN
+          SELECT RAISE(ABORT, 'content session project cannot change');
+        END;
+      `);
+    });
+    this.#database.exec(`PRAGMA user_version = ${requiredSqliteSchemaVersion};`);
   }
 
   #addActionAuthorizerColumnIfMissing(): void {
@@ -1785,14 +2239,27 @@ export class SqliteArtifactRepository implements
     );
   }
 
-  #tableColumns(table: "actions" | "artifacts" | "idempotency_records" | "versions"): readonly string[] {
+  #tableColumns(
+    table:
+      | "actions"
+      | "artifacts"
+      | "content_bootstraps"
+      | "content_sessions"
+      | "idempotency_records"
+      | "staged_uploads"
+      | "versions",
+  ): readonly string[] {
     const rows = this.#database.prepare(`PRAGMA table_info(${table})`).all();
     const columns = z.array(z.object({name: z.string()})).parse(rows);
     return columns.map((column) => column.name);
   }
 
-  #readStagedUpload(uploadId: string, principalId: string): StagedUpload {
-    const upload = this.#readStagedUploadOrNull(uploadId, principalId);
+  #readStagedUpload(
+    projectId: string,
+    uploadId: string,
+    principalId: string,
+  ): StagedUpload {
+    const upload = this.#readStagedUploadOrNull(projectId, uploadId, principalId);
     if (upload === null) {
       throw new Error(`Staged upload ${uploadId} was not found after a successful write.`);
     }
@@ -1800,6 +2267,7 @@ export class SqliteArtifactRepository implements
   }
 
   #readStagedUploadOrNull(
+    projectId: string,
     uploadId: string,
     principalId: string,
   ): StagedUpload | null {
@@ -1807,6 +2275,7 @@ export class SqliteArtifactRepository implements
       .prepare(
         `SELECT
           id AS id,
+          project_id AS projectId,
           principal_id AS principalId,
           status AS status,
           manifest_digest AS manifestDigest,
@@ -1816,9 +2285,9 @@ export class SqliteArtifactRepository implements
           expires_at AS expiresAt,
           committed_version_id AS committedVersionId
         FROM staged_uploads
-        WHERE id = ? AND principal_id = ?`,
+        WHERE project_id = ? AND id = ? AND principal_id = ?`,
       )
-      .get(uploadId, principalId);
+      .get(projectId, uploadId, principalId);
     const header = stagedUploadRowSchema.nullable().parse(row ?? null);
     if (header === null) return null;
 
@@ -1872,6 +2341,7 @@ export class SqliteArtifactRepository implements
       id: header.id,
       manifest,
       principalId: header.principalId,
+      projectId: header.projectId,
     };
     if (header.status === uploadStatuses.open) {
       return {
@@ -1887,11 +2357,16 @@ export class SqliteArtifactRepository implements
     };
   }
 
-  #readPublishedVersion(versionId: string, replayed: boolean): PublishedVersion {
+  #readPublishedVersion(
+    projectId: string,
+    versionId: string,
+    replayed: boolean,
+  ): PublishedVersion {
     const row = this.#database
       .prepare(
         `SELECT
           a.id AS artifactId,
+          a.project_id AS projectId,
           a.name AS artifactName,
           a.owner_principal_id AS ownerPrincipalId,
           a.access_setting AS accessSetting,
@@ -1908,9 +2383,9 @@ export class SqliteArtifactRepository implements
           v.created_at AS versionCreatedAt
         FROM versions v
         JOIN artifacts a ON a.id = v.artifact_id
-        WHERE v.id = ? AND a.deleted_at IS NULL`,
+        WHERE v.project_id = ? AND v.id = ? AND a.deleted_at IS NULL`,
       )
-      .get(versionId);
+      .get(projectId, versionId);
     const parsed = publishedRowSchema.parse(row);
     const artifact: ArtifactRecord = {
       accessSetting: parsed.accessSetting,
@@ -1920,6 +2395,7 @@ export class SqliteArtifactRepository implements
       id: parsed.artifactId,
       name: parsed.artifactName,
       ownerPrincipalId: parsed.ownerPrincipalId,
+      projectId: parsed.projectId,
       tags: this.#readTags(parsed.artifactId),
     };
     const version: VersionRecord = {
@@ -1931,9 +2407,39 @@ export class SqliteArtifactRepository implements
       manifestDigest: parsed.manifestDigest,
       number: parsed.versionNumber,
       publisherPrincipalId: parsed.publisherPrincipalId,
+      projectId: parsed.projectId,
       routingMode: parsed.routingMode,
     };
     return {artifact, replayed, version};
+  }
+
+  #readPublishedVersionById(
+    versionId: string,
+    replayed: boolean,
+  ): PublishedVersion {
+    const row = this.#database.prepare(
+      "SELECT project_id AS projectId FROM versions WHERE id = ?",
+    ).get(versionId);
+    const {projectId} = z.object({projectId: z.string()}).parse(row);
+    return this.#readPublishedVersion(projectId, versionId, replayed);
+  }
+
+  #readProject(projectId: string): ProjectRecord {
+    const project = this.#readProjectOrNull(projectId);
+    if (project === null) {
+      throw new ProjectNotFound({message: "The project does not exist."});
+    }
+    return project;
+  }
+
+  #readProjectOrNull(projectId: string): ProjectRecord | null {
+    const row = this.#database.prepare(`
+      SELECT id, installation_id AS installationId, name,
+        created_at AS createdAt, archived_at AS archivedAt
+      FROM projects
+      WHERE id = ?
+    `).get(projectId);
+    return projectRowSchema.nullable().parse(row ?? null);
   }
 
   #transaction<Result>(operation: () => Result): Result {
@@ -1947,6 +2453,10 @@ export class SqliteArtifactRepository implements
       throw error;
     }
   }
+}
+
+function isSqliteConstraint(cause: unknown): boolean {
+  return cause instanceof Error && cause.message.includes("constraint failed");
 }
 
 function changedDuringManagement(): ArtifactMutationConflict {

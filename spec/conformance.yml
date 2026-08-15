@@ -56,6 +56,7 @@ allowed_kinds:
 
 allowed_modules:
   - product-core
+  - project-core
   - artifact-core
   - manifest
   - publishing
@@ -77,10 +78,10 @@ allowed_modules:
 required_source_sections:
   top: [PRD-001, PRD-002]
   product: [PRD-003]
-  artifact: [ART-001, ART-002, ART-003, ART-004, ART-005, ART-008]
+  artifact: [PRJ-001, PRJ-002, PRJ-003, PRJ-004, ART-001, ART-002, ART-003, ART-004, ART-005, ART-008]
   experience: [CNT-001, CNT-002, VER-001, DIF-001, GIT-001]
   sharing: [AUTH-001, AUTH-002, AUTH-003, AUTH-004]
-  plannotator: [PLN-001, PLN-002, PLN-003, PLN-004]
+  plannotator: [PLN-001, PLN-002, PLN-003, PLN-004, PLN-005, PLN-017]
   architecture: [ARC-001, ARC-002, PUB-001, CNT-003]
   mcp: [MCP-001, MCP-002, SKL-001]
   deployment: [DEP-001, DEP-002, DEP-003, DEP-004]
@@ -118,16 +119,88 @@ requirements:
 
   - id: PRD-003
     kind: behavior
-    behavior: The normal workflow publishes, opens, compares, and shares an artifact without creating a separate hosting project.
+    behavior: The normal workflow publishes, opens, compares, and shares a project artifact without creating a separate hosting deployment for that artifact.
     owner: product-core
     source: {file: artifact-server-product-spec.html, anchor: product}
     acceptance:
       behavior: {id: PRD-003-B, description: Complete publish, open, compare, and visibility operations against one stable artifact identity.}
-      failure: {id: PRD-003-F, description: Repeating the workflow does not create an unrelated hosting project or lose the artifact identity.}
+      failure: {id: PRD-003-F, description: Repeating the workflow does not create an unrelated deployment, project, or artifact identity.}
     deployments: *all
     status: specified
     depends_on: [ART-001, VER-001, DIF-001]
     evidence: []
+
+  - id: PRJ-001
+    kind: behavior
+    behavior: One installation represents one person, team, or company and contains projects; a new installation creates one default project without adding an organization switcher or Artifact Store object.
+    owner: project-core
+    source: {file: artifact-server-product-spec.html, anchor: artifact}
+    acceptance:
+      behavior: {id: PRJ-001-B, description: Start a new local and team installation, observe one stable default project, create another project, and list both within the same installation.}
+      failure: {id: PRJ-001-F, description: A caller cannot create or select an organization, Artifact Store, Namespace, or project belonging to another installation.}
+    deployments: *all
+    status: behavior_verified
+    depends_on: [AUTH-001]
+    evidence:
+      - deployment: local
+        tests: [PRJ-001-B, PRJ-001-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-15T00:07:28Z"
+
+  - id: PRJ-002
+    kind: security
+    behavior: Every artifact belongs to exactly one project, and project scope is enforced by repositories, uploads, idempotency, browser sessions, HTTP, MCP, audit, backup, and restore.
+    owner: project-core
+    source: {file: artifact-server-product-spec.html, anchor: artifact}
+    acceptance:
+      behavior: {id: PRJ-002-B, description: Publish, list, read, compare, restore, change, audit, back up, and restore artifacts inside their named projects through HTTP and MCP.}
+      failure: {id: PRJ-002-F, description: Cross-project and cross-installation artifact, version, upload, key, idempotency, content-session, list, search, audit, backup, and restore attempts fail without revealing which identifier exists.}
+    deployments: *all
+    status: behavior_verified
+    depends_on: [PRJ-001, AUTH-008]
+    evidence:
+      - deployment: local
+        tests: [PRJ-002-B, PRJ-002-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-15T00:07:28Z"
+
+  - id: PRJ-003
+    kind: behavior
+    behavior: Projects use installation membership and have no separate member list or access-control list; archiving stops new artifacts and versions while preserving existing reads and immutable history.
+    owner: project-core
+    source: {file: artifact-server-product-spec.html, anchor: artifact}
+    acceptance:
+      behavior: {id: PRJ-003-B, description: Read account-required artifacts through installation membership, archive a project, retain existing reads and comparisons, and reject new artifacts and versions.}
+      failure: {id: PRJ-003-F, description: Project creation cannot add a hidden member list or ACL, and archive cannot delete, retarget, or alter an existing artifact, version, link, manifest, or action record.}
+    deployments: *all
+    status: behavior_verified
+    depends_on: [PRJ-001, AUTH-001, VER-001]
+    evidence:
+      - deployment: local
+        tests: [PRJ-003-B, PRJ-003-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-15T00:07:28Z"
+
+  - id: PRJ-004
+    kind: release_gate
+    behavior: Existing installations migrate every artifact into one default project without changing any existing identity, version bytes, link target, action record, or authorization outcome.
+    owner: database-adapters
+    source: {file: artifact-server-product-spec.html, anchor: artifact}
+    acceptance:
+      behavior: {id: PRJ-004-B, description: Upgrade populated SQLite and Postgres installations and verify preserved installation, artifact, version, manifest, content, action, ownership, visibility, tag, and link values under the default project.}
+      failure: {id: PRJ-004-F, description: Interrupted, repeated, partially applied, and rolled-back migrations cannot duplicate projects, orphan artifacts, change IDs, lose bytes, or widen access.}
+    deployments: *all
+    status: behavior_verified
+    depends_on: [PRJ-001, PRJ-002]
+    evidence:
+      - deployment: local
+        tests: [PRJ-004-B, PRJ-004-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-15T00:07:28Z"
 
   - id: PRD-004
     kind: constraint
@@ -162,15 +235,15 @@ requirements:
 
   - id: ART-002
     kind: behavior
-    behavior: An artifact records its name, owner, access setting, current version, creation time, and deletion state.
+    behavior: An artifact records its project, name, owner, access setting, current version, creation time, and deletion state.
     owner: artifact-core
     source: {file: artifact-server-product-spec.html, anchor: artifact}
     acceptance:
-      behavior: {id: ART-002-B, description: Create an artifact and retrieve every required field with stable types and values.}
-      failure: {id: ART-002-F, description: Reject creation when required identity or ownership data is missing or refers to another installation.}
+      behavior: {id: ART-002-B, description: Create an artifact in a project and retrieve every required field with stable types and values.}
+      failure: {id: ART-002-F, description: Reject creation when required project, identity, or ownership data is missing or refers to another project or installation.}
     deployments: *all
     status: behavior_verified
-    depends_on: [ART-001]
+    depends_on: [PRJ-002, ART-001]
     evidence:
       - deployment: local
         tests: [ART-002-B, ART-002-F]
@@ -908,7 +981,7 @@ requirements:
 
   - id: AUTH-001
     kind: behavior
-    behavior: A standalone installation represents one person or one closed team and has no public self-sign-up or organization switcher.
+    behavior: A standalone installation represents one person, team, or company and has no public self-sign-up or organization switcher; all projects use that installation membership group.
     owner: authorization
     source: {file: artifact-server-product-spec.html, anchor: sharing}
     acceptance:
@@ -1617,12 +1690,12 @@ requirements:
 
   - id: PLN-003
     kind: behavior
-    behavior: Plannotator owns sign-in, organizations, projects, workspaces, workspace permissions, comments, annotations, replies, notifications, and review state; Artifact Server owns artifact IDs, versions, manifests, files, delivery, and comparisons.
+    behavior: Plannotator owns sign-in, its organization, project and workspace records, workspace permissions, comments, annotations, replies, notifications, and review state; Artifact Server owns paired project records, artifact IDs, versions, manifests, files, delivery, comparisons, and artifact access settings.
     owner: plannotator-integration
     source: {file: artifact-server-product-spec.html, anchor: plannotator}
     acceptance:
       behavior: {id: PLN-003-B, description: Complete a managed publish and review and confirm that each record is stored only by its owning system with stable cross-references.}
-      failure: {id: PLN-003-F, description: Artifact Server does not create a second organization, workspace membership, comment, reply, notification, or review-state record.}
+      failure: {id: PLN-003-F, description: Artifact Server does not create a second organization, workspace, workspace membership, comment, reply, notification, or review-state record.}
     deployments: *plannotator_capable
     status: specified
     depends_on: [PLN-001, ART-001, VER-001]
@@ -1630,25 +1703,25 @@ requirements:
 
   - id: PLN-004
     kind: security
-    behavior: Standalone artifacts and Plannotator-managed artifacts use separate logical areas; normal Artifact Server sessions cannot browse or read the managed area.
+    behavior: One Plannotator organization maps to one Artifact Server installation and each Plannotator project maps to one Artifact Server project; connected projects use the normal Artifact Server project, artifact, version, storage, audit, and access model rather than a separate managed area.
     owner: plannotator-integration
     source: {file: artifact-server-product-spec.html, anchor: plannotator}
     acceptance:
-      behavior: {id: PLN-004-B, description: Publish standalone and managed artifacts and retrieve each only through its owning authorization path.}
-      failure: {id: PLN-004-F, description: Standalone user, administrator browser session, list endpoint, search, guessed ID, public link, and cache cannot expose managed artifacts unless explicitly authorized by the connection.}
+      behavior: {id: PLN-004-B, description: Pair one organization and two projects, publish through Artifact Server and Plannotator, and observe one stable installation and project identity for each paired project.}
+      failure: {id: PLN-004-F, description: Another organization, installation, connection, project, guessed ID, stale binding, and conflicting existing-project binding cannot claim, cross, or duplicate the paired project.}
     deployments: *plannotator_capable
     status: specified
-    depends_on: [AUTH-017, PLN-003]
+    depends_on: [PRJ-002, PLN-003]
     evidence: []
 
   - id: PLN-005
     kind: behavior
-    behavior: Each managed artifact is bound to a Plannotator organization and workspace and records server, artifact, version, source, and responsible actor references.
+    behavior: Plannotator workspaces reference artifacts and exact versions from their paired project; a workspace ID can identify the referring collaboration context but never becomes the artifact storage owner.
     owner: plannotator-integration
     source: {file: artifact-server-product-spec.html, anchor: plannotator}
     acceptance:
-      behavior: {id: PLN-005-B, description: Publish through a workspace and retrieve stable installation, organization, workspace, artifact, version, and actor references.}
-      failure: {id: PLN-005-F, description: A managed artifact cannot be created with missing, mismatched, untrusted, or cross-organization binding data.}
+      behavior: {id: PLN-005-B, description: Reference and review a project artifact from two workspaces and retain stable installation, project, artifact, exact version, workspace, and actor references.}
+      failure: {id: PLN-005-F, description: Moving, unfiling, deleting, or changing visibility of a workspace cannot move, delete, retarget, or change ownership of the project artifact or version.}
     deployments: *plannotator_capable
     status: specified
     depends_on: [PLN-004]
@@ -1656,12 +1729,12 @@ requirements:
 
   - id: PLN-006
     kind: security
-    behavior: Plannotator checks workspace permission and signs a short-lived request limited to one connection, organization, workspace, actor, operation, and named artifact or version.
+    behavior: Plannotator checks project or workspace permission and signs a short-lived request limited to one connection, installation, paired project, actor, operation, and named artifact or version; workspace ID is present only when it supplies the narrow reference context.
     owner: plannotator-integration
     source: {file: artifact-server-product-spec.html, anchor: plannotator}
     acceptance:
-      behavior: {id: PLN-006-B, description: Authorize publish, read, compare, and visibility operations with minimum claims and five-minute-or-shorter expiry.}
-      failure: {id: PLN-006-F, description: Reject wrong signature, issuer, audience, connection, organization, workspace, actor, operation, artifact, version, time, and replayed request ID.}
+      behavior: {id: PLN-006-B, description: Authorize project publish, list, read, compare, visibility, and exact workspace-reference reads with minimum claims and five-minute-or-shorter expiry.}
+      failure: {id: PLN-006-F, description: Reject wrong signature, issuer, audience, connection, installation, project, workspace context, actor, operation, artifact, version, time, and replayed request ID.}
     deployments: *plannotator_capable
     status: specified
     depends_on: [PLN-001, PLN-005]
@@ -1673,8 +1746,8 @@ requirements:
     owner: plannotator-integration
     source: {file: artifact-server-product-spec.html, anchor: plannotator}
     acceptance:
-      behavior: {id: PLN-007-B, description: Execute each managed mutation and observe the connection, workspace, external actor, artifact, version, operation, and outcome in audit evidence.}
-      failure: {id: PLN-007-F, description: A Plannotator-signed request cannot bypass installation policy, storage scope, operation scope, artifact ownership, or action logging.}
+      behavior: {id: PLN-007-B, description: Execute each delegated mutation and observe the connection, project, optional referring workspace, external actor, artifact, version, operation, and outcome in audit evidence.}
+      failure: {id: PLN-007-F, description: A Plannotator-signed request cannot bypass installation or project policy, operation scope, artifact ownership, or action logging.}
     deployments: *plannotator_capable
     status: specified
     depends_on: [PLN-006, AUD-001, AUTH-008]
@@ -1687,7 +1760,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: plannotator}
     acceptance:
       behavior: {id: PLN-008-B, description: Authorize in Plannotator, consume the one-use URL as a top-level page, remove it from the clean URL, and load all exact-version assets.}
-      failure: {id: PLN-008-F, description: Replay, expiration, another user, workspace, artifact, version, host, or iframe-only cookie path cannot gain access.}
+      failure: {id: PLN-008-F, description: Replay, expiration, another user, project, workspace context, artifact, version, host, or iframe-only cookie path cannot gain access.}
     deployments: *plannotator_capable
     status: specified
     depends_on: [PLN-006, AUTH-014, AUTH-015]
@@ -1739,7 +1812,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: plannotator}
     acceptance:
       behavior: {id: PLN-012-B, description: Rotate keys without interrupting valid in-flight work, disconnect, and observe new operations and renewals stop with complete audit records.}
-      failure: {id: PLN-012-F, description: Old keys after overlap, revoked connection, wrong organization, stale connection state, and replayed approval cannot authorize work.}
+      failure: {id: PLN-012-F, description: Old keys after overlap, revoked connection, wrong organization or project, stale connection state, and replayed approval cannot authorize work.}
     deployments: *plannotator_capable
     status: specified
     depends_on: [PLN-001, PLN-006, AUD-001]
@@ -1747,15 +1820,28 @@ requirements:
 
   - id: PLN-013
     kind: behavior
-    behavior: Connecting does not silently move existing standalone artifacts; attachment to a workspace is an explicit administrator action with decided move-or-copy semantics.
+    behavior: Connecting does not silently move existing artifacts; pairing an existing Artifact Server project with a Plannotator project is an explicit administrator action with defined conflict, unlink, archive, rollback, and reconnect behavior.
     owner: plannotator-integration
     source: {file: artifact-server-product-spec.html, anchor: plannotator}
     acceptance:
-      behavior: {id: PLN-013-B, description: Connect a server with existing artifacts and confirm no changes, then explicitly attach one artifact under the chosen semantics.}
-      failure: {id: PLN-013-F, description: Connection, reconnect, disconnect, workspace change, and failed attachment cannot silently expose, duplicate, move, or lose an artifact.}
+      behavior: {id: PLN-013-B, description: Connect a server with existing projects and artifacts, confirm no changes, then explicitly pair one existing project while preserving every ID and link.}
+      failure: {id: PLN-013-F, description: Connection, reconnect, disconnect, workspace changes, name conflicts, and failed pairing cannot silently expose, duplicate, move, retarget, archive, or lose a project artifact.}
     deployments: *plannotator_capable
     status: specified
     depends_on: [PLN-004, PLN-005]
+    evidence: []
+
+  - id: PLN-017
+    kind: security
+    behavior: A workspace permission may open one referenced project artifact or exact version through a short-lived read-only session, but it never grants project-library listing or artifact mutation.
+    owner: plannotator-integration
+    source: {file: artifact-server-product-spec.html, anchor: plannotator}
+    acceptance:
+      behavior: {id: PLN-017-B, description: Open one referenced artifact version from private, organization-gated, link-view, and link-edit workspaces through the approved narrow session without exposing the project list.}
+      failure: {id: PLN-017-F, description: Workspace access, including public and link-edit access, cannot list the project library or publish, restore, change visibility, reassign ownership, delete, or open an unreferenced artifact or version.}
+    deployments: *plannotator_capable
+    status: specified
+    depends_on: [PLN-005, PLN-006, PLN-008]
     evidence: []
 
   - id: PLN-014
@@ -2481,15 +2567,15 @@ requirements:
 
   - id: SCP-008
     kind: constraint
-    behavior: Standalone access uses one installation membership group and does not add a different standalone user list or ACL for every artifact.
+    behavior: Standalone access uses one installation membership group and does not add a separate member list or ACL for each project or artifact.
     owner: authorization
     source: {file: artifact-server-product-spec.html, anchor: scope}
     acceptance:
-      behavior: {id: SCP-008-B, description: Confirm that account-required reads derive from admitted installation membership while mutation rules derive from ownership, administrator role, or explicit capability.}
-      failure: {id: SCP-008-F, description: A standalone artifact cannot create an undocumented per-artifact reader ACL or inherit Plannotator workspace membership.}
+      behavior: {id: SCP-008-B, description: Confirm that account-required reads in every project derive from admitted installation membership while mutation rules derive from ownership, administrator role, or explicit capability.}
+      failure: {id: SCP-008-F, description: A project or artifact cannot create an undocumented reader ACL or inherit Plannotator workspace membership.}
     deployments: *all
     status: specified
-    depends_on: [AUTH-001, AUTH-006, PLN-004]
+    depends_on: [PRJ-003, AUTH-001, AUTH-006, PLN-004]
     evidence: []
 
   - id: HOST-001

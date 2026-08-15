@@ -225,7 +225,13 @@ A valid token maps the caller to an account admitted to this installation. That 
 - API keys bind to a local user or service principal, installation, capabilities, expiry, and revoke state.
 - MCP handlers call the same authorization layer as the browser and normal HTTP API.
 
-Plannotator-managed artifacts live in a separate externally authorized namespace. Ordinary Artifact Server OAuth sessions and API keys cannot list or read that namespace. A Plannotator integration uses a short-lived capability bound to the exact storage boundary, artifact, version, path, action, and expiry.
+Plannotator-connected projects use the normal Artifact Server project, artifact,
+version, storage, audit, and access model. They do not live in a separate
+namespace. A delegated Plannotator request uses a short-lived capability bound
+to the paired installation and project, exact artifact or version when
+applicable, path, action, and expiry. A workspace-scoped read capability may
+open one referenced version, but it cannot list the project library or mutate
+the artifact.
 
 The proposed single OAuth scope is intentionally coarse. Artifact Server keeps file, artifact, version, visibility, publish, and delete permissions in its own policy model. Add separate read and write OAuth scopes only after a client or customer demonstrates a real need.
 
@@ -284,7 +290,7 @@ Start with a small, explicit tool surface:
 
 The first read-only resource template exposes one bounded version manifest:
 
-- `artifact://artifacts/{artifactId}/versions/{versionId}/manifest`
+- `artifact://projects/{projectId}/artifacts/{artifactId}/versions/{versionId}/manifest`
 
 Files and complete websites return HTTPS links. Authenticated list and resource
 results use private cache scope.

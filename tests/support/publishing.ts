@@ -16,6 +16,7 @@ const publishResponseSchema = z.object({
     id: z.string(),
     name: z.string(),
     ownerPrincipalId: z.string(),
+    projectId: z.string(),
     tags: z.array(z.string()),
   }),
   links: z.object({artifact: z.url(), version: z.url()}),
@@ -29,6 +30,7 @@ const publishResponseSchema = z.object({
     manifestDigest: z.string(),
     number: z.number().int().positive(),
     publisherPrincipalId: z.string(),
+    projectId: z.string(),
     routingMode: z.literal("static"),
   }),
 });
@@ -45,6 +47,7 @@ const createUploadResponseSchema = z.object({
     uploadUrl: z.url(),
   })),
   manifestDigest: z.string().regex(/^[a-f0-9]{64}$/u),
+  projectId: z.string(),
   uploadId: z.string(),
 });
 
@@ -67,6 +70,7 @@ export interface PublishNewInput {
   readonly mediaType?: string;
   readonly name?: string;
   readonly path?: string;
+  readonly projectId?: string;
   readonly tags?: readonly string[];
 }
 
@@ -77,6 +81,7 @@ export interface PublishVersionInput {
   readonly idempotencyKey: string;
   readonly mediaType?: string;
   readonly path?: string;
+  readonly projectId?: string;
 }
 
 export async function publishNew(
@@ -90,6 +95,7 @@ export async function publishNew(
     installation,
     file.path,
     [file],
+    input.projectId,
   );
   await requireSuccessfulUploads(
     uploadEveryStagedFile(installation, upload.body, [file]),
@@ -118,6 +124,7 @@ export async function publishVersion(
     installation,
     file.path,
     [file],
+    input.projectId,
   );
   await requireSuccessfulUploads(
     uploadEveryStagedFile(installation, upload.body, [file]),
@@ -139,17 +146,19 @@ export async function createStagedUpload(
   installation: TestInstallation,
   entryPath: string,
   files: readonly TestSiteFile[],
+  projectId?: string,
 ): Promise<{readonly body: CreateUploadResponse; readonly response: Response}> {
+  const declaredFiles = files.map((file) => ({
+    mediaType: file.mediaType,
+    path: file.path,
+    sha256: createHash("sha256").update(file.bytes).digest("hex"),
+    size: file.bytes.byteLength,
+  }));
+  const requestBody = projectId === undefined
+    ? {entryPath, files: declaredFiles}
+    : {entryPath, files: declaredFiles, projectId};
   const response = await fetch(`${server.baseUrl}/api/v1/uploads`, {
-    body: JSON.stringify({
-      entryPath,
-      files: files.map((file) => ({
-        mediaType: file.mediaType,
-        path: file.path,
-        sha256: createHash("sha256").update(file.bytes).digest("hex"),
-        size: file.bytes.byteLength,
-      })),
-    }),
+    body: JSON.stringify(requestBody),
     headers: {
       Authorization: `Bearer ${installation.apiToken}`,
       "Content-Type": "application/json",
@@ -203,7 +212,14 @@ export async function commitStagedUpload(
     headers: apiHeaders(installation, idempotencyKey),
     method: "POST",
   });
-  const body = publishResponseSchema.parse(await response.json());
+  const responseBody: unknown = await response.json();
+  const parsed = publishResponseSchema.safeParse(responseBody);
+  if (!parsed.success) {
+    throw new Error(
+      `Staged upload commit returned HTTP ${response.status}: ${JSON.stringify(responseBody)}`,
+    );
+  }
+  const body = parsed.data;
   return {body, response};
 }
 

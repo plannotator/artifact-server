@@ -25,10 +25,18 @@ const publicationSchema = z.object({
     accessSetting: z.enum(["account_required", "public_link"]),
     id: z.string(),
     name: z.string(),
+    projectId: z.string(),
     tags: z.array(z.string()),
   }),
   links: z.object({artifact: z.url(), version: z.url()}),
-  version: z.object({id: z.string(), number: z.number().int().positive()}),
+  version: z.object({
+    id: z.string(),
+    number: z.number().int().positive(),
+    projectId: z.string(),
+  }),
+});
+const projectResponseSchema = z.object({
+  project: z.object({id: z.string(), name: z.string()}),
 });
 
 afterEach(async () => {
@@ -247,6 +255,53 @@ describe("local Artifact Server CLI", () => {
       await expect(listed.json()).resolves.toMatchObject({
         artifacts: [{artifact: {id: firstPublication.artifact.id}}, {artifact: {id: reportPublication.artifact.id}}],
       });
+
+      const projectResponse = await fetch(`http://127.0.0.1:${port}/api/v1/projects`, {
+        body: JSON.stringify({name: "CLI-selected project"}),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      expect(projectResponse.status).toBe(201);
+      const project = projectResponseSchema.parse(await projectResponse.json()).project;
+      const projectPublicationResult = await runPublishCliToExit([
+        reportPath,
+        "--data",
+        dataDirectory,
+        "--server",
+        `http://127.0.0.1:${port}`,
+        "--project",
+        project.id,
+      ]);
+      expect(projectPublicationResult.exitCode).toBe(0);
+      const projectPublication = publicationSchema.parse(
+        JSON.parse(projectPublicationResult.output),
+      );
+      expect(projectPublication.artifact.projectId).toBe(project.id);
+      expect(projectPublication.version.projectId).toBe(project.id);
+      const projectArtifacts = await fetch(
+        `http://127.0.0.1:${port}/api/v1/artifacts?projectId=${project.id}`,
+        {headers: {Authorization: `Bearer ${token}`}},
+      );
+      await expect(projectArtifacts.json()).resolves.toMatchObject({
+        artifacts: [{artifact: {id: projectPublication.artifact.id}}],
+      });
+
+      const ambiguousPublication = await runPublishCliToExit([
+        reportPath,
+        "--data",
+        dataDirectory,
+        "--server",
+        `http://127.0.0.1:${port}`,
+      ]);
+      expect(ambiguousPublication.exitCode).not.toBe(0);
+      expect(ambiguousPublication.output).toContain("PROJECT_SELECTION_REQUIRED");
+      expect(ambiguousPublication.output).toContain("Default (prj_default)");
+      expect(ambiguousPublication.output).toContain(
+        `CLI-selected project (${project.id})`,
+      );
     } finally {
       await stopProcess(server);
       await rm(parentDirectory, {force: true, recursive: true});

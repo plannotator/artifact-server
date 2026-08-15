@@ -80,6 +80,7 @@ const artifactSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   ownerPrincipalId: Schema.String,
+  projectId: Schema.String,
   tags: Schema.Array(Schema.String),
 });
 const versionSchema = Schema.Struct({
@@ -91,6 +92,7 @@ const versionSchema = Schema.Struct({
   manifestDigest: Schema.String,
   number: positiveIntegerSchema,
   publisherPrincipalId: Schema.String,
+  projectId: Schema.String,
   routingMode: Schema.Literal("static"),
 });
 const publishResponseSchema = Schema.Struct({
@@ -112,6 +114,7 @@ const createUploadResponseSchema = Schema.Struct({
     uploadUrl: Schema.URLFromString,
   })),
   manifestDigest: Schema.String,
+  projectId: Schema.String,
   uploadId: Schema.String,
 });
 const serverErrorSchema = Schema.Struct({
@@ -199,6 +202,7 @@ export interface FilePublicationCommand {
   readonly entryPath?: string;
   readonly idempotencyKey: string;
   readonly inputPath: string;
+  readonly projectId?: string;
   readonly target: FilePublicationTarget;
 }
 
@@ -233,6 +237,7 @@ interface CreateUploadRequestBody {
     readonly sha256: string;
     readonly size: number;
   }[];
+  readonly projectId?: string;
 }
 
 type CommitPublicationTarget =
@@ -278,6 +283,7 @@ export const publishPath = Effect.fn("FilePublicationClient.publishPath")(
       serverOrigin,
       config.apiToken,
       prepared,
+      command.projectId,
     );
     yield* validateUploadPlan(serverOrigin, prepared, upload);
     yield* Effect.forEach(
@@ -578,19 +584,25 @@ const createUpload = Effect.fn("FilePublicationClient.createUpload")(
     serverOrigin: URL,
     apiToken: Redacted.Redacted,
     prepared: PreparedPublication,
+    projectId: string | undefined,
   ): Effect.fn.Return<
     typeof createUploadResponseSchema.Type,
     FilePublicationProtocolError,
     HttpClient.HttpClient
   > {
-    const body: CreateUploadRequestBody = {
+    const files = prepared.files.map((file) => ({
+      mediaType: file.mediaType,
+      path: file.path,
+      sha256: file.sha256,
+      size: file.size,
+    }));
+    const body: CreateUploadRequestBody = projectId === undefined ? {
       entryPath: prepared.entryPath,
-      files: prepared.files.map((file) => ({
-        mediaType: file.mediaType,
-        path: file.path,
-        sha256: file.sha256,
-        size: file.size,
-      })),
+      files,
+    } : {
+      entryPath: prepared.entryPath,
+      files,
+      projectId,
     };
     const request = yield* jsonRequest(
       HttpClientRequest.post(new URL("/api/v1/uploads", serverOrigin)),

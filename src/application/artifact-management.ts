@@ -10,6 +10,10 @@ import {
 import { parseIdempotencyKey } from "./idempotency-key.js";
 import { parseArtifactTag, parseArtifactTags } from "./artifact-tags.js";
 import {
+  type ProjectManagementFailure,
+  ProjectManagementService,
+} from "./project-management.js";
+import {
   ArtifactNotFound,
   type ArtifactMutationConflict,
   type ArtifactRepositoryFailure,
@@ -53,6 +57,7 @@ export interface ArtifactDetails {
 export interface ReadArtifactCommand {
   readonly artifactId: string;
   readonly principal: Principal;
+  readonly projectId: string | null;
 }
 
 /** Input for reading one exact saved version. */
@@ -85,6 +90,7 @@ export interface ListArtifactsCommand {
   readonly cursor: PageCursor | null;
   readonly limit: number;
   readonly principal: Principal;
+  readonly projectId: string | null;
   readonly tag: string | null;
 }
 
@@ -130,16 +136,20 @@ export interface ArtifactManagementRepository {
     | ArtifactRepositoryFailure
   >;
   readonly findArtifact: (
+    projectId: string,
     artifactId: string,
   ) => Effect.Effect<ArtifactRecord | null, ArtifactRepositoryFailure>;
   readonly findArtifactForAdministration: (
+    projectId: string,
     artifactId: string,
   ) => Effect.Effect<ArtifactRecord | null, ArtifactRepositoryFailure>;
   readonly findArtifactVersion: (
+    projectId: string,
     artifactId: string,
     versionId: string,
   ) => Effect.Effect<ArtifactVersion | null, ArtifactRepositoryFailure>;
   readonly listArtifactVersions: (
+    projectId: string,
     artifactId: string,
   ) => Effect.Effect<readonly VersionRecord[], ArtifactRepositoryFailure>;
   readonly listArtifactActions: (
@@ -176,7 +186,8 @@ export type ArtifactManagementFailure =
   | InvalidArtifactTags
   | InvalidPagination
   | AuthorizationDenied
-  | ArtifactRepositoryFailure;
+  | ArtifactRepositoryFailure
+  | ProjectManagementFailure;
 
 interface ArtifactManagementOperations {
   readonly changeAccess: (
@@ -216,12 +227,21 @@ export class ArtifactManagementService extends Context.Service<
   /** Construct artifact management from deployment-neutral persistence. */
   static readonly layer = (
     dependencies: ArtifactManagementDependencies,
-  ): Layer.Layer<ArtifactManagementService, never, AuthorizationService> =>
+  ): Layer.Layer<
+    ArtifactManagementService,
+    never,
+    AuthorizationService | ProjectManagementService
+  > =>
     Layer.effect(
       ArtifactManagementService,
       Effect.gen(function*() {
         const authorization = yield* AuthorizationService;
-        return makeArtifactManagementService(dependencies, authorization);
+        const projects = yield* ProjectManagementService;
+        return makeArtifactManagementService(
+          dependencies,
+          authorization,
+          projects,
+        );
       }),
     );
 }
@@ -229,13 +249,25 @@ export class ArtifactManagementService extends Context.Service<
 function makeArtifactManagementService(
   dependencies: ArtifactManagementDependencies,
   authorization: AuthorizationOperations,
+  projects: ProjectManagementService["Service"],
 ): ArtifactManagementOperations {
+  const resolveProjectForRead = Effect.fn(
+    "ArtifactManagementService.resolveProjectForRead",
+  )(function*(principal: Principal, projectId: string | null) {
+    return projectId === null
+      ? yield* projects.resolveActiveProject({principal, projectId})
+      : yield* projects.getProject({principal, projectId});
+  });
+
   const requireArtifact = Effect.fn("ArtifactManagementService.requireArtifact")(
-    function*(artifactId: string): Effect.fn.Return<
+    function*(projectId: string, artifactId: string): Effect.fn.Return<
       ArtifactRecord,
       ArtifactNotFound | ArtifactRepositoryFailure
     > {
-      const artifact = yield* dependencies.repository.findArtifact(artifactId);
+      const artifact = yield* dependencies.repository.findArtifact(
+        projectId,
+        artifactId,
+      );
       if (artifact !== null) return artifact;
       return yield* new ArtifactNotFound({message: "The artifact does not exist."});
     },
@@ -243,12 +275,12 @@ function makeArtifactManagementService(
 
   const requireArtifactForAdministration = Effect.fn(
     "ArtifactManagementService.requireArtifactForAdministration",
-  )(function*(artifactId: string): Effect.fn.Return<
+  )(function*(projectId: string, artifactId: string): Effect.fn.Return<
     ArtifactRecord,
     ArtifactNotFound | ArtifactRepositoryFailure
   > {
     const artifact = yield* dependencies.repository
-      .findArtifactForAdministration(artifactId);
+      .findArtifactForAdministration(projectId, artifactId);
     if (artifact !== null) return artifact;
     return yield* new ArtifactNotFound({message: "The artifact does not exist."});
   });
@@ -266,10 +298,12 @@ function makeArtifactManagementService(
 
   const requireVersion = Effect.fn("ArtifactManagementService.requireVersion")(
     function*(
+      projectId: string,
       artifactId: string,
       versionId: string,
     ): Effect.fn.Return<ArtifactVersion, VersionNotFound | ArtifactRepositoryFailure> {
       const version = yield* dependencies.repository.findArtifactVersion(
+        projectId,
         artifactId,
         versionId,
       );
@@ -282,9 +316,14 @@ function makeArtifactManagementService(
 
   const getArtifact = Effect.fn("ArtifactManagementService.getArtifact")(
     function*(command: ReadArtifactCommand) {
-      const artifact = yield* requireArtifact(command.artifactId);
+      const project = yield* resolveProjectForRead(
+        command.principal,
+        command.projectId,
+      );
+      const artifact = yield* requireArtifact(project.id, command.artifactId);
       yield* authorization.requireArtifactRead(command.principal, artifact);
       const current = yield* requireVersion(
+        project.id,
         artifact.id,
         artifact.currentVersionId,
       );
@@ -294,17 +333,28 @@ function makeArtifactManagementService(
 
   const getVersion = Effect.fn("ArtifactManagementService.getVersion")(
     function*(command: ReadArtifactVersionCommand) {
-      const artifact = yield* requireArtifact(command.artifactId);
+      const project = yield* resolveProjectForRead(
+        command.principal,
+        command.projectId,
+      );
+      const artifact = yield* requireArtifact(project.id, command.artifactId);
       yield* authorization.requireArtifactRead(command.principal, artifact);
-      return yield* requireVersion(artifact.id, command.versionId);
+      return yield* requireVersion(project.id, artifact.id, command.versionId);
     },
   );
 
   const listVersions = Effect.fn("ArtifactManagementService.listVersions")(
     function*(command: ReadArtifactCommand) {
-      const artifact = yield* requireArtifact(command.artifactId);
+      const project = yield* resolveProjectForRead(
+        command.principal,
+        command.projectId,
+      );
+      const artifact = yield* requireArtifact(project.id, command.artifactId);
       yield* authorization.requireArtifactRead(command.principal, artifact);
-      return yield* dependencies.repository.listArtifactVersions(artifact.id);
+      return yield* dependencies.repository.listArtifactVersions(
+        project.id,
+        artifact.id,
+      );
     },
   );
 
@@ -315,12 +365,17 @@ function makeArtifactManagementService(
       const tag = command.tag === null
         ? null
         : yield* parseArtifactTag(command.tag);
+      const project = yield* resolveProjectForRead(
+        command.principal,
+        command.projectId,
+      );
       return yield* dependencies.repository.listArtifacts({
         cursor: command.cursor,
         limit,
         ownerPrincipalId: scope.kind === "owned"
           ? scope.ownerPrincipalId
           : null,
+        projectId: project.id,
         tag,
       });
     },
@@ -330,20 +385,32 @@ function makeArtifactManagementService(
     "ArtifactManagementService.listArtifactActions",
   )(function*(command: ListArtifactActionsCommand) {
     const limit = yield* requirePageSize(command.limit);
-    const artifact = yield* requireArtifactForAdministration(command.artifactId);
+    const project = yield* resolveProjectForRead(
+      command.principal,
+      command.projectId,
+    );
+    const artifact = yield* requireArtifactForAdministration(
+      project.id,
+      command.artifactId,
+    );
     yield* authorization.requireArtifactManagement(command.principal, artifact);
     return yield* dependencies.repository.listArtifactActions({
       artifactId: artifact.id,
       cursor: command.cursor,
       limit,
+      projectId: project.id,
     });
   });
 
   const restoreVersion = Effect.fn("ArtifactManagementService.restoreVersion")(
     function*(command: RestoreArtifactVersionCommand) {
-      const artifact = yield* requireArtifact(command.artifactId);
+      const project = yield* resolveProjectForRead(
+        command.principal,
+        command.projectId,
+      );
+      const artifact = yield* requireArtifact(project.id, command.artifactId);
       yield* authorization.requireArtifactManagement(command.principal, artifact);
-      yield* requireVersion(artifact.id, command.versionId);
+      yield* requireVersion(project.id, artifact.id, command.versionId);
       const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
       const createdAt = DateTime.formatIso(yield* dependencies.clock.now);
       return yield* dependencies.repository.restoreVersion({
@@ -357,9 +424,11 @@ function makeArtifactManagementService(
           expectedCurrentVersionId: command.expectedCurrentVersionId,
           operation: "restore",
           principalId: command.principal.id,
+          projectId: project.id,
           value: command.versionId,
         }),
         principalId: command.principal.id,
+        projectId: project.id,
         versionId: command.versionId,
       });
     },
@@ -367,7 +436,11 @@ function makeArtifactManagementService(
 
   const changeAccess = Effect.fn("ArtifactManagementService.changeAccess")(
     function*(command: ChangeArtifactAccessCommand) {
-      const artifact = yield* requireArtifact(command.artifactId);
+      const project = yield* resolveProjectForRead(
+        command.principal,
+        command.projectId,
+      );
+      const artifact = yield* requireArtifact(project.id, command.artifactId);
       yield* authorization.requireArtifactManagement(command.principal, artifact);
       const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
       const createdAt = DateTime.formatIso(yield* dependencies.clock.now);
@@ -383,16 +456,22 @@ function makeArtifactManagementService(
           expectedCurrentVersionId: command.expectedCurrentVersionId,
           operation: "change_access",
           principalId: command.principal.id,
+          projectId: project.id,
           value: command.accessSetting,
         }),
         principalId: command.principal.id,
+        projectId: project.id,
       });
     },
   );
 
   const changeTags = Effect.fn("ArtifactManagementService.changeTags")(
     function*(command: ChangeArtifactTagsCommand) {
-      const artifact = yield* requireArtifact(command.artifactId);
+      const project = yield* resolveProjectForRead(
+        command.principal,
+        command.projectId,
+      );
+      const artifact = yield* requireArtifact(project.id, command.artifactId);
       yield* authorization.requireArtifactManagement(command.principal, artifact);
       const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
       const tags = yield* parseArtifactTags(command.tags);
@@ -408,9 +487,11 @@ function makeArtifactManagementService(
           expectedCurrentVersionId: command.expectedCurrentVersionId,
           operation: "change_tags",
           principalId: command.principal.id,
+          projectId: project.id,
           value: JSON.stringify(tags),
         }),
         principalId: command.principal.id,
+        projectId: project.id,
         tags,
       });
     },
@@ -418,7 +499,14 @@ function makeArtifactManagementService(
 
   const deleteArtifact = Effect.fn("ArtifactManagementService.deleteArtifact")(
     function*(command: DeleteArtifactCommand) {
-      const artifact = yield* requireArtifactForAdministration(command.artifactId);
+      const project = yield* resolveProjectForRead(
+        command.principal,
+        command.projectId,
+      );
+      const artifact = yield* requireArtifactForAdministration(
+        project.id,
+        command.artifactId,
+      );
       yield* authorization.requireArtifactManagement(command.principal, artifact);
       const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
       const createdAt = DateTime.formatIso(yield* dependencies.clock.now);
@@ -433,9 +521,11 @@ function makeArtifactManagementService(
           expectedCurrentVersionId: command.expectedCurrentVersionId,
           operation: "delete",
           principalId: command.principal.id,
+          projectId: project.id,
           value: artifact.id,
         }),
         principalId: command.principal.id,
+        projectId: project.id,
       });
     },
   );
@@ -458,6 +548,7 @@ interface ManagementInputDigest {
   readonly expectedCurrentVersionId: string;
   readonly operation: "change_access" | "change_tags" | "delete" | "restore";
   readonly principalId: string;
+  readonly projectId: string;
   readonly value: string;
 }
 

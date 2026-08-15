@@ -21,6 +21,7 @@ interface PublishOptions {
   readonly expectedVersion?: string;
   readonly name?: string;
   readonly public: boolean;
+  readonly project?: string;
   readonly server: string;
   readonly tag: readonly string[];
   readonly tokenFile?: string;
@@ -58,6 +59,7 @@ export function configurePublishCommand(program: Command): void {
         .default([]),
     )
     .addOption(new Option("--artifact <id>", "artifact ID when publishing a new version"))
+    .addOption(new Option("--project <id>", "project ID; optional when one active project exists"))
     .addOption(
       new Option(
         "--expected-version <id>",
@@ -100,10 +102,11 @@ function publicationCommand(
     );
   }
 
-  const common: Omit<FilePublicationCommand, "entryPath" | "target"> = {
-    idempotencyKey: randomBytes(24).toString("base64url"),
-    inputPath,
-  };
+  const idempotencyKey = randomBytes(24).toString("base64url");
+  const common: Omit<FilePublicationCommand, "entryPath" | "target"> =
+    options.project === undefined
+      ? {idempotencyKey, inputPath}
+      : {idempotencyKey, inputPath, projectId: options.project};
   if (options.artifact !== undefined && options.expectedVersion !== undefined) {
     if (options.name !== undefined || options.public || options.tag.length > 0) {
       throw new Error(

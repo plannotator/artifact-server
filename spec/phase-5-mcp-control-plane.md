@@ -51,7 +51,7 @@ The first resource template returns the complete canonical manifest for one
 immutable version:
 
 ```text
-artifact://artifacts/{artifactId}/versions/{versionId}/manifest
+artifact://projects/{projectId}/artifacts/{artifactId}/versions/{versionId}/manifest
 ```
 
 ## Transport and authentication

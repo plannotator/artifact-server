@@ -2,7 +2,7 @@
 
 **Product and architecture proposal**
 **Status:** Decision draft
-**Date:** August 12, 2026
+**Date:** August 14, 2026
 
 Artifact Server publishes finished browser files and gives each published item a stable link and saved history. It accepts a complete client-side site or one ordinary file. It does not build source code or run backend code for an artifact.
 
@@ -16,6 +16,7 @@ The first release runs locally. Later releases add one-server, Kubernetes, Cloud
 | What does a user or agent select? | One actual file or one finished directory. Public API and MCP arguments do not contain raw HTML, CSS, JavaScript, Markdown, or base64-wrapped file contents. The publishing client handles the upload details. |
 | What does it execute? | Only code that a browser can run. Artifact Server does not install packages, compile source code, run Node.js or Python for an artifact, connect an artifact to a database, execute server functions, or perform server-side rendering. |
 | How are files displayed? | Artifact Server sends the correct HTTP headers and lets the browser handle formats it already understands. The first release has no custom document viewer, media converter, thumbnail service, ZIP extractor, Markdown renderer, or syntax-highlighting interface. |
+| How is work organized? | One installation represents one person, team, or company. It contains projects, and every artifact belongs to one project. A new installation creates a default project. There is no organization switcher or separate Artifact Store object. |
 | What is an artifact? | One published item with a stable ID, owner, access setting, optional tags, current version, and immutable saved versions. |
 | Who can read it? | Exactly two settings: account required, or public link. On a standalone installation, account required means every person admitted to that one installation may read it. A public link opens only the current version; history and comparisons remain account-required. |
 | Who can change it? | Its owner and installation administrators. A service principal can perform only the actions granted to its API key. |
@@ -41,13 +42,14 @@ The server supports `GET`, `HEAD`, byte ranges where applicable, a stable `ETag`
 
 Client-side sites may load scripts, styles, fonts, images, and data from other websites. Normal browser rules still apply. A remote service must allow the artifact's origin, and a private network may block internet access. Artifact Server does not copy dependencies loaded from other websites.
 
-## Artifact and version model
+## Project, artifact, and version model
 
-An artifact keeps one identity over time. A version is one immutable saved manifest and its referenced file bytes.
+One installation represents one person, team, or company. It contains projects. An artifact belongs to one project and keeps one identity over time. A version is one immutable saved manifest and its referenced file bytes.
 
 The core records are:
 
-- **Artifact:** stable ID, name, owner, access setting, zero to 20 tags, current version, created time, and deletion state.
+- **Project:** stable ID, installation ID, name, creation time, and archive state.
+- **Artifact:** stable ID, project ID, name, owner, access setting, zero to 20 tags, current version, created time, and deletion state.
 - **Version:** stable ID, artifact ID, version number, canonical manifest digest, entry file, routing mode, publisher, and created time.
 - **Manifest entry:** normalized path, byte length, media type, SHA-256 fingerprint, and file disposition.
 - **Blob:** immutable file bytes addressed internally by SHA-256 fingerprint.
@@ -59,6 +61,19 @@ than 20 tags of 40 characters each. Tags apply to the artifact, not to one saved
 so publishing or restoring a version does not change them. Replacing the complete tag set
 is an authorized, idempotent, audited metadata operation. The first release does not add
 tag categories, nesting, per-version tags, or a separate tag-management system.
+
+### Project rules
+
+- A new installation creates one default project. Local publishing selects it automatically.
+- Every artifact belongs to exactly one project. An artifact cannot move between installations.
+- Projects use the installation's existing membership group. The first release has no project-specific members, roles, or access-control lists.
+- Account-required artifacts remain readable by every admitted installation member. Artifact ownership, administrator authority, and scoped service credentials control mutations.
+- Project identity is enforced by the repository, authorization service, uploads, idempotency records, browser sessions, HTTP API, MCP tools, audit records, backup, and restore.
+- Archiving a project stops new artifacts and versions but preserves existing artifacts, links, history, comparisons, and immutable version bytes.
+- The first release does not destructively delete a nonempty project. Project-wide deletion needs a separate retention and recovery decision.
+- A project is a logical database and authorization boundary. It does not require a separate filesystem, bucket, database, Git service, Artifact Store, or Namespace object.
+
+Existing installations migrate into one default project without changing installation, artifact, version, manifest, action, or content identities.
 
 ### Portable path rules
 
@@ -113,7 +128,7 @@ Each site declares one routing mode when it is published:
 An account-required site must authorize its HTML and every relative asset without giving artifact JavaScript the application login.
 
 1. The stable application link checks that the viewer belongs to the installation.
-2. It creates a short-lived, single-use bootstrap token bound to one artifact, version, content hostname, and viewer.
+2. It creates a short-lived, single-use bootstrap token bound to one project, artifact, version, content hostname, and viewer.
 3. The version content origin exchanges that token for a host-only, `Secure`, `HttpOnly` content cookie and redirects to a clean URL.
 4. The cookie is valid only for that immutable version origin and read-only `GET` and `HEAD` requests.
 5. The content origin has no endpoint that can change application or artifact data.
@@ -160,7 +175,7 @@ The mutation policy is separate from the two read settings:
 | Reassign ownership | No | Yes | No | No |
 | Delete the artifact | Yes | Yes | No | Only with explicit delete capability |
 
-An interactive agent acts as the signed-in person. An API key belongs to one named user or service principal, one installation, an expiry and revoke state, and explicit capabilities. Every mutation records the effective principal and, when present, the human who authorized the agent connection.
+An interactive agent acts as the signed-in person. An API key belongs to one named user or service principal, one installation, an expiry and revoke state, and explicit capabilities. A key with artifact access can use any project in that installation; projects do not add a second access-control list. Every mutation records the effective principal and, when present, the human who authorized the agent connection.
 
 ## Versions, comparisons, and optional Git
 
@@ -203,24 +218,26 @@ Initial lifecycle rules:
 - Deleting an artifact tombstones its ID and stops all application and origin access.
 - Physical blob reclamation waits for a backup-aware garbage collector.
 - Automatic version expiry is not part of the initial release.
-- Backup and restore must preserve installation, artifact, version, and action IDs.
+- Backup and restore must preserve installation, project, artifact, version, and action IDs.
 - The one-server release requires a documented, tested database-and-blob backup and restore procedure before it is supported for teams.
 
 ## Plannotator integration
 
-One Artifact Server installation can connect to one Plannotator organization in the first Plannotator integration release. The administrator selects **Connect to Plannotator**, signs in to Plannotator, chooses the organization, and approves the connection. The systems store a connection record and verification keys; they do not copy users or exchange browser login cookies.
+One Artifact Server installation can connect to one Plannotator organization in the first Plannotator integration release. The installation is that organization's artifact service. The administrator selects **Connect to Plannotator**, signs in to Plannotator, chooses the organization, and approves the connection. The systems store a connection record and verification keys; they do not copy users or exchange browser login cookies.
 
-Plannotator owns WorkOS sign-in, organizations, projects, workspaces, workspace permissions, comments, annotations, replies, review state, notifications, and agent provenance. Artifact Server owns artifact IDs, immutable versions, manifests, blobs, browser delivery, and comparisons.
+Each Plannotator project maps to one Artifact Server project. Plannotator workspaces inside that project reference its artifacts and exact versions; workspaces do not own artifact storage. Moving, unfiling, or deleting a workspace does not move or delete a project artifact.
 
-A connected installation keeps standalone artifacts and Plannotator-managed artifacts in separate logical areas. Normal Artifact Server sessions cannot browse the Plannotator-managed area. Each managed artifact is bound to one Plannotator workspace, but Artifact Server does not copy the workspace membership or permission model.
+Plannotator owns WorkOS sign-in, its organization, project and workspace records, workspace permissions, comments, annotations, replies, review state, notifications, and agent provenance. Artifact Server owns its paired project records, artifact IDs, immutable versions, manifests, blobs, browser delivery, comparisons, and artifact access settings. It does not add an organization table or a second workspace permission model.
 
-Plannotator checks the user's workspace access and sends Artifact Server a short-lived, audience-restricted request for one operation, workspace, artifact, or exact version. Artifact Server validates the paired connection, scope, signature, expiration, and request ID. It never receives a WorkOS token, Plannotator browser cookie, or reusable user credential.
+Plannotator checks whether the caller may use the project or workspace before sending Artifact Server a short-lived, audience-restricted request. Project-library operations name the paired project and allowed action. A workspace reference may request read-only access to one artifact and exact version. That narrow access cannot list the project library or publish, restore, change visibility, reassign ownership, or delete an artifact. A public or `link_edit` workspace therefore cannot mutate a project artifact.
+
+Artifact Server validates the paired installation and project, scope, signature, expiration, and request ID through its normal authorization service. It never receives a WorkOS token, Plannotator browser cookie, or reusable user credential. Connected projects use the same Artifact Server project, artifact, version, storage, audit, backup, and access rules as standalone projects; there is no separate managed storage area.
 
 To open an account-required version, Plannotator requests a single-use browser URL. Artifact Server consumes that URL, sets a short-lived, host-only, Secure, HttpOnly content session, and redirects to the clean version address. The artifact opens as a top-level page so private delivery does not depend on third-party iframe cookies.
 
 Review mode is a separate, explicit response. Artifact Server serves the same stored version through an isolated review address and adds a small review bridge to HTML responses for that session only. The bridge can identify the route, selected text, and selected page element, then exchange bounded messages with Plannotator. It receives no reusable credential. Normal responses, stored files, fingerprints, manifests, downloads, and optional Git history remain unchanged.
 
-Plannotator stores each comment with the Artifact Server installation ID, artifact ID, exact version ID, route, and anchor. A comment on version 12 continues to load version 12 after version 13 is published. Artifact Server stores no comment, reply, notification, or review-state record.
+Plannotator stores each comment with the Artifact Server installation ID, project ID, artifact ID, exact version ID, route, and anchor. A comment on version 12 continues to load version 12 after version 13 is published. Artifact Server stores no comment, reply, notification, or review-state record.
 
 A public or otherwise reachable Artifact Server needs no extra network component. A private installation needs a customer-provided route or an optional outbound-only connector limited to the paired Artifact Server service. Connecting Plannotator does not change a firewall or make an artifact public.
 
@@ -355,6 +372,7 @@ A requirement is complete only when both tests pass on every applicable deployme
 ### Release 1: local product
 
 - One process, SQLite, and local blob storage.
+- One installation with one default project, project-scoped artifacts, and no organization or Artifact Store layer.
 - Single-file and complete-site publishing.
 - Browser-native file handling.
 - Immutable versions, canonical manifests, text comparison, restore, and two read settings.
@@ -432,7 +450,7 @@ These items can change implementation cost or hosting viability and must be reso
 11. **Encryption and customer controls:** decide requirements for storage encryption keys, regional placement, audit export, legal hold, and permanent deletion before selling to regulated teams.
 12. **Custom domains:** decide whether customer-owned content domains are supported and how certificates, cookies, abuse handling, and version origins work.
 13. **Plannotator review bridge:** test the isolated review response against hostile artifact JavaScript, strict content policies, multi-page sites, single-page routes, service workers, anchor stability, session expiry, and browsers without third-party cookies. Use a browser extension if the injected bridge cannot pass without exposing a reusable credential.
-14. **Existing artifact attachment:** decide whether attaching a standalone artifact to a Plannotator workspace moves it or copies it, and prove permissions, IDs, links, rollback, and disconnect behavior.
+14. **Existing project binding:** decide how an existing Artifact Server project pairs with a Plannotator project, including name conflicts, existing artifacts, unlinking, rollback, archival, and reconnect behavior. Pairing must not silently move artifacts or change IDs.
 15. **Private Plannotator route:** choose the first supported path among customer-provided networking, Cloudflare Tunnel, or a product-owned connector. Define health, upgrades, replicas, egress addresses, and failure behavior before advertising one-click private connection.
 
 ## Deliberately not included

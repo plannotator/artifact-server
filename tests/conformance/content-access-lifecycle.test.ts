@@ -68,6 +68,7 @@ describe("content access lifecycle", () => {
         contentAccess.issueContentBootstrap({
           artifactId: published.artifact.id,
           principal: testPrincipal,
+          projectId: null,
           target: {kind: "current"},
         })
       ),
@@ -87,6 +88,7 @@ describe("content access lifecycle", () => {
         contentAccess.issueContentBootstrap({
           artifactId: published.artifact.id,
           principal: testPrincipal,
+          projectId: null,
           target: {kind: "current"},
         })
       ),
@@ -118,6 +120,7 @@ describe("content access lifecycle", () => {
         contentAccess.issueContentBootstrap({
           artifactId: published.artifact.id,
           principal: testPrincipal,
+          projectId: null,
           target: {kind: "current"},
         })
       ),
@@ -202,6 +205,7 @@ async function publishPrivateArtifact(runtime: ApplicationRuntime) {
         size: bytes.byteLength,
       }],
       principal: testPrincipal,
+      projectId: null,
     })),
   );
   const file = upload.files[0];
@@ -215,6 +219,7 @@ async function publishPrivateArtifact(runtime: ApplicationRuntime) {
         },
       }),
       principal: testPrincipal,
+      projectId: null,
       storageToken: file.storageToken,
       uploadId: upload.id,
     })),
@@ -223,6 +228,7 @@ async function publishPrivateArtifact(runtime: ApplicationRuntime) {
     StagedUploadService.use((stagedUploads) => stagedUploads.commitUpload({
       idempotencyKey: `private-content-${crypto.randomUUID()}`,
       principal: testPrincipal,
+      projectId: null,
       target: {
         accessSetting: "account_required",
         kind: "new_artifact",

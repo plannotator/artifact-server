@@ -14,10 +14,12 @@ import {
 import {ArtifactManagementService} from "../application/artifact-management.js";
 import {CompareArtifactService} from "../application/compare-artifact.js";
 import {ContentAccessService} from "../application/content-access.js";
+import {ProjectManagementService} from "../application/project-management.js";
 import {StagedUploadService} from "../application/staged-upload.js";
 import {
   accessSettings,
   type ArtifactVersion,
+  type ProjectRecord,
   type StagedUpload,
 } from "../core/model.js";
 import type {Principal} from "../core/identity.js";
@@ -45,6 +47,8 @@ const accessSettingSchema = z.enum([
   accessSettings.publicLink,
 ]);
 const artifactIdSchema = z.string().min(1).max(200);
+const projectIdSchema = z.string().min(1).max(200);
+const optionalProjectIdSchema = projectIdSchema.nullable().default(null);
 const versionIdSchema = z.string().min(1).max(200);
 const idempotencyKeySchema = z.string().min(16).max(200);
 const expectedVersionSchema = z.string().min(1).max(200);
@@ -63,6 +67,7 @@ const artifactRecordSchema = z.object({
   id: z.string(),
   name: z.string(),
   ownerPrincipalId: z.string(),
+  projectId: z.string(),
   tags: z.array(z.string()),
 }).strict();
 const versionRecordSchema = z.object({
@@ -74,7 +79,14 @@ const versionRecordSchema = z.object({
   manifestDigest: z.string(),
   number: z.number().int().positive(),
   publisherPrincipalId: z.string(),
+  projectId: z.string(),
   routingMode: z.literal("static"),
+}).strict();
+const projectProjectionSchema = z.object({
+  archivedAt: z.string().nullable(),
+  createdAt: z.string(),
+  id: z.string(),
+  name: z.string(),
 }).strict();
 const manifestEntrySchema = z.object({
   disposition: z.enum(["attachment", "inline"]),
@@ -98,7 +110,7 @@ const publishedVersionSchema = artifactStateSchema.extend({
   links: z.object({artifact: z.url(), version: z.url()}).strict(),
 }).strict();
 const manifestResource = new ResourceTemplate(
-  "artifact://artifacts/{artifactId}/versions/{versionId}/manifest",
+  "artifact://projects/{projectId}/artifacts/{artifactId}/versions/{versionId}/manifest",
   {list: undefined},
 );
 
@@ -167,6 +179,10 @@ export function createArtifactMcpServer(
           maximumUploadPlanRequestBytes: z.number(),
           workflow: z.array(z.string()),
         }),
+        projects: z.object({
+          omittedProjectRule: z.string(),
+          scope: z.literal("project"),
+        }),
         sharing: z.object({modes: z.array(accessSettingSchema)}),
       }),
       annotations: readOnlyAnnotations,
@@ -174,6 +190,114 @@ export function createArtifactMcpServer(
     () => successResult(capabilities(dependencies.mode),
       "Artifact Server publishes actual files through an upload plan. It does not accept inline HTML, CSS, JavaScript, or base64 content."),
   );
+
+  server.registerTool(
+    "project_list",
+    {
+      title: "List projects",
+      description:
+        "List this installation's projects. Use a returned project ID in artifact tools when more than one active project exists.",
+      inputSchema: z.object({}).strict(),
+      outputSchema: z.object({
+        projects: z.array(projectProjectionSchema),
+      }).strict(),
+      annotations: readOnlyAnnotations,
+    },
+    () => toolResult(async () => ({
+      projects: (await runMcpApplicationEffect(
+        dependencies,
+        ProjectManagementService.use((projects) =>
+          projects.listProjects(identity.principal)
+        ),
+      )).map(projectProjection),
+    })),
+  );
+
+  server.registerTool(
+    "project_create",
+    {
+      title: "Create a project",
+      description:
+        "Create a project in this installation. After a second active project exists, artifact tools require projectId.",
+      inputSchema: z.object({
+        name: z.string().trim().min(1).max(120),
+      }).strict(),
+      outputSchema: z.object({
+        project: projectProjectionSchema,
+      }).strict(),
+      annotations: additiveWriteAnnotations,
+    },
+    ({name}) => toolResult(async () => ({
+      project: projectProjection(await runMcpApplicationEffect(
+        dependencies,
+        ProjectManagementService.use((projects) =>
+          projects.createProject({name, principal: identity.principal})
+        ),
+      )),
+    })),
+  );
+
+  server.registerTool(
+    "project_rename",
+    {
+      title: "Rename a project",
+      description:
+        "Change a project's display name without changing its stable ID or artifacts.",
+      inputSchema: z.object({
+        name: z.string().trim().min(1).max(120),
+        projectId: projectIdSchema,
+      }).strict(),
+      outputSchema: z.object({
+        project: projectProjectionSchema,
+      }).strict(),
+      annotations: idempotentWriteAnnotations,
+    },
+    ({name, projectId}) => toolResult(async () => ({
+      project: projectProjection(await runMcpApplicationEffect(
+        dependencies,
+        ProjectManagementService.use((projects) =>
+          projects.renameProject({
+            name,
+            principal: identity.principal,
+            projectId,
+          })
+        ),
+      )),
+    })),
+  );
+
+  for (const lifecycle of ["archive", "unarchive"] as const) {
+    server.registerTool(
+      `project_${lifecycle}`,
+      {
+        title: `${lifecycle === "archive" ? "Archive" : "Unarchive"} a project`,
+        description: lifecycle === "archive"
+          ? "Stop a project from accepting new artifacts or versions while preserving its readable history."
+          : "Allow an archived project to accept new artifacts and versions again.",
+        inputSchema: z.object({projectId: projectIdSchema}).strict(),
+        outputSchema: z.object({
+          project: projectProjectionSchema,
+        }).strict(),
+        annotations: idempotentWriteAnnotations,
+      },
+      ({projectId}) => toolResult(async () => ({
+        project: projectProjection(await runMcpApplicationEffect(
+          dependencies,
+          ProjectManagementService.use((projects) =>
+            lifecycle === "archive"
+              ? projects.archiveProject({
+                principal: identity.principal,
+                projectId,
+              })
+              : projects.unarchiveProject({
+                principal: identity.principal,
+                projectId,
+              })
+          ),
+        )),
+      })),
+    );
+  }
 
   server.registerTool(
     "artifact_list",
@@ -184,6 +308,7 @@ export function createArtifactMcpServer(
       inputSchema: z.object({
         cursor: z.string().max(1_024).nullable().default(null),
         limit: z.number().int().min(1).max(maximumListedArtifacts).default(50),
+        projectId: optionalProjectIdSchema,
         tag: tagSchema.nullable().default(null),
       }).strict(),
       outputSchema: z.object({
@@ -194,13 +319,14 @@ export function createArtifactMcpServer(
           currentVersionId: z.string(),
           id: z.string(),
           name: z.string(),
+          projectId: z.string(),
           tags: z.array(z.string()),
         })),
         nextCursor: z.string().nullable(),
       }),
       annotations: readOnlyAnnotations,
     },
-    async ({cursor, limit, tag}) => toolResult(async () => {
+    async ({cursor, limit, projectId, tag}) => toolResult(async () => {
       const page = await runMcpApplicationEffect(
         dependencies,
         ArtifactManagementService.use((management) =>
@@ -208,6 +334,7 @@ export function createArtifactMcpServer(
             cursor: decodePageCursor(cursor),
             limit,
             principal: identity.principal,
+            projectId,
             tag,
           })
         ),
@@ -220,6 +347,7 @@ export function createArtifactMcpServer(
           currentVersionId: artifact.currentVersionId,
           id: artifact.id,
           name: artifact.name,
+          projectId: artifact.projectId,
           tags: [...artifact.tags],
         })),
         nextCursor: encodePageCursor(page.nextCursor),
@@ -233,7 +361,10 @@ export function createArtifactMcpServer(
       title: "Get an artifact",
       description:
         "Get one artifact with its current immutable version, complete canonical manifest, stable browser links, sharing mode, and tags in one call.",
-      inputSchema: z.object({artifactId: artifactIdSchema}).strict(),
+      inputSchema: z.object({
+        artifactId: artifactIdSchema,
+        projectId: optionalProjectIdSchema,
+      }).strict(),
       outputSchema: z.object({
         artifact: artifactRecordSchema,
         current: z.object({
@@ -245,11 +376,15 @@ export function createArtifactMcpServer(
       }).strict(),
       annotations: readOnlyAnnotations,
     },
-    async ({artifactId}) => toolResult(async () => {
+    async ({artifactId, projectId}) => toolResult(async () => {
       const details = await runMcpApplicationEffect(
         dependencies,
         ArtifactManagementService.use((management) =>
-          management.getArtifact({artifactId, principal: identity.principal})
+          management.getArtifact({
+            artifactId,
+            principal: identity.principal,
+            projectId,
+          })
         ),
       );
       return {
@@ -274,6 +409,7 @@ export function createArtifactMcpServer(
         "Return the exact browser URL for an artifact's current or selected immutable version. The MCP client opens the URL on the user's computer; the server never opens a browser remotely.",
       inputSchema: z.object({
         artifactId: artifactIdSchema,
+        projectId: optionalProjectIdSchema,
         versionId: versionIdSchema.nullable().default(null),
       }).strict(),
       outputSchema: z.object({
@@ -284,12 +420,16 @@ export function createArtifactMcpServer(
       }),
       annotations: readOnlyAnnotations,
     },
-    async ({artifactId, versionId}) => toolResult(async () => {
+    async ({artifactId, projectId, versionId}) => toolResult(async () => {
       const saved = versionId === null
         ? (await runMcpApplicationEffect(
           dependencies,
           ArtifactManagementService.use((management) =>
-            management.getArtifact({artifactId, principal: identity.principal})
+            management.getArtifact({
+              artifactId,
+              principal: identity.principal,
+              projectId,
+            })
           ),
         )).current
         : await runMcpApplicationEffect(
@@ -298,6 +438,7 @@ export function createArtifactMcpServer(
             management.getVersion({
               artifactId,
               principal: identity.principal,
+              projectId,
               versionId,
             })
           ),
@@ -307,6 +448,7 @@ export function createArtifactMcpServer(
         identity.principal,
         applicationUrl,
         artifactId,
+        saved.version.projectId,
         saved,
         versionId !== null,
       );
@@ -325,7 +467,10 @@ export function createArtifactMcpServer(
       title: "List saved versions",
       description:
         "List every immutable saved version of one artifact, newest first. The returned content URLs identify exact versions; use artifact_open when the user needs an authorized browser URL.",
-      inputSchema: z.object({artifactId: artifactIdSchema}).strict(),
+      inputSchema: z.object({
+        artifactId: artifactIdSchema,
+        projectId: optionalProjectIdSchema,
+      }).strict(),
       outputSchema: z.object({
         artifactId: z.string(),
         versions: z.array(z.object({
@@ -340,11 +485,15 @@ export function createArtifactMcpServer(
       }).strict(),
       annotations: readOnlyAnnotations,
     },
-    async ({artifactId}) => toolResult(async () => {
+    async ({artifactId, projectId}) => toolResult(async () => {
       const versions = await runMcpApplicationEffect(
         dependencies,
         ArtifactManagementService.use((management) =>
-          management.listVersions({artifactId, principal: identity.principal})
+          management.listVersions({
+            artifactId,
+            principal: identity.principal,
+            projectId,
+          })
         ),
       );
       return {
@@ -375,6 +524,7 @@ export function createArtifactMcpServer(
       inputSchema: z.object({
         artifactId: artifactIdSchema,
         fromVersionId: versionIdSchema,
+        projectId: optionalProjectIdSchema,
         toVersionId: versionIdSchema,
       }).strict(),
       outputSchema: z.object({
@@ -417,7 +567,7 @@ export function createArtifactMcpServer(
       }).strict(),
       annotations: readOnlyAnnotations,
     },
-    async ({artifactId, fromVersionId, toVersionId}) => toolResult(async () => {
+    async ({artifactId, fromVersionId, projectId, toVersionId}) => toolResult(async () => {
       const comparison = await runMcpApplicationEffect(
         dependencies,
         CompareArtifactService.use((comparisons) =>
@@ -425,6 +575,7 @@ export function createArtifactMcpServer(
             artifactId,
             fromVersionId,
             principal: identity.principal,
+            projectId,
             toVersionId,
           })
         ),
@@ -479,6 +630,7 @@ export function createArtifactMcpServer(
       inputSchema: z.object({
         entryPath: z.string().min(1).max(1_024),
         files: z.array(declaredFileSchema).min(1).max(maximumDeclaredFiles),
+        projectId: optionalProjectIdSchema,
       }).strict(),
       outputSchema: z.object({
         commit: z.object({
@@ -497,11 +649,12 @@ export function createArtifactMcpServer(
           uploadUrl: z.url(),
         }).strict()),
         manifestDigest: z.string(),
+        projectId: z.string(),
         uploadId: z.string(),
       }).strict(),
       annotations: additiveWriteAnnotations,
     },
-    async ({entryPath, files}) => toolResult(async () => {
+    async ({entryPath, files, projectId}) => toolResult(async () => {
       const upload = await runMcpApplicationEffect(
         dependencies,
         StagedUploadService.use((uploads) =>
@@ -509,6 +662,7 @@ export function createArtifactMcpServer(
             entryPath,
             files,
             principal: identity.principal,
+            projectId,
           })
         ),
       );
@@ -524,6 +678,7 @@ export function createArtifactMcpServer(
         "After every upload-plan URL has received its exact file bytes, commit the upload as a new artifact or an optimistic new version. Retrying the same idempotency key and input returns the original result.",
       inputSchema: z.object({
         idempotencyKey: idempotencyKeySchema,
+        projectId: optionalProjectIdSchema,
         target: z.discriminatedUnion("kind", [
           z.object({
             accessSetting: accessSettingSchema.default(
@@ -544,13 +699,14 @@ export function createArtifactMcpServer(
       outputSchema: publishedVersionSchema,
       annotations: idempotentWriteAnnotations,
     },
-    async ({idempotencyKey, target, uploadId}) => toolResult(async () => {
+    async ({idempotencyKey, projectId, target, uploadId}) => toolResult(async () => {
       const published = await runMcpApplicationEffect(
         dependencies,
         StagedUploadService.use((uploads) =>
           uploads.commitUpload({
             idempotencyKey,
             principal: identity.principal,
+            projectId,
             target,
             uploadId,
           })
@@ -575,6 +731,7 @@ export function createArtifactMcpServer(
         artifactId: artifactIdSchema,
         expectedCurrentVersionId: expectedVersionSchema,
         idempotencyKey: idempotencyKeySchema,
+        projectId: optionalProjectIdSchema,
       }).strict(),
       outputSchema: artifactStateSchema.extend({
         links: z.object({artifact: z.url(), version: z.url()}).strict(),
@@ -618,6 +775,7 @@ export function createArtifactMcpServer(
         artifactId: artifactIdSchema,
         expectedCurrentVersionId: expectedVersionSchema,
         idempotencyKey: idempotencyKeySchema,
+        projectId: optionalProjectIdSchema,
         tags: z.array(tagSchema).max(20),
       }).strict(),
       outputSchema: artifactStateSchema,
@@ -648,6 +806,7 @@ export function createArtifactMcpServer(
         artifactId: artifactIdSchema,
         expectedCurrentVersionId: expectedVersionSchema,
         idempotencyKey: idempotencyKeySchema,
+        projectId: optionalProjectIdSchema,
         versionId: versionIdSchema,
       }).strict(),
       outputSchema: artifactStateSchema,
@@ -678,6 +837,7 @@ export function createArtifactMcpServer(
         artifactId: artifactIdSchema,
         expectedCurrentVersionId: expectedVersionSchema,
         idempotencyKey: idempotencyKeySchema,
+        projectId: optionalProjectIdSchema,
       }).strict(),
       outputSchema: z.object({
         artifact: artifactRecordSchema.extend({deletedAt: z.string()}).strict(),
@@ -709,6 +869,7 @@ export function createArtifactMcpServer(
     },
     async (uri, variables) => {
       const artifactId = variableString(variables["artifactId"]);
+      const projectId = variableString(variables["projectId"]);
       const versionId = variableString(variables["versionId"]);
       const saved = await runMcpApplicationEffect(
         dependencies,
@@ -716,6 +877,7 @@ export function createArtifactMcpServer(
           management.getVersion({
             artifactId,
             principal: identity.principal,
+            projectId,
             versionId,
           })
         ),
@@ -725,6 +887,7 @@ export function createArtifactMcpServer(
           mimeType: "application/json",
           text: JSON.stringify({
             artifactId,
+            projectId,
             manifest: {
               digest: saved.manifest.digest,
               entries: saved.manifest.entries,
@@ -774,6 +937,7 @@ function agentInstructions(mode: "local" | "remote"): string {
   return [
     "Artifact Server stores actual files as immutable versions. It does not accept inline HTML, CSS, JavaScript, base64, or invented file contents through MCP.",
     "Start with artifact_capabilities when you do not know this installation's limits.",
+    "Artifacts belong to projects. Omit projectId only when the installation has one active project; otherwise call project_list and choose explicitly.",
     "For publishing, inspect the selected file or finished directory on the client, compute each relative path, byte length, media type, and SHA-256 fingerprint, call artifact_create_upload, PUT the exact bytes to every returned uploadUrl using the same bearer credential, then call artifact_commit_upload.",
     "When publishing a new version, first call artifact_get and pass its current version ID as expectedCurrentVersionId. On conflict, inspect the new current version before retrying.",
     "Use a stable application idempotency key when retrying the same mutation. Use a new key only for an intentional new operation.",
@@ -801,6 +965,11 @@ function capabilities(mode: "local" | "remote") {
         "Inspect the returned immutable version and browser links.",
       ],
     },
+    projects: {
+      omittedProjectRule:
+        "Omission selects the only active project. Multiple active projects require an explicit projectId.",
+      scope: "project" as const,
+    },
     sharing: {
       modes: [accessSettings.accountRequired, accessSettings.publicLink],
     },
@@ -826,12 +995,22 @@ function uploadPlan(
       path: file.entry.path,
       size: file.entry.size,
       uploadUrl: new URL(
-        `/api/v1/uploads/${upload.id}/files/${file.storageToken}`,
+        `/api/v1/uploads/${upload.id}/files/${file.storageToken}?projectId=${encodeURIComponent(upload.projectId)}`,
         applicationUrl,
       ).toString(),
     })),
     manifestDigest: upload.manifest.digest,
+    projectId: upload.projectId,
     uploadId: upload.id,
+  };
+}
+
+function projectProjection(project: ProjectRecord) {
+  return {
+    archivedAt: project.archivedAt,
+    createdAt: project.createdAt,
+    id: project.id,
+    name: project.name,
   };
 }
 
@@ -890,13 +1069,14 @@ async function authorizedBrowserUrl(
   principal: Principal,
   applicationUrl: URL,
   artifactId: string,
+  projectId: string,
   saved: ArtifactVersion,
   exactVersion: boolean,
 ): Promise<string> {
   const details = await runMcpApplicationEffect(
     dependencies,
     ArtifactManagementService.use((management) =>
-      management.getArtifact({artifactId, principal})
+      management.getArtifact({artifactId, principal, projectId})
     ),
   );
   if (details.artifact.accessSetting === accessSettings.publicLink) {
@@ -914,6 +1094,7 @@ async function authorizedBrowserUrl(
       access.issueContentBootstrap({
         artifactId,
         principal,
+        projectId,
         target: exactVersion
           ? {kind: "version", versionId: saved.version.id}
           : {kind: "current"},

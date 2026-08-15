@@ -40,6 +40,21 @@ export const uploadStatuses = {
 export type UploadStatus =
   (typeof uploadStatuses)[keyof typeof uploadStatuses];
 
+/** Stable identity reserved for the project created with every installation. */
+export const defaultProjectId = "prj_default";
+
+/** Initial label used for the project created with every installation. */
+export const defaultProjectName = "Default";
+
+/** One project inside an Artifact Server installation. */
+export interface ProjectRecord {
+  readonly archivedAt: string | null;
+  readonly createdAt: string;
+  readonly id: string;
+  readonly installationId: string;
+  readonly name: string;
+}
+
 export interface ArtifactRecord {
   readonly accessSetting: AccessSetting;
   readonly createdAt: string;
@@ -48,6 +63,7 @@ export interface ArtifactRecord {
   readonly id: string;
   readonly name: string;
   readonly ownerPrincipalId: string;
+  readonly projectId: string;
   readonly tags: readonly string[];
 }
 
@@ -71,6 +87,7 @@ export interface ArtifactActionRecord {
   readonly id: string;
   readonly idempotencyKey: string;
   readonly principalId: string;
+  readonly projectId: string;
   readonly versionId: string;
 }
 
@@ -118,6 +135,7 @@ export interface VersionRecord {
   readonly manifestDigest: string;
   readonly number: number;
   readonly publisherPrincipalId: string;
+  readonly projectId: string;
   readonly routingMode: RoutingMode;
 }
 
@@ -146,6 +164,7 @@ export interface VersionContent {
   readonly contentToken: string;
   readonly entry: ManifestEntry;
   readonly isCurrent: boolean;
+  readonly projectId: string;
   readonly versionId: string;
 }
 
@@ -156,6 +175,7 @@ export interface ContentBootstrapRecord {
   readonly createdAt: string;
   readonly expiresAt: string;
   readonly principalId: string;
+  readonly projectId: string;
   readonly tokenDigest: string;
   readonly versionId: string;
 }
@@ -167,6 +187,7 @@ export interface ContentSessionRecord {
   readonly createdAt: string;
   readonly expiresAt: string;
   readonly principalId: string;
+  readonly projectId: string;
   readonly tokenDigest: string;
   readonly versionId: string;
 }
@@ -184,6 +205,7 @@ interface StagedUploadBase {
   readonly id: string;
   readonly manifest: CanonicalManifest;
   readonly principalId: string;
+  readonly projectId: string;
 }
 
 export type StagedUpload = StagedUploadBase &
