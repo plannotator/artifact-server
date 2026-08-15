@@ -3,13 +3,13 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import * as Output from "alchemy/Output";
 import * as Effect from "effect/Effect";
 
-import type { CloudflareDeploymentInput } from "./deployment-input.js";
+import type { CloudflareDeploymentInput } from "./deployment-input.ts";
 import {
   buildCloudflareDeploymentManifest,
   type CloudflareDeploymentManifest,
-} from "./deployment-manifest.js";
+} from "./deployment-manifest.ts";
 
-const WORKER_ENTRYPOINT = new URL("./worker.js", import.meta.url).pathname;
+const WORKER_ENTRYPOINT = new URL("./worker.ts", import.meta.url).pathname;
 
 export type CloudflareZoneResolver =
   typeof Cloudflare.Zone.resolveZoneId;

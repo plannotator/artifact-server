@@ -6,7 +6,7 @@ import * as SchemaIssue from "effect/SchemaIssue";
 import {
   type CloudflareCloudDeploymentInput,
   parseCloudDeploymentInput,
-} from "../../../src/deployment/index.js";
+} from "../../../src/deployment/cloud-deployment-contract.ts";
 
 export const CLOUDFLARE_COMPATIBILITY_DATE = "2026-08-15";
 export const CLOUDFLARE_REGION = "global";

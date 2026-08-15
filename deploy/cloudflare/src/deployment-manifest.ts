@@ -1,4 +1,4 @@
-import type { CloudflareDeploymentInput } from "./deployment-input.js";
+import type { CloudflareDeploymentInput } from "./deployment-input.ts";
 
 const WORKER_NAME_LIMIT = 63;
 const D1_NAME_LIMIT = 64;

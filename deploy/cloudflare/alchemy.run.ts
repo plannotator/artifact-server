@@ -5,8 +5,8 @@ import * as Effect from "effect/Effect";
 import {
   cloudflareDeploymentDocumentConfig,
   parseCloudflareDeploymentInput,
-} from "./src/deployment-input.js";
-import { defineCloudflareFoundation } from "./src/stack.js";
+} from "./src/deployment-input.ts";
+import { defineCloudflareFoundation } from "./src/stack.ts";
 
 export default Alchemy.Stack(
   "artifact-server-cloudflare",

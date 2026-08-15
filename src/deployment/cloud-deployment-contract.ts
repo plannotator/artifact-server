@@ -2,7 +2,7 @@ import {Effect, Schema, type Redacted} from "effect";
 import {getDomain} from "tldts";
 
 import {findUnsafeCloudDeploymentValue} from
-  "./cloud-deployment-secret-safety.js";
+  "./cloud-deployment-secret-safety.ts";
 
 const strictParseOptions = {
   errors: "all",
