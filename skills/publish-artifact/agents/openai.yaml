@@ -1,0 +1,7 @@
+interface:
+  display_name: "Publish Artifact"
+  short_description: "Publish and manage Artifact Server work"
+  default_prompt: "Use $publish-artifact to publish this finished file or site and return its exact Artifact Server version link."
+
+policy:
+  allow_implicit_invocation: true

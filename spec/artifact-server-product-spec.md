@@ -325,7 +325,7 @@ Artifact Server ships two portable Agent Skills:
 - **`publish-artifact`:** publish, update, open, share, list, and compare artifacts. It uses the CLI when local files are involved and MCP or the CLI for server-only operations.
 - **`operate-artifact-server`:** an optional, separately installed administrator skill for install, deploy, upgrade, backup, restore, inspect, and repair work through the Artifact Server CLI.
 
-The publishing skill resolves its target in this order: an explicit address or link, the server recorded in the artifact reference, current conversation context, project default, then user default. If more than one server remains possible, it asks and never guesses. Project configuration may name a server profile but never contains a credential.
+The publishing skill resolves its target in this order: an explicit address or link, the server recorded in the artifact reference, current conversation context, project default, then user default. If more than one server remains possible, it asks and never guesses. A non-secret `.artifactserver.json` project file may name an exact server origin, CLI profile, and stable project ID, but never contains a credential. A project display name is resolved through the selected server and is never passed to an ID field.
 
 ## Deployment architecture
 

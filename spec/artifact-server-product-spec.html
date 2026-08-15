@@ -2945,7 +2945,9 @@ v12-7f3a.content.example.net</code></pre>
                   The Artifact Server command-line program keeps named connection profiles such as
                   <code>local</code> and <code>team</code>. A project may contain an optional,
                   non-secret <code>.artifactserver.json</code> file that names its default server
-                  address or connection profile. User defaults, recent artifact
+                  address, connection profile, and stable project ID. It never contains a credential.
+                  A project display name is resolved through the selected server and is never passed
+                  where an ID is required. User defaults, recent artifact
                   references, and the local server's current address remain in user-local state.
                   Access credentials stay in the MCP client or operating-system credential store;
                   they are never written into the project file.
@@ -2974,10 +2976,11 @@ v12-7f3a.content.example.net</code></pre>
                 <p>
                   Both skills use the open Agent Skills folder format and ship in the official
                   Artifact Server repository under <code>skills/publish-artifact</code> and
-                  <code>skills/operate-artifact-server</code>. They are listed on skills.sh and can
-                  be installed into Codex, Claude Code, and other compatible clients with the
-                  <code>npx skills</code> installer. The final copy-and-paste command is published
-                  after the official repository address is fixed.
+                  <code>skills/operate-artifact-server</code>. The publishing skill is implemented;
+                  the operator skill follows after the deployment commands stabilize. After the
+                  private <code>plannotator/artifact-server</code> repository is published, compatible
+                  clients can install the skills with <code>npx skills add
+                  plannotator/artifact-server</code>. A skills.sh listing follows the same controlled release.
                 </p>
                 <p>
                   The skill name is the portable contract. A client may display it as a slash

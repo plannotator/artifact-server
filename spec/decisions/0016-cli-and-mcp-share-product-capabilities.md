@@ -39,12 +39,12 @@ The adapter is selected by where the required bytes exist:
 The primary local-file operation is:
 
 ```text
-artifactserver publish <path> --project <project> --json
+artifactserver publish <path> --project <project>
 ```
 
 The CLI reads and validates the selected file or finished directory, hashes its
 files, follows the server's upload plan, retries safe transfer failures, commits
-the version, and returns a structured result. Create, upload, and commit may be
+the version, and always returns a structured JSON result. Create, upload, and commit may be
 separate internal requests. They remain one user-visible action.
 
 Temporary upload addresses or credentials are transfer details. They are

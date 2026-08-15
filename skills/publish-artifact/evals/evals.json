@@ -1,0 +1,124 @@
+{
+  "skill_name": "publish-artifact",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Publish ./dist to our team Artifact Server in the launch project. Keep it private and open it for me.",
+      "expected_output": "Resolves the team server and project without guessing, uses artifactserver publish for ./dist, keeps account-required access, verifies the structured result, and opens or returns the exact browser URL.",
+      "files": [],
+      "expectations": [
+        "Uses the CLI because ./dist is a local path",
+        "Resolves launch to one stable project ID through project_list",
+        "Treats team as a profile only if that exact profile exists",
+        "Stops for a project ID or MCP connection if the selected profile has no matching MCP",
+        "Does not send a local path or inline content through MCP",
+        "Does not enable public-link access",
+        "Returns the server, project ID, artifact ID, exact version ID, and browser link"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Publish /tmp/report.pdf as a public artifact on https://artifacts.example.com and tag it q3 and finance.",
+      "expected_output": "Uses the file-first CLI with the exact server origin, public access, and both tags while relying on a secure matching profile.",
+      "files": [],
+      "expectations": [
+        "Uses artifactserver publish with the quoted local path",
+        "Passes the exact remote origin and never requests a token in chat",
+        "Uses --public and two --tag options",
+        "Asks for a project only if the server cannot select one unambiguously"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Update artifact art_123 in project prj_123 with the files in ./site. It is on the team server we used earlier.",
+      "expected_output": "Gets the artifact's current version, then publishes ./site through the CLI using artifact and expected-version guards.",
+      "files": [],
+      "expectations": [
+        "Resolves the server from conversation state only if it is unambiguous",
+        "Calls artifact_get before publishing the update",
+        "Uses --artifact and --expected-version",
+        "Does not pass --name, --tag, or --public for the new version"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Compare the last two versions of https://artifacts.example.com/artifacts/art_123 and tell me what changed.",
+      "expected_output": "Uses the server from the artifact link, lists exact versions, compares the newest two through MCP, and summarizes file changes.",
+      "files": [],
+      "expectations": [
+        "Uses MCP because no local file access is needed",
+        "Does not ask which server to use",
+        "Uses exact version IDs with artifact_diff",
+        "Summarizes added, removed, renamed, and changed files"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Make the latest Q3 launch artifact public and add the approved tag.",
+      "expected_output": "Disambiguates the artifact if needed, gets its current version, preserves existing tags, then performs separate idempotent visibility and tag changes.",
+      "files": [],
+      "expectations": [
+        "Does not guess among similarly named artifacts",
+        "Calls artifact_get immediately before mutations",
+        "Uses public_link only because the user explicitly requested it",
+        "Preserves tags the user did not ask to remove"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Restore version ver_4 of artifact art_123 in project prj_123. This is the Artifact Server, not a backup restore.",
+      "expected_output": "Fetches the current artifact state and uses artifact_restore_version with an optimistic guard and a stable retry key.",
+      "files": [],
+      "expectations": [
+        "Treats this as an artifact-version restore rather than server operations",
+        "Gets the current version before the mutation",
+        "Rechecks the version list before restoring a relatively described version",
+        "Uses artifact_restore_version with the requested exact version",
+        "Reports the resulting current version"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Open version ver_8 of art_123 for me on my local machine.",
+      "expected_output": "Resolves the server and project, calls artifact_open for the exact version, and opens the returned URL on the client when supported.",
+      "files": [],
+      "expectations": [
+        "Asks for the server if context and defaults do not identify one",
+        "Uses artifact_open with versionId",
+        "Never asks the remote server to launch a browser",
+        "Returns the URL if client-side opening is unavailable"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Install Artifact Server on our Kubernetes cluster, configure S3, and restore last night's database backup.",
+      "expected_output": "Refuses to perform infrastructure or backup work through publish-artifact and routes the request to the separate operator path.",
+      "files": [],
+      "expectations": [
+        "Does not run deployment, Kubernetes, storage, or restore commands",
+        "Does not request infrastructure credentials",
+        "States that this publishing skill is not the server operator skill"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "Publish this npm package to the public npm registry.",
+      "expected_output": "Does not activate Artifact Server publishing because the target is npm, not Artifact Server.",
+      "files": [],
+      "expectations": [
+        "Does not use artifactserver commands or MCP tools",
+        "Does not reinterpret package publishing as an Artifact Server artifact"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Build me a React dashboard with a chart and dark mode.",
+      "expected_output": "Does not activate publish-artifact because the user asked to build software, not publish finished output to Artifact Server.",
+      "files": [],
+      "expectations": [
+        "Does not discuss Artifact Server unless the user later asks to publish",
+        "Does not invoke the Artifact Server CLI or MCP"
+      ]
+    }
+  ]
+}

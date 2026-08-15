@@ -143,7 +143,7 @@ service credential supplied by its secret manager.
 The primary file operation is one command:
 
 ```text
-artifactserver publish <path> --project <project> --json
+artifactserver publish <path> --project <project>
 ```
 
 The CLI validates and hashes one actual file or finished directory, follows the
@@ -161,6 +161,11 @@ the path.
 ### A2. Ship `publish-artifact`
 
 Location: `skills/publish-artifact/`
+
+Implemented in the repository. Public distribution and supported-client
+release evidence remain gated until `plannotator/artifact-server` is published.
+Format, local installer, repository-gate, and independent forward-test results
+are recorded in `evidence/publish-artifact-skill.json`.
 
 The skill covers:
 

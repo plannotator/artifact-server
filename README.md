@@ -84,7 +84,8 @@ implementation from deployment-specific release verification.
 
 The remaining product work is:
 
-1. The locality-aware `publish-artifact` Agent Skill.
+1. Release validation for the implemented locality-aware `publish-artifact`
+   Agent Skill in current supported clients.
 2. The common cloud deployment command and one-installation Cloudflare target.
 3. Optional private Git history, including local and Cloudflare providers.
 4. AWS, GCP, and Azure installers plus native GCS and Azure Blob adapters.
@@ -100,6 +101,26 @@ for the cloud, skill, and Git tracks are in
 [`phase-9-distribution-and-history.md`](./spec/phase-9-distribution-and-history.md).
 The implemented CLI authentication and remote-publication contract is in
 [`phase-10-cli-auth-and-remote-publishing.md`](./spec/phase-10-cli-auth-and-remote-publishing.md).
+
+## Install the Agent Skill
+
+After the `plannotator/artifact-server` repository is published, install the
+portable publishing skill with:
+
+```sh
+npx skills add plannotator/artifact-server
+```
+
+During private development, install it from an existing checkout instead:
+
+```sh
+npx skills add /absolute/path/to/artifact-server
+```
+
+The skill lives in [`skills/publish-artifact`](./skills/publish-artifact). It
+uses `artifactserver publish` for files on the user's machine and the connected
+Artifact Server MCP for work that needs only server data. It does not install,
+deploy, upgrade, back up, restore, or repair a server.
 
 ## Install the direct local package
 

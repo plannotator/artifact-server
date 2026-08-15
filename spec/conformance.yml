@@ -1648,7 +1648,7 @@ requirements:
       behavior: {id: SKL-001-B, description: Install both skills independently and activate each with realistic in-scope requests.}
       failure: {id: SKL-001-F, description: Publishing requests do not load or activate the operator skill, and adjacent non-artifact requests activate neither skill.}
     deployments: *all
-    status: specified
+    status: implementing
     depends_on: [MCP-003]
     evidence: []
 
@@ -1661,7 +1661,7 @@ requirements:
       behavior: {id: SKL-002-B, description: Complete local-file publishing through the CLI and every server-only routine artifact task through MCP and CLI with equivalent product results.}
       failure: {id: SKL-002-F, description: Requests for infrastructure changes never gain administrator commands or credentials through the publishing skill.}
     deployments: *all
-    status: specified
+    status: implementing
     depends_on: [SKL-001, MCP-009, CLI-002, ARC-006]
     evidence: []
 
@@ -1687,7 +1687,7 @@ requirements:
       behavior: {id: SKL-004-B, description: Exercise every precedence source and confirm that an artifact reference includes server address, artifact ID, and exact version ID when needed.}
       failure: {id: SKL-004-F, description: Ambiguous, missing, conflicting, and stale targets prompt for a choice and perform no read, publish, or open operation.}
     deployments: *all
-    status: specified
+    status: implementing
     depends_on: [SKL-002]
     evidence: []
 
@@ -1700,7 +1700,7 @@ requirements:
       behavior: {id: SKL-005-B, description: Resolve a project default from .artifactserver.json and route an MCP or CLI operation while each adapter retrieves its own credential from user-local secure state.}
       failure: {id: SKL-005-F, description: Skills never write bearer tokens, API keys, cookies, infrastructure credentials, or private server credentials into the project.}
     deployments: *all
-    status: specified
+    status: implementing
     depends_on: [SKL-004]
     evidence: []
 
@@ -1713,7 +1713,7 @@ requirements:
       behavior: {id: SKL-006-B, description: Validate, package, install, and run the release-matched skills in supported clients and publish their distribution metadata.}
       failure: {id: SKL-006-F, description: Incompatible server versions produce a clear refusal or supported fallback rather than incorrect tool calls.}
     deployments: *all
-    status: specified
+    status: implementing
     depends_on: [SKL-001, MCP-003]
     evidence: []
 
