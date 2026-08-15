@@ -32,3 +32,22 @@ The operator is responsible for proving that an adopted network has working priv
 ## Qualification status
 
 Pulumi mocks prove the resource graph and shared output contract. The native GCS adapter is tested against a pinned emulator. This package is not called cloud-qualified until a disposable GCP project passes publish, read, restart, scale, provider-outage, backup, restore, state recovery, update, and deletion checks.
+
+Run the repeatable live product and upgrade checks against an existing isolated
+qualification stack with:
+
+```bash
+PULUMI_BACKEND_URL=gs://example-state/artifact-server \
+  scripts/run-gcp-deployment-product-qualification.sh
+
+PULUMI_BACKEND_URL=gs://example-state/artifact-server \
+ARTIFACT_SERVER_GCP_UPGRADE_IMAGE=REGISTRY/IMAGE@sha256:DIGEST \
+  scripts/run-gcp-upgrade-rollback-qualification.sh
+```
+
+The product check publishes through the real CLI, reads through the public load
+balancer and Cloud CDN, proves that an earlier public version becomes private,
+compares versions, searches tags, checks MCP authentication and discovery, and
+records 1/10/25/50/100-user read measurements. The upgrade check runs that same
+probe after both the rollout and the rollback and rejects changed installation,
+database, or bucket identities.
