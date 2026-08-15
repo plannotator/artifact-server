@@ -88,6 +88,21 @@ const distinctSubnetIds = Schema.Array(providerResourceIdentifier).check(
   Schema.isMinLength(2),
   Schema.isUnique(),
 );
+const ipv4Cidr = Schema.String.check(Schema.makeFilter((value) =>
+  isIpv4Cidr(value) ? undefined : "expected an IPv4 CIDR"
+));
+const ingressCidrs = Schema.Array(ipv4Cidr).check(
+  Schema.isMinLength(1),
+  Schema.isUnique(),
+);
+const dnsZoneIds = Schema.Struct({
+  application: providerResourceIdentifier,
+  content: providerResourceIdentifier,
+}).check(Schema.makeFilter((value) =>
+  value.application === value.content
+    ? "application and content domains require different DNS zones"
+    : undefined
+));
 
 const sharedInputFields = {
   applicationDomain: hostname,
@@ -99,7 +114,7 @@ const sharedInputFields = {
   contentDomain: hostname,
   databasePlan: Schema.Literals(["small", "standard", "high-availability"]),
   deletionProtection: Schema.Boolean,
-  dnsZoneId: Schema.optionalKey(providerResourceIdentifier),
+  dnsZoneIds: Schema.optionalKey(dnsZoneIds),
   environment: Schema.Literals(["development", "staging", "production"]),
   ingress: Schema.Literals(["private", "public"]),
   installationName,
@@ -119,6 +134,7 @@ const sharedInputFields = {
 export const AwsExistingNetwork = Schema.Struct({
   applicationSubnetIds: distinctSubnetIds,
   databaseSubnetIds: distinctSubnetIds,
+  loadBalancerSubnetIds: distinctSubnetIds,
   vpcId: providerResourceIdentifier,
 });
 export interface AwsExistingNetwork extends Schema.Schema.Type<
@@ -158,7 +174,9 @@ export const AwsCloudDeploymentInput = Schema.Struct({
   ...sharedInputFields,
   ...pulumiInputFields,
   existingNetwork: Schema.optionalKey(AwsExistingNetwork),
+  privateIngressCidrs: Schema.optionalKey(ingressCidrs),
   target: Schema.Literal("aws"),
+  tlsCertificateArn: Schema.optionalKey(providerResourceIdentifier),
 });
 export interface AwsCloudDeploymentInput extends Schema.Schema.Type<
   typeof AwsCloudDeploymentInput
@@ -246,10 +264,19 @@ export const CloudDeploymentInput = uncheckedCloudDeploymentInput.check(
         });
       }
     }
-    if (input.ingress === "public" && input.dnsZoneId === undefined) {
+    if (input.ingress === "public" && input.dnsZoneIds === undefined) {
       issues.push({
-        issue: "public ingress requires an existing DNS zone",
-        path: ["dnsZoneId"],
+        issue: "public ingress requires existing DNS zones for both domains",
+        path: ["dnsZoneIds"],
+      });
+    }
+    if (
+      input.target === "aws" && input.ingress === "private" &&
+      input.tlsCertificateArn === undefined
+    ) {
+      issues.push({
+        issue: "private AWS ingress requires an existing ACM certificate",
+        path: ["tlsCertificateArn"],
       });
     }
     if (
@@ -388,7 +415,7 @@ export const parseCloudDeploymentInput = Effect.fn("parseCloudDeploymentInput")(
 export const parseCloudDeploymentOutput = Effect.fn("parseCloudDeploymentOutput")(
   function*(
     input: CloudDeploymentInput,
-    output: CloudDeploymentDocument | CloudDeploymentOutput,
+    output: CloudDeploymentDocumentValue,
     options: CloudDeploymentOutputValidationOptions = {},
   ): Effect.fn.Return<CloudDeploymentOutput, CloudDeploymentContractError> {
     const parsed = yield* decodeCloudDeploymentOutput(output).pipe(
@@ -493,6 +520,18 @@ function isCalendarDate(value: string): boolean {
   const date = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(date.getTime()) &&
     date.toISOString().slice(0, 10) === value;
+}
+
+function isIpv4Cidr(value: string): boolean {
+  const [address, prefix, ...extra] = value.split("/");
+  if (address === undefined || prefix === undefined || extra.length > 0) return false;
+  if (!/^(?:0|[1-9]\d?|[12]\d{2})$/u.test(prefix)) return false;
+  const prefixLength = Number(prefix);
+  if (prefixLength > 32) return false;
+  const octets = address.split(".");
+  return octets.length === 4 && octets.every((octet) =>
+    /^(?:0|[1-9]\d{0,2})$/u.test(octet) && Number(octet) <= 255
+  );
 }
 
 function registrableDeploymentDomain(host: string): string {

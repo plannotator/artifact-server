@@ -1,0 +1,7 @@
+name: artifact-server-aws
+description: Direct AWS deployment for Artifact Server using ECS Fargate, RDS PostgreSQL, and S3.
+runtime:
+  name: nodejs
+  options:
+    packagemanager: pnpm
+main: index.ts

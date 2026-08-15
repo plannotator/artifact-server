@@ -24,7 +24,15 @@ mkdir -p -- "$artifactserver_stage" "$artifactserver_output"
 pnpm --dir "$artifactserver_repository" build
 
 cp -- "$artifactserver_repository/package.json" "$artifactserver_stage/package.json"
-cp -- "$artifactserver_repository/pnpm-lock.yaml" "$artifactserver_stage/pnpm-lock.yaml"
+
+# Build a package-only lock from the exact production dependencies already
+# installed by the workspace. Reusing the workspace lock with the hoisted
+# linker would also hoist deployment-workspace tooling into the local package.
+pnpm --dir "$artifactserver_stage" install \
+  --lockfile-only \
+  --ignore-scripts \
+  --offline \
+  --prod
 
 pnpm --dir "$artifactserver_stage" install \
   --config.node-linker=hoisted \

@@ -312,13 +312,13 @@ Cloudflare parts of `DEP-001`, `DEP-011`, `DEP-012`, and `GATE-009`.
 Use direct Pulumi TypeScript projects with separately pinned provider packages:
 
 ```text
-deploy/pulumi/core
+src/deployment
 deploy/pulumi/aws
 deploy/pulumi/gcp
 deploy/pulumi/azure
 ```
 
-`core` defines shared TypeScript types and validation for Artifact Server
+`src/deployment` defines shared TypeScript types and validation for Artifact Server
 deployment inputs, outputs, evidence, naming, tags, secret handling, image
 digests, health probes, and safe deletion. It is a library imported by the
 three Pulumi projects, not a second command runner. Provider packages map that
@@ -354,9 +354,11 @@ runtime configuration, outputs, and secret rules are defined in
 
 ### Kubernetes option
 
-For EKS, GKE, and AKS, reuse the released Helm chart. The cloud package may
-provision backing Postgres, object storage, workload identity, DNS, and secret
-references, then render Helm values. It does not fork the application chart.
+For an existing EKS, GKE, AKS, or other Kubernetes cluster, use the released
+Helm chart. The direct cloud packages do not create or modify a cluster and do
+not wrap Helm. The operator supplies the chart with the existing Postgres,
+object storage, workload identity, secret, DNS, TLS, and ingress values used by
+that cluster.
 
 Do not advertise installer-managed cluster creation until that exact option has
 its own create, upgrade, node-loss, control-plane, backup, restore, cost, and

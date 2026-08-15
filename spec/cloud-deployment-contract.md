@@ -1,6 +1,8 @@
 # Cloud deployment contract
 
-Status: shared executable contract implemented; provider packages not yet implemented
+Status: shared executable contract implemented; AWS provider package implemented
+locally and awaiting real-cloud release qualification; other provider packages
+remain in progress
 
 This document is the handoff boundary for the Cloudflare, AWS, GCP, and Azure
 deployment work. It says exactly what every package receives, what it creates,
@@ -67,7 +69,7 @@ but every package must expose these names and meanings.
 | `backupRetentionDays` | yes | Integer from 7 through 35; production minimum is 14 |
 | `deletionProtection` | yes | Must be `true` in production; a separate deliberate recovery procedure is required to disable it |
 | `existingNetwork` | no | Provider-specific existing network and subnet identifiers; if absent, the package creates its documented network |
-| `dnsZoneId` | public only | Existing authoritative zone that contains both configured domains |
+| `dnsZoneIds` | public only | Existing authoritative zone IDs for `application` and `content`; the IDs must differ because the domains have separate registrable boundaries |
 | `workosClientId` | hosted login only | Non-secret WorkOS client identifier for this environment |
 | `workosApiKeySecretRef` | hosted login only | Provider secret-manager reference, never the key value |
 | `otlpEndpoint` | no | HTTPS OTLP collector address |
@@ -114,8 +116,8 @@ stack.
 ### AWS
 
 - `existingNetwork`, when supplied, contains `vpcId`, at least two application
-  subnet IDs, and at least two database subnet IDs across two availability
-  zones.
+  subnet IDs, at least two load-balancer subnet IDs, and at least two database
+  subnet IDs across two availability zones.
 - Without it, the package creates one VPC, public load-balancer subnets,
   private ECS and database subnets across two availability zones, and the
   documented outbound path.
@@ -125,6 +127,17 @@ stack.
 - The ECS task role receives only its S3 installation prefix, required secret
   versions, telemetry, and health dependencies. The task receives no static AWS
   key.
+- Public ingress creates and validates separate ACM certificates for the
+  application host and wildcard content host in their respective Route 53
+  zones. Private ingress requires `tlsCertificateArn` for an existing ACM
+  certificate that covers both names. Private Route 53 records are created when
+  `dnsZoneIds` is supplied; otherwise the operator owns private DNS.
+- A private load balancer accepts the VPC CIDR by default. Set
+  `privateIngressCidrs` when VPN, transit-gateway, peered-network, or on-premises
+  callers arrive from other IPv4 ranges.
+- Capacity validation reserves enough database connections for the configured
+  maximum task count and a rolling deployment at 200 percent capacity. An
+  unsafe task-count and RDS-plan combination is rejected before deployment.
 
 ### GCP
 
@@ -155,8 +168,10 @@ stack.
 ## Runtime configuration the package must produce
 
 Every package supplies the running application with the common values below.
-Secrets are mounted or fetched from the provider secret manager. They are not
-plain stack outputs.
+Secrets are mounted, injected by the managed runtime, or fetched from the
+provider secret manager. They are not plain stack outputs or task-definition
+values. ECS injects the API token, database URL, and optional WorkOS key from
+Secrets Manager. Compose and Kubernetes use the file variants below.
 
 | Runtime value | Source |
 | --- | --- |
@@ -164,8 +179,8 @@ plain stack outputs.
 | `ARTIFACT_SERVER_ORIGIN` | `https://` plus `applicationDomain` |
 | `ARTIFACT_SERVER_CONTENT_DOMAIN` | `contentDomain` |
 | `ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL` | Shared input |
-| `ARTIFACT_SERVER_API_TOKEN_FILE` | Mounted/generated provider secret; fallback automation credential only |
-| `ARTIFACT_SERVER_DATABASE_URL_FILE` | Provider-managed PostgreSQL connection secret |
+| `ARTIFACT_SERVER_API_TOKEN_FILE` or `ARTIFACT_SERVER_API_TOKEN` | Provider secret; fallback automation credential only |
+| `ARTIFACT_SERVER_DATABASE_URL_FILE` or `ARTIFACT_SERVER_DATABASE_URL` | Provider-managed PostgreSQL connection secret |
 | `ARTIFACT_SERVER_HOST` | `0.0.0.0` inside the managed runtime |
 | `ARTIFACT_SERVER_PORT` | `8787` |
 | `ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE` | Shared input or `0.01` |

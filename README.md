@@ -286,6 +286,22 @@ storage, two worker nodes, public and account-required artifacts, rolling
 replacement, provider outage, node drain, uninstall, and reinstall. It is part
 of `pnpm verify:iteration`.
 
+Use this Helm path for an existing EKS, GKE, AKS, or other Kubernetes cluster.
+The chart does not create the cluster, database, object store, DNS, certificate,
+or ingress. The direct AWS, GCP, and Azure deployment projects are separate
+turnkey options for teams that do not already operate Kubernetes.
+
+## Deploy the default AWS stack
+
+The direct Pulumi project in [`deploy/pulumi/aws`](./deploy/pulumi/aws) creates
+ECS Fargate, RDS PostgreSQL, S3, Secrets Manager, workload identity, networking,
+DNS, TLS, CloudWatch logs, and autoscaling. It does not create EKS.
+
+Follow its README for state, configuration, preview, deployment, verification,
+and safe deletion requirements. The current resource graph is implemented and
+tested locally. AWS remains release-unqualified until the documented real-cloud
+lifecycle and recovery gates pass.
+
 ## Run from the source checkout
 
 Requirements: Node.js 24.12 or newer, pnpm 10.34.3, and Ruby for validating the conformance ledger.

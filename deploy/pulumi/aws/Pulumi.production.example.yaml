@@ -1,0 +1,28 @@
+config:
+  aws:region: us-east-1
+  artifact-server-aws:applicationDomain: artifacts.example.com
+  artifact-server-aws:backupRetentionDays: 14
+  artifact-server-aws:bootstrapAdministratorEmail: admin@example.com
+  artifact-server-aws:capacity:
+    cpu: 1
+    maximumInstances: 4
+    memoryMiB: 2048
+    minimumInstances: 2
+  artifact-server-aws:contentDomain: artifact-content.example.net
+  artifact-server-aws:databasePlan: standard
+  artifact-server-aws:deletionProtection: true
+  artifact-server-aws:dnsZoneIds:
+    application: Z_REPLACE_APPLICATION_ZONE
+    content: Z_REPLACE_CONTENT_ZONE
+  artifact-server-aws:environment: production
+  artifact-server-aws:imageReference: ghcr.io/plannotator/artifact-server@sha256:replace_with_64_hex_characters
+  artifact-server-aws:ingress: public
+  artifact-server-aws:installationName: team-artifacts
+  artifact-server-aws:region: us-east-1
+  artifact-server-aws:resourceTags:
+    Owner: platform-team
+  artifact-server-aws:secretsProvider: awskms://alias/artifact-server?region=us-east-1
+  artifact-server-aws:stackName: production
+  artifact-server-aws:stateBackendUrl: s3://replace-with-existing-pulumi-state/artifact-server
+  artifact-server-aws:workosApiKeySecretRef: arn:aws:secretsmanager:us-east-1:123456789012:secret:artifact-server-workos
+  artifact-server-aws:workosClientId: client_replace_me

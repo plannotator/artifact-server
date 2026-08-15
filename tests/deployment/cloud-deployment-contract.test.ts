@@ -43,6 +43,8 @@ describe("shared cloud deployment contract", () => {
       applicationDomain: "artifacts.team.internal",
       contentDomain: "content.assets.internal",
       ingress: "private",
+      tlsCertificateArn:
+        "arn:aws:acm:us-west-2:123456789012:certificate/private-artifacts",
     })));
 
     expect(parsed).toMatchObject({
@@ -74,7 +76,10 @@ describe("shared cloud deployment contract", () => {
     ["disabled production deletion protection", awsInput({
       deletionProtection: false,
     })],
-    ["missing public DNS", awsInput({dnsZoneId: null})],
+    ["missing public DNS", awsInput({dnsZoneIds: null})],
+    ["one zone for isolated domains", awsInput({
+      dnsZoneIds: {application: "zone-artifacts", content: "zone-artifacts"},
+    })],
     ["incomplete WorkOS configuration", awsInput({
       workosClientId: "client_01",
     })],
@@ -247,7 +252,10 @@ function sharedInput(
     contentDomain: "artifact-content.example.net",
     databasePlan: "standard",
     deletionProtection: true,
-    dnsZoneId: "zone-artifacts",
+    dnsZoneIds: {
+      application: "zone-artifacts",
+      content: "zone-content",
+    },
     environment: "production",
     ingress: "public",
     installationName: "team-artifacts",

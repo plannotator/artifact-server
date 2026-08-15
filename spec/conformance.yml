@@ -2144,7 +2144,7 @@ requirements:
       behavior: {id: DEP-008-B, description: Create, upgrade, roll back, recover state, back up, restore, and delete the AWS target with native S3 and private-network options.}
       failure: {id: DEP-008-F, description: A failed update cannot orphan durable data, expose private content, or require Pulumi Cloud.}
     deployments: [aws]
-    status: specified
+    status: implementing
     depends_on: [DEP-003, DEP-021, OPS-003]
     evidence: []
 

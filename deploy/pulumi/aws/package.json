@@ -1,0 +1,30 @@
+{
+  "name": "@artifact-server/aws-deployment",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pinned Pulumi deployment project for Artifact Server on AWS.",
+  "type": "module",
+  "packageManager": "pnpm@10.34.3",
+  "engines": {
+    "node": ">=24.12.0"
+  },
+  "scripts": {
+    "preview": "pulumi preview",
+    "test": "vitest run tests/aws-pulumi.test.ts",
+    "test:evidence": "vitest run tests/aws-pulumi.test.ts --reporter=default --reporter=json --outputFile.json=../../../evidence/aws-pulumi.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify": "pnpm typecheck && pnpm test:evidence"
+  },
+  "dependencies": {
+    "@pulumi/aws": "7.42.0",
+    "@pulumi/pulumi": "3.257.0",
+    "@pulumi/random": "4.21.1",
+    "effect": "4.0.0-rc.108"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "ts-node": "10.9.2",
+    "typescript": "6.0.3",
+    "vitest": "4.1.10"
+  }
+}

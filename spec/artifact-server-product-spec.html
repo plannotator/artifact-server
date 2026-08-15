@@ -3401,6 +3401,14 @@ artifact_delete</code></pre>
                   resource IDs, and secret-free support information.
                 </p>
                 <p>
+                  Teams that already run Kubernetes use the Helm chart on EKS, GKE, AKS, or their
+                  own cluster. The chart installs only Artifact Server and connects to the team's
+                  existing Postgres, file storage, secrets, DNS, TLS, and Ingress or Gateway. The
+                  AWS, GCP, and Azure Pulumi projects are turnkey alternatives for teams that do not
+                  want to operate Kubernetes. The AWS default uses ECS Fargate; it does not create
+                  or replace an existing EKS cluster.
+                </p>
+                <p>
                   Browser login and MCP authorization are separate protocols even when they use the
                   same identity provider. Team browser login may use OpenID Connect. Hosted MCP
                   connections use WorkOS AuthKit. Private installations can use server API keys or a
