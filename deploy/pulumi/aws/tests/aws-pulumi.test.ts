@@ -149,6 +149,8 @@ describe("AWS Pulumi deployment", () => {
       publiclyAccessible: false,
       storageEncrypted: true,
     });
+    expect(String(database.inputs["finalSnapshotIdentifier"]))
+      .toMatch(/^as-[a-f0-9]{12}-final-[a-z0-9]{8}$/u);
     const publicAccessBlock = requireResource(
       "aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock",
     );
@@ -189,6 +191,10 @@ describe("AWS Pulumi deployment", () => {
     expect(container?.image).toBe(imageReference);
     expect(container?.command.join(" ")).toContain("migrate apply");
     expect(container?.command.join(" ")).toContain("start-external-storage");
+    expect(container?.environment).toContainEqual({
+      name: "NODE_EXTRA_CA_CERTS",
+      value: "/usr/local/share/ca-certificates/aws-rds-global-bundle.pem",
+    });
     expect(container?.environment.map((entry) => entry.name)).not.toContain(
       "ARTIFACT_SERVER_S3_ACCESS_KEY_ID",
     );
@@ -346,6 +352,9 @@ function mockResourceState(
         ? "generated-database-password"
         : "generated-api-token",
     };
+  }
+  if (args.type === "random:index/randomString:RandomString") {
+    return {...base, result: "a1b2c3d4"};
   }
   if (args.type === "aws:s3/bucket:Bucket") {
     return {...base, arn, bucket: `${args.name}-bucket`};

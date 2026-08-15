@@ -23,6 +23,7 @@
   "include": [
     "deploy/**/*.ts",
     "performance/**/*.ts",
+    "scripts/**/*.ts",
     "src/**/*.ts",
     "tests/**/*.ts",
     "tools/**/*.ts",

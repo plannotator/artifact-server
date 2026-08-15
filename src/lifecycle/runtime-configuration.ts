@@ -10,6 +10,10 @@ import type {
   ObjectStorageProviderKind,
 } from
   "../storage/object-storage-provider.js";
+import {createAzureBlobObjectStorageProviderFactory} from
+  "../storage/azure-blob-object-storage.js";
+import {createGcsObjectStorageProviderFactory} from
+  "../storage/gcs-object-storage.js";
 import {
   createS3ObjectStorageProviderFactory,
   type S3ObjectStorageProviderConfig,
@@ -34,6 +38,9 @@ const hostnameSchema = Schema.String.check(
 );
 const installationIdSchema = Schema.String.check(
   Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/u),
+);
+const gcpProjectIdSchema = Schema.String.check(
+  Schema.isPattern(/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/u),
 );
 const requestLogSampleRateSchema = Schema.NumberFromString.check(
   Schema.isBetween({minimum: 0, maximum: 1}),
@@ -249,79 +256,7 @@ export const parseExternalStorageRuntimeConfiguration = Effect.fn(
     hostnameSchema,
   );
   yield* assertBrowserIsolation(applicationOrigin, contentDomain);
-  const objectStorageProvider = environment[
-    "ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER"
-  ] ?? "s3";
-  if (objectStorageProvider !== "s3") {
-    return yield* invalidValue(
-      "ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER",
-      `The object-storage provider ${objectStorageProvider} is not available in this build.`,
-    );
-  }
-  const forcePathStyle = environment["ARTIFACT_SERVER_S3_FORCE_PATH_STYLE"] ?? "false";
-  if (forcePathStyle !== "true" && forcePathStyle !== "false") {
-    return yield* invalidValue(
-      "ARTIFACT_SERVER_S3_FORCE_PATH_STYLE",
-      "The S3 path-style setting must be true or false.",
-    );
-  }
-  const endpoint = environment["ARTIFACT_SERVER_S3_ENDPOINT"];
-  const accessKeyId = yield* loadOptionalCredential(
-    environment,
-    "ARTIFACT_SERVER_S3_ACCESS_KEY_ID",
-    Schema.NonEmptyString,
-  );
-  const secretAccessKey = yield* loadOptionalCredential(
-    environment,
-    "ARTIFACT_SERVER_S3_SECRET_ACCESS_KEY",
-    Schema.NonEmptyString,
-  );
-  if ((accessKeyId === null) !== (secretAccessKey === null)) {
-    return yield* new RuntimeConfigurationError({
-      field: "ARTIFACT_SERVER_S3_ACCESS_KEY_ID",
-      message: "The S3 access key ID and secret access key must be configured together.",
-      reason: "incomplete_configuration",
-    });
-  }
-  const objectStorageBase = {
-    bucket: yield* parseRequiredEnvironment(
-      "ARTIFACT_SERVER_S3_BUCKET",
-      environment["ARTIFACT_SERVER_S3_BUCKET"],
-      Schema.String.check(Schema.isMinLength(3)),
-    ),
-    forcePathStyle: forcePathStyle === "true",
-    region: yield* parseRequiredEnvironment(
-      "ARTIFACT_SERVER_S3_REGION",
-      environment["ARTIFACT_SERVER_S3_REGION"],
-      Schema.NonEmptyString,
-    ),
-  };
-  const staticCredentials = accessKeyId === null || secretAccessKey === null
-    ? {}
-    : {
-      accessKeyId: Redacted.value(accessKeyId.value),
-      secretAccessKey: secretAccessKey.value,
-    };
-  const configuredEndpoint = endpoint === undefined
-    ? {}
-    : {
-      endpoint: yield* parseRequiredEnvironment(
-        "ARTIFACT_SERVER_S3_ENDPOINT",
-        endpoint,
-        urlStringSchema,
-      ),
-    };
-  const objectStorageConfig: S3ObjectStorageProviderConfig = {
-    ...objectStorageBase,
-    ...staticCredentials,
-    ...configuredEndpoint,
-  };
-  if (objectStorageConfig.endpoint !== undefined) {
-    yield* assertHttpServiceUrl(
-      "ARTIFACT_SERVER_S3_ENDPOINT",
-      objectStorageConfig.endpoint,
-    );
-  }
+  const configuredObjectStorage = yield* parseObjectStorage(environment);
   const localBootstrapCredential = yield* loadOptionalCredential(
     environment,
     "ARTIFACT_SERVER_LOCAL_BOOTSTRAP_TOKEN",
@@ -351,8 +286,8 @@ export const parseExternalStorageRuntimeConfiguration = Effect.fn(
     credentialSources: {
       apiToken: apiToken.source,
       database: databaseUrl.source,
-      objectStorageAccessKey: accessKeyId?.source ?? "provider_chain",
-      objectStorageSecret: secretAccessKey?.source ?? "provider_chain",
+      objectStorageAccessKey: configuredObjectStorage.accessKeySource,
+      objectStorageSecret: configuredObjectStorage.secretSource,
     },
     databaseUrl: databaseUrl.value,
     deploymentMode: "external-storage",
@@ -363,7 +298,7 @@ export const parseExternalStorageRuntimeConfiguration = Effect.fn(
       installationIdSchema,
     ),
     localBootstrapCredential: localBootstrapCredential?.value ?? null,
-    objectStorage: createS3ObjectStorageProviderFactory(objectStorageConfig),
+    objectStorage: configuredObjectStorage.factory,
     port: yield* parsePort(input.port),
     readinessWithdrawalMilliseconds: yield* parseMilliseconds(
       environment,
@@ -377,6 +312,156 @@ export const parseExternalStorageRuntimeConfiguration = Effect.fn(
     ),
   };
 });
+
+interface ParsedObjectStorage {
+  readonly accessKeySource: CredentialSource;
+  readonly factory: ObjectStorageProviderFactory;
+  readonly secretSource: CredentialSource;
+}
+
+function parseObjectStorage(
+  environment: NodeJS.ProcessEnv,
+): Effect.Effect<ParsedObjectStorage, RuntimeConfigurationError> {
+  const provider = environment["ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER"] ?? "s3";
+  switch (provider) {
+    case "azure-blob":
+      return parseAzureBlobObjectStorage(environment);
+    case "gcs":
+      return parseGcsObjectStorage(environment);
+    case "s3":
+      return parseS3ObjectStorage(environment);
+    default:
+      return invalidValue(
+        "ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER",
+        `The object-storage provider ${provider} is not available in this build.`,
+      );
+  }
+}
+
+const parseAzureBlobObjectStorage = Effect.fn("parseAzureBlobObjectStorage")(
+  function*(
+    environment: NodeJS.ProcessEnv,
+  ): Effect.fn.Return<ParsedObjectStorage, RuntimeConfigurationError> {
+    const accountUrl = yield* parseRequiredEnvironment(
+      "ARTIFACT_SERVER_AZURE_BLOB_ACCOUNT_URL",
+      environment["ARTIFACT_SERVER_AZURE_BLOB_ACCOUNT_URL"],
+      urlStringSchema,
+    );
+    yield* assertHttpsServiceUrl(
+      "ARTIFACT_SERVER_AZURE_BLOB_ACCOUNT_URL",
+      accountUrl,
+    );
+    return {
+      accessKeySource: "provider_chain",
+      factory: createAzureBlobObjectStorageProviderFactory({
+        accountUrl,
+        container: yield* parseRequiredEnvironment(
+          "ARTIFACT_SERVER_AZURE_BLOB_CONTAINER",
+          environment["ARTIFACT_SERVER_AZURE_BLOB_CONTAINER"],
+          Schema.NonEmptyString,
+        ),
+      }),
+      secretSource: "provider_chain",
+    };
+  },
+);
+
+const parseGcsObjectStorage = Effect.fn("parseGcsObjectStorage")(
+  function*(
+    environment: NodeJS.ProcessEnv,
+  ): Effect.fn.Return<ParsedObjectStorage, RuntimeConfigurationError> {
+    return {
+      accessKeySource: "provider_chain",
+      factory: createGcsObjectStorageProviderFactory({
+        bucket: yield* parseRequiredEnvironment(
+          "ARTIFACT_SERVER_GCS_BUCKET",
+          environment["ARTIFACT_SERVER_GCS_BUCKET"],
+          Schema.NonEmptyString,
+        ),
+        projectId: yield* parseRequiredEnvironment(
+          "ARTIFACT_SERVER_GCS_PROJECT_ID",
+          environment["ARTIFACT_SERVER_GCS_PROJECT_ID"],
+          gcpProjectIdSchema,
+        ),
+      }),
+      secretSource: "provider_chain",
+    };
+  },
+);
+
+const parseS3ObjectStorage = Effect.fn("parseS3ObjectStorage")(
+  function*(
+    environment: NodeJS.ProcessEnv,
+  ): Effect.fn.Return<ParsedObjectStorage, RuntimeConfigurationError> {
+    const forcePathStyle = environment["ARTIFACT_SERVER_S3_FORCE_PATH_STYLE"] ??
+      "false";
+    if (forcePathStyle !== "true" && forcePathStyle !== "false") {
+      return yield* invalidValue(
+        "ARTIFACT_SERVER_S3_FORCE_PATH_STYLE",
+        "The S3 path-style setting must be true or false.",
+      );
+    }
+    const accessKeyId = yield* loadOptionalCredential(
+      environment,
+      "ARTIFACT_SERVER_S3_ACCESS_KEY_ID",
+      Schema.NonEmptyString,
+    );
+    const secretAccessKey = yield* loadOptionalCredential(
+      environment,
+      "ARTIFACT_SERVER_S3_SECRET_ACCESS_KEY",
+      Schema.NonEmptyString,
+    );
+    if ((accessKeyId === null) !== (secretAccessKey === null)) {
+      return yield* new RuntimeConfigurationError({
+        field: "ARTIFACT_SERVER_S3_ACCESS_KEY_ID",
+        message: "The S3 access key ID and secret access key must be configured together.",
+        reason: "incomplete_configuration",
+      });
+    }
+    const endpoint = environment["ARTIFACT_SERVER_S3_ENDPOINT"];
+    const staticCredentials = accessKeyId === null || secretAccessKey === null
+      ? {}
+      : {
+        accessKeyId: Redacted.value(accessKeyId.value),
+        secretAccessKey: secretAccessKey.value,
+      };
+    const configuredEndpoint = endpoint === undefined
+      ? {}
+      : {
+        endpoint: yield* parseRequiredEnvironment(
+          "ARTIFACT_SERVER_S3_ENDPOINT",
+          endpoint,
+          urlStringSchema,
+        ),
+      };
+    const config: S3ObjectStorageProviderConfig = {
+      bucket: yield* parseRequiredEnvironment(
+        "ARTIFACT_SERVER_S3_BUCKET",
+        environment["ARTIFACT_SERVER_S3_BUCKET"],
+        Schema.String.check(Schema.isMinLength(3)),
+      ),
+      forcePathStyle: forcePathStyle === "true",
+      region: yield* parseRequiredEnvironment(
+        "ARTIFACT_SERVER_S3_REGION",
+        environment["ARTIFACT_SERVER_S3_REGION"],
+        Schema.NonEmptyString,
+      ),
+      ...staticCredentials,
+      ...configuredEndpoint,
+    };
+    if (config.endpoint !== undefined) {
+      yield* assertHttpServiceUrl(
+        "ARTIFACT_SERVER_S3_ENDPOINT",
+        config.endpoint,
+      );
+    }
+    return {
+      accessKeySource: accessKeyId?.source ?? "provider_chain",
+      factory: createS3ObjectStorageProviderFactory(config),
+      secretSource: secretAccessKey?.source ?? "provider_chain",
+    };
+  },
+);
 
 /** Render the safe, stable subset of one parsed runtime configuration. */
 export function summarizeRuntimeConfiguration(
@@ -613,6 +698,28 @@ function assertHttpServiceUrl(
     return invalidValue(
       field,
       `${field} must use HTTP or HTTPS and cannot contain credentials.`,
+    );
+  }
+  return Effect.void;
+}
+
+function assertHttpsServiceUrl(
+  field: string,
+  value: string,
+): Effect.Effect<void, RuntimeConfigurationError> {
+  let serviceUrl: URL;
+  try {
+    serviceUrl = new URL(value);
+  } catch {
+    return invalidValue(field, `${field} must be a valid HTTPS URL.`);
+  }
+  if (
+    serviceUrl.protocol !== "https:" ||
+    serviceUrl.username !== "" || serviceUrl.password !== ""
+  ) {
+    return invalidValue(
+      field,
+      `${field} must use HTTPS and cannot contain credentials.`,
     );
   }
   return Effect.void;

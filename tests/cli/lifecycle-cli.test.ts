@@ -246,15 +246,68 @@ describe("Artifact Server lifecycle CLI", () => {
           objectStorageSecret: "provider_chain",
         });
       expect(providerChain.objectStorage).not.toHaveProperty("accessKeyId");
+      const gcs = await Effect.runPromise(
+        parseExternalStorageRuntimeConfiguration({
+          environment: {
+            ...externalConfigurationEnvironment(),
+            ARTIFACT_SERVER_GCS_BUCKET: "artifact-server-qualification",
+            ARTIFACT_SERVER_GCS_PROJECT_ID: "artifact-server-qualification",
+            ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER: "gcs",
+          },
+          hostname: "127.0.0.1",
+          port: "8787",
+        }),
+      );
+      expect(summarizeRuntimeConfiguration(gcs)).toMatchObject({
+        credentialSources: {
+          objectStorageAccessKey: "provider_chain",
+          objectStorageSecret: "provider_chain",
+        },
+        objectStorageProvider: "gcs",
+      });
+      const azureBlob = await Effect.runPromise(
+        parseExternalStorageRuntimeConfiguration({
+          environment: {
+            ...externalConfigurationEnvironment(),
+            ARTIFACT_SERVER_AZURE_BLOB_ACCOUNT_URL:
+              "https://artifactserver.blob.core.windows.net",
+            ARTIFACT_SERVER_AZURE_BLOB_CONTAINER: "artifacts",
+            ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER: "azure-blob",
+          },
+          hostname: "127.0.0.1",
+          port: "8787",
+        }),
+      );
+      expect(summarizeRuntimeConfiguration(azureBlob)).toMatchObject({
+        credentialSources: {
+          objectStorageAccessKey: "provider_chain",
+          objectStorageSecret: "provider_chain",
+        },
+        objectStorageProvider: "azure-blob",
+      });
       await expect(Effect.runPromise(parseExternalStorageRuntimeConfiguration({
         environment: {
           ...externalConfigurationEnvironment(),
-          ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER: "gcs",
+          ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER: "r2",
         },
         hostname: "127.0.0.1",
         port: "8787",
       }))).rejects.toMatchObject({
         field: "ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER",
+        reason: "invalid_value",
+      });
+      await expect(Effect.runPromise(parseExternalStorageRuntimeConfiguration({
+        environment: {
+          ...externalConfigurationEnvironment(),
+          ARTIFACT_SERVER_AZURE_BLOB_ACCOUNT_URL:
+            "http://artifactserver.blob.core.windows.net",
+          ARTIFACT_SERVER_AZURE_BLOB_CONTAINER: "artifacts",
+          ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER: "azure-blob",
+        },
+        hostname: "127.0.0.1",
+        port: "8787",
+      }))).rejects.toMatchObject({
+        field: "ARTIFACT_SERVER_AZURE_BLOB_ACCOUNT_URL",
         reason: "invalid_value",
       });
       await expect(Effect.runPromise(parseExternalStorageRuntimeConfiguration({
@@ -275,10 +328,6 @@ describe("Artifact Server lifecycle CLI", () => {
     const dataDirectory = path.join(parent, "data");
     const fixture = path.join(parent, "artifact.txt");
     await writeFile(fixture, "lifecycle integrity proof\n");
-    const environment = compactEnvironment({
-      ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS: "300",
-      ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS: "3000",
-    });
     try {
       const initialized = await runCli([
         "init",
@@ -289,6 +338,10 @@ describe("Artifact Server lifecycle CLI", () => {
       ]);
       expect(initialized.exitCode).toBe(0);
       const port = await availablePort();
+      const environment = compactEnvironment({
+        ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS: "300",
+        ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS: "3000",
+      });
       const server = startCli([
         "start-compact",
         "--data",

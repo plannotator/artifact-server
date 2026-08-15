@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-08-15T17:33:18Z",
+  "completedAt": "2026-08-15T17:44:59Z",
+  "target": "aws",
+  "applicationQuiescedForBackup": true,
+  "databaseSnapshot": "restored_to_clean_instance",
+  "objectStorageCopy": "restored_to_clean_bucket",
+  "objectCount": 21,
+  "restoredIntegrityCheck": "passed",
+  "productionReadinessAfterBackup": "ready",
+  "temporaryResourcesRemovedOnExit": true
+}

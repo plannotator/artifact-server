@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-08-15T16:51:32Z",
+  "completedAt": "2026-08-15T16:53:24Z",
+  "target": "aws",
+  "provider": "s3",
+  "outage": {
+    "readinessStatus": 503,
+    "componentStatus": "unavailable"
+  },
+  "recovery": {
+    "readinessStatus": 200,
+    "componentStatus": "ready"
+  }
+}

@@ -8,6 +8,7 @@ import {
 import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
 import path from "node:path";
+import {z} from "zod";
 
 import {
   createTestInstallation,
@@ -151,6 +152,44 @@ describe("complete-site publishing", () => {
     expect(new URL(updated.body.links.version).origin).not.toBe(versionOrigin);
     const updatedRoot = await fetchVersion(server, updated.body.links.version);
     expect(await updatedRoot.text()).toContain("Updated site");
+  });
+
+  test("foundation: a configured public origin owns every application URL behind a TLS-terminating proxy", async () => {
+    await server.stop();
+    server = await startTestServer(installation, {
+      applicationOrigin: "https://artifacts.example.test",
+    });
+    const file = siteFixture().find(({path: filePath}) => filePath === "index.html");
+    if (file === undefined) throw new Error("The site fixture has no entry file.");
+    const response = await fetch(`${server.baseUrl}/api/v1/uploads`, {
+      body: JSON.stringify({
+        entryPath: file.path,
+        files: [{
+          mediaType: file.mediaType,
+          path: file.path,
+          sha256: createHash("sha256").update(file.bytes).digest("hex"),
+          size: file.bytes.byteLength,
+        }],
+      }),
+      headers: {
+        Authorization: `Bearer ${installation.apiToken}`,
+        "Content-Type": "application/json",
+        Host: "artifacts.example.test",
+        "X-Forwarded-Host": "artifacts.example.test",
+        "X-Forwarded-Proto": "https",
+      },
+      method: "POST",
+    });
+    const plan = z.object({
+      commitUrl: z.url(),
+      files: z.array(z.object({uploadUrl: z.url()})),
+    }).parse(await response.json());
+
+    expect(response.status).toBe(201);
+    expect(new URL(plan.commitUrl).origin)
+      .toBe("https://artifacts.example.test");
+    expect(plan.files.map(({uploadUrl}) => new URL(uploadUrl).origin))
+      .toEqual(["https://artifacts.example.test"]);
   });
 
   test("PUB-001-B PUB-003-B: a staged site resumes after restart and commits only after every file is verified", async () => {

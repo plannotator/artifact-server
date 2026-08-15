@@ -47,6 +47,7 @@ export async function removeTestInstallation(
 export async function startTestServer(
   installation: TestInstallation,
   options: {
+    readonly applicationOrigin?: string;
     readonly bootstrapAdministratorEmail?: string;
     readonly apiOAuthResource?: ApiOAuthResourceConfiguration;
     readonly clock?: Clock;
@@ -71,6 +72,9 @@ export async function startTestServer(
     port: 0,
   };
   let config: LocalServerConfig = baseConfig;
+  if (options.applicationOrigin !== undefined) {
+    config = {...config, applicationOrigin: options.applicationOrigin};
+  }
   if (options.clock !== undefined) {
     config = {...config, clock: options.clock};
   }

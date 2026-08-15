@@ -761,7 +761,7 @@ export function createHttpApp(
       ),
     );
     return context.json(artifactPageResponse(
-      new URL(context.req.url),
+      responseApplicationUrl(context, dependencies),
       page,
     ));
   });
@@ -779,7 +779,7 @@ export function createHttpApp(
       ),
     );
     return context.json(artifactDetailsResponse(
-      new URL(context.req.url),
+      responseApplicationUrl(context, dependencies),
       dependencies.contentDomain,
       details,
     ));
@@ -797,7 +797,7 @@ export function createHttpApp(
         })
       ),
     );
-    const requestUrl = new URL(context.req.url);
+    const requestUrl = responseApplicationUrl(context, dependencies);
     return context.json({
       artifactId: context.req.param("artifactId"),
       versions: versions.map((version) => versionResponse(
@@ -842,7 +842,7 @@ export function createHttpApp(
         ),
       );
       return context.json(artifactVersionResponse(
-        new URL(context.req.url),
+        responseApplicationUrl(context, dependencies),
         dependencies.contentDomain,
         saved,
       ));
@@ -865,7 +865,7 @@ export function createHttpApp(
       ),
     );
     return context.json(comparisonResponse(
-      new URL(context.req.url),
+      responseApplicationUrl(context, dependencies),
       dependencies.contentDomain,
       comparison,
     ));
@@ -893,7 +893,7 @@ export function createHttpApp(
         ),
       );
       return context.json(artifactStateResponse(
-        new URL(context.req.url),
+        responseApplicationUrl(context, dependencies),
         dependencies.contentDomain,
         state,
       ));
@@ -923,7 +923,7 @@ export function createHttpApp(
       );
       return context.json({
         ...artifactStateResponse(
-          new URL(context.req.url),
+          responseApplicationUrl(context, dependencies),
           dependencies.contentDomain,
           state,
         ),
@@ -956,7 +956,7 @@ export function createHttpApp(
         ),
       );
       return context.json(artifactStateResponse(
-        new URL(context.req.url),
+        responseApplicationUrl(context, dependencies),
         dependencies.contentDomain,
         state,
       ));
@@ -1011,7 +1011,7 @@ export function createHttpApp(
         })
       ),
     );
-    const requestUrl = new URL(context.req.url);
+    const requestUrl = responseApplicationUrl(context, dependencies);
     const projectQuery = `?projectId=${encodeURIComponent(upload.projectId)}`;
     return context.json({
       commitUrl: new URL(
@@ -1084,7 +1084,7 @@ export function createHttpApp(
       );
       return context.json(
         publishResponse(
-          new URL(context.req.url),
+          responseApplicationUrl(context, dependencies),
           dependencies.contentDomain,
           result,
         ),
@@ -1108,7 +1108,7 @@ export function createHttpApp(
     );
     return context.json({
       bootstrapUrl: contentBootstrapBrowserUrl(
-        new URL(context.req.url),
+        responseApplicationUrl(context, dependencies),
         dependencies.contentDomain,
         issued.contentToken,
         Redacted.value(issued.token),
@@ -1138,7 +1138,7 @@ export function createHttpApp(
       );
       return context.json({
         bootstrapUrl: contentBootstrapBrowserUrl(
-          new URL(context.req.url),
+          responseApplicationUrl(context, dependencies),
           dependencies.contentDomain,
           issued.contentToken,
           Redacted.value(issued.token),
@@ -1158,7 +1158,7 @@ export function createHttpApp(
       ),
     );
     const versionUrl = versionBrowserUrl(
-      new URL(context.req.url),
+      responseApplicationUrl(context, dependencies),
       dependencies.contentDomain,
       current.version.contentToken,
     );
@@ -1303,6 +1303,27 @@ function usesSecureApplicationCookies(
 ): boolean {
   return dependencies.trustedApplicationOrigin !== null &&
     new URL(dependencies.trustedApplicationOrigin).protocol === "https:";
+}
+
+function responseApplicationUrl(
+  context: Context<HttpEnvironment>,
+  dependencies: HttpAppDependencies,
+): URL {
+  const requestUrl = new URL(context.req.url);
+  if (dependencies.trustedApplicationOrigin === null) return requestUrl;
+  const trustedUrl = new URL(dependencies.trustedApplicationOrigin);
+  const forwardedProtocol = context.req.header("x-forwarded-proto")
+    ?.split(",")[0]?.trim();
+  const forwardedHost = context.req.header("x-forwarded-host")
+    ?.split(",")[0]?.trim() ?? context.req.header("host");
+  if (
+    `${forwardedProtocol}:` === trustedUrl.protocol &&
+    forwardedHost?.toLocaleLowerCase("en-US") ===
+      trustedUrl.host.toLocaleLowerCase("en-US")
+  ) {
+    return trustedUrl;
+  }
+  return requestUrl;
 }
 
 function requireBrowserMutationSecurity(

@@ -1,0 +1,7 @@
+name: artifact-server-gcp
+description: Direct GCP deployment for Artifact Server using Cloud Run, Cloud SQL PostgreSQL, and Google Cloud Storage.
+runtime:
+  name: nodejs
+  options:
+    packagemanager: pnpm
+main: index.ts

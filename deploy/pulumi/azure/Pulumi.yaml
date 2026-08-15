@@ -1,0 +1,7 @@
+name: artifact-server-azure
+description: Direct Azure deployment for Artifact Server using Container Apps, PostgreSQL Flexible Server, and Blob Storage.
+runtime:
+  name: nodejs
+  options:
+    packagemanager: pnpm
+main: index.ts

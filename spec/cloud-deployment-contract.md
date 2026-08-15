@@ -1,8 +1,8 @@
 # Cloud deployment contract
 
-Status: shared executable contract implemented; AWS provider package implemented
-locally and awaiting real-cloud release qualification; other provider packages
-remain in progress
+Status: shared executable contract and AWS, GCP, and Azure provider packages
+implemented; every target remains gated by its own unfinished real-cloud release
+qualification
 
 This document is the handoff boundary for the Cloudflare, AWS, GCP, and Azure
 deployment work. It says exactly what every package receives, what it creates,
@@ -24,7 +24,8 @@ or shared storage ports.
 
 ## Executable contract
 
-The provider-neutral TypeScript boundary lives in `src/deployment/index.ts`.
+The provider-neutral TypeScript boundary lives in
+`src/deployment/cloud-deployment-contract.ts`.
 It is ordinary library code, not a deployment wrapper. Each Pulumi or Alchemy
 project passes its native configuration object into `parseCloudDeploymentInput`
 before defining provider resources. After an apply, the provider package's
@@ -90,6 +91,7 @@ Each major-cloud stack additionally receives:
 | `stateBackendUrl` | yes | Existing Pulumi Cloud organization or existing `s3://`, `gs://`, or `azblob://` backend selected with `pulumi login` |
 | `secretsProvider` | yes | Pulumi Cloud default or customer KMS, Key Vault, Cloud KMS, Vault, or protected passphrase provider |
 | `stackName` | yes | Stable Pulumi stack name, normally the environment name |
+| `tlsCertificateSecretId` | Azure public ingress only | Complete, versionless Key Vault secret resource ID for one PFX certificate covering the exact application domain and wildcard content domain |
 
 The main stack does not create its own state backend. Customer-owned state is
 an explicit prerequisite because a stack cannot recoverably manage the bucket
@@ -141,8 +143,8 @@ stack.
 
 ### GCP
 
-- `existingNetwork`, when supplied, contains a VPC name, connector or direct
-  VPC-egress configuration, and the private service connection required by
+- `existingNetwork`, when supplied, contains a VPC name, direct VPC-egress
+  subnetwork, and the private service connection required by
   Cloud SQL.
 - Without it, the package creates those network resources in the selected
   project and region.
@@ -164,6 +166,12 @@ stack.
 - The Container App managed identity receives only its blob container,
   required Key Vault secrets, database connectivity, and telemetry
   permissions. It receives no client secret or storage account key.
+- The first package supports public ingress and rejects private ingress until
+  that path is qualified. Azure Front Door cannot issue a managed wildcard
+  certificate. `tlsCertificateSecretId` therefore points to an existing Key
+  Vault PFX certificate covering both the exact application host and wildcard
+  content host. That certificate is bound at Front Door and Container Apps so
+  the original host is preserved through the edge.
 
 ## Runtime configuration the package must produce
 
@@ -196,9 +204,9 @@ Provider storage configuration is adapter-specific:
 | Azure Blob | `ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER=azure-blob`, `ARTIFACT_SERVER_AZURE_BLOB_ACCOUNT_URL`, and `ARTIFACT_SERVER_AZURE_BLOB_CONTAINER` | Container App managed identity through the default Azure credential chain; no client secret or storage account key |
 | R2 Worker binding | `ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER=r2` and the typed `ARTIFACT_SERVER_R2_BUCKET` Worker binding | Cloudflare binding; no S3 or account key in the Worker |
 
-The GCS, Azure Blob, and R2 names become executable configuration only when
-their adapters ship. This table fixes the boundary now so their implementation
-does not change the server core.
+The GCS and Azure Blob names are executable configuration in the Node runtime.
+The R2 binding is executable only in the separate Cloudflare Worker runtime.
+All adapters implement the same provider-neutral server contract.
 
 ## Required stack outputs
 

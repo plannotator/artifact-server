@@ -2157,7 +2157,7 @@ requirements:
       behavior: {id: DEP-009-B, description: Create, upgrade, roll back, recover state, back up, restore, and delete the GCP target with native GCS and private-network options.}
       failure: {id: DEP-009-F, description: The supported path cannot depend on an S3 compatibility shim, lose durable state during replacement, or require Pulumi Cloud.}
     deployments: [gcp]
-    status: specified
+    status: implementing
     depends_on: [DEP-003, DEP-021, OPS-003]
     evidence: []
 
@@ -2170,7 +2170,7 @@ requirements:
       behavior: {id: DEP-010-B, description: Create, upgrade, roll back, recover state, back up, restore, and delete the Azure target with native Blob Storage and private-network options.}
       failure: {id: DEP-010-F, description: The supported path cannot depend on an S3 compatibility shim, lose durable state during replacement, or require Pulumi Cloud.}
     deployments: [azure]
-    status: specified
+    status: implementing
     depends_on: [DEP-003, DEP-021, OPS-003]
     evidence: []
 

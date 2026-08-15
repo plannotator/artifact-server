@@ -70,6 +70,13 @@ export async function defineAwsStack(
     length: 32,
     special: false,
   });
+  const finalSnapshotSuffix = new random.RandomString(`${name}-final-snapshot`, {
+    length: 8,
+    lower: true,
+    numeric: true,
+    special: false,
+    upper: false,
+  });
   const artifactBucket = new aws.s3.Bucket(`${name}-artifacts`, {
     bucketPrefix: `${physicalName}-artifacts-`,
     forceDestroy: false,
@@ -211,7 +218,8 @@ export async function defineAwsStack(
     enabledCloudwatchLogsExports: ["postgresql", "upgrade"],
     engine: "postgres",
     engineVersion: postgresEngineVersion,
-    finalSnapshotIdentifier: `${physicalName}-final-snapshot`,
+    finalSnapshotIdentifier:
+      pulumi.interpolate`${physicalName}-final-${finalSnapshotSuffix.result}`,
     identifier: `${physicalName}-database`,
     instanceClass: plan.database.instanceClass,
     maintenanceWindow: "sun:05:00-sun:06:00",
@@ -252,7 +260,7 @@ export async function defineAwsStack(
     database.endpoint,
     databasePassword.result,
   ]).apply(([endpoint, password]) =>
-    `postgresql://${databaseUsername}:${encodeURIComponent(password)}@${endpoint}/${databaseName}?sslmode=require`
+    `postgresql://${databaseUsername}:${encodeURIComponent(password)}@${endpoint}/${databaseName}?sslmode=verify-full`
   ));
   const databaseUrlSecretVersion = new aws.secretsmanager.SecretVersion(
     `${name}-database-url`,
@@ -625,6 +633,10 @@ function runtimeEnvironment(
     {name: "ARTIFACT_SERVER_S3_FORCE_PATH_STYLE", value: "false"},
     {name: "ARTIFACT_SERVER_S3_REGION", value: input.region},
     {name: "ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS", value: "10000"},
+    {
+      name: "NODE_EXTRA_CA_CERTS",
+      value: "/usr/local/share/ca-certificates/aws-rds-global-bundle.pem",
+    },
     {name: "NODE_ENV", value: "production"},
   ];
   if (input.otlpEndpoint !== undefined) {

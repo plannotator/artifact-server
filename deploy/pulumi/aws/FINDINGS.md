@@ -29,11 +29,40 @@ Pulumi's Node language host emitted a Node.js `fs.Stats` deprecation warning.
 It did not affect the preview and originates outside this repository. Keep it in
 the upgrade watch list; do not suppress it in application code.
 
-## Not yet qualified
+## 2026-08-15 real public deployment qualification
 
-No AWS resource has been created by this work. `DEP-008` remains implementing,
-not verified. Release qualification still requires an isolated real deployment
-and the lifecycle gates in the README: repeated apply, application behavior,
-scale, upgrade, rollback, provider outage, state recovery, backup, restore,
-private ingress, performance, safe destroy, and separately confirmed permanent
-deletion.
+The corrected image and 70-resource public stack ran in the isolated
+`aws-qualification` stack in `us-east-1`. The following real-cloud checks passed:
+
+- clean apply and a no-change repeat preview;
+- file and complete-site publication, two immutable versions, public delivery,
+  private access enforcement, MCP discovery, and unauthenticated MCP rejection;
+- one and two ECS tasks with bounded 1/10/25/50/100-user reads;
+- S3 outage detection through readiness and recovery after access returned;
+- deletion of the local Pulumi checkpoint, exact import from the versioned S3
+  backend, stable identity for all 70 resources, and a no-change preview;
+- coordinated quiescing, an RDS snapshot, an object copy, restore into a clean
+  RDS instance and bucket, integrity verification for 21 objects, and cleanup
+  of all temporary restore resources.
+
+The secret-free records are in `evidence/aws-deployment-product.json`,
+`evidence/aws-deployment-horizontal.json`, `evidence/aws-provider-outage.json`,
+`evidence/aws-state-recovery.json`, and `evidence/aws-coordinated-restore.json`.
+
+`DEP-008` remains implementing, not verified. Private ingress, workload-identity
+and secret rotation, explicit application upgrade and rollback, safe destroy,
+and separately confirmed permanent deletion still require evidence.
+
+## 2026-08-15 first real apply finding
+
+The first isolated apply created the network, RDS, S3, IAM, TLS, DNS, and ECS
+resources, but the application task failed before migration. A diagnostic task
+proved the exact failure was `SELF_SIGNED_CERT_IN_CHAIN`: the slim Node.js image
+did not include Amazon's RDS CA roots. The connection reached RDS and did not
+fail on DNS, routing, credentials, or security groups.
+
+The release image now adds Amazon's official global RDS CA bundle by HTTPS with
+an exact SHA-256 checksum. Only the AWS deployment enables it through
+`NODE_EXTRA_CA_CERTS`, and the generated database URL explicitly requests
+`sslmode=verify-full`. The corrected image subsequently passed the real-cloud
+checks recorded above; this entry preserves the failed attempt and its cause.

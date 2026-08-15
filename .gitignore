@@ -12,3 +12,5 @@ performance/results/
 *.db-wal
 *.log
 .DS_Store
+deploy/pulumi/*/Pulumi.*.yaml
+!deploy/pulumi/*/Pulumi.*.example.yaml

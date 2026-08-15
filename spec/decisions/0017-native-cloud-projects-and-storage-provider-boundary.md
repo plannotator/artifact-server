@@ -33,7 +33,9 @@ operations, readiness, and shutdown. The runtime, lifecycle inspection, and
 integrity scanner do not construct a provider SDK client. AWS SDK types stay in
 the S3 adapter. Native GCS and Azure Blob adapters can therefore be added by
 implementing the same factory without changing artifact, HTTP, MCP,
-authorization, or external-runtime code.
+authorization, or external-runtime code. The native GCS and Azure Blob
+factories now implement that boundary and the same runtime selects them from
+deployment configuration.
 
 ## Default managed-cloud topologies
 

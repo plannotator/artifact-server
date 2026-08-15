@@ -86,10 +86,10 @@ The remaining product work is:
 
 1. Release validation for the implemented locality-aware `publish-artifact`
    Agent Skill in current supported clients.
-2. The executable shared cloud contract and one-installation Cloudflare target.
+2. Complete and qualify the separately developed one-installation Cloudflare target.
 3. Optional private Git history, including local and Cloudflare providers.
-4. Direct Pulumi projects for AWS, GCP, and Azure plus native GCS and Azure
-   Blob adapters.
+4. Real-cloud lifecycle qualification for the implemented AWS, GCP, and Azure
+   Pulumi projects. Native S3, GCS, and Azure Blob adapters are implemented.
 5. The optional `operate-artifact-server` skill after its deployment commands
    are stable.
 6. SPA fallback routing, ownership changes, expired-staging cleanup, and
@@ -298,9 +298,22 @@ ECS Fargate, RDS PostgreSQL, S3, Secrets Manager, workload identity, networking,
 DNS, TLS, CloudWatch logs, and autoscaling. It does not create EKS.
 
 Follow its README for state, configuration, preview, deployment, verification,
-and safe deletion requirements. The current resource graph is implemented and
-tested locally. AWS remains release-unqualified until the documented real-cloud
-lifecycle and recovery gates pass.
+and safe deletion requirements. The resource graph and public stack have run in
+a real AWS account. Publication, MCP discovery, horizontal scaling, bounded
+1/10/25/50/100-user reads, S3 outage and recovery, Pulumi state recovery, and a
+coordinated clean database/object restore have passed. AWS remains
+release-unqualified until the remaining private-ingress, rotation, upgrade,
+rollback, safe-destroy, and permanent-deletion gates pass.
+
+## Deploy the GCP or Azure stack
+
+The direct projects in [`deploy/pulumi/gcp`](./deploy/pulumi/gcp) and
+[`deploy/pulumi/azure`](./deploy/pulumi/azure) create the documented managed
+runtime, private PostgreSQL database, native object store, workload identity,
+secrets, network, DNS, TLS, logs, and support outputs. Their resource graphs and
+native storage adapters pass local integration gates. Follow each project
+README for prerequisites. Neither target is called supported until its own
+disposable cloud environment passes the full lifecycle and recovery gate.
 
 ## Run from the source checkout
 

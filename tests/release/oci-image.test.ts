@@ -381,6 +381,8 @@ async function verifyArchitectureRuntime(input: {
         "test ! -e node_modules/tsx",
         "test ! -e node_modules/vitest",
         "test ! -e node_modules/oxlint",
+        "test -r /usr/local/share/ca-certificates/aws-rds-global-bundle.pem",
+        "test \"$(stat -c %a /usr/local/share/ca-certificates/aws-rds-global-bundle.pem)\" = 444",
         "mount_options=$(awk '$2 == \"/\" {print $4}' /proc/mounts)",
         "case \"$mount_options\" in *ro*) ;; *) exit 42 ;; esac",
         "touch /tmp/runtime-write-proof",

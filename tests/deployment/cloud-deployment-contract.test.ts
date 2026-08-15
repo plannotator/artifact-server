@@ -307,6 +307,7 @@ function azureInput(): CloudDeploymentDocument {
     stackName: "production",
     stateBackendUrl: "azblob://artifact-server-pulumi-state/azure-production",
     target: "azure",
+    tlsCertificateSecretId: "/subscriptions/example/resourceGroups/shared/providers/Microsoft.KeyVault/vaults/certificates/secrets/artifact-server-edge",
   });
 }
 

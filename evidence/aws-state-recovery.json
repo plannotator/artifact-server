@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-08-15T17:54:26Z",
+  "completedAt": "2026-08-15T17:54:40Z",
+  "target": "aws",
+  "stateBackend": "s3",
+  "backendVersioning": "enabled",
+  "resourceCount": 70,
+  "resourceIdentityChecksum": "953261fb9c3edd85b411188a7fca6efe1352095920c6f255ba4cc434eb2c29b9",
+  "exactStateImport": "passed",
+  "postImportPreview": "no_changes"
+}

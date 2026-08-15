@@ -199,6 +199,7 @@ export const AzureCloudDeploymentInput = Schema.Struct({
   ...pulumiInputFields,
   existingNetwork: Schema.optionalKey(AzureExistingNetwork),
   target: Schema.Literal("azure"),
+  tlsCertificateSecretId: Schema.optionalKey(providerResourceIdentifier),
 });
 export interface AzureCloudDeploymentInput extends Schema.Schema.Type<
   typeof AzureCloudDeploymentInput
@@ -277,6 +278,15 @@ export const CloudDeploymentInput = uncheckedCloudDeploymentInput.check(
       issues.push({
         issue: "private AWS ingress requires an existing ACM certificate",
         path: ["tlsCertificateArn"],
+      });
+    }
+    if (
+      input.target === "azure" && input.ingress === "public" &&
+      input.tlsCertificateSecretId === undefined
+    ) {
+      issues.push({
+        issue: "public Azure ingress requires an existing Key Vault wildcard certificate secret",
+        path: ["tlsCertificateSecretId"],
       });
     }
     if (

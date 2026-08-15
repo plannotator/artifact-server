@@ -61,6 +61,11 @@ Each Fargate task applies compatible database migrations under the shared
 Postgres advisory lock before it opens the server. The ECS deployment circuit
 breaker rolls back tasks that never become ready.
 
+AWS tasks verify the RDS server certificate with Amazon's global RDS CA bundle.
+The release image pins the exact bundle bytes, and the AWS task enables that
+bundle through `NODE_EXTRA_CA_CERTS`. Database URLs require `verify-full`, so a
+connection with an untrusted certificate or wrong hostname fails closed.
+
 The output is the shared, secret-free deployment record. Application secrets
 remain in Secrets Manager. ECS injects them into the process without storing
 their values in the task definition or stack outputs. The Fargate task receives

@@ -339,10 +339,10 @@ state recovery. A team may explicitly choose Pulumi Cloud instead.
 | --- | --- | --- | --- |
 | Runtime | ECS Fargate | Cloud Run | Container Apps |
 | Database | RDS PostgreSQL | Cloud SQL for PostgreSQL | Azure Database for PostgreSQL Flexible Server |
-| Files | S3 adapter already implemented | New native GCS adapter | New native Azure Blob adapter |
+| Files | Native S3 adapter | Native GCS adapter | Native Azure Blob adapter |
 | Workload identity | IAM task role | Service account | Managed identity |
 | Secrets | Secrets Manager or SSM | Secret Manager | Key Vault |
-| HTTPS and wildcard content | Route 53, ACM, and provider ingress/CDN | Cloud DNS, Certificate Manager, and external HTTPS load balancer | Azure DNS, managed certificate, and Front Door or equivalent ingress |
+| HTTPS and wildcard content | Route 53, ACM, and provider ingress/CDN | Cloud DNS, Certificate Manager, and external HTTPS load balancer | Azure DNS, a customer Key Vault wildcard certificate, Container Apps, and Front Door |
 | Logs and OTLP | CloudWatch plus OTLP option | Cloud Logging plus OTLP option | Azure Monitor plus OTLP option |
 | State backend | S3 | GCS | Azure Blob Storage |
 
