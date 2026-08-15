@@ -43,15 +43,27 @@ The corrected image and 70-resource public stack ran in the isolated
   backend, stable identity for all 70 resources, and a no-change preview;
 - coordinated quiescing, an RDS snapshot, an object copy, restore into a clean
   RDS instance and bucket, integrity verification for 21 objects, and cleanup
-  of all temporary restore resources.
+  of all temporary restore resources;
+- an application-image upgrade and rollback with stable installation,
+  database, and object-store identities, plus the complete product probe after
+  each rollout; and
+- API credential rotation and restoration, rejection of the superseded
+  credential, ECS task replacement, and publication through the replacement
+  task's workload identity.
 
 The secret-free records are in `evidence/aws-deployment-product.json`,
 `evidence/aws-deployment-horizontal.json`, `evidence/aws-provider-outage.json`,
-`evidence/aws-state-recovery.json`, and `evidence/aws-coordinated-restore.json`.
+`evidence/aws-state-recovery.json`, `evidence/aws-coordinated-restore.json`,
+`evidence/aws-upgrade-rollback.json`, and `evidence/aws-secret-rotation.json`.
 
-`DEP-008` remains implementing, not verified. Private ingress, workload-identity
-and secret rotation, explicit application upgrade and rollback, safe destroy,
+`DEP-008` remains implementing, not verified. Private ingress, safe destroy,
 and separately confirmed permanent deletion still require evidence.
+
+The first upgrade attempt also proved why the release image must stay
+multi-architecture. An amd64-only candidate was rejected by the ARM64 Fargate
+task before it could replace the healthy task. The corrected amd64/arm64 image
+then passed. This is a packaging failure result, not an application rollback
+failure.
 
 ## 2026-08-15 first real apply finding
 

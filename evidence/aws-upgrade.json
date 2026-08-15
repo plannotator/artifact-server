@@ -1,0 +1,77 @@
+{
+  "applicationOrigin": "https://aws-qualification.reala2a.org",
+  "artifact": {
+    "id": "art_fbcedca7-d505-44ae-ba48-71f7545d7005",
+    "versionIds": [
+      "ver_c2ae500f-c0c1-49b3-b27f-95e49cb77e10",
+      "ver_10511ef2-e073-4c51-a136-e2047c23596d"
+    ],
+    "versionOrigins": [
+      "https://fb8924900ed8a20832d55ee9d14e9ce6e1e8.aws-qualification-content.contextmix.com",
+      "https://6753214e42688f892ea3ded62bdc17e4dced.aws-qualification-content.contextmix.com"
+    ]
+  },
+  "completedAt": "2026-08-15T18:42:17.273Z",
+  "mcp": {
+    "discoveryStatus": 200,
+    "unauthenticatedStatus": 401
+  },
+  "performance": [
+    {
+      "concurrentUsers": 1,
+      "maximumMilliseconds": 108.45,
+      "medianMilliseconds": 108.45,
+      "requests": 1,
+      "wallMilliseconds": 108.62
+    },
+    {
+      "concurrentUsers": 10,
+      "maximumMilliseconds": 466.33,
+      "medianMilliseconds": 408.79,
+      "requests": 10,
+      "wallMilliseconds": 470.85
+    },
+    {
+      "concurrentUsers": 25,
+      "maximumMilliseconds": 904.96,
+      "medianMilliseconds": 699.29,
+      "requests": 25,
+      "wallMilliseconds": 905.03
+    },
+    {
+      "concurrentUsers": 50,
+      "maximumMilliseconds": 1130.01,
+      "medianMilliseconds": 690.66,
+      "requests": 50,
+      "wallMilliseconds": 1136.85
+    },
+    {
+      "concurrentUsers": 100,
+      "maximumMilliseconds": 2644.4,
+      "medianMilliseconds": 1062.59,
+      "requests": 100,
+      "wallMilliseconds": 2662.26
+    }
+  ],
+  "readiness": {
+    "components": {
+      "configuration": {
+        "status": "ready"
+      },
+      "database": {
+        "status": "ready"
+      },
+      "migrations": {
+        "status": "ready"
+      },
+      "objectStorage": {
+        "status": "ready"
+      }
+    },
+    "lifecycle": "ready",
+    "status": "ready"
+  },
+  "schemaVersion": 1,
+  "startedAt": "2026-08-15T18:42:06.554Z",
+  "target": "aws"
+}

@@ -302,8 +302,9 @@ and safe deletion requirements. The resource graph and public stack have run in
 a real AWS account. Publication, MCP discovery, horizontal scaling, bounded
 1/10/25/50/100-user reads, S3 outage and recovery, Pulumi state recovery, and a
 coordinated clean database/object restore have passed. AWS remains
-release-unqualified until the remaining private-ingress, rotation, upgrade,
-rollback, safe-destroy, and permanent-deletion gates pass.
+release-unqualified until the remaining private-ingress, safe-destroy, and
+permanent-deletion gates pass. Real image upgrade/rollback, API credential
+rotation, ECS task replacement, and role-based publication have passed.
 
 ## Deploy the GCP or Azure stack
 

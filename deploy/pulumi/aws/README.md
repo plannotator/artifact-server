@@ -134,3 +134,13 @@ release evidence. AWS support remains unqualified until clean and repeated
 apply, runtime behavior, scaling, upgrade, rollback, outage, state recovery,
 backup, restore, private ingress, performance, safe destroy, and separately
 confirmed permanent deletion pass in an isolated AWS account.
+
+The reusable live qualification scripts live at the repository root. Upgrade
+and rollback require a different immutable multi-architecture image digest;
+secret rotation never prints either credential:
+
+```sh
+ARTIFACT_SERVER_AWS_UPGRADE_IMAGE=repository@sha256:replace \
+  scripts/run-aws-upgrade-rollback-qualification.sh
+scripts/run-aws-secret-rotation-qualification.sh
+```
