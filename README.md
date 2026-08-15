@@ -82,13 +82,20 @@ implementation from deployment-specific release verification.
 
 The remaining product work is:
 
-1. The `publish-artifact` and optional `operate-artifact-server` Agent Skills.
-2. SPA fallback routing, ownership changes, expired-staging cleanup, permanent
-   deletion, direct signed uploads, and optional private Git history.
-3. Cloudflare Workers, D1, and R2 adapters and installer.
+1. The upload-capability path and `publish-artifact` Agent Skill.
+2. The common cloud deployment command and one-installation Cloudflare target.
+3. Optional private Git history, including local and Cloudflare providers.
 4. AWS, GCP, and Azure installers plus native GCS and Azure Blob adapters.
-5. Direct Plannotator project pairing and the review bridge after the separate
+5. The optional `operate-artifact-server` skill after its deployment commands
+   are stable.
+6. SPA fallback routing, ownership changes, expired-staging cleanup, and
+   permanent deletion.
+7. Direct Plannotator project pairing and the review bridge after the separate
    integration contract passes.
+
+The architecture, provider boundaries, implementation order, and release gates
+for the cloud, skill, and Git tracks are in
+[`phase-9-distribution-and-history.md`](./spec/phase-9-distribution-and-history.md).
 
 ## Install the direct local package
 

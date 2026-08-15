@@ -645,6 +645,19 @@ requirements:
         run: evidence/external-storage-runtime.json
         recorded_at: "2026-08-13T16:56:38Z"
 
+  - id: PUB-012
+    kind: security
+    behavior: A server-issued MCP upload plan uses short-lived, single-file capability URLs so an agent can stream local bytes without receiving or copying the MCP bearer credential.
+    owner: publishing
+    source: {file: phase-9-distribution-and-history.md, anchor: a1-resolve-the-file-upload-credential-gap}
+    acceptance:
+      behavior: {id: PUB-012-B, description: Create an upload through MCP, upload each declared file without exposing the MCP bearer credential, lose the first response, and safely retry the same exact bytes.}
+      failure: {id: PUB-012-F, description: Expired, altered, cross-principal, cross-project, cross-upload, wrong-size, and wrong-fingerprint capability use fails closed and no credential appears in logs or errors.}
+    deployments: *all
+    status: specified
+    depends_on: [PUB-001, PUB-002, PUB-003]
+    evidence: []
+
   - id: AUD-001
     kind: security
     behavior: Every publish, restore, access change, ownership change, connection change, and deletion records the responsible effective principal and human authorizer when present.

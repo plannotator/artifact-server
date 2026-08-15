@@ -304,6 +304,9 @@ filesystem. MCP does not accept raw HTML, CSS, JavaScript, Markdown, or base64
 file contents as arguments. The publishing skill or client helper uploads the
 selected bytes through the server-issued upload plan and commits the result. It
 hides upload IDs, fingerprints, manifests, and size thresholds from the user.
+Each upload address is a short-lived, single-file capability, so the helper can
+stream the selected bytes without receiving or copying the MCP bearer
+credential. An exact retry after a lost response is safe.
 
 Artifact Server ships two portable Agent Skills:
 

@@ -1885,9 +1885,10 @@
                   not required for saved versions or comparisons.
                 </p>
                 <p class="feature-note">
-                  Cloudflare deployments use Cloudflare Artifacts. Self-hosted deployments store
-                  Git repositories in the Artifact Server data folder, use a small internal Git
-                  storage service, or connect to an existing private Git server.
+                  Cloudflare deployments can use Cloudflare Artifacts when that optional provider
+                  is enabled and supported. Self-hosted deployments store Git repositories in the
+                  Artifact Server data folder, use a small internal Git storage service, or connect
+                  to an existing private Git server.
                 </p>
               </div>
             </article>
@@ -2981,6 +2982,12 @@ v12-7f3a.content.example.net</code></pre>
                   reports whether the server is local or remote, the file-count and upload-request
                   limits, the exact upload workflow, supported sharing settings, and the text-comparison bound. The same installed skill
                   therefore works with a laptop, private server, Kubernetes, or hosted service.
+                </p>
+                <p>
+                  Each returned upload address is short-lived and limited to one declared file.
+                  The publishing helper can stream that file without receiving or copying the MCP
+                  sign-in credential. An exact retry after a lost response is safe. The server still
+                  verifies the declared size and SHA-256 fingerprint before it saves a version.
                 </p>
                 <p>
                   Skills are versioned with Artifact Server releases and tested for correct

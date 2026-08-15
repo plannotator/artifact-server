@@ -307,8 +307,8 @@ Do not add prompts in the first release. Do not build new dependencies on deprec
 
 ## Direct upload flow
 
-1. `artifact_create_upload` creates a principal- and installation-bound staging record and returns an `uploadId`, expiry, request limits, and authenticated Artifact Server upload addresses.
-2. The client sends each file to its returned address with the same bearer credential used for MCP. Artifact Server writes those bytes through the deployment's local-disk, S3, R2, or compatible storage adapter. The first release does not promise multipart or storage-provider URLs.
+1. `artifact_create_upload` creates a principal- and installation-bound staging record and returns an `uploadId`, expiry, request limits, and one short-lived single-file capability address for each declared file.
+2. The client sends each file to its returned address without receiving or copying the MCP bearer credential. Each capability is bound to one principal, project, upload, storage token, declared size, fingerprint, and expiry and is limited to that upload slot. An exact retry after a lost response returns success; different bytes fail. Artifact Server writes those bytes through the deployment's local-disk, S3, R2, or compatible storage adapter. The first release does not promise multipart or storage-provider URLs.
 3. The client submits a manifest containing normalized portable relative paths, media type, byte length, SHA-256 fingerprint, entry file, and routing mode. The server rejects traversal, absolute paths, `.git` components, encoded separators, symlinks, special files, and case or Unicode collisions.
 4. `artifact_commit_upload` verifies every size and fingerprint, writes missing final blobs without overwriting an existing object, computes the canonical manifest digest, and seals the upload.
 5. In one database transaction it stores the version, manifest, idempotency result, and conditional current-version update.
