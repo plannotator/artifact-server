@@ -1,0 +1,27 @@
+{
+  "applicationDomain": "artifacts.example.com",
+  "backupRetentionDays": 7,
+  "bootstrapAdministratorEmail": "administrator@example.com",
+  "capacity": {
+    "cpu": 1,
+    "maximumInstances": 1,
+    "memoryMiB": 128,
+    "minimumInstances": 0
+  },
+  "cloudflareAccountId": "00000000000000000000000000000000",
+  "compatibilityDate": "2026-08-15",
+  "contentDomain": "artifact-content.example.net",
+  "databasePlan": "small",
+  "deletionProtection": false,
+  "environment": "development",
+  "ingress": "private",
+  "installationName": "probe-yourname",
+  "region": "global",
+  "requestLogSampleRate": 0.01,
+  "resourceTags": {
+    "purpose": "artifact-server-foundation-probe"
+  },
+  "stage": "probe-yourname",
+  "stateStore": "cloudflare",
+  "target": "cloudflare"
+}
