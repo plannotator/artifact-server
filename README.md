@@ -86,9 +86,10 @@ The remaining product work is:
 
 1. Release validation for the implemented locality-aware `publish-artifact`
    Agent Skill in current supported clients.
-2. The common cloud deployment command and one-installation Cloudflare target.
+2. The executable shared cloud contract and one-installation Cloudflare target.
 3. Optional private Git history, including local and Cloudflare providers.
-4. AWS, GCP, and Azure installers plus native GCS and Azure Blob adapters.
+4. Direct Pulumi projects for AWS, GCP, and Azure plus native GCS and Azure
+   Blob adapters.
 5. The optional `operate-artifact-server` skill after its deployment commands
    are stable.
 6. SPA fallback routing, ownership changes, expired-staging cleanup, and
@@ -99,6 +100,8 @@ The remaining product work is:
 The architecture, provider boundaries, implementation order, and release gates
 for the cloud, skill, and Git tracks are in
 [`phase-9-distribution-and-history.md`](./spec/phase-9-distribution-and-history.md).
+The bounded first assignment for a parallel Cloudflare contributor is in
+[`cloudflare-developer-onboarding.md`](./spec/cloudflare-developer-onboarding.md).
 The implemented CLI authentication and remote-publication contract is in
 [`phase-10-cli-auth-and-remote-publishing.md`](./spec/phase-10-cli-auth-and-remote-publishing.md).
 
