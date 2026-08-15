@@ -1,0 +1,262 @@
+# Cloud deployment contract
+
+Status: accepted design; provider packages not yet implemented
+
+This document is the handoff boundary for the Cloudflare, AWS, GCP, and Azure
+deployment work. It says exactly what every package receives, what it creates,
+what it gives the Artifact Server process, and what it returns to an operator.
+
+## Tool and directory ownership
+
+| Target | Operator commands | Package directory | Default topology |
+| --- | --- | --- | --- |
+| Cloudflare | `alchemy plan`, `alchemy deploy`, `alchemy destroy` | `deploy/cloudflare` | Workers, D1, R2 |
+| AWS | `pulumi preview`, `pulumi up`, `pulumi destroy` | `deploy/pulumi/aws` | ECS Fargate, RDS PostgreSQL, S3 |
+| GCP | `pulumi preview`, `pulumi up`, `pulumi destroy` | `deploy/pulumi/gcp` | Cloud Run, Cloud SQL PostgreSQL, GCS |
+| Azure | `pulumi preview`, `pulumi up`, `pulumi destroy` | `deploy/pulumi/azure` | Container Apps, PostgreSQL Flexible Server, Azure Blob |
+
+There is no `artifactserver deploy` wrapper. Provider developers own only their
+package, provider tests, and provider documentation. They do not change the
+artifact model, HTTP routes, MCP tools, authorization policy, database schema,
+or shared storage ports.
+
+## Shared operator inputs
+
+Alchemy and Pulumi use their native configuration files and secret handling,
+but every package must expose these names and meanings.
+
+| Name | Required | Type and rule |
+| --- | --- | --- |
+| `installationName` | yes | 1–40 lowercase letters, numbers, and hyphens; stable after creation |
+| `environment` | yes | `development`, `staging`, or `production` |
+| `region` | yes | One provider region supported by the selected package |
+| `imageReference` | yes for AWS/GCP/Azure | OCI image reference pinned by digest, never a floating tag |
+| `applicationDomain` | yes | Exact application host, such as `artifacts.example.com` |
+| `contentDomain` | yes | Separate registrable content domain used for version hosts, such as `artifact-content.example.net` |
+| `bootstrapAdministratorEmail` | yes | Existing administrator email; not a public sign-up address |
+| `ingress` | yes | `public` or `private` |
+| `capacity` | yes | Object with `minimumInstances`, `maximumInstances`, `cpu`, and `memoryMiB`; minimum is at least 1 in production |
+| `databasePlan` | yes | `small`, `standard`, or `high-availability`; provider mapping is pinned in that package |
+| `backupRetentionDays` | yes | Integer from 7 through 35; production minimum is 14 |
+| `deletionProtection` | yes | Must be `true` in production; a separate deliberate recovery procedure is required to disable it |
+| `existingNetwork` | no | Provider-specific existing network and subnet identifiers; if absent, the package creates its documented network |
+| `dnsZoneId` | public only | Existing authoritative zone that contains both configured domains |
+| `workosClientId` | hosted login only | Non-secret WorkOS client identifier for this environment |
+| `workosApiKeySecretRef` | hosted login only | Provider secret-manager reference, never the key value |
+| `otlpEndpoint` | no | HTTPS OTLP collector address |
+| `requestLogSampleRate` | no | Number from 0 through 1; default `0.01` |
+| `resourceTags` | no | String map merged with required Artifact Server ownership tags |
+
+The package rejects an unpinned image, equal application and content domains,
+an invalid capacity range, a public deployment without a DNS zone, and a
+production deployment without deletion protection. It performs these checks
+before a provider write.
+
+### Pulumi-only stack prerequisites
+
+Each major-cloud stack additionally receives:
+
+| Name | Required | Rule |
+| --- | --- | --- |
+| `stateBackendUrl` | yes | Existing Pulumi Cloud organization or existing `s3://`, `gs://`, or `azblob://` backend selected with `pulumi login` |
+| `secretsProvider` | yes | Pulumi Cloud default or customer KMS, Key Vault, Cloud KMS, Vault, or protected passphrase provider |
+| `stackName` | yes | Stable Pulumi stack name, normally the environment name |
+
+The main stack does not create its own state backend. Customer-owned state is
+an explicit prerequisite because a stack cannot recoverably manage the bucket
+that contains its own state. Pulumi Cloud remains optional.
+
+### Cloudflare-only stack prerequisites
+
+The Cloudflare package additionally receives:
+
+| Name | Required | Rule |
+| --- | --- | --- |
+| `stage` | yes | Stable Alchemy stage; production uses `production` |
+| `cloudflareAccountId` | yes | Target account identifier |
+| `compatibilityDate` | yes | Exact date pinned by the package release |
+| `stateStore` | yes | `cloudflare`; local state is allowed only for individual development |
+
+Alchemy and the Cloudflare compatibility date are exact package dependencies.
+Team and CI deployments use `Cloudflare.state()`; the account-level state
+Worker and its Secrets Store values remain outside any one Artifact Server
+stack.
+
+## Provider-specific configuration
+
+### AWS
+
+- `existingNetwork`, when supplied, contains `vpcId`, at least two application
+  subnet IDs, and at least two database subnet IDs across two availability
+  zones.
+- Without it, the package creates one VPC, public load-balancer subnets,
+  private ECS and database subnets across two availability zones, and the
+  documented outbound path.
+- `databasePlan` maps to one pinned RDS PostgreSQL instance class, allocated
+  storage, Multi-AZ setting, and connection limit. Production `high-availability`
+  is Multi-AZ.
+- The ECS task role receives only its S3 installation prefix, required secret
+  versions, telemetry, and health dependencies. The task receives no static AWS
+  key.
+
+### GCP
+
+- `existingNetwork`, when supplied, contains a VPC name, connector or direct
+  VPC-egress configuration, and the private service connection required by
+  Cloud SQL.
+- Without it, the package creates those network resources in the selected
+  project and region.
+- `databasePlan` maps to one pinned Cloud SQL PostgreSQL tier, storage policy,
+  regional availability setting, and connection limit.
+- The Cloud Run service account receives only its bucket prefix, required
+  secret versions, Cloud SQL connection, and telemetry permissions. It uses
+  Application Default Credentials; it receives no service-account key file.
+
+### Azure
+
+- `existingNetwork`, when supplied, contains a virtual network, Container Apps
+  infrastructure subnet, PostgreSQL delegated subnet, and private DNS zone
+  identifiers.
+- Without it, the package creates those resources in one resource group and
+  region.
+- `databasePlan` maps to one pinned PostgreSQL Flexible Server SKU, storage
+  policy, zone-redundancy setting, and connection limit.
+- The Container App managed identity receives only its blob container,
+  required Key Vault secrets, database connectivity, and telemetry
+  permissions. It receives no client secret or storage account key.
+
+## Runtime configuration the package must produce
+
+Every package supplies the running application with the common values below.
+Secrets are mounted or fetched from the provider secret manager. They are not
+plain stack outputs.
+
+| Runtime value | Source |
+| --- | --- |
+| `ARTIFACT_SERVER_INSTALLATION_ID` | Stable generated installation ID preserved by backup and restore |
+| `ARTIFACT_SERVER_ORIGIN` | `https://` plus `applicationDomain` |
+| `ARTIFACT_SERVER_CONTENT_DOMAIN` | `contentDomain` |
+| `ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL` | Shared input |
+| `ARTIFACT_SERVER_API_TOKEN_FILE` | Mounted/generated provider secret; fallback automation credential only |
+| `ARTIFACT_SERVER_DATABASE_URL_FILE` | Provider-managed PostgreSQL connection secret |
+| `ARTIFACT_SERVER_HOST` | `0.0.0.0` inside the managed runtime |
+| `ARTIFACT_SERVER_PORT` | `8787` |
+| `ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE` | Shared input or `0.01` |
+| `ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS` | `1000` unless the package proves another value |
+| `ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS` | `10000` unless the package proves another value |
+
+Provider storage configuration is adapter-specific:
+
+| Adapter | Required runtime configuration | Credential path |
+| --- | --- | --- |
+| S3 | `ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER=s3`, `ARTIFACT_SERVER_S3_BUCKET`, `ARTIFACT_SERVER_S3_REGION`, optional `ARTIFACT_SERVER_S3_ENDPOINT`, and optional `ARTIFACT_SERVER_S3_FORCE_PATH_STYLE` | ECS task role or AWS provider chain; `ARTIFACT_SERVER_S3_ACCESS_KEY_ID_FILE` and `ARTIFACT_SERVER_S3_SECRET_ACCESS_KEY_FILE` exist only for explicit self-hosted S3-compatible deployments |
+| GCS | `ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER=gcs`, `ARTIFACT_SERVER_GCS_PROJECT_ID`, and `ARTIFACT_SERVER_GCS_BUCKET` | Cloud Run service account through Application Default Credentials; no service-account key file |
+| Azure Blob | `ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER=azure-blob`, `ARTIFACT_SERVER_AZURE_BLOB_ACCOUNT_URL`, and `ARTIFACT_SERVER_AZURE_BLOB_CONTAINER` | Container App managed identity through the default Azure credential chain; no client secret or storage account key |
+| R2 Worker binding | `ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER=r2` and the typed `ARTIFACT_SERVER_R2_BUCKET` Worker binding | Cloudflare binding; no S3 or account key in the Worker |
+
+The GCS, Azure Blob, and R2 names become executable configuration only when
+their adapters ship. This table fixes the boundary now so their implementation
+does not change the server core.
+
+## Required stack outputs
+
+Every successful deployment emits a machine-readable output object with these
+keys:
+
+| Output | Meaning |
+| --- | --- |
+| `installationId` | Stable Artifact Server installation identity |
+| `applicationUrl` | Exact browser application origin |
+| `contentDomain` | Exact base domain used by version hosts |
+| `mcpUrl` | Exact remote MCP endpoint |
+| `healthUrl` | Liveness endpoint |
+| `readinessUrl` | Dependency-readiness endpoint |
+| `imageDigest` | Deployed OCI digest, or Worker bundle digest on Cloudflare |
+| `runtimeResourceId` | ECS service, Cloud Run service, Container App, or Worker ID |
+| `databaseResourceId` | RDS, Cloud SQL, PostgreSQL Flexible Server, or D1 ID |
+| `objectStorageResourceId` | S3 bucket, GCS bucket, Blob container, or R2 bucket ID |
+| `workloadIdentityResourceId` | Task role, service account, managed identity, or Worker identity boundary |
+| `secretResourceIds` | Map of secret names to provider resource IDs; never secret values |
+| `networkResourceIds` | Map of created or adopted network resource IDs |
+| `logDestination` | Provider log group, project log scope, workspace, or Worker log destination |
+| `stateBackend` | Redacted Pulumi backend address or Alchemy state-store identity |
+| `supportManifestLocation` | Durable location of the secret-free installation manifest |
+
+Output validation fails when a secret, credential-bearing URL, database
+password, access token, API key, private key, or signed object URL appears.
+
+## Resource invariants
+
+Every provider package must produce all of the following:
+
+1. Application and content hosts are separate, use HTTPS, and route only their
+   allowed surfaces.
+2. Public artifacts can be cached; account-required content and every
+   management response use `private, no-store` behavior.
+3. Postgres and object storage are private by default and use encryption at
+   rest and in transit.
+4. The runtime can scale horizontally and has no correctness dependency on
+   process memory or local disk.
+5. Object keys are installation-scoped by the storage adapter; no request or
+   artifact value selects a bucket or raw prefix.
+6. Database and object storage have deletion protection, provider backup, and a
+   documented coordinated restore path.
+7. The deployment emits logs, request metrics, health, readiness, and a
+   secret-free support manifest.
+8. The package grants least privilege through workload identity and has no
+   static application cloud credential.
+
+## Lifecycle and release evidence
+
+Provider work is complete only after real-cloud evidence proves:
+
+- native preview makes no writes;
+- clean apply and repeat apply;
+- product publish, open, private access, projects, versions, comparison, CLI,
+  and MCP behavior;
+- horizontal replica concurrency;
+- image upgrade and schema-compatible rollback;
+- provider outage, partial apply, interrupted update, and state recovery;
+- coordinated database and object restore with identical installation,
+  project, artifact, and version IDs;
+- workload-identity and secret rotation;
+- public and private ingress modes;
+- bounded 1, 10, 25, 50, and 100-user performance and cost evidence;
+- safe destroy that retains durable data by default; and
+- separately confirmed permanent deletion.
+
+The evidence file records the Artifact Server version, image digest,
+infrastructure-tool version, provider-package versions, region, realized
+resource sizes, test revision, and timestamps. Passing one cloud does not
+qualify another.
+
+## Object-storage adapter contract
+
+The server runtime consumes `ObjectStorageProviderFactory`. The factory creates
+one installation-scoped provider with:
+
+- `blobs.inspect`, `blobs.open`, and verified streaming `blobs.put`;
+- `staging.open` and verified streaming `staging.put`;
+- `readiness(signal)` for a bounded provider check; and
+- `close()` for provider-owned client cleanup.
+
+An adapter must stream without buffering a complete file, verify declared byte
+count and SHA-256, preserve immutable content-addressed bytes, isolate
+installation prefixes, reject hostile identifiers, survive restart, fail
+closed when unauthorized or unavailable, and clean up interrupted multipart
+writes. Provider SDK types and errors cannot enter application, HTTP, MCP,
+repository, or artifact model types.
+
+Real MinIO qualifies the S3-compatible contract implementation. Real AWS S3
+qualifies AWS. Real GCS and Azure Blob tests are required for their native
+adapters. A provider is not supported merely because it claims compatibility.
+
+## Primary infrastructure references
+
+- [Alchemy deployment lifecycle](https://alchemy.run/cli/deploy/)
+- [Alchemy Cloudflare state](https://alchemy.run/state-store/)
+- [Pulumi state backends](https://www.pulumi.com/docs/iac/concepts/state-and-backends/)
+- [Pulumi secrets providers](https://www.pulumi.com/docs/iac/concepts/secrets/)
+- [Pulumi AWS ECS service](https://www.pulumi.com/registry/packages/aws/api-docs/ecs/service/)
+- [Pulumi GCP Cloud Run v2 service](https://www.pulumi.com/registry/packages/gcp/api-docs/cloudrunv2/service/)
+- [Pulumi Azure Native Container App](https://www.pulumi.com/registry/packages/azure-native/api-docs/app/containerapp/)

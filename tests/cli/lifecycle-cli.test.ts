@@ -249,6 +249,17 @@ describe("Artifact Server lifecycle CLI", () => {
       await expect(Effect.runPromise(parseExternalStorageRuntimeConfiguration({
         environment: {
           ...externalConfigurationEnvironment(),
+          ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER: "gcs",
+        },
+        hostname: "127.0.0.1",
+        port: "8787",
+      }))).rejects.toMatchObject({
+        field: "ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER",
+        reason: "invalid_value",
+      });
+      await expect(Effect.runPromise(parseExternalStorageRuntimeConfiguration({
+        environment: {
+          ...externalConfigurationEnvironment(),
           ARTIFACT_SERVER_S3_SECRET_ACCESS_KEY: undefined,
         },
         hostname: "127.0.0.1",

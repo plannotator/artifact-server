@@ -2031,11 +2031,11 @@ requirements:
 
   - id: DEP-002
     kind: deployment
-    behavior: Official installation surfaces are Artifact Server local commands, Docker Compose, Helm, an Alchemy-backed Cloudflare installer, and Pulumi-backed AWS, GCP, and Azure installers.
+    behavior: Official installation surfaces are Artifact Server local commands, Docker Compose, Helm, a direct Alchemy Cloudflare project, and direct Pulumi projects for AWS, GCP, and Azure.
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: deployment}
     acceptance:
-      behavior: {id: DEP-002-B, description: Create each target using its documented Artifact Server command and obtain a healthy server and support manifest.}
+      behavior: {id: DEP-002-B, description: Create each target with its documented native command and obtain the required URLs, resource identifiers, healthy server, and support manifest.}
       failure: {id: DEP-002-F, description: An official path cannot require a customer to write infrastructure-framework code or manually invent required resources.}
     deployments: *all
     status: specified
@@ -2044,12 +2044,12 @@ requirements:
 
   - id: DEP-003
     kind: deployment
-    behavior: The Artifact Server CLI accepts a deployment target and hides the infrastructure framework while allowing advanced users to customize the generated Compose, Helm, Alchemy, or Pulumi project.
+    behavior: Artifact Server does not wrap infrastructure lifecycle tools; operators use Compose, Helm, Alchemy, or Pulumi directly while every package implements one shared input, output, secret, evidence, and product-probe contract.
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: deployment}
     acceptance:
-      behavior: {id: DEP-003-B, description: Deploy from the common CLI and separately inspect and customize the generated framework project without changing product code.}
-      failure: {id: DEP-003-F, description: A normal install does not require direct framework knowledge, and a customization does not fork the Artifact Server product contract.}
+      behavior: {id: DEP-003-B, description: Preview, apply, inspect, and customize each complete native project while preserving the shared deployment outputs and product behavior.}
+      failure: {id: DEP-003-F, description: The Artifact Server CLI cannot proxy an infrastructure plan, hold infrastructure state, reinterpret provider errors, or require a hidden generated project.}
     deployments: *all
     status: specified
     depends_on: [ARC-001]
@@ -2132,12 +2132,12 @@ requirements:
       failure: {id: DEP-007-F, description: D1 never stores artifact file bytes, optional history failure never blocks primary storage, and a missing optional provider leaves core behavior intact.}
     deployments: [cloudflare]
     status: specified
-    depends_on: [MCP-010, GIT-007, GATE-003]
+    depends_on: [DEP-021, MCP-010, GIT-007, GATE-003]
     evidence: []
 
   - id: DEP-008
     kind: deployment
-    behavior: The AWS target uses an official Pulumi-backed container or Kubernetes deployment with managed Postgres and S3.
+    behavior: The default AWS target is a direct Pulumi project that creates ECS Fargate, RDS PostgreSQL, S3, workload identity, secrets, networking, DNS, TLS, telemetry, and required support outputs.
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: deployment}
     acceptance:
@@ -2145,12 +2145,12 @@ requirements:
       failure: {id: DEP-008-F, description: A failed update cannot orphan durable data, expose private content, or require Pulumi Cloud.}
     deployments: [aws]
     status: specified
-    depends_on: [DEP-003, OPS-003]
+    depends_on: [DEP-003, DEP-021, OPS-003]
     evidence: []
 
   - id: DEP-009
     kind: deployment
-    behavior: The GCP target uses an official Pulumi-backed Cloud Run or GKE deployment with Cloud SQL Postgres and Google Cloud Storage.
+    behavior: The default GCP target is a direct Pulumi project that creates Cloud Run, Cloud SQL PostgreSQL, native Google Cloud Storage, workload identity, secrets, networking, DNS, TLS, telemetry, and required support outputs.
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: deployment}
     acceptance:
@@ -2158,12 +2158,12 @@ requirements:
       failure: {id: DEP-009-F, description: The supported path cannot depend on an S3 compatibility shim, lose durable state during replacement, or require Pulumi Cloud.}
     deployments: [gcp]
     status: specified
-    depends_on: [DEP-003, OPS-003]
+    depends_on: [DEP-003, DEP-021, OPS-003]
     evidence: []
 
   - id: DEP-010
     kind: deployment
-    behavior: The Azure target uses an official Pulumi-backed Container Apps or AKS deployment with Azure Database for PostgreSQL and Azure Blob Storage.
+    behavior: The default Azure target is a direct Pulumi project that creates Container Apps, Azure Database for PostgreSQL Flexible Server, native Azure Blob Storage, managed identity, secrets, networking, DNS, TLS, telemetry, and required support outputs.
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: deployment}
     acceptance:
@@ -2171,34 +2171,70 @@ requirements:
       failure: {id: DEP-010-F, description: The supported path cannot depend on an S3 compatibility shim, lose durable state during replacement, or require Pulumi Cloud.}
     deployments: [azure]
     status: specified
-    depends_on: [DEP-003, OPS-003]
+    depends_on: [DEP-003, DEP-021, OPS-003]
     evidence: []
 
   - id: DEP-011
     kind: constraint
-    behavior: Blob storage has first-party drivers for local disk, S3-compatible storage, Google Cloud Storage, Azure Blob Storage, and R2.
+    behavior: The external runtime consumes one provider-neutral factory with immutable blob, staging, readiness, and shutdown capabilities; first-party factories cover S3-compatible storage, native Google Cloud Storage, native Azure Blob Storage, and Worker R2 without cloud SDK types entering product or protocol code.
     owner: blob-storage
     source: {file: artifact-server-product-spec.html, anchor: deployment}
     acceptance:
-      behavior: {id: DEP-011-B, description: Run the immutable-blob and streaming contract suite against every first-party driver.}
-      failure: {id: DEP-011-F, description: A driver cannot mutate an existing fingerprint, return bytes for another installation, or claim success before durable availability.}
+      behavior: {id: DEP-011-B, description: Run the immutable-blob, staging, readiness, shutdown, and streaming contract suite against every first-party driver and the real managed provider.}
+      failure: {id: DEP-011-F, description: A driver cannot mutate an existing fingerprint, return bytes for another installation, claim success before durable availability, or leave an interrupted multipart upload.}
     deployments: *all
-    status: implementing
+    status: behavior_verified
     depends_on: [ARC-002]
-    evidence: []
+    evidence:
+      - deployment: single_server
+        tests: [DEP-011-B, DEP-011-F]
+        result: pass
+        run: evidence/s3-minio.json
+        recorded_at: "2026-08-15T04:22:33Z"
 
   - id: DEP-012
     kind: deployment
-    behavior: Installer versions are pinned, infrastructure state remains in the customer's environment, and every installation emits a support manifest naming product, schema, adapter, and installer versions.
+    behavior: Installer versions are pinned, vendor-hosted infrastructure state is optional, customer-owned state uses an existing encrypted and versioned backend, and every installation emits a support manifest naming product, schema, adapter, and installer versions.
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: deployment}
     acceptance:
       behavior: {id: DEP-012-B, description: Recreate an installation from pinned inputs and inspect a complete, secret-free support manifest.}
-      failure: {id: DEP-012-F, description: An install cannot silently float infrastructure versions, require vendor-hosted state, or place credentials in the support manifest.}
+      failure: {id: DEP-012-F, description: An install cannot silently float infrastructure versions, require vendor-hosted state, let the main stack create the store that contains its own state, or place credentials in the support manifest.}
     deployments: *all
     status: specified
     depends_on: [DEP-002]
     evidence: []
+
+  - id: DEP-021
+    kind: deployment
+    behavior: Every cloud package accepts the shared installation, domain, ingress, capacity, database, backup, deletion, identity, telemetry, state, and secret-reference inputs and returns the shared URL, digest, provider-resource, identity, network, log, state, and support-manifest outputs without returning a secret.
+    owner: deployment
+    source: {file: cloud-deployment-contract.md, anchor: shared-operator-inputs}
+    acceptance:
+      behavior: {id: DEP-021-B, description: Validate one minimal and one fully configured stack for each cloud, apply it, and verify every required runtime value and machine-readable output against the shared contract.}
+      failure: {id: DEP-021-F, description: Reject unpinned images, equal application and content domains, invalid capacity, missing production deletion protection, missing public DNS, unknown inputs, secret outputs, and a main stack that creates its own state backend.}
+    deployments: [cloudflare, aws, gcp, azure]
+    status: specified
+    depends_on: [DEP-002, DEP-003, DEP-012, DEP-014, DEP-016]
+    evidence: []
+
+  - id: DEP-022
+    kind: constraint
+    behavior: The external runtime, lifecycle inspection, and integrity scanner depend only on the object-storage provider factory; AWS, Google, Azure, and Cloudflare SDK imports stay inside their provider adapters and deployment packages.
+    owner: blob-storage
+    source: {file: decisions/0017-native-cloud-projects-and-storage-provider-boundary.md, anchor: decision}
+    acceptance:
+      behavior: {id: DEP-022-B, description: Build the server with only provider-neutral storage types crossing the runtime boundary and exercise the configured factory against real object storage.}
+      failure: {id: DEP-022-F, description: Dependency checks reject a cloud storage SDK import from application, core, HTTP, MCP, external-runtime, lifecycle, or repository code.}
+    deployments: *external_storage
+    status: behavior_verified
+    depends_on: [ARC-002, DEP-011]
+    evidence:
+      - deployment: single_server
+        tests: [DEP-022-B, DEP-022-F]
+        result: pass
+        run: evidence/s3-minio.json
+        recorded_at: "2026-08-15T04:22:33Z"
 
   - id: DEP-013
     kind: security
@@ -2765,7 +2801,7 @@ requirements:
 
   - id: GATE-007
     kind: release_gate
-    behavior: AWS, GCP, and Azure remain unsupported until their installers independently pass create, upgrade, rollback, state recovery, backup, restore, private-network, managed-Kubernetes, and delete tests.
+    behavior: AWS, GCP, and Azure remain unsupported until their default managed-container projects independently pass create, upgrade, rollback, state recovery, backup, restore, private-network, workload-identity, and delete tests; Kubernetes support remains the separately qualified Helm path.
     owner: deployment
     source: {file: artifact-server-product-spec.html, anchor: decisions}
     acceptance:

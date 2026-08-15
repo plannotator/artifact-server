@@ -26,6 +26,8 @@ import {
 import {startExternalStorageServer} from "../../src/external-storage/start-external-storage-server.js";
 import {checkExternalStorageIntegrity} from
   "../../src/lifecycle/integrity-check.js";
+import {createS3ObjectStorageProviderFactory} from
+  "../../src/storage/s3-object-storage.js";
 import {PostgresDatabase} from "../../src/storage/postgres-database.js";
 import {PostgresArtifactRepository} from "../../src/storage/postgres-artifact-repository.js";
 import {PostgresIdentityRepository} from "../../src/storage/postgres-identity-repository.js";
@@ -1092,14 +1094,14 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     const configuration = {
       databaseUrl: Redacted.make(environment.databaseUrl),
       installationId: identity.installationId,
-      objectStorage: {
+      objectStorage: createS3ObjectStorageProviderFactory({
         accessKeyId: environment.accessKey,
         bucket,
         endpoint: environment.endpoint,
         forcePathStyle: true,
         region,
         secretAccessKey: Redacted.make(environment.secretKey),
-      },
+      }),
     };
     const healthy = await checkExternalStorageIntegrity(configuration);
     expect(healthy).toMatchObject({
@@ -1463,14 +1465,14 @@ async function startInProcessExternalStorageServer(
     hostname: "127.0.0.1",
     installationId: identity.installationId,
     localBootstrapCredential: Redacted.make(browserBootstrapToken),
-    objectStorage: {
+    objectStorage: createS3ObjectStorageProviderFactory({
       accessKeyId: environment.accessKey,
       bucket,
       endpoint: environment.endpoint,
       forcePathStyle: true,
       region,
       secretAccessKey: Redacted.make(environment.secretKey),
-    },
+    }),
     port: 0,
   });
   let stopped = false;

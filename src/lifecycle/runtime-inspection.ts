@@ -1,8 +1,7 @@
-import {HeadBucketCommand, S3Client} from "@aws-sdk/client-s3";
 import path from "node:path";
 
-import {createS3ClientConfig} from
-  "../external-storage/create-external-storage-runtime.js";
+import type {ObjectStorageProvider} from
+  "../storage/object-storage-provider.js";
 import {PostgresDatabase} from "../storage/postgres-database.js";
 import {
   requiredPostgresSchemaVersion,
@@ -57,28 +56,40 @@ async function inspectExternalStorageRuntime(
   configuration: ExternalStorageRuntimeConfiguration,
 ): Promise<RuntimeInspection> {
   const database = await openDatabase(configuration);
-  const client = new S3Client(createS3ClientConfig(configuration.objectStorage));
+  const objectStorage = createObjectStorage(configuration);
   try {
     const databaseStatus = await inspectProvider(() => database?.health());
     const migrations = database === null
       ? unavailablePostgresMigrationStatus
       : await database.migrationStatus().catch(() => unavailablePostgresMigrationStatus);
-    const objectStorage = await inspectProvider(() => client.send(
-      new HeadBucketCommand({Bucket: configuration.objectStorage.bucket}),
-    ).then(() => undefined));
+    const objectStorageStatus = await inspectProvider(() =>
+      objectStorage?.readiness(AbortSignal.timeout(3_000))
+    );
     return {
       database: databaseStatus,
       migrations,
-      objectStorage,
+      objectStorage: objectStorageStatus,
       status: databaseStatus.status === "ready" &&
           migrations.compatibility === "current" &&
-          objectStorage.status === "ready"
+          objectStorageStatus.status === "ready"
         ? "ready"
         : "not_ready",
     };
   } finally {
-    client.destroy();
-    await database?.close();
+    await Promise.all([
+      objectStorage?.close() ?? Promise.resolve(),
+      database?.close() ?? Promise.resolve(),
+    ]);
+  }
+}
+
+function createObjectStorage(
+  configuration: ExternalStorageRuntimeConfiguration,
+): ObjectStorageProvider | null {
+  try {
+    return configuration.objectStorage.create(configuration.installationId);
+  } catch {
+    return null;
   }
 }
 

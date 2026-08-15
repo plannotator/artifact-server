@@ -2839,7 +2839,8 @@ v12-7f3a.content.example.net</code></pre>
               <p>
                 An optional administrator skill. It is used only when someone explicitly asks an
                 agent to install, deploy, upgrade, back up, restore, inspect, or repair Artifact
-                Server. It uses the Artifact Server command-line program and the selected deployment adapter.
+                Server. It uses Artifact Server lifecycle commands for the application and the
+                target's native tool for infrastructure.
               </p>
               <ul>
                 <li>Read only the instructions for the selected target: laptop, server, Kubernetes, Cloudflare, AWS, GCP, or Azure.</li>
@@ -2866,7 +2867,7 @@ v12-7f3a.content.example.net</code></pre>
               <div class="diagram-scroll">
                 <svg class="architecture-diagram skill-diagram" viewBox="0 0 1040 430" role="img" aria-labelledby="skill-flow-title skill-flow-desc">
                   <title id="skill-flow-title">Agent Skill workflow</title>
-                  <desc id="skill-flow-desc">A routine artifact request activates the publish-artifact skill. The skill finds the intended local or team server. It uses the Artifact Server command-line program for files on the user's computer and MCP or the command-line program for information already on the server. Both call the same product services. A separate administrator request activates the optional operate-artifact-server skill and deployment code.</desc>
+                  <desc id="skill-flow-desc">A routine artifact request activates the publish-artifact skill. The skill finds the intended local or team server. It uses the Artifact Server command-line program for files on the user's computer and MCP or the command-line program for information already on the server. Both call the same product services. A separate administrator request activates the optional operate-artifact-server skill and uses Compose, Helm, Alchemy, or Pulumi directly.</desc>
                   <defs>
                     <marker id="skill-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
                       <path d="M0,0 L8,4 L0,8 Z" style="fill: var(--code-ink)"></path>
@@ -2903,10 +2904,10 @@ v12-7f3a.content.example.net</code></pre>
                   <text class="svg-title" x="280" y="316">operate-artifact-server</text>
                   <text class="svg-copy" x="280" y="339">Loads only when requested</text>
                   <rect class="svg-node" x="500" y="286" width="188" height="76" rx="8"></rect>
-                  <text class="svg-title" x="520" y="316">Artifact Server CLI</text>
-                  <text class="svg-copy" x="520" y="339">Plan · apply · verify</text>
+                  <text class="svg-title" x="520" y="316">Native tool</text>
+                  <text class="svg-copy" x="520" y="339">Compose · Helm · Alchemy · Pulumi</text>
                   <rect class="svg-node-store" x="740" y="286" width="248" height="76" rx="8"></rect>
-                  <text class="svg-title" x="760" y="316">Deployment adapter</text>
+                  <text class="svg-title" x="760" y="316">Target infrastructure</text>
                   <text class="svg-copy" x="760" y="339">Server · Kubernetes · cloud</text>
                   <path class="svg-line-optional" d="M208 324 H260" marker-end="url(#skill-arrow-optional)"></path>
                   <path class="svg-line-optional" d="M448 324 H500" marker-end="url(#skill-arrow-optional)"></path>
@@ -3198,7 +3199,7 @@ artifact_delete</code></pre>
             </article>
             <article class="deployment-item">
               <h3>Major clouds</h3>
-              <p>AWS, GCP, and Azure use the same container or Kubernetes runtime with Postgres and the provider's native object store.</p>
+              <p>AWS uses ECS Fargate, RDS PostgreSQL, and S3. GCP uses Cloud Run, Cloud SQL PostgreSQL, and Google Cloud Storage. Azure uses Container Apps, PostgreSQL Flexible Server, and Azure Blob Storage.</p>
             </article>
           </div>
 
@@ -3360,24 +3361,24 @@ artifact_delete</code></pre>
                 </tr>
                 <tr>
                   <td>AWS</td>
-                  <td>Containers or Kubernetes</td>
-                  <td>Managed Postgres</td>
+                  <td>ECS Fargate</td>
+                  <td>RDS PostgreSQL</td>
                   <td>Amazon S3</td>
                   <td>Configured private Git server</td>
                   <td>No</td>
                 </tr>
                 <tr>
                   <td>GCP</td>
-                  <td>Containers or Kubernetes</td>
-                  <td>Managed Postgres</td>
+                  <td>Cloud Run</td>
+                  <td>Cloud SQL PostgreSQL</td>
                   <td>Google Cloud Storage</td>
                   <td>Configured private Git server</td>
                   <td>No</td>
                 </tr>
                 <tr>
                   <td>Azure</td>
-                  <td>Containers or Kubernetes</td>
-                  <td>Managed Postgres</td>
+                  <td>Container Apps</td>
+                  <td>Azure Database for PostgreSQL Flexible Server</td>
                   <td>Azure Blob Storage</td>
                   <td>Configured private Git server</td>
                   <td>No</td>
@@ -3393,10 +3394,11 @@ artifact_delete</code></pre>
                 <p>
                   The product ships as a downloadable local package that does not require Docker,
                   one optional container image, Compact Compose and External-storage Compose for one server,
-                  a Helm chart for Kubernetes, an Alchemy-backed Cloudflare
-                  package, and Pulumi-backed packages for AWS, GCP, and Azure. Each package pins its
-                  tool version and emits a deployment manifest for support. These are install paths
-                  for one product, not separate editions.
+                  a Helm chart for Kubernetes, a pinned Alchemy project for Cloudflare,
+                  and pinned Pulumi projects for AWS, GCP, and Azure. Operators use Compose,
+                  Helm, Alchemy, or Pulumi directly. Artifact Server does not hide their plans
+                  behind another deployment command. Each package emits the same required URLs,
+                  resource IDs, and secret-free support information.
                 </p>
                 <p>
                   Browser login and MCP authorization are separate protocols even when they use the
@@ -3423,7 +3425,9 @@ artifact_delete</code></pre>
                   <li><strong>One server, external storage:</strong> the same image connected to existing Postgres and object storage through a supported adapter. The Compose package does not bundle those providers.</li>
                   <li><strong>Kubernetes:</strong> Postgres plus S3, Google Cloud Storage, Azure Blob, R2, or compatible object storage, with an optional internal Git history service or private Git server.</li>
                   <li><strong>Cloudflare:</strong> Workers for the application, D1 for records, R2 for files, and optional Cloudflare Artifacts history. External Postgres is supported through a separate adapter but is not the default.</li>
-                  <li><strong>AWS, GCP, and Azure:</strong> the same container or Kubernetes runtime, managed Postgres, and the provider's native object store. Pulumi supplies the official infrastructure package.</li>
+                  <li><strong>AWS:</strong> ECS Fargate, RDS PostgreSQL, and S3 through the AWS Pulumi project.</li>
+                  <li><strong>GCP:</strong> Cloud Run, Cloud SQL PostgreSQL, and native Google Cloud Storage through the GCP Pulumi project.</li>
+                  <li><strong>Azure:</strong> Container Apps, PostgreSQL Flexible Server, and native Azure Blob Storage through the Azure Pulumi project.</li>
                 </ul>
                 <p>
                   The storage boundary uses product operations such as “publish this version only
@@ -3437,6 +3441,33 @@ artifact_delete</code></pre>
                   Another S3-compatible service is supported only after it passes the same storage
                   contract tests. Native Google Cloud Storage and Azure Blob adapters ship with
                   their cloud packages. Adding an adapter does not change artifact or version rules.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>What every cloud package receives and returns</summary>
+              <div class="detail-body">
+                <p>
+                  Every package receives the installation name, environment, region, pinned
+                  application image, application domain, separate content domain, initial
+                  administrator email, public or private ingress choice, replica limits, CPU,
+                  memory, database size, backup retention, deletion protection, network choice,
+                  and optional WorkOS and telemetry references. Secret inputs are references to
+                  the provider secret manager, not secret values in ordinary configuration.
+                </p>
+                <p>
+                  Every successful deployment returns the installation ID, application, MCP,
+                  health, and readiness addresses, content domain, deployed image digest, runtime,
+                  database, file-store, workload-identity, network, and secret resource IDs, log
+                  destination, infrastructure-state location, and support-manifest location. It
+                  never returns a password, API key, access token, signed file address, or cloud
+                  credential.
+                </p>
+                <p>
+                  Pulumi projects require an existing state backend or Pulumi Cloud and a selected
+                  secrets provider. The Cloudflare project uses Alchemy's Cloudflare state store
+                  for team and automated deployments. The main application stack does not create
+                  the bucket that contains its own infrastructure state.
                 </p>
               </div>
             </details>
@@ -3777,8 +3808,9 @@ artifact_delete</code></pre>
               <div class="roadmap-copy">
                 <h3>Official AWS, GCP, and Azure packages</h3>
                 <p>
-                  Ship pinned Pulumi packages for each cloud. Reuse the container or Kubernetes
-                  runtime, managed Postgres, and the provider's native object store. Test install,
+                  Ship direct, pinned Pulumi projects for ECS Fargate on AWS, Cloud Run on GCP,
+                  and Container Apps on Azure, with managed PostgreSQL and each provider's native
+                  object store. Test install,
                   upgrade, rollback, backup, restore, private networking, and removal independently
                   for each provider. Do not claim a provider is supported until those tests pass.
                 </p>
@@ -3834,7 +3866,7 @@ artifact_delete</code></pre>
             <article class="decision-item"><p>Browser, normal software requests, the command-line program, and MCP share the same product and authorization rules. Local MCP uses <code>artifactserver connect</code> without a human-visible secret. Hosted MCP uses browser approval through WorkOS AuthKit. Self-hosted MCP uses compatible browser authorization when configured and administration-issued scoped API keys otherwise. Startup logs never distribute keys.</p></article>
             <article class="decision-item"><p>MCP and the command-line program intentionally overlap. Files on the user's computer use the command-line program. Work that only needs information already on Artifact Server may use either. <code>artifactserver auth login</code> gives the command-line program its own secure server profile. A remote MCP server never reads a user's local path.</p></article>
             <article class="decision-item"><p>Artifact Server ships a routine publishing skill and a separately installed operator skill. The publishing skill uses the command-line program for local files and MCP or the command-line program for information already on the server. Stored references include the server and artifact, so agents open local or team artifacts at the correct address.</p></article>
-            <article class="decision-item"><p>The product core uses narrow database, blob, login, background-work, and optional Git interfaces. Official deployment packages are Compose, Helm, Alchemy for Cloudflare, and Pulumi for AWS, GCP, and Azure.</p></article>
+            <article class="decision-item"><p>The product core uses narrow database, file-storage, login, background-work, and optional Git interfaces. Operators use Compose for one server, Helm for Kubernetes, Alchemy directly for Cloudflare, and Pulumi directly for AWS, GCP, and Azure. Artifact Server does not add an infrastructure wrapper.</p></article>
             <article class="decision-item"><p>Support is phased: local, private team and Kubernetes, hosted Cloudflare, then AWS, GCP, and Azure. A target is not supported until its install, upgrade, rollback, backup, restore, and isolation tests pass.</p></article>
             <article class="decision-item"><p>Committed versions cannot be edited or deleted individually. Deleting an artifact creates a tombstone and stops access; physical reclamation waits for a proven retention and garbage-collection design.</p></article>
           </div>

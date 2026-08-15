@@ -8,6 +8,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import {Redacted} from "effect";
 import {
   afterAll,
   beforeAll,
@@ -17,7 +18,11 @@ import {
 } from "vitest";
 
 import type { BlobStore, StagingStore } from "../../src/core/ports.js";
-import { createS3ObjectStorageAdapters } from "../../src/storage/s3-object-storage.js";
+import {
+  createS3ClientConfig,
+  createS3ObjectStorageAdapters,
+  createS3ObjectStorageProviderFactory,
+} from "../../src/storage/s3-object-storage.js";
 
 const runFile = promisify(execFile);
 const bucket = "artifact-server-integration";
@@ -47,33 +52,54 @@ describe.sequential("S3-compatible object storage", () => {
     client.destroy();
   });
 
-  test("DEP-011-B: MinIO preserves verified immutable and staged streams", async () => {
-    const storage = createStorage(client, "installation-round-trip");
-    const blobBytes = patternedBytes(multipartBytes);
-    const blobDigest = digest(blobBytes);
+  test("cloud configuration delegates credentials to the AWS provider chain", () => {
+    const config = createS3ClientConfig({bucket, region});
 
-    await expect(storage.blobs.put({
-      body: chunkedBody(blobBytes, 256 * 1024),
-      sha256: blobDigest,
-      size: blobBytes.byteLength,
-    })).resolves.toEqual({sha256: blobDigest, size: blobBytes.byteLength});
+    expect(config).toMatchObject({forcePathStyle: false, region});
+    expect(config).not.toHaveProperty("credentials");
+    expect(config).not.toHaveProperty("endpoint");
+  });
 
-    await expect(readBlob(storage.blobs, blobDigest)).resolves.toEqual(blobBytes);
+  test("DEP-011-B DEP-022-B: MinIO preserves the provider factory contract", async () => {
+    const storage = createS3ObjectStorageProviderFactory({
+      accessKeyId: environment.accessKey,
+      bucket,
+      endpoint: environment.endpoint,
+      forcePathStyle: true,
+      region,
+      secretAccessKey: Redacted.make(environment.secretKey),
+    }).create("installation-round-trip");
+    try {
+      await expect(storage.readiness(AbortSignal.timeout(3_000))).resolves
+        .toBeUndefined();
+      const blobBytes = patternedBytes(multipartBytes);
+      const blobDigest = digest(blobBytes);
 
-    const stagedBytes = new TextEncoder().encode("staged bytes survive remotely");
-    const stagedDigest = digest(stagedBytes);
-    const uploadId = `upl_${randomUUID()}`;
-    const storageToken = stagedFileToken();
-    await storage.staging.put({
-      body: chunkedBody(stagedBytes, 5),
-      sha256: stagedDigest,
-      size: stagedBytes.byteLength,
-      storageToken,
-      uploadId,
-    });
-    await expect(
-      readStaged(storage.staging, uploadId, storageToken),
-    ).resolves.toEqual(stagedBytes);
+      await expect(storage.blobs.put({
+        body: chunkedBody(blobBytes, 256 * 1024),
+        sha256: blobDigest,
+        size: blobBytes.byteLength,
+      })).resolves.toEqual({sha256: blobDigest, size: blobBytes.byteLength});
+
+      await expect(readBlob(storage.blobs, blobDigest)).resolves.toEqual(blobBytes);
+
+      const stagedBytes = new TextEncoder().encode("staged bytes survive remotely");
+      const stagedDigest = digest(stagedBytes);
+      const uploadId = `upl_${randomUUID()}`;
+      const storageToken = stagedFileToken();
+      await storage.staging.put({
+        body: chunkedBody(stagedBytes, 5),
+        sha256: stagedDigest,
+        size: stagedBytes.byteLength,
+        storageToken,
+        uploadId,
+      });
+      await expect(
+        readStaged(storage.staging, uploadId, storageToken),
+      ).resolves.toEqual(stagedBytes);
+    } finally {
+      await storage.close();
+    }
   }, 30_000);
 
   test("DEP-011-F: false declarations cannot replace immutable bytes", async () => {

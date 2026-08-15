@@ -5,7 +5,7 @@ import {describe, expect, test} from "vitest";
 
 import type {BlobStore, StagingStore} from "../../src/core/ports.js";
 import {createS3ClientConfig} from
-  "../../src/external-storage/create-external-storage-runtime.js";
+  "../../src/storage/s3-object-storage.js";
 import {createS3ObjectStorageAdapters} from
   "../../src/storage/s3-object-storage.js";
 

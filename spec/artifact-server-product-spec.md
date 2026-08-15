@@ -323,7 +323,7 @@ login.
 Artifact Server ships two portable Agent Skills:
 
 - **`publish-artifact`:** publish, update, open, share, list, and compare artifacts. It uses the CLI when local files are involved and MCP or the CLI for server-only operations.
-- **`operate-artifact-server`:** an optional, separately installed administrator skill for install, deploy, upgrade, backup, restore, inspect, and repair work through the Artifact Server CLI.
+- **`operate-artifact-server`:** an optional, separately installed administrator skill for install, deploy, upgrade, backup, restore, inspect, and repair work. It uses Artifact Server lifecycle commands for the application and Compose, Helm, Alchemy, or Pulumi directly for infrastructure.
 
 The publishing skill resolves its target in this order: an explicit address or link, the server recorded in the artifact reference, current conversation context, project default, then user default. If more than one server remains possible, it asks and never guesses. A non-secret `.artifactserver.json` project file may name an exact server origin, CLI profile, and stable project ID, but never contains a credential. A project display name is resolved through the selected server and is never passed to an ID field.
 
@@ -341,12 +341,16 @@ Every deployed process records request counts, handling time, and spans. It writ
 | One server, compact | One container and SQLite | One persistent data directory | Compact Docker Compose |
 | One server, external storage | One or more stateless containers and Postgres | Object storage through a supported adapter | External-storage Compose |
 | Kubernetes | Stateless containers and Postgres | S3, GCS, Azure Blob, or compatible store | Helm chart |
-| Cloudflare | Workers and D1 | R2 | Alchemy-backed Artifact Server installer |
-| AWS | Container service or managed Kubernetes and Postgres | S3 | Pulumi-backed Artifact Server installer |
-| GCP | Cloud Run or GKE and Cloud SQL Postgres | Google Cloud Storage | Pulumi-backed Artifact Server installer |
-| Azure | Container Apps or AKS and Azure Database for PostgreSQL | Azure Blob Storage | Pulumi-backed Artifact Server installer |
+| Cloudflare | Workers and D1 | R2 | Pinned Alchemy project |
+| AWS | ECS Fargate and RDS PostgreSQL | S3 | Pinned Pulumi project |
+| GCP | Cloud Run and Cloud SQL PostgreSQL | Google Cloud Storage | Pinned Pulumi project |
+| Azure | Container Apps and Azure Database for PostgreSQL Flexible Server | Azure Blob Storage | Pinned Pulumi project |
 
-Customers use one Artifact Server CLI. They choose a target, not an infrastructure framework. Pulumi, Alchemy, Helm, and Docker Compose remain internal or optional customization surfaces. Artifact Server does not require Pulumi Cloud; a Pulumi-backed installer can keep state in the customer's cloud.
+Operators use the deployment tool that owns the target: Compose for one server, Helm for Kubernetes, Alchemy for Cloudflare, and Pulumi for AWS, GCP, and Azure. Artifact Server does not add an infrastructure wrapper. It supplies complete projects, shared inputs and outputs, product probes, and recovery documentation. Pulumi Cloud is optional; a Pulumi project can use an existing customer-owned S3, GCS, or Azure Blob state backend.
+
+The exact cross-cloud input, output, secret, runtime-configuration, and evidence
+contract is defined in
+[`cloud-deployment-contract.md`](./cloud-deployment-contract.md).
 
 Local use runs directly on the host by default and does not require Docker. The
 one-server Compose package has two explicit profiles. Compact Compose runs one
@@ -420,9 +424,9 @@ The hosted service starts with one D1 database only after load and failure tests
 
 ### Release 4: major-cloud installers
 
-- AWS, GCP, and Azure installers behind the same Artifact Server CLI.
+- Direct Pulumi projects for AWS, GCP, and Azure, each implementing the shared cloud deployment contract.
 - Native object storage on each cloud.
-- Upgrade, rollback, state recovery, backup, restore, private-network, and managed-Kubernetes tests.
+- Upgrade, rollback, state recovery, backup, restore, private-network, and managed-container tests on each cloud.
 - The official Helm chart remains available when customers prefer Kubernetes over a provider-specific container service.
 
 ## Release gates

@@ -1,4 +1,3 @@
-import {HeadBucketCommand, S3Client} from "@aws-sdk/client-s3";
 import {createHash} from "node:crypto";
 import {DatabaseSync} from "node:sqlite";
 import path from "node:path";
@@ -7,14 +6,16 @@ import {Effect, type Redacted, Schema} from "effect";
 import {SqlClient} from "effect/unstable/sql/SqlClient";
 
 import type {BlobStore} from "../core/ports.js";
-import {createS3ClientConfig} from
-  "../external-storage/create-external-storage-runtime.js";
 import {createManifest} from "../manifest/create-manifest.js";
 import {LocalBlobStore} from "../storage/local-blob-store.js";
+import type {
+  ObjectStorageProvider,
+  ObjectStorageProviderFactory,
+} from
+  "../storage/object-storage-provider.js";
+import {objectStorageProviderKinds} from
+  "../storage/object-storage-provider.js";
 import {PostgresDatabase} from "../storage/postgres-database.js";
-import {createS3ObjectStorageAdapters} from "../storage/s3-object-storage.js";
-import type {ExternalObjectStorageConfig} from
-  "../external-storage/create-external-storage-runtime.js";
 
 const artifactRowSchema = Schema.Struct({
   currentVersionId: Schema.NullOr(Schema.String),
@@ -101,7 +102,12 @@ export class IntegrityCheckError extends Schema.TaggedError<IntegrityCheckError>
   "IntegrityCheckError",
   {
     message: Schema.String,
-    provider: Schema.Literals(["filesystem", "postgres", "s3", "sqlite"]),
+    provider: Schema.Literals([
+      ...objectStorageProviderKinds,
+      "filesystem",
+      "postgres",
+      "sqlite",
+    ]),
   },
 ) {}
 
@@ -127,10 +133,10 @@ export const checkCompactIntegrity = Effect.fn("checkCompactIntegrity")(
 export interface ExternalIntegrityConfiguration {
   readonly databaseUrl: Redacted.Redacted;
   readonly installationId: string;
-  readonly objectStorage: ExternalObjectStorageConfig;
+  readonly objectStorage: ObjectStorageProviderFactory;
 }
 
-/** Run the same read-only integrity contract against Postgres and S3. */
+/** Run the same read-only integrity contract against external providers. */
 export async function checkExternalStorageIntegrity(
   configuration: ExternalIntegrityConfiguration,
 ): Promise<IntegrityReport> {
@@ -147,7 +153,18 @@ export async function checkExternalStorageIntegrity(
       provider: "postgres",
     });
   }
-  const client = new S3Client(createS3ClientConfig(configuration.objectStorage));
+  let objectStorage: ObjectStorageProvider;
+  try {
+    objectStorage = configuration.objectStorage.create(
+      configuration.installationId,
+    );
+  } catch {
+    await database.close();
+    throw new IntegrityCheckError({
+      message: "Object storage could not be inspected.",
+      provider: configuration.objectStorage.kind,
+    });
+  }
   try {
     const catalog = await database.health().then(() => database.run(
       readExternalCatalog(configuration.installationId),
@@ -157,20 +174,13 @@ export async function checkExternalStorageIntegrity(
         provider: "postgres",
       });
     });
-    await client.send(new HeadBucketCommand({
-      Bucket: configuration.objectStorage.bucket,
-    })).catch(() => {
+    await objectStorage.readiness(AbortSignal.timeout(3_000)).catch(() => {
       throw new IntegrityCheckError({
         message: "Object storage could not be inspected.",
-        provider: "s3",
+        provider: objectStorage.kind,
       });
     });
-    const {blobs} = createS3ObjectStorageAdapters({
-      bucket: configuration.objectStorage.bucket,
-      client,
-      installationId: configuration.installationId,
-    });
-    return await Effect.runPromise(checkCatalog(catalog, blobs));
+    return await Effect.runPromise(checkCatalog(catalog, objectStorage.blobs));
   } catch (error) {
     if (error instanceof IntegrityCheckError) throw error;
     throw new IntegrityCheckError({
@@ -178,8 +188,7 @@ export async function checkExternalStorageIntegrity(
       provider: "postgres",
     });
   } finally {
-    client.destroy();
-    await database.close();
+    await Promise.all([objectStorage.close(), database.close()]);
   }
 }
 

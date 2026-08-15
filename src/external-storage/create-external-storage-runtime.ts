@@ -1,9 +1,4 @@
-import {
-  HeadBucketCommand,
-  S3Client,
-  type S3ClientConfig,
-} from "@aws-sdk/client-s3";
-import {Effect, Layer, ManagedRuntime, Redacted} from "effect";
+import {Effect, Layer, ManagedRuntime, type Redacted} from "effect";
 
 import type {ApplicationRuntime} from "../application/application-runtime.js";
 import type {BearerCredentialVerifier} from "../application/authentication.js";
@@ -21,27 +16,11 @@ import {createApplicationLayer} from "../local/create-local-application-layer.js
 import {PostgresArtifactRepository} from "../storage/postgres-artifact-repository.js";
 import {PostgresDatabase} from "../storage/postgres-database.js";
 import {PostgresIdentityRepository} from "../storage/postgres-identity-repository.js";
-import {createS3ObjectStorageAdapters} from "../storage/s3-object-storage.js";
+import type {
+  ObjectStorageProvider,
+  ObjectStorageProviderFactory,
+} from "../storage/object-storage-provider.js";
 import type {RuntimeLifecycle} from "../lifecycle/runtime-readiness.js";
-
-interface ExternalObjectStorageConfigBase {
-  readonly bucket: string;
-  readonly endpoint?: string;
-  readonly forcePathStyle?: boolean;
-  readonly region: string;
-}
-
-/** S3 settings using either a static pair or the AWS SDK credential chain. */
-export type ExternalObjectStorageConfig = ExternalObjectStorageConfigBase & (
-  | {
-    readonly accessKeyId: string;
-    readonly secretAccessKey: Redacted.Redacted;
-  }
-  | {
-    readonly accessKeyId?: never;
-    readonly secretAccessKey?: never;
-  }
-);
 
 /** Configuration for one stateless Artifact Server process. */
 export interface ExternalStorageRuntimeConfig {
@@ -58,7 +37,7 @@ export interface ExternalStorageRuntimeConfig {
   readonly installationId: string;
   readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
   readonly localBootstrapCredential?: Redacted.Redacted;
-  readonly objectStorage: ExternalObjectStorageConfig;
+  readonly objectStorage: ObjectStorageProviderFactory;
   readonly runtimeLifecycle?: RuntimeLifecycle;
   readonly serviceVersion?: string;
 }
@@ -78,12 +57,16 @@ export async function createExternalStorageRuntime(
     maxConnections: 10,
     url: config.databaseUrl,
   }, "validate");
-  const client = new S3Client(createS3ClientConfig(config.objectStorage));
+  let objectStorage: ObjectStorageProvider | null = null;
   let applicationRuntime: ApplicationRuntime | null = null;
   try {
+    const connectedObjectStorage = config.objectStorage.create(
+      config.installationId,
+    );
+    objectStorage = connectedObjectStorage;
     await Promise.all([
       database.health(),
-      client.send(new HeadBucketCommand({Bucket: config.objectStorage.bucket})),
+      connectedObjectStorage.readiness(AbortSignal.timeout(3_000)),
     ]);
     const repository = await PostgresArtifactRepository.open(
       database,
@@ -93,11 +76,7 @@ export async function createExternalStorageRuntime(
       database,
       config.installationId,
     );
-    const {blobs, staging} = createS3ObjectStorageAdapters({
-      bucket: config.objectStorage.bucket,
-      client,
-      installationId: config.installationId,
-    });
+    const {blobs, staging} = connectedObjectStorage;
     const applicationLayer = createApplicationLayer({
       apiToken: config.apiToken,
       blobs,
@@ -116,8 +95,7 @@ export async function createExternalStorageRuntime(
     const resources = Layer.effectDiscard(Effect.acquireRelease(
       Effect.void,
       () => Effect.promise(async () => {
-        client.destroy();
-        await database.close();
+        await Promise.all([connectedObjectStorage.close(), database.close()]);
       }),
     ));
     const telemetry = otlpLayer({
@@ -137,7 +115,7 @@ export async function createExternalStorageRuntime(
           config.completedRequestLogSampleRate ??
             defaultCompletedRequestLogSampleRate,
         contentDomain: config.contentDomain,
-        readiness: () => externalStorageReadiness(database, client, config.objectStorage.bucket),
+        readiness: () => externalStorageReadiness(database, connectedObjectStorage),
         trustedApplicationOrigin: config.applicationOrigin ?? null,
     };
     const appDependencies = config.apiOAuthResource === undefined
@@ -154,8 +132,10 @@ export async function createExternalStorageRuntime(
     };
   } catch (cause) {
     if (applicationRuntime === null) {
-      client.destroy();
-      await database.close();
+      await Promise.all([
+        objectStorage?.close() ?? Promise.resolve(),
+        database.close(),
+      ]);
     } else {
       await applicationRuntime.dispose();
     }
@@ -165,8 +145,7 @@ export async function createExternalStorageRuntime(
 
 async function externalStorageReadiness(
   database: PostgresDatabase,
-  client: S3Client,
-  bucket: string,
+  objectStorage: ObjectStorageProvider,
 ) {
   const [databaseResult, migrationResult, objectStorageResult] = await Promise.all([
     readinessComponent(() => database.health()),
@@ -176,12 +155,7 @@ async function externalStorageReadiness(
         throw new Error("The database schema is not compatible with this build.");
       }
     }),
-    readinessComponent(async (signal) => {
-      await client.send(
-        new HeadBucketCommand({Bucket: bucket}),
-        {abortSignal: signal},
-      );
-    }),
+    readinessComponent((signal) => objectStorage.readiness(signal)),
   ]);
   const status = databaseResult.status === "ready"
     && migrationResult.status === "ready"
@@ -232,22 +206,4 @@ async function readinessComponent(
   } finally {
     if (timeout !== undefined) clearTimeout(timeout);
   }
-}
-
-/** Build an AWS SDK client configuration for one parsed object-store adapter. */
-export function createS3ClientConfig(
-  config: ExternalObjectStorageConfig,
-): S3ClientConfig {
-  const base: S3ClientConfig = {
-    forcePathStyle: config.forcePathStyle ?? false,
-    region: config.region,
-  };
-  if (config.accessKeyId !== undefined) {
-    base.credentials = {
-      accessKeyId: config.accessKeyId,
-      secretAccessKey: Redacted.value(config.secretAccessKey),
-    };
-  }
-  if (config.endpoint !== undefined) base.endpoint = config.endpoint;
-  return base;
 }

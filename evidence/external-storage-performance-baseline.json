@@ -2,15 +2,15 @@
   "artifactList": {
     "latency": {
       "count": 16,
-      "maximumMilliseconds": 4.307,
-      "meanMilliseconds": 3.316,
-      "minimumMilliseconds": 2.365,
-      "p50Milliseconds": 3.07,
-      "p95Milliseconds": 4.307,
-      "p99Milliseconds": 4.307
+      "maximumMilliseconds": 4.086,
+      "meanMilliseconds": 3.082,
+      "minimumMilliseconds": 1.66,
+      "p50Milliseconds": 3.01,
+      "p95Milliseconds": 4.086,
+      "p99Milliseconds": 4.086
     },
-    "operationsPerSecond": 1178.344,
-    "totalMilliseconds": 13.578
+    "operationsPerSecond": 1265.118,
+    "totalMilliseconds": 12.647
   },
   "checks": {
     "compiledProcesses": "passed",
@@ -24,28 +24,28 @@
   "concurrentPublish": {
     "latency": {
       "count": 16,
-      "maximumMilliseconds": 81.177,
-      "meanMilliseconds": 42.575,
-      "minimumMilliseconds": 27.678,
-      "p50Milliseconds": 36.634,
-      "p95Milliseconds": 81.177,
-      "p99Milliseconds": 81.177
+      "maximumMilliseconds": 114.912,
+      "meanMilliseconds": 52.38,
+      "minimumMilliseconds": 27.912,
+      "p50Milliseconds": 33.599,
+      "p95Milliseconds": 114.912,
+      "p99Milliseconds": 114.912
     },
-    "operationsPerSecond": 88.89,
-    "totalMilliseconds": 179.998
+    "operationsPerSecond": 67.27,
+    "totalMilliseconds": 237.846
   },
   "concurrentRead": {
     "latency": {
       "count": 80,
-      "maximumMilliseconds": 5.414,
-      "meanMilliseconds": 3.353,
-      "minimumMilliseconds": 2.27,
-      "p50Milliseconds": 3.157,
-      "p95Milliseconds": 4.67,
-      "p99Milliseconds": 5.414
+      "maximumMilliseconds": 5.689,
+      "meanMilliseconds": 3.022,
+      "minimumMilliseconds": 1.963,
+      "p50Milliseconds": 2.794,
+      "p95Milliseconds": 4.299,
+      "p99Milliseconds": 5.689
     },
-    "operationsPerSecond": 2351.135,
-    "totalMilliseconds": 34.026
+    "operationsPerSecond": 2590.279,
+    "totalMilliseconds": 30.885
   },
   "configuration": {
     "concurrentFileBytes": 16384,
@@ -72,39 +72,39 @@
     "directory": {
       "latency": {
         "count": 3,
-        "maximumMilliseconds": 401.958,
-        "meanMilliseconds": 382.509,
-        "minimumMilliseconds": 372.263,
-        "p50Milliseconds": 373.305,
-        "p95Milliseconds": 401.958,
-        "p99Milliseconds": 401.958
+        "maximumMilliseconds": 436.552,
+        "meanMilliseconds": 415.327,
+        "minimumMilliseconds": 404.333,
+        "p50Milliseconds": 405.095,
+        "p95Milliseconds": 436.552,
+        "p99Milliseconds": 436.552
       },
-      "operationsPerSecond": 2.614,
-      "totalMilliseconds": 1147.545
+      "operationsPerSecond": 2.408,
+      "totalMilliseconds": 1246.005
     },
     "singleFile": {
       "latency": {
         "count": 3,
-        "maximumMilliseconds": 110.363,
-        "meanMilliseconds": 103.632,
-        "minimumMilliseconds": 95.378,
-        "p50Milliseconds": 105.155,
-        "p95Milliseconds": 110.363,
-        "p99Milliseconds": 110.363
+        "maximumMilliseconds": 119.766,
+        "meanMilliseconds": 106.467,
+        "minimumMilliseconds": 83.998,
+        "p50Milliseconds": 115.637,
+        "p95Milliseconds": 119.766,
+        "p99Milliseconds": 119.766
       },
-      "operationsPerSecond": 9.649,
-      "totalMilliseconds": 310.91
+      "operationsPerSecond": 9.392,
+      "totalMilliseconds": 319.414
     }
   },
-  "generatedAt": "2026-08-15T00:05:40.966Z",
-  "providerReadyMilliseconds": 2189,
+  "generatedAt": "2026-08-15T04:12:56.709Z",
+  "providerReadyMilliseconds": 2104,
   "serverReadyMilliseconds": {
     "initialProcesses": [
-      269.754,
-      268.659
+      264.317,
+      263.555
     ],
-    "replacementProcess": 243.919
+    "replacementProcess": 237.037
   },
-  "totalHarnessMilliseconds": 2679.934,
+  "totalHarnessMilliseconds": 2828.757,
   "warnings": []
 }

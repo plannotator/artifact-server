@@ -2,6 +2,8 @@ import type {
   RuntimeConfigurationSummary,
 } from "./runtime-configuration.js";
 import type {RuntimeInspection} from "./runtime-inspection.js";
+import type {ObjectStorageProviderKind} from
+  "../storage/object-storage-provider.js";
 
 /** Build and release identity injected into lifecycle diagnostics. */
 export interface ProductBuildInformation {
@@ -15,7 +17,7 @@ export interface ProductBuildInformation {
 export interface SupportManifest {
   readonly adapters: {
     readonly database: "postgres" | "sqlite";
-    readonly objectStorage: "filesystem" | "s3";
+    readonly objectStorage: "filesystem" | ObjectStorageProviderKind;
   };
   readonly configuration: RuntimeConfigurationSummary;
   readonly imageRevision: string | null;

@@ -32,10 +32,15 @@ Alchemy and Pulumi belong to deployment packages. They are not production
 dependencies of the direct local package, server image, HTTP process, or MCP
 server.
 
-The Artifact Server CLI provides the customer-facing commands. It delegates to
-a pinned deployment package and returns one common plan, apply result, support
-manifest, and health result. An advanced operator can export and edit the
-generated Alchemy or Pulumi project.
+Operators use each deployment tool directly. Cloudflare uses the pinned
+Alchemy project. AWS, GCP, and Azure use pinned Pulumi projects. Kubernetes
+uses Helm, one-server installs use Compose, and local use runs the direct
+package. Artifact Server supplies shared configuration, output, evidence, and
+product-probe contracts; it does not hide infrastructure plans behind an
+`artifactserver deploy` wrapper.
+
+The exact handoff is
+[`cloud-deployment-contract.md`](./cloud-deployment-contract.md).
 
 ### Ship one default managed-container path per major cloud
 
@@ -44,7 +49,7 @@ default:
 
 | Cloud | Default application runtime | Records | Files |
 | --- | --- | --- | --- |
-| AWS | ECS Fargate | RDS or Aurora PostgreSQL | S3 |
+| AWS | ECS Fargate | RDS PostgreSQL | S3 |
 | GCP | Cloud Run | Cloud SQL for PostgreSQL | Google Cloud Storage |
 | Azure | Container Apps | Azure Database for PostgreSQL | Azure Blob Storage |
 
@@ -79,35 +84,31 @@ the CLI because only a process on the user's computer can read those files.
 administrator and infrastructure access. Installing the publishing skill does
 not install or activate the operator skill.
 
-## Shared deployment surface
+## Deployment lifecycle surface
 
-The cloud packages implement the same commands:
+Operators use the native lifecycle commands:
 
 ```text
-artifactserver deploy plan --target <cloud>
-artifactserver deploy apply --target <cloud>
-artifactserver deploy status --target <cloud>
-artifactserver deploy upgrade --target <cloud>
-artifactserver deploy rollback --target <cloud>
-artifactserver deploy backup --target <cloud>
-artifactserver deploy restore --target <cloud>
-artifactserver deploy destroy --target <cloud>
+Cloudflare:     alchemy plan | deploy | destroy
+AWS/GCP/Azure: pulumi preview | up | destroy
+Kubernetes:    helm upgrade --install | rollback | uninstall
+One server:    docker compose config | up | down
 ```
 
-The command contract is:
+The package contract is:
 
-- `plan` performs no writes and shows resource, network, data, and cost-relevant
-  changes.
-- `apply` uses the plan's pinned package and image versions.
-- `upgrade` backs up durable state, applies compatible migrations, rolls the
+- native preview performs no writes and shows resource, network, data, and
+  cost-relevant changes;
+- apply uses pinned package, provider, and image versions;
+- an upgrade backs up durable state, applies compatible migrations, rolls the
   application, and runs health and product probes.
-- `rollback` restores the previous application image only when its declared
+- rollback restores the previous application image only when its declared
   schema range accepts the current database. It never attempts an unsafe
   database downgrade.
-- `destroy` preserves durable data by default. Permanent deletion requires a
+- destroy preserves durable data by default. Permanent deletion requires a
   separate explicit option, a fresh backup result, and confirmation naming the
   installation.
-- Every command writes redacted, machine-readable evidence and updates the
+- each lifecycle run writes redacted, machine-readable evidence and updates the
   installation support manifest.
 
 Cloud credentials come from the provider's normal local login, CI identity, or
@@ -199,7 +200,7 @@ the selected target. It always:
 2. validates current access and configuration;
 3. produces a plan;
 4. asks before a material infrastructure or data change;
-5. applies through the Artifact Server CLI;
+5. applies through Compose, Helm, Alchemy, or Pulumi directly;
 6. runs readiness, integrity, and product probes;
 7. reports the evidence path and support manifest.
 
@@ -308,7 +309,7 @@ Cloudflare parts of `DEP-001`, `DEP-011`, `DEP-012`, and `GATE-009`.
 
 ### Pulumi package shape
 
-Use Pulumi Automation API from separate, pinned deployment packages:
+Use direct Pulumi TypeScript projects with separately pinned provider packages:
 
 ```text
 deploy/pulumi/core
@@ -317,23 +318,27 @@ deploy/pulumi/gcp
 deploy/pulumi/azure
 ```
 
-`core` defines Artifact Server deployment inputs, outputs, evidence, lifecycle
-steps, naming, tags, secret handling, image digests, health probes, and safe
-deletion. Provider packages map that contract to native resources.
+`core` defines shared TypeScript types and validation for Artifact Server
+deployment inputs, outputs, evidence, naming, tags, secret handling, image
+digests, health probes, and safe deletion. It is a library imported by the
+three Pulumi projects, not a second command runner. Provider packages map that
+contract to native resources and operators use `pulumi preview`, `pulumi up`,
+and `pulumi destroy`.
 
-Pulumi Cloud is optional. The supported customer-owned state path stores
-Pulumi state in an encrypted, versioned bucket or container in the customer's
-cloud. The Artifact Server installer bootstraps or adopts that state location,
-uses the provider's standard credential chain, and records only its address.
-The installer must test concurrent update locking and state recovery. A team
-may explicitly choose Pulumi Cloud instead.
+Pulumi Cloud is optional. The supported customer-owned state path uses an
+existing encrypted, versioned S3, GCS, or Azure Blob backend in the customer's
+cloud. The main stack does not create the store that contains its own state.
+The operator selects it with `pulumi login`, chooses a secrets provider, uses
+the cloud's standard credential chain, and records only the redacted backend
+address. Each provider must test update locking, interrupted checkpoints, and
+state recovery. A team may explicitly choose Pulumi Cloud instead.
 
 ### Provider scope
 
 | Concern | AWS | GCP | Azure |
 | --- | --- | --- | --- |
 | Runtime | ECS Fargate | Cloud Run | Container Apps |
-| Database | RDS or Aurora PostgreSQL | Cloud SQL for PostgreSQL | Azure Database for PostgreSQL |
+| Database | RDS PostgreSQL | Cloud SQL for PostgreSQL | Azure Database for PostgreSQL Flexible Server |
 | Files | S3 adapter already implemented | New native GCS adapter | New native Azure Blob adapter |
 | Workload identity | IAM task role | Service account | Managed identity |
 | Secrets | Secrets Manager or SSM | Secret Manager | Key Vault |
@@ -343,7 +348,9 @@ may explicitly choose Pulumi Cloud instead.
 
 The provider package grants the application only the database, object, secret,
 and telemetry permissions it needs. The application container uses no static
-cloud access key.
+cloud access key. Exact shared inputs, provider-specific network inputs,
+runtime configuration, outputs, and secret rules are defined in
+[`cloud-deployment-contract.md`](./cloud-deployment-contract.md).
 
 ### Kubernetes option
 
@@ -453,7 +460,8 @@ This track closes `GIT-001` through `GIT-007` and `GATE-004`.
 
 1. Add authenticated CLI profiles, finish the local-file publishing command,
    and ship `publish-artifact` with locality-based routing.
-2. Add the common deployment command and deployment-package interface.
+2. Freeze the cloud configuration, output, evidence, and storage-provider
+   contracts. Do not add a deployment wrapper.
 3. Build the one-installation Cloudflare runtime with Git disabled.
 4. Add the history outbox and local Git provider.
 5. Add the Cloudflare Artifacts provider if beta access and provider evidence
@@ -478,10 +486,9 @@ not advertised until its own gate passes.
   supported AWS, GCP, and Azure path. Pulumi remains the cross-cloud installer
   baseline. Reconsider only when one framework can pass all three provider
   gates without weakening customer-owned state or lifecycle recovery.
-- Pulumi Automation API supports a custom CLI wrapper and customer-owned S3,
-  GCS, and Azure Blob state backends. The Pulumi CLI is still required under
-  the Automation API and must be installed at a pinned version by the
-  deployment package.
+- Pulumi supports customer-owned S3, GCS, and Azure Blob state backends and
+  provider-backed secrets encryption. The official packages use the Pulumi CLI
+  directly. Automation API is not part of the initial deployment surface.
 - Cloudflare Artifacts is in closed beta. Its current documented limit is 10 GB
   per repository. Artifact Server cannot require it for the Cloudflare release.
 - Agent Skills use the open folder format with `SKILL.md` and optional
@@ -493,8 +500,8 @@ References:
 - [Alchemy Workers and bindings](https://alchemy.run/cloudflare/compute/workers/)
 - [Alchemy state store](https://alchemy.run/state-store/)
 - [Alchemy privacy and telemetry](https://alchemy.run/privacy/)
-- [Pulumi Automation API](https://www.pulumi.com/docs/iac/concepts/automation-api/)
-- [Pulumi state backends](https://www.pulumi.com/docs/concepts/state/)
+- [Pulumi state backends](https://www.pulumi.com/docs/iac/concepts/state-and-backends/)
+- [Pulumi secrets](https://www.pulumi.com/docs/iac/concepts/secrets/)
 - [Cloudflare Artifacts](https://developers.cloudflare.com/artifacts/)
 - [Cloudflare Artifacts limits](https://developers.cloudflare.com/artifacts/platform/limits/)
 - [Agent Skills specification](https://agentskills.io/specification)

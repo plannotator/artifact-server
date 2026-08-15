@@ -5,8 +5,15 @@ import path from "node:path";
 import {Effect, Option, Redacted, Schema} from "effect";
 import {getDomain} from "tldts";
 
-import type {ExternalObjectStorageConfig} from
-  "../external-storage/create-external-storage-runtime.js";
+import type {
+  ObjectStorageProviderFactory,
+  ObjectStorageProviderKind,
+} from
+  "../storage/object-storage-provider.js";
+import {
+  createS3ObjectStorageProviderFactory,
+  type S3ObjectStorageProviderConfig,
+} from "../storage/s3-object-storage.js";
 import {
   compactInstallationLayout,
   readCompactInstallation,
@@ -83,7 +90,7 @@ export interface ExternalStorageRuntimeConfiguration {
   readonly hostname: string;
   readonly installationId: string;
   readonly localBootstrapCredential: Redacted.Redacted | null;
-  readonly objectStorage: ExternalObjectStorageConfig;
+  readonly objectStorage: ObjectStorageProviderFactory;
   readonly port: number;
   readonly readinessWithdrawalMilliseconds: number;
   readonly shutdownDeadlineMilliseconds: number;
@@ -106,7 +113,7 @@ export interface RuntimeConfigurationSummary {
   readonly hostname: string;
   readonly installationId: string;
   readonly interactiveIdentityProvider: "local" | "workos";
-  readonly objectStorageProvider: "filesystem" | "s3";
+  readonly objectStorageProvider: "filesystem" | ObjectStorageProviderKind;
   readonly port: number;
   readonly readinessWithdrawalMilliseconds: number;
   readonly shutdownDeadlineMilliseconds: number;
@@ -242,6 +249,15 @@ export const parseExternalStorageRuntimeConfiguration = Effect.fn(
     hostnameSchema,
   );
   yield* assertBrowserIsolation(applicationOrigin, contentDomain);
+  const objectStorageProvider = environment[
+    "ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER"
+  ] ?? "s3";
+  if (objectStorageProvider !== "s3") {
+    return yield* invalidValue(
+      "ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER",
+      `The object-storage provider ${objectStorageProvider} is not available in this build.`,
+    );
+  }
   const forcePathStyle = environment["ARTIFACT_SERVER_S3_FORCE_PATH_STYLE"] ?? "false";
   if (forcePathStyle !== "true" && forcePathStyle !== "false") {
     return yield* invalidValue(
@@ -295,15 +311,15 @@ export const parseExternalStorageRuntimeConfiguration = Effect.fn(
         urlStringSchema,
       ),
     };
-  const objectStorage: ExternalObjectStorageConfig = {
+  const objectStorageConfig: S3ObjectStorageProviderConfig = {
     ...objectStorageBase,
     ...staticCredentials,
     ...configuredEndpoint,
   };
-  if (objectStorage.endpoint !== undefined) {
+  if (objectStorageConfig.endpoint !== undefined) {
     yield* assertHttpServiceUrl(
       "ARTIFACT_SERVER_S3_ENDPOINT",
-      objectStorage.endpoint,
+      objectStorageConfig.endpoint,
     );
   }
   const localBootstrapCredential = yield* loadOptionalCredential(
@@ -347,7 +363,7 @@ export const parseExternalStorageRuntimeConfiguration = Effect.fn(
       installationIdSchema,
     ),
     localBootstrapCredential: localBootstrapCredential?.value ?? null,
-    objectStorage,
+    objectStorage: createS3ObjectStorageProviderFactory(objectStorageConfig),
     port: yield* parsePort(input.port),
     readinessWithdrawalMilliseconds: yield* parseMilliseconds(
       environment,
@@ -399,7 +415,7 @@ export function summarizeRuntimeConfiguration(
     hostname: configuration.hostname,
     installationId: configuration.installationId,
     interactiveIdentityProvider,
-    objectStorageProvider: "s3",
+    objectStorageProvider: configuration.objectStorage.kind,
     port: configuration.port,
     readinessWithdrawalMilliseconds:
       configuration.readinessWithdrawalMilliseconds,

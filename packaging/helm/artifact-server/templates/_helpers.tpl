@@ -135,6 +135,8 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
   value: {{ .Values.configuration.installationId | quote }}
 - name: ARTIFACT_SERVER_ORIGIN
   value: {{ .Values.configuration.applicationOrigin | quote }}
+- name: ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER
+  value: "s3"
 - name: ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS
   value: {{ .Values.configuration.readinessWithdrawalMilliseconds | quote }}
 - name: ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE

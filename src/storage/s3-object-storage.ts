@@ -4,10 +4,12 @@ import { Readable } from "node:stream";
 import {
   GetObjectCommand,
   HeadObjectCommand,
-  type S3Client,
+  HeadBucketCommand,
+  S3Client,
+  type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import { Schema } from "effect";
+import { Redacted, Schema } from "effect";
 
 import type {
   BlobStore,
@@ -18,6 +20,10 @@ import type {
   StagingStore,
   StoredBlob,
 } from "../core/ports.js";
+import type {
+  ObjectStorageProvider,
+  ObjectStorageProviderFactory,
+} from "./object-storage-provider.js";
 import { verifiedBlobStream } from "./verified-file.js";
 
 const digestSchema = Schema.String.check(
@@ -37,6 +43,25 @@ const digestMetadataName = "artifact-sha256";
 const kindMetadataName = "artifact-kind";
 const multipartPartBytes = 8 * 1024 * 1024;
 
+interface S3ObjectStorageProviderConfigBase {
+  readonly bucket: string;
+  readonly endpoint?: string;
+  readonly forcePathStyle?: boolean;
+  readonly region: string;
+}
+
+/** S3 settings using either a static pair or the AWS SDK credential chain. */
+export type S3ObjectStorageProviderConfig = S3ObjectStorageProviderConfigBase & (
+  | {
+    readonly accessKeyId: string;
+    readonly secretAccessKey: Redacted.Redacted;
+  }
+  | {
+    readonly accessKeyId?: never;
+    readonly secretAccessKey?: never;
+  }
+);
+
 /** Construction values for one installation's S3-compatible storage adapters. */
 export interface S3ObjectStorageConfig {
   /** Bucket created and authorized by the deployment composition root. */
@@ -53,6 +78,63 @@ export interface S3ObjectStorageAdapters {
   readonly blobs: BlobStore;
   /** Uncommitted staged-upload operations. */
   readonly staging: StagingStore;
+}
+
+/**
+ * Build the deployment-facing S3 provider factory while keeping AWS SDK types
+ * out of the external server runtime.
+ */
+export function createS3ObjectStorageProviderFactory(
+  config: S3ObjectStorageProviderConfig,
+): ObjectStorageProviderFactory {
+  return {
+    kind: "s3",
+    create: (installationId) => createS3ObjectStorageProvider(config, installationId),
+  };
+}
+
+/** Build an AWS SDK client configuration from validated S3 settings. */
+export function createS3ClientConfig(
+  config: S3ObjectStorageProviderConfig,
+): S3ClientConfig {
+  const base: S3ClientConfig = {
+    forcePathStyle: config.forcePathStyle ?? false,
+    region: config.region,
+  };
+  if (config.accessKeyId !== undefined) {
+    base.credentials = {
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: Redacted.value(config.secretAccessKey),
+    };
+  }
+  if (config.endpoint !== undefined) base.endpoint = config.endpoint;
+  return base;
+}
+
+function createS3ObjectStorageProvider(
+  config: S3ObjectStorageProviderConfig,
+  installationId: string,
+): ObjectStorageProvider {
+  const client = new S3Client(createS3ClientConfig(config));
+  const adapters = createS3ObjectStorageAdapters({
+    bucket: config.bucket,
+    client,
+    installationId,
+  });
+  return {
+    ...adapters,
+    kind: "s3",
+    close: () => {
+      client.destroy();
+      return Promise.resolve();
+    },
+    readiness: async (signal) => {
+      await client.send(
+        new HeadBucketCommand({Bucket: config.bucket}),
+        {abortSignal: signal},
+      );
+    },
+  };
 }
 
 /**

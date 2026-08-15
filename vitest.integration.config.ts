@@ -18,6 +18,7 @@ export default defineConfig({
     include: [
       "tests/integration/observability.test.ts",
       "tests/integration/s3-object-storage.test.ts",
+      "tests/tooling/object-storage-boundary.test.ts",
     ],
     pool: "forks",
     testTimeout: 30_000,

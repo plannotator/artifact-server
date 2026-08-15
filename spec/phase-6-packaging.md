@@ -489,8 +489,9 @@ fail the packaging gate.
    disposable cluster.
 7. **Next.** Add compact-to-external-storage export and import, then prove one installation can move
    from the Compose package to the Helm package without changing IDs or bytes.
-8. Publish signed release artifacts and add the common CLI wrapper around the
-   verified Compose and Helm operations.
+8. Publish signed release artifacts and document the verified native Compose
+   and Helm lifecycle commands. Do not add an Artifact Server infrastructure
+   wrapper.
 
 Every step ends with the normal lint, type, build, conformance, smoke, real
 provider, and bounded performance gates. A packaging test must execute the
