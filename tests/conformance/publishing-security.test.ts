@@ -20,6 +20,7 @@ import {
   createStagedUpload,
   parsePublishResponse,
   publishNew,
+  publishVersion,
   uploadEveryStagedFile,
 } from "../support/publishing.js";
 
@@ -276,7 +277,7 @@ describe("local publishing security boundaries", () => {
     expect(exact.status).toBe(401);
   });
 
-  test("foundation: version responses have safe immutable HTTP behavior", async () => {
+  test("foundation: public content is retained at the edge but authorization is revalidated", async () => {
     const html = "<!doctype html><title>Headers</title>";
     const published = await publishNew(server, installation, {
       accessSetting: "public_link",
@@ -286,12 +287,26 @@ describe("local publishing security boundaries", () => {
     const get = await fetchVersion(server, published.body.links.version);
     expect(get.status).toBe(200);
     expect(get.headers.get("cache-control")).toBe(
-      "public, max-age=31536000, immutable",
+      "public, no-cache, must-revalidate",
     );
     expect(get.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expect(get.headers.get("x-content-type-options")).toBe("nosniff");
     expect(get.headers.get("etag")).toMatch(/^"[a-f0-9]{64}"$/u);
     expect(await get.text()).toBe(html);
+
+    const etag = get.headers.get("etag");
+    expect(etag).not.toBeNull();
+    const unchanged = await fetchVersion(
+      server,
+      published.body.links.version,
+      "GET",
+      {"If-None-Match": etag ?? ""},
+    );
+    expect(unchanged.status).toBe(304);
+    expect(unchanged.headers.get("cache-control")).toBe(
+      "public, no-cache, must-revalidate",
+    );
+    expect(await unchanged.text()).toBe("");
 
     const head = await fetchVersion(server, published.body.links.version, "HEAD");
     expect(head.status).toBe(200);
@@ -301,5 +316,19 @@ describe("local publishing security boundaries", () => {
     const post = await fetchVersion(server, published.body.links.version, "POST");
     expect(post.status).toBe(405);
     expect(post.headers.get("allow")).toBe("GET, HEAD");
+
+    await publishVersion(server, installation, {
+      artifactId: published.body.artifact.id,
+      content: "<!doctype html><title>Current</title>",
+      expectedCurrentVersionId: published.body.version.id,
+      idempotencyKey: "content-http-contract-second-version",
+    });
+    const previous = await fetchVersion(
+      server,
+      published.body.links.version,
+      "GET",
+      {"If-None-Match": etag ?? ""},
+    );
+    expect(previous.status).toBe(401);
   });
 });

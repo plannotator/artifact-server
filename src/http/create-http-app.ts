@@ -1681,12 +1681,22 @@ async function serveVersionContent(
   }
   const publiclyCacheable = content.accessSetting === accessSettings.publicLink &&
     content.isCurrent;
+  const headers = contentHeaders(
+    content.entry,
+    content.entry.size,
+    publiclyCacheable,
+  );
+
+  if (etagMatches(context.req.header("if-none-match"), content.entry.sha256)) {
+    headers.delete("Content-Length");
+    return new Response(null, {headers, status: 304});
+  }
 
   if (method === "HEAD") {
     const blob = await dependencies.blobs.inspect(content.entry.sha256);
     assertBlobSize(blob.size, content.entry.size, content.entry.sha256);
     return new Response(null, {
-      headers: contentHeaders(content.entry, blob.size, publiclyCacheable),
+      headers,
       status: 200,
     });
   }
@@ -1697,8 +1707,17 @@ async function serveVersionContent(
     assertBlobSize(blob.size, content.entry.size, content.entry.sha256);
   }
   return new Response(blob.body, {
-    headers: contentHeaders(content.entry, blob.size, publiclyCacheable),
+    headers,
     status: 200,
+  });
+}
+
+function etagMatches(value: string | undefined, sha256: string): boolean {
+  if (value === undefined) return false;
+  const expected = `"${sha256}"`;
+  return value.split(",").some((candidate) => {
+    const tag = candidate.trim();
+    return tag === "*" || tag === expected || tag === `W/${expected}`;
   });
 }
 
@@ -1709,7 +1728,7 @@ function contentHeaders(
 ): Headers {
   return new Headers({
     "Cache-Control": publiclyCacheable
-      ? "public, max-age=31536000, immutable"
+      ? "public, no-cache, must-revalidate"
       : "private, no-store",
     "Content-Disposition": entry.disposition,
     "Content-Length": String(size),

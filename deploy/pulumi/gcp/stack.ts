@@ -475,6 +475,11 @@ function defineGcpPublicEdge(input: {
   }, {dependsOn: [...input.services]});
   const backend = new gcp.compute.BackendService(`${input.name}-application`, {
     backends: [{group: neg.id}],
+    cdnPolicy: {
+      cacheMode: "USE_ORIGIN_HEADERS",
+      negativeCaching: false,
+      serveWhileStale: 0,
+    },
     compressionMode: "AUTOMATIC",
     enableCdn: true,
     loadBalancingScheme: "EXTERNAL_MANAGED",

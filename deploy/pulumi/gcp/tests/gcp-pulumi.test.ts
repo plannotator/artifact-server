@@ -104,7 +104,15 @@ describe("GCP Pulumi deployment", () => {
     expect(serializedService).not.toContain("generated-database-password");
 
     expect(requireResource("gcp:compute/backendService:BackendService").inputs)
-      .toMatchObject({enableCdn: true, loadBalancingScheme: "EXTERNAL_MANAGED"});
+      .toMatchObject({
+        cdnPolicy: {
+          cacheMode: "USE_ORIGIN_HEADERS",
+          negativeCaching: false,
+          serveWhileStale: 0,
+        },
+        enableCdn: true,
+        loadBalancingScheme: "EXTERNAL_MANAGED",
+      });
     expect(requireResources("gcp:dns/recordSet:RecordSet")).toHaveLength(4);
     expect(deployment).toMatchObject({
       applicationUrl: "https://artifacts.example.com",

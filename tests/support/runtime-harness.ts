@@ -144,10 +144,13 @@ export async function fetchVersion(
           const bytes = Buffer.concat(chunks);
           const body = new Uint8Array(bytes.byteLength);
           body.set(bytes);
+          const status = incoming.statusCode ?? 500;
           resolve(
-            new Response(body.buffer, {
+            new Response(status === 204 || status === 205 || status === 304
+              ? null
+              : body.buffer, {
               headers: responseHeaders,
-              status: incoming.statusCode ?? 500,
+              status,
             }),
           );
         });
