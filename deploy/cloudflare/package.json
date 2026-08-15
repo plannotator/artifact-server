@@ -1,0 +1,35 @@
+{
+  "name": "@artifact-server/cloudflare-deployment",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pinned Alchemy deployment project for Artifact Server on Cloudflare.",
+  "type": "module",
+  "packageManager": "pnpm@10.34.3",
+  "engines": {
+    "node": ">=24.12.0"
+  },
+  "scripts": {
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "deploy": "alchemy deploy",
+    "destroy": "alchemy destroy",
+    "lint": "oxlint --type-aware --type-check --deny-warnings .",
+    "plan": "alchemy plan",
+    "probe:account": "node ./scripts/account-probe.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "wrangler": "wrangler"
+  },
+  "dependencies": {
+    "alchemy": "2.0.0-beta.72",
+    "effect": "4.0.0-rc.108"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260815.1",
+    "@effect/platform-node": "4.0.0-rc.108",
+    "@types/node": "24.13.3",
+    "oxlint": "1.78.0",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10",
+    "wrangler": "4.123.0"
+  }
+}

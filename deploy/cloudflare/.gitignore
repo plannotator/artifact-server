@@ -1,0 +1,8 @@
+node_modules/
+.alchemy/
+.wrangler/
+.dev.vars
+.env
+.env.*
+!.env.example
+evidence/account-probe-*.json
