@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-08-15T21:10:26Z",
+  "completedAt": "2026-08-15T21:10:41Z",
+  "target": "gcp",
+  "stateBackend": "gcs",
+  "backendVersioning": "enabled",
+  "resourceCount": 51,
+  "resourceIdentityChecksum": "1b9fe1ec74a24d08c5531faee2e42ae20f39bc595ac06cf84c81083403f68883",
+  "exactStateImport": "passed",
+  "postImportPreview": "no_changes"
+}

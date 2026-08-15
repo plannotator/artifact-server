@@ -31,7 +31,19 @@ The operator is responsible for proving that an adopted network has working priv
 
 ## Qualification status
 
-Pulumi mocks prove the resource graph and shared output contract. The native GCS adapter is tested against a pinned emulator. This package is not called cloud-qualified until a disposable GCP project passes publish, read, restart, scale, provider-outage, backup, restore, state recovery, update, and deletion checks.
+Pulumi mocks prove the resource graph and shared output contract. The native GCS adapter is tested against a pinned emulator.
+
+The public deployment has passed a live, isolated GCP qualification: create and
+no-change preview; publish, read, access control, MCP, and bounded
+1/10/25/50/100-user reads; upgrade and rollback; API-secret rotation; exact
+Pulumi checkpoint import; Cloud SQL backup restoration into a temporary private
+instance; and an exact GCS object copy by name, size, and checksum. Temporary
+restore resources were deleted after verification.
+
+This is deliberately a minimum provider qualification. It does not claim
+cross-region failover, automated disaster recovery, or continuous chaos tests.
+The broader GCP release remains unsupported until the documented private-ingress
+option and final create-to-delete gate are complete.
 
 Run the repeatable live product and upgrade checks against an existing isolated
 qualification stack with:
@@ -46,6 +58,9 @@ ARTIFACT_SERVER_GCP_UPGRADE_IMAGE=REGISTRY/IMAGE@sha256:DIGEST \
 
 PULUMI_BACKEND_URL=gs://example-state/artifact-server \
   scripts/run-gcp-secret-rotation-qualification.sh
+
+PULUMI_BACKEND_URL=gs://example-state/artifact-server \
+  scripts/run-gcp-state-recovery-qualification.sh
 ```
 
 The product check publishes through the real CLI, reads through the public load
@@ -59,3 +74,7 @@ The credential-rotation check adds a temporary Secret Manager version, rolls a
 new Cloud Run revision, proves that only the new credential works, publishes
 through the replacement revision, restores the original credential, destroys
 the temporary secret version, and reconciles the service with Pulumi.
+
+Live records are in `evidence/gcp-deployment-product.json`,
+`evidence/gcp-upgrade-rollback.json`, `evidence/gcp-secret-rotation.json`,
+`evidence/gcp-state-recovery.json`, and `evidence/gcp-minimum-recovery.json`.

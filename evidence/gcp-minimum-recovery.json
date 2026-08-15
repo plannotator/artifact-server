@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "completedAt": "2026-08-15T21:32:21Z",
+  "target": "gcp",
+  "cloudSql": {
+    "sourceInstance": "as-ed9d629f0213-database",
+    "backupId": "1786828485303",
+    "backupStatus": "SUCCESSFUL",
+    "restoredInstanceState": "RUNNABLE",
+    "restoredDatabase": "artifactserver",
+    "temporaryRestoreInstanceDeleted": true
+  },
+  "gcs": {
+    "sourceBucket": "as-ed9d629f0213-uweyuciu",
+    "objects": 29,
+    "bytes": 5809,
+    "comparison": [
+      "name",
+      "size",
+      "crc32c"
+    ],
+    "exactCopy": "passed",
+    "temporaryBackupBucketDeleted": true
+  },
+  "scope": {
+    "providerRestoreOperations": "passed",
+    "applicationLevelRestoredStack": "not_run",
+    "crossRegionFailover": "not_run",
+    "automatedDisasterRecovery": "not_built"
+  }
+}

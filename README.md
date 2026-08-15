@@ -311,10 +311,12 @@ rotation, ECS task replacement, and role-based publication have passed.
 The direct projects in [`deploy/pulumi/gcp`](./deploy/pulumi/gcp) and
 [`deploy/pulumi/azure`](./deploy/pulumi/azure) create the documented managed
 runtime, private PostgreSQL database, native object store, workload identity,
-secrets, network, DNS, TLS, logs, and support outputs. Their resource graphs and
-native storage adapters pass local integration gates. Follow each project
-README for prerequisites. Neither target is called supported until its own
-disposable cloud environment passes the full lifecycle and recovery gate.
+secrets, network, DNS, TLS, logs, and support outputs. GCP's public path has
+passed live product, bounded concurrency, upgrade, rollback, credential
+rotation, checkpoint recovery, and minimum provider backup/restore checks in a
+disposable project. It remains release-unqualified until safe destroy and the
+specified private-ingress option pass. Azure currently has only local resource
+graph and native-storage evidence. Follow each project README for prerequisites.
 
 ## Run from the source checkout
 
