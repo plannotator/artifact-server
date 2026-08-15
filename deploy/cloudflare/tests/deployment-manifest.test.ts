@@ -57,4 +57,16 @@ describe("Cloudflare deployment manifest", () => {
     expect(manifest.resourceNames.bucket.length).toBeLessThanOrEqual(63);
     expect(manifest.resourceNames.worker).toMatch(/-[a-f0-9]{8}$/);
   });
+
+  it("prefixes every probe-stage resource name", () => {
+    const manifest = buildCloudflareDeploymentManifest({
+      ...validDeploymentInput,
+      installationName: "probe-review",
+      stage: "probe-review",
+    });
+
+    expect(manifest.resourceNames.worker).toMatch(/^probe-/);
+    expect(manifest.resourceNames.database).toMatch(/^probe-/);
+    expect(manifest.resourceNames.bucket).toMatch(/^probe-/);
+  });
 });

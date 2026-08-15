@@ -7,6 +7,14 @@ This record applies to Alchemy `2.0.0-beta.72`.
 `Cloudflare.state()` uses one account-level state Worker. The Worker stores
 encrypted state in a Durable Object.
 
+Alchemy serves this Worker through the account `workers.dev` subdomain. The
+state client requires that URL. Disabling `workers.dev` on the Artifact Server
+Worker does not disable it on the Alchemy state Worker.
+
+`Cloudflare.state()` always selects the `alchemy-state-store` Worker in this
+version. The bootstrap command has a custom Worker-name option, but the stack
+state client does not use that custom name.
+
 The state system also uses account-level Secrets Store values. These values
 contain the bearer token and the encryption key.
 
@@ -39,8 +47,8 @@ ownership link that a later plan needs.
 Use an explicit adoption procedure to manage a retained resource again. Never
 use broad adoption against an unreviewed account.
 
-The probe uses Wrangler for permanent deletion after it proves retention. The
-probe policy limits this action to named development resources.
+The probe uses Wrangler for permanent deletion after it proves retention. It
+deletes D1 by UUID and R2 by its exact bucket name.
 
 ## Telemetry
 
@@ -52,8 +60,7 @@ Set one of these environment variables to disable this telemetry:
 - `DO_NOT_TRACK=1`
 - `NO_TRACK=1`
 
-The account probe sets the first two variables. Repository procedures use the
-same values.
+The account probe sets all three variables. It also disables Wrangler metrics.
 
 Cloudflare Worker observability stays enabled. The Worker has invocation logs
 and the configured sample rate.

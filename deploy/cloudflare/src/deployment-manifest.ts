@@ -51,8 +51,11 @@ export interface CloudflareDeploymentManifest {
 export const buildCloudflareDeploymentManifest = (
   input: CloudflareDeploymentInput,
 ): CloudflareDeploymentManifest => {
+  const applicationName = input.stage.startsWith("probe-")
+    ? "probe-artifact-server"
+    : "artifact-server";
   const baseName = [
-    "artifact-server",
+    applicationName,
     input.installationName,
     input.environment,
     input.stage,

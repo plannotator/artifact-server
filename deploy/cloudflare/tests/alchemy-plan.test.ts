@@ -22,6 +22,8 @@ const providerWriteAttempt = new Error(
 const writeForbidden = () => Effect.die(providerWriteAttempt);
 const mismatchedZoneResolver: CloudflareZoneResolver = () =>
   Effect.succeed("f".repeat(32));
+const unexpectedZoneResolver: CloudflareZoneResolver = () =>
+  Effect.die(new Error("private ingress attempted a DNS zone lookup"));
 type PlanWorker = Alchemy.Resource<
   "Cloudflare.Worker",
   object,
@@ -188,5 +190,34 @@ describe("Alchemy foundation plan", () => {
     ).rejects.toThrow(
       "dnsZoneId does not match a domain zone inferred by Cloudflare",
     );
+  });
+
+  it("keeps private ingress off domains and workers.dev", async () => {
+    const {
+      dnsZoneId: _dnsZoneId,
+      ...deploymentInputWithoutZone
+    } = validDeploymentInput;
+    const privateDeploymentInput = {
+      ...deploymentInputWithoutZone,
+      ingress: "private" as const,
+    };
+    const scratch = Test.scratchStack(options, "private-ingress");
+    const plan = await Test.run(
+      scratch.plan(
+        defineCloudflareFoundation(
+          privateDeploymentInput,
+          unexpectedZoneResolver,
+        ),
+      ),
+      options,
+    );
+    const worker = Object.values(plan.resources).find(
+      ({ resource }) => resource.Type === "Cloudflare.Worker",
+    );
+
+    expect(worker?.resource.Props).not.toHaveProperty("domain");
+    expect(worker?.resource.Props).toMatchObject({
+      workersDev: false,
+    });
   });
 });

@@ -153,10 +153,12 @@ must use a documented adoption or recovery procedure.
 CAUTION: The probe creates and deletes Cloudflare resources. Run it only in the
 approved account.
 
-The probe accepts development configurations only. Both `installationName` and
-`stage` must start with `probe-`.
+The probe accepts private development configurations only. It rejects
+`dnsZoneId` and public ingress. Both `installationName` and `stage` must start
+with `probe-`. Every generated Worker, D1, and R2 name also starts with
+`probe-`.
 
-For private ingress, run:
+The probe uses the active `npx wrangler` login. Run:
 
 ```sh
 pnpm probe:account \
@@ -164,34 +166,28 @@ pnpm probe:account \
   --confirm-account 0123456789abcdef0123456789abcdef
 ```
 
-For public ingress, add the DNS confirmation:
-
-```sh
-pnpm probe:account \
-  --config /absolute/path/to/cloudflare.config.json \
-  --confirm-account 0123456789abcdef0123456789abcdef \
-  --confirm-dns fedcba9876543210fedcba9876543210
-```
-
 The probe runs these operations:
 
-1. It produces an Alchemy plan.
-2. It deploys the stack.
-3. It deploys the same stack again.
-4. It validates the resolved deployment output.
-5. It checks that the second plan has no drift.
-6. It destroys the Worker.
-7. It checks that D1 and R2 remain.
-8. It permanently deletes the probe D1 database and R2 bucket.
+1. It verifies the exact Wrangler account.
+2. It verifies that the stage and proposed resource names are unused.
+3. It requires a plan with exactly three create actions.
+4. It deploys the stack and records exact resource identifiers.
+5. It deploys the same stack again.
+6. It validates the resolved output and checks for no drift.
+7. It destroys the Worker and verifies its removal.
+8. It verifies that the exact D1 and R2 resources remain.
+9. It deletes D1 by UUID and R2 by its exact bucket name.
+10. It verifies that the non-probe D1 and R2 inventories did not change.
 
 The probe disables Alchemy telemetry. It stores hashes of command output, not
-the command output.
+the command output. The evidence includes the exact probe resource names and
+identifiers.
 
 The evidence file is in `evidence/account-probe-<timestamp>.json`. The package
 ignores this generated file until a reviewer approves it for durable evidence.
 
-If cleanup fails, use the resource names in the evidence file. Delete only the
-resources that use the approved probe prefix.
+If cleanup fails, use only the exact names and identifiers in the evidence
+file. Do not use a wildcard or an account-wide cleanup command.
 
 If destroy fails, the probe does not delete D1 or R2. First, remove the Worker.
 Then, delete the two probe-only durable resources.

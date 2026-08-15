@@ -10,6 +10,7 @@ const PACKAGE_DIRECTORY = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "..",
 );
+const STACK_NAME = "artifact-server-cloudflare";
 const COMPATIBILITY_DATE = "2026-08-15";
 const MAX_CAPTURE_BYTES = 1_000_000;
 const DEPLOYMENT_OUTPUT_KEYS = [
@@ -41,18 +42,22 @@ const ProbePolicyConfiguration = Schema.Struct({
   stateStore: Schema.String,
   target: Schema.String,
 });
+const ProbeDatabaseId = Schema.String.check(
+  Schema.isPattern(
+    /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/iu,
+  ),
+);
 
 const usage = `Usage:
   pnpm probe:account \\
     --config ./probe.config.json \\
     --confirm-account <cloudflare-account-id> \\
-    [--alchemy-profile default] \\
-    [--wrangler-profile default] \\
-    [--confirm-dns <dns-zone-id>]
+    [--alchemy-profile default]
 
 The probe plans, deploys twice, proves a no-drift plan, destroys compute,
-checks retained D1 and R2 resources, then permanently deletes those two
-probe-only durable resources. It writes secret-free evidence under evidence/.
+checks retained D1 and R2 resources by exact ID, then permanently deletes
+those two probe-only durable resources. It writes redacted evidence under
+evidence/.
 `;
 
 const sha256 = (value) =>
@@ -116,8 +121,11 @@ const boundedName = (value, limit) => {
 };
 
 const resourceNames = (configuration) => {
+  const applicationName = configuration.stage.startsWith("probe-")
+    ? "probe-artifact-server"
+    : "artifact-server";
   const base = [
-    "artifact-server",
+    applicationName,
     configuration.installationName,
     configuration.environment,
     configuration.stage,
@@ -145,16 +153,9 @@ const parseOptions = () => {
           "confirm-account": {
             type: "string",
           },
-          "confirm-dns": {
-            type: "string",
-          },
           help: {
             type: "boolean",
             default: false,
-          },
-          "wrangler-profile": {
-            type: "string",
-            default: "default",
           },
         },
         strict: true,
@@ -213,6 +214,12 @@ const validateProbePolicy = (options, configuration) => {
   if (configuration.stateStore !== "cloudflare") {
     failures.push("stateStore must be cloudflare");
   }
+  if (configuration.ingress !== "private") {
+    failures.push("the approved probe requires private ingress");
+  }
+  if (configuration.dnsZoneId !== undefined) {
+    failures.push("the approved probe forbids dnsZoneId");
+  }
   if (
     options["confirm-account"] !==
     configuration.cloudflareAccountId
@@ -221,13 +228,11 @@ const validateProbePolicy = (options, configuration) => {
       "--confirm-account must exactly match cloudflareAccountId",
     );
   }
+  const names = resourceNames(configuration);
   if (
-    configuration.ingress === "public" &&
-    options["confirm-dns"] !== configuration.dnsZoneId
+    Object.values(names).some((name) => !name.startsWith("probe-"))
   ) {
-    failures.push(
-      "public ingress requires --confirm-dns matching dnsZoneId",
-    );
+    failures.push("every proposed resource name must start with probe-");
   }
   return failures;
 };
@@ -239,8 +244,7 @@ const planSummary = (output) =>
 const hasNoDrift = (result) => {
   const summary = planSummary(result.stdout);
   return result.exitCode === 0 &&
-    summary.includes("to noop") &&
-    !/\bto (?:create|update|replace|delete)\b/u.test(summary);
+    summary.trim() === "Plan: 3 to noop";
 };
 
 const hasDeploymentOutput = (result, configuration, names) => {
@@ -264,6 +268,97 @@ const hasDeploymentOutput = (result, configuration, names) => {
     expectedValues.every((value) => result.stdout.includes(value)) &&
     result.stdout.includes("sha256:");
 };
+
+const parseJson = (result) => {
+  if (result.exitCode !== 0) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    return undefined;
+  }
+};
+
+const hasApprovedAccount = (result, accountId) => {
+  const document = parseJson(result);
+  return document?.loggedIn === true &&
+    Array.isArray(document.accounts) &&
+    document.accounts.some((account) => account.id === accountId);
+};
+
+const d1Databases = (result) => {
+  const document = parseJson(result);
+  return Array.isArray(document) ? document : undefined;
+};
+
+const normalizedD1Inventory = (result) => {
+  const databases = d1Databases(result);
+  return databases?.map(({ name, uuid }) => ({ name, uuid }))
+    .toSorted((left, right) => left.uuid.localeCompare(right.uuid));
+};
+
+const r2BucketNames = (result) => {
+  if (result.exitCode !== 0) {
+    return undefined;
+  }
+  return result.stdout.split(/\r?\n/gu)
+    .map((line) => /^\s*name:\s*(.+?)\s*$/iu.exec(line)?.[1])
+    .filter((name) => name !== undefined)
+    .toSorted((left, right) => left.localeCompare(right));
+};
+
+const workerIsAbsent = (result) =>
+  result.exitCode !== 0 &&
+  /(?:not found|does not exist|10090|script_not_found)/iu.test(
+    `${result.stdout}\n${result.stderr}`,
+  );
+
+const stageIsAbsent = (result, stage) =>
+  result.exitCode === 0 &&
+  !result.stdout.split(/\r?\n/gu).some((line) => line.trim() === stage);
+
+const initialPlanIsSafe = (result) =>
+  result.exitCode === 0 &&
+  planSummary(result.stdout).trim() === "Plan: 3 to create" &&
+  !/plannotator/iu.test(`${result.stdout}\n${result.stderr}`);
+
+const extractOutputValue = (result, key) => {
+  const match = new RegExp(
+    `["']?${key}["']?\\s*:\\s*["']([^"']+)["']`,
+    "u",
+  ).exec(result.stdout);
+  return match?.[1];
+};
+
+const createdResourceIds = (result) => ({
+  worker: extractOutputValue(result, "runtimeResourceId"),
+  database: extractOutputValue(result, "databaseResourceId"),
+  bucket: extractOutputValue(result, "objectStorageResourceId"),
+});
+
+const exactResourceIdsAreValid = (ids, names) =>
+  ids.worker === names.worker &&
+  ids.bucket === names.bucket &&
+  Schema.is(ProbeDatabaseId)(ids.database);
+
+const resourcesMatchExactIds = (
+  databaseResult,
+  bucketResult,
+  ids,
+  names,
+) => {
+  const database = parseJson(databaseResult);
+  const bucket = parseJson(bucketResult);
+  return database?.uuid === ids.database &&
+    database?.name === names.database &&
+    bucket?.name === ids.bucket;
+};
+
+const createdIdsAreEqual = (left, right) =>
+  left.worker === right.worker &&
+  left.database === right.database &&
+  left.bucket === right.bucket;
 
 const writeEvidence = async (evidence) => {
   const timestamp = evidence.finishedAt.replaceAll(/[:.]/gu, "-");
@@ -327,6 +422,8 @@ const main = async () => {
     CLOUDFLARE_ACCOUNT_ID: configuration.cloudflareAccountId,
     DO_NOT_TRACK: "1",
     FORCE_COLOR: "0",
+    NO_TRACK: "1",
+    WRANGLER_SEND_METRICS: "false",
   };
   const alchemy = (...args) =>
     runCommand(
@@ -343,18 +440,114 @@ const main = async () => {
     );
   const wrangler = (args, input) =>
     runCommand(
-      "pnpm",
+      "npx",
       [
-        "exec",
         "wrangler",
         ...args,
-        "--profile",
-        options["wrangler-profile"],
       ],
       environment,
       input,
     );
   const steps = [];
+  const checks = {
+    accountMatched: false,
+    cleanupSucceeded: false,
+    deploymentOutputValid: false,
+    dnsChangesExcluded: true,
+    durableDataRetained: false,
+    exactResourceIdsCaptured: false,
+    initialInventoryClear: false,
+    nativePlanNoWrites: false,
+    nonProbeDurableInventoryUnchanged: false,
+    repeatDeploymentNoDrift: false,
+    workerDestroyed: false,
+  };
+  let exactIds = {
+    worker: null,
+    database: null,
+    bucket: null,
+  };
+  const finish = async (stoppedReason) => {
+    const finishedAt = new Date().toISOString();
+    const evidencePath = await writeEvidence({
+      schemaVersion: 2,
+      startedAt,
+      finishedAt,
+      accountId: configuration.cloudflareAccountId,
+      configurationSha256: sha256(parsedConfiguration.raw),
+      stage: configuration.stage,
+      resources: names,
+      createdResourceIds: exactIds,
+      checks,
+      stoppedReason,
+      steps,
+    });
+    return evidencePath;
+  };
+  const stop = async (reason, message) => {
+    const evidencePath = await finish(reason);
+    console.error(`${message} Evidence: ${evidencePath}`);
+    process.exitCode = 1;
+  };
+
+  const identity = await wrangler(["whoami", "--json"]);
+  steps.push(commandEvidence(identity));
+  checks.accountMatched = hasApprovedAccount(
+    identity,
+    configuration.cloudflareAccountId,
+  );
+  if (!checks.accountMatched) {
+    await stop(
+      "account-mismatch",
+      "The authenticated Wrangler account does not match.",
+    );
+    return;
+  }
+
+  const existingStages = await alchemy(
+    "state",
+    "stages",
+    "--stack",
+    STACK_NAME,
+  );
+  steps.push(commandEvidence(existingStages));
+  if (!stageIsAbsent(existingStages, configuration.stage)) {
+    await stop(
+      "stage-exists",
+      "The probe stage already exists or cannot be verified.",
+    );
+    return;
+  }
+
+  const initialD1Inventory = await wrangler(["d1", "list", "--json"]);
+  const initialR2Inventory = await wrangler(["r2", "bucket", "list"]);
+  const initialWorkerLookup = await wrangler([
+    "versions",
+    "list",
+    "--name",
+    names.worker,
+    "--json",
+  ]);
+  steps.push(
+    commandEvidence(initialD1Inventory),
+    commandEvidence(initialR2Inventory),
+    commandEvidence(initialWorkerLookup),
+  );
+  const initialDatabases = d1Databases(initialD1Inventory);
+  const initialBuckets = r2BucketNames(initialR2Inventory);
+  checks.initialInventoryClear =
+    initialDatabases !== undefined &&
+    initialBuckets !== undefined &&
+    !initialDatabases.some(({ name }) => name === names.database) &&
+    !initialBuckets.includes(names.bucket) &&
+    workerIsAbsent(initialWorkerLookup);
+  if (!checks.initialInventoryClear) {
+    await stop(
+      "proposed-resource-exists",
+      "A proposed resource exists or the initial inventory is uncertain.",
+    );
+    return;
+  }
 
   const initialPlan = await alchemy(
     "plan",
@@ -362,27 +555,12 @@ const main = async () => {
     configuration.stage,
   );
   steps.push(commandEvidence(initialPlan));
-  if (initialPlan.exitCode !== 0) {
-    const finishedAt = new Date().toISOString();
-    const evidencePath = await writeEvidence({
-      schemaVersion: 1,
-      startedAt,
-      finishedAt,
-      accountId: configuration.cloudflareAccountId,
-      configurationSha256: sha256(parsedConfiguration.raw),
-      stage: configuration.stage,
-      resources: names,
-      checks: {
-        cleanupSucceeded: false,
-        deploymentOutputValid: false,
-        durableDataRetained: false,
-        nativePlanNoWrites: false,
-        repeatDeploymentNoDrift: false,
-      },
-      steps,
-    });
-    console.error(`Initial plan failed. Evidence: ${evidencePath}`);
-    process.exitCode = 1;
+  checks.nativePlanNoWrites = initialPlanIsSafe(initialPlan);
+  if (!checks.nativePlanNoWrites) {
+    await stop(
+      "unsafe-initial-plan",
+      "The initial plan was not an exact three-resource create.",
+    );
     return;
   }
 
@@ -393,6 +571,70 @@ const main = async () => {
     configuration.stage,
   );
   steps.push(commandEvidence(firstDeploy));
+  if (firstDeploy.exitCode !== 0) {
+    await stop(
+      "first-deploy-failed",
+      "The first deployment failed. Automatic cleanup did not run because exact IDs are unavailable.",
+    );
+    return;
+  }
+
+  const discoveredIds = createdResourceIds(firstDeploy);
+  exactIds = {
+    worker: discoveredIds.worker ?? null,
+    database: discoveredIds.database ?? null,
+    bucket: discoveredIds.bucket ?? null,
+  };
+  if (!exactResourceIdsAreValid(exactIds, names)) {
+    await stop(
+      "resource-id-missing",
+      "The deployment did not return every exact resource ID.",
+    );
+    return;
+  }
+
+  const createdDatabaseInfo = await wrangler([
+    "d1",
+    "info",
+    names.database,
+    "--json",
+  ]);
+  const createdBucketInfo = await wrangler([
+    "r2",
+    "bucket",
+    "info",
+    names.bucket,
+    "--json",
+  ]);
+  const createdWorkerInfo = await wrangler([
+    "versions",
+    "list",
+    "--name",
+    names.worker,
+    "--json",
+  ]);
+  steps.push(
+    commandEvidence(createdDatabaseInfo),
+    commandEvidence(createdBucketInfo),
+    commandEvidence(createdWorkerInfo),
+  );
+  checks.exactResourceIdsCaptured =
+    resourcesMatchExactIds(
+      createdDatabaseInfo,
+      createdBucketInfo,
+      exactIds,
+      names,
+    ) &&
+    createdWorkerInfo.exitCode === 0 &&
+    Array.isArray(parseJson(createdWorkerInfo)) &&
+    parseJson(createdWorkerInfo).length > 0;
+  if (!checks.exactResourceIdsCaptured) {
+    await stop(
+      "resource-id-mismatch",
+      "Cloudflare inventory does not match the returned resource IDs.",
+    );
+    return;
+  }
 
   let repeatDeploy = {
     command: "repeat deploy skipped",
@@ -400,14 +642,24 @@ const main = async () => {
     stdout: "",
     stderr: "",
   };
-  if (firstDeploy.exitCode === 0) {
-    repeatDeploy = await alchemy(
-      "deploy",
-      "--yes",
-      "--stage",
-      configuration.stage,
+  repeatDeploy = await alchemy(
+    "deploy",
+    "--yes",
+    "--stage",
+    configuration.stage,
+  );
+  steps.push(commandEvidence(repeatDeploy));
+  const repeatIds = createdResourceIds(repeatDeploy);
+  checks.deploymentOutputValid =
+    hasDeploymentOutput(repeatDeploy, configuration, names) &&
+    createdIdsAreEqual(exactIds, repeatIds);
+  checks.repeatDeploymentNoDrift = hasNoDrift(repeatDeploy);
+  if (!checks.deploymentOutputValid) {
+    await stop(
+      "repeat-deploy-id-mismatch",
+      "The second deployment did not return the same exact resource IDs.",
     );
-    steps.push(commandEvidence(repeatDeploy));
+    return;
   }
 
   const destroy = await alchemy(
@@ -417,98 +669,106 @@ const main = async () => {
     configuration.stage,
   );
   steps.push(commandEvidence(destroy));
-
-  let databaseInfo = {
-    command: "D1 retention check skipped",
-    exitCode: 1,
-    stdout: "",
-    stderr: "",
-  };
-  let bucketInfo = {
-    command: "R2 retention check skipped",
-    exitCode: 1,
-    stdout: "",
-    stderr: "",
-  };
-  let databaseDelete = {
-    command: "D1 permanent cleanup skipped",
-    exitCode: 1,
-    stdout: "",
-    stderr: "",
-  };
-  let bucketDelete = {
-    command: "R2 permanent cleanup skipped",
-    exitCode: 1,
-    stdout: "",
-    stderr: "",
-  };
-
-  if (firstDeploy.exitCode === 0 && destroy.exitCode === 0) {
-    databaseInfo = await wrangler([
-      "d1",
-      "info",
-      names.database,
-      "--json",
-    ]);
-    bucketInfo = await wrangler([
-      "r2",
-      "bucket",
-      "info",
-      names.bucket,
-      "--json",
-    ]);
-    steps.push(
-      commandEvidence(databaseInfo),
-      commandEvidence(bucketInfo),
+  if (destroy.exitCode !== 0) {
+    await stop(
+      "worker-destroy-failed",
+      "Alchemy did not destroy the exact probe stage.",
     );
-
-    if (databaseInfo.exitCode === 0 && bucketInfo.exitCode === 0) {
-      databaseDelete = await wrangler([
-        "d1",
-        "delete",
-        names.database,
-        "--skip-confirmation",
-      ]);
-      bucketDelete = await wrangler(
-        ["r2", "bucket", "delete", names.bucket],
-        "y\n",
-      );
-      steps.push(
-        commandEvidence(databaseDelete),
-        commandEvidence(bucketDelete),
-      );
-    }
+    return;
   }
 
-  const durableDataRetained =
-    databaseInfo.exitCode === 0 && bucketInfo.exitCode === 0;
-  const cleanupSucceeded =
-    destroy.exitCode === 0 &&
+  const destroyedWorkerInfo = await wrangler([
+    "versions",
+    "list",
+    "--name",
+    names.worker,
+    "--json",
+  ]);
+  const retainedDatabaseInfo = await wrangler([
+    "d1",
+    "info",
+    exactIds.database,
+    "--json",
+  ]);
+  const retainedBucketInfo = await wrangler([
+    "r2",
+    "bucket",
+    "info",
+    exactIds.bucket,
+    "--json",
+  ]);
+  steps.push(
+    commandEvidence(destroyedWorkerInfo),
+    commandEvidence(retainedDatabaseInfo),
+    commandEvidence(retainedBucketInfo),
+  );
+  checks.workerDestroyed = workerIsAbsent(destroyedWorkerInfo);
+  checks.durableDataRetained = resourcesMatchExactIds(
+    retainedDatabaseInfo,
+    retainedBucketInfo,
+    exactIds,
+    names,
+  );
+  if (
+    !checks.workerDestroyed ||
+    !checks.durableDataRetained
+  ) {
+    await stop(
+      "retention-check-failed",
+      "Worker destruction or exact durable-resource retention was not verified.",
+    );
+    return;
+  }
+
+  const databaseDelete = await wrangler([
+    "d1",
+    "delete",
+    exactIds.database,
+    "--skip-confirmation",
+  ]);
+  const bucketDelete = await wrangler(
+    ["r2", "bucket", "delete", exactIds.bucket],
+    "y\n",
+  );
+  steps.push(
+    commandEvidence(databaseDelete),
+    commandEvidence(bucketDelete),
+  );
+
+  const finalD1Inventory = await wrangler(["d1", "list", "--json"]);
+  const finalR2Inventory = await wrangler(["r2", "bucket", "list"]);
+  const finalWorkerLookup = await wrangler([
+    "versions",
+    "list",
+    "--name",
+    names.worker,
+    "--json",
+  ]);
+  steps.push(
+    commandEvidence(finalD1Inventory),
+    commandEvidence(finalR2Inventory),
+    commandEvidence(finalWorkerLookup),
+  );
+  const initialNormalizedDatabases =
+    normalizedD1Inventory(initialD1Inventory);
+  const finalNormalizedDatabases =
+    normalizedD1Inventory(finalD1Inventory);
+  const finalBuckets = r2BucketNames(finalR2Inventory);
+  checks.nonProbeDurableInventoryUnchanged =
+    initialNormalizedDatabases !== undefined &&
+    finalNormalizedDatabases !== undefined &&
+    JSON.stringify(initialNormalizedDatabases) ===
+      JSON.stringify(finalNormalizedDatabases) &&
+    initialBuckets !== undefined &&
+    finalBuckets !== undefined &&
+    JSON.stringify(initialBuckets) === JSON.stringify(finalBuckets);
+  checks.cleanupSucceeded =
     databaseDelete.exitCode === 0 &&
-    bucketDelete.exitCode === 0;
-  const checks = {
-    cleanupSucceeded,
-    deploymentOutputValid: hasDeploymentOutput(
-      repeatDeploy,
-      configuration,
-      names,
-    ),
-    durableDataRetained,
-    nativePlanNoWrites: initialPlan.exitCode === 0,
-    repeatDeploymentNoDrift: hasNoDrift(repeatDeploy),
-  };
-  const finishedAt = new Date().toISOString();
-  const evidencePath = await writeEvidence({
-    schemaVersion: 1,
-    startedAt,
-    finishedAt,
-    accountId: configuration.cloudflareAccountId,
-    configurationSha256: sha256(parsedConfiguration.raw),
-    stage: configuration.stage,
-    resources: names,
-    checks,
-    steps,
-  });
+    bucketDelete.exitCode === 0 &&
+    checks.nonProbeDurableInventoryUnchanged &&
+    workerIsAbsent(finalWorkerLookup);
+
+  const evidencePath = await finish(undefined);
   const passed = Object.values(checks).every(Boolean);
   const status = passed ? "passed" : "failed";
   console.log(`Cloudflare account probe ${status}: ${evidencePath}`);
