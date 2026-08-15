@@ -5,8 +5,17 @@ description: Publish and manage files, finished client-side sites, and immutable
 
 # Publish Artifact
 
-Use Artifact Server without making the user choose between its CLI and MCP.
-Choose the adapter from where the required files exist.
+Artifact Server stores and serves finished files and websites that run entirely
+in a browser. A person or agent publishes one file or one finished website and
+gets a browser link. That published item is an artifact. It belongs to a
+project, and publishing it again creates a new saved version without changing
+the earlier versions. Opening an artifact can require an account or use a
+public link. Artifact Server may run on the user's computer or on a server
+managed by a team. It serves files as published; it does not build source code
+or run backend code for an artifact.
+
+Use this skill to perform the user's artifact task without making them choose
+between the CLI and MCP. Choose the adapter from where the required files exist.
 
 ## Keep these boundaries
 
