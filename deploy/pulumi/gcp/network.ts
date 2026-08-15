@@ -59,6 +59,7 @@ export function defineGcpNetwork(input: {
   const serviceConnection = new gcp.servicenetworking.Connection(
     `${input.name}-database`,
     {
+      deletionPolicy: "ABANDON",
       network: network.id,
       reservedPeeringRanges: [privateRange.name],
       service: "servicenetworking.googleapis.com",

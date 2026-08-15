@@ -75,6 +75,26 @@ new Cloud Run revision, proves that only the new credential works, publishes
 through the replacement revision, restores the original credential, destroys
 the temporary secret version, and reconciles the service with Pulumi.
 
+## Delete a stack safely
+
+The artifact bucket uses `forceDestroy: false`. A normal `pulumi destroy` cannot
+silently delete published files. Back up anything that must be kept, run the
+destroy, explicitly empty every version from the named artifact bucket, and run
+the same destroy command again.
+
+Cloud Run Direct VPC egress can retain its serverless subnet addresses for one
+to two hours after the service is deleted. If the second destroy reports a
+`serverless-ipv4-*` address using the subnet, wait for Google to release it and
+run the same destroy command again. Do not manually delete that address. See
+[Google's Direct VPC egress cleanup documentation](https://docs.cloud.google.com/run/docs/configuring/vpc-direct-vpc#cannot_delete_subnet).
+
+Cloud SQL can retain producer-side network resources for up to four days after
+instance deletion. The service-networking connection therefore uses
+`deletionPolicy: "ABANDON"`, Google's documented declarative-destroy workaround.
+Google removes its producer-side resources after the recovery window. See
+[Google's private services access deletion documentation](https://docs.cloud.google.com/vpc/docs/configure-private-services-access#delete-connection).
+
 Live records are in `evidence/gcp-deployment-product.json`,
 `evidence/gcp-upgrade-rollback.json`, `evidence/gcp-secret-rotation.json`,
-`evidence/gcp-state-recovery.json`, and `evidence/gcp-minimum-recovery.json`.
+`evidence/gcp-state-recovery.json`, `evidence/gcp-minimum-recovery.json`, and
+`evidence/gcp-destroy.json`.

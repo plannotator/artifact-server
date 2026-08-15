@@ -73,6 +73,9 @@ describe("GCP Pulumi deployment", () => {
     expect(resourceTypes()).toContain("gcp:compute/backendService:BackendService");
     expect(resourceTypes()).toContain("gcp:certificatemanager/certificate:Certificate");
 
+    expect(requireResource("gcp:servicenetworking/connection:Connection").inputs)
+      .toMatchObject({deletionPolicy: "ABANDON"});
+
     expect(requireResource("gcp:storage/bucket:Bucket").inputs).toMatchObject({
       forceDestroy: false,
       publicAccessPrevention: "enforced",

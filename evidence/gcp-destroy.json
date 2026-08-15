@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-15T21:44:24Z",
+  "target": "gcp",
+  "result": "pending_provider_cleanup",
+  "deleted": {
+    "cloudRunService": true,
+    "cloudSqlInstance": true,
+    "artifactBucket": true,
+    "loadBalancerForwardingRule": true,
+    "applicationSecrets": true,
+    "applicationServiceAccount": true
+  },
+  "artifactData": {
+    "explicitlyPurgedAfterRecoveryCheck": true,
+    "remainingObjectVersions": 0
+  },
+  "pending": {
+    "serverlessIpv4Addresses": 1,
+    "reason": "Cloud Run Direct VPC egress retains subnet addresses for one to two hours after service deletion.",
+    "operatorAction": "Wait for Google to release the address, then run the same Pulumi destroy command again."
+  },
+  "remainingPulumiResources": 18,
+  "fullSafeDestroy": "not_yet_passed"
+}
