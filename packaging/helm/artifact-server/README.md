@@ -43,7 +43,7 @@ configuration:
   bootstrapAdministratorEmail: admin@example.com
   applicationOrigin: https://artifacts.example.com
   contentDomain: content.example.net
-  postgresConnectionBudget: 21
+  postgresConnectionBudget: 22
   s3:
     bucket: artifact-server-team-example
     region: us-east-1
@@ -72,6 +72,14 @@ helm test artifact-server --namespace artifact-server --logs
 The pre-install and pre-upgrade migration Job must succeed before the
 Deployment changes. Successful migration Jobs are removed. Failed Jobs remain
 for inspection and are removed before the next Helm attempt.
+
+The chart also creates a `CronJob` that runs one bounded expired-staging cleanup
+pass every 15 minutes. It uses the same image, Secret, service account, workload
+identity, Postgres database, and object-store configuration as the application.
+Serving Pods set the cleanup schedule to `external`, so they do not run a
+second background loop. Configure or disable this trigger under `cleanup` in
+the values file. Disabling it is safe only when an operator runs the same
+`artifactserver maintenance cleanup-staging --once` command elsewhere.
 
 ## Routing
 
@@ -107,9 +115,10 @@ network. An empty enabled rule set is default-deny.
 
 The default is two replicas with a PodDisruptionBudget and preferred spreading
 across nodes. Each serving replica has a bounded ten-connection Postgres pool;
-the migration Job uses one more connection. The chart rejects a replica count
-that exceeds `configuration.postgresConnectionBudget`. Horizontal autoscaling
-is intentionally not included until measured capacity defines safe thresholds.
+the migration Job and cleanup CronJob each require one additional connection.
+The chart rejects a replica count that exceeds
+`configuration.postgresConnectionBudget`. Horizontal autoscaling is
+intentionally not included until measured capacity defines safe thresholds.
 
 The default request is `100m` CPU and `256Mi` memory. Treat it as a starting
 request, observe the workload, and adjust `resources`. The chart does not set a

@@ -68,6 +68,8 @@ describe("GCP Pulumi deployment", () => {
     ));
 
     expect(resourceTypes()).toContain("gcp:cloudrunv2/service:Service");
+    expect(resourceTypes()).toContain("gcp:cloudrunv2/job:Job");
+    expect(resourceTypes()).toContain("gcp:cloudscheduler/job:Job");
     expect(resourceTypes()).toContain("gcp:sql/databaseInstance:DatabaseInstance");
     expect(resourceTypes()).toContain("gcp:storage/bucket:Bucket");
     expect(resourceTypes()).toContain("gcp:compute/backendService:BackendService");
@@ -102,13 +104,21 @@ describe("GCP Pulumi deployment", () => {
     const serializedService = JSON.stringify(service.inputs);
     expect(serializedService).toContain("ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER");
     expect(serializedService).toContain("ARTIFACT_SERVER_GCS_BUCKET");
+    expect(serializedService).toContain("ARTIFACT_SERVER_STAGING_CLEANUP_SCHEDULE");
     expect(serializedService).toContain("/cloudsql");
     expect(serializedService).not.toContain("generated-api-token");
     expect(serializedService).not.toContain("generated-database-password");
+    const cleanupJob = requireResource("gcp:cloudrunv2/job:Job");
+    expect(JSON.stringify(cleanupJob.inputs)).toContain("cleanup-staging");
+    expect(requireResource("gcp:cloudscheduler/job:Job").inputs).toMatchObject({
+      schedule: "*/15 * * * *",
+      timeZone: "Etc/UTC",
+    });
 
     expect(requireResource("gcp:compute/backendService:BackendService").inputs)
       .toMatchObject({
         cdnPolicy: {
+          bypassCacheOnRequestHeaders: [{headerName: "Range"}],
           cacheKeyPolicy: {
             includeHost: true,
             includeProtocol: true,

@@ -160,6 +160,7 @@ export const defineCloudflareFoundation = Effect.fn(
       date: input.compatibilityDate,
       flags: ["nodejs_compat"],
     },
+    crons: ["*/15 * * * *"],
     workersDev: qualificationMode,
     env: workerEnvironment,
     observability: {

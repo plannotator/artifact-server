@@ -1,6 +1,8 @@
 import {Layer, ManagedRuntime, Redacted} from "effect";
 
 import type {ApplicationRuntime} from "../../../src/application/application-runtime.js";
+import {ExpiredStagingCleanupService} from
+  "../../../src/application/expired-staging-cleanup.js";
 import {SystemClock, SystemIdGenerator} from "../../../src/core/system.js";
 import {
   createHttpApp,
@@ -34,6 +36,7 @@ interface CloudflareRuntime {
   readonly applicationHostname: string;
   readonly contentDomain: string;
   readonly qualificationMode: boolean;
+  cleanupStaging(): Promise<void>;
 }
 
 interface WorkerErrorResponse {
@@ -71,7 +74,21 @@ export default {
       });
     }
   },
+  scheduled(
+    _controller: ScheduledController,
+    environment: WorkerEnvironment,
+    context: ExecutionContext,
+  ): void {
+    context.waitUntil(runScheduledCleanup(environment));
+  },
 };
+
+async function runScheduledCleanup(
+  environment: WorkerEnvironment,
+): Promise<void> {
+  const runtime = await getRuntime(environment);
+  await runtime.cleanupStaging();
+}
 
 function getRuntime(environment: WorkerEnvironment): Promise<CloudflareRuntime> {
   runtimePromise ??= createCloudflareRuntime(environment);
@@ -131,6 +148,15 @@ async function createCloudflareRuntime(
   return {
     app,
     applicationHostname: origin.hostname,
+    cleanupStaging: async () => {
+      const report = await applicationRuntime.runPromise(
+        ExpiredStagingCleanupService.use((cleanup) =>
+          cleanup.runPass({limit: 100})),
+      );
+      if (report.failed > 0) {
+        throw new Error("One or more expired staging uploads could not be removed.");
+      }
+    },
     contentDomain: environment.ARTIFACT_SERVER_CONTENT_DOMAIN,
     qualificationMode:
       environment.ARTIFACT_SERVER_QUALIFICATION_MODE === "enabled",

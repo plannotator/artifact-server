@@ -138,6 +138,8 @@ describe("AWS Pulumi deployment", () => {
     expect(resourceTypes).toContain("aws:s3/bucket:Bucket");
     expect(resourceTypes).toContain("aws:lb/loadBalancer:LoadBalancer");
     expect(resourceTypes).toContain("aws:appautoscaling/target:Target");
+    expect(resourceTypes).toContain("aws:cloudwatch/eventRule:EventRule");
+    expect(resourceTypes).toContain("aws:cloudwatch/eventTarget:EventTarget");
     expect(resourceTypes.filter((type) => type === "aws:ec2/natGateway:NatGateway"))
       .toHaveLength(2);
 
@@ -169,6 +171,7 @@ describe("AWS Pulumi deployment", () => {
     expect(String(objectStoragePolicy.inputs["policy"])).toContain(
       "s3:GetBucketLocation",
     );
+    expect(String(objectStoragePolicy.inputs["policy"])).toContain("s3:DeleteObject");
     expect(String(objectStoragePolicy.inputs["policy"])).not.toContain(
       "s3:prefix",
     );
@@ -177,7 +180,10 @@ describe("AWS Pulumi deployment", () => {
     const targetGroup = requireResource("aws:lb/targetGroup:TargetGroup");
     expect(String(targetGroup.inputs["name"]).length).toBeLessThanOrEqual(32);
 
-    const taskDefinition = requireResource("aws:ecs/taskDefinition:TaskDefinition");
+    const taskDefinition = requireNamedResource(
+      "aws:ecs/taskDefinition:TaskDefinition",
+      "application",
+    );
     const containers = await Effect.runPromise(Schema.decodeUnknownEffect(
       Schema.Array(Schema.Struct({
         command: Schema.Array(Schema.String),
@@ -191,6 +197,10 @@ describe("AWS Pulumi deployment", () => {
     expect(container?.image).toBe(imageReference);
     expect(container?.command.join(" ")).toContain("migrate apply");
     expect(container?.command.join(" ")).toContain("start-external-storage");
+    expect(container?.environment).toContainEqual({
+      name: "ARTIFACT_SERVER_STAGING_CLEANUP_SCHEDULE",
+      value: "external",
+    });
     expect(container?.environment).toContainEqual({
       name: "NODE_EXTRA_CA_CERTS",
       value: "/usr/local/share/ca-certificates/aws-rds-global-bundle.pem",
@@ -209,6 +219,14 @@ describe("AWS Pulumi deployment", () => {
     expect(JSON.stringify(taskDefinition.inputs)).not.toContain(
       "generated-api-token",
     );
+    const cleanupTaskDefinition = requireNamedResource(
+      "aws:ecs/taskDefinition:TaskDefinition",
+      "cleanup",
+    );
+    expect(String(cleanupTaskDefinition.inputs["containerDefinitions"]))
+      .toContain("cleanup-staging");
+    expect(requireResource("aws:cloudwatch/eventRule:EventRule").inputs)
+      .toMatchObject({scheduleExpression: "rate(15 minutes)"});
 
     expect(deployment).toMatchObject({
       applicationUrl: "https://artifacts.example.com",

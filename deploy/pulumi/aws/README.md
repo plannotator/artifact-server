@@ -72,6 +72,13 @@ their values in the task definition or stack outputs. The Fargate task receives
 temporary AWS credentials through its task role and can use only this
 installation's S3 prefix.
 
+EventBridge starts one separate Fargate maintenance task every 15 minutes. It
+runs `artifactserver maintenance cleanup-staging --once` with the same task
+role, private subnets, security group, database Secret, and S3 prefix as the
+application. The task role can delete only named staging objects inside that
+installation prefix. Serving tasks disable their internal cleanup loop, so the
+scheduled task is the only trigger in this deployment.
+
 ## Network choices
 
 Without `existingNetwork`, the stack creates:

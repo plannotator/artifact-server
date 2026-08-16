@@ -331,6 +331,7 @@ export async function defineAwsStack(
         {
           Action: [
             "s3:AbortMultipartUpload",
+            "s3:DeleteObject",
             "s3:GetObject",
             "s3:ListMultipartUploadParts",
             "s3:PutObject",
@@ -393,6 +394,46 @@ export async function defineAwsStack(
     cpu: String(plan.cpuUnits),
     executionRoleArn: taskExecutionRole.arn,
     family: name,
+    memory: String(plan.memoryMiB),
+    networkMode: "awsvpc",
+    requiresCompatibilities: ["FARGATE"],
+    runtimePlatform: {
+      cpuArchitecture: "ARM64",
+      operatingSystemFamily: "LINUX",
+    },
+    taskRoleArn: taskRole.arn,
+    tags,
+  });
+  const cleanupTaskDefinition = new aws.ecs.TaskDefinition(`${name}-cleanup`, {
+    containerDefinitions: pulumi.jsonStringify([{
+      command: [
+        "maintenance",
+        "cleanup-staging",
+        "--once",
+        "--mode",
+        "external-storage",
+        "--limit",
+        "100",
+      ],
+      environment,
+      essential: true,
+      image: input.imageReference,
+      linuxParameters: {initProcessEnabled: true},
+      logConfiguration: {
+        logDriver: "awslogs",
+        options: {
+          "awslogs-group": logGroup.name,
+          "awslogs-region": input.region,
+          "awslogs-stream-prefix": "cleanup",
+        },
+      },
+      name: "artifact-server-cleanup",
+      secrets,
+      stopTimeout: 15,
+    }]),
+    cpu: String(plan.cpuUnits),
+    executionRoleArn: taskExecutionRole.arn,
+    family: `${name}-cleanup`,
     memory: String(plan.memoryMiB),
     networkMode: "awsvpc",
     requiresCompatibilities: ["FARGATE"],
@@ -489,6 +530,64 @@ export async function defineAwsStack(
     ],
     ignoreChanges: ["desiredCount"],
   });
+  const cleanupScheduleRole = new aws.iam.Role(`${name}-cleanup-schedule`, {
+    assumeRolePolicy: JSON.stringify({
+      Statement: [{
+        Action: "sts:AssumeRole",
+        Effect: "Allow",
+        Principal: {Service: "events.amazonaws.com"},
+      }],
+      Version: "2012-10-17",
+    }),
+    tags,
+  });
+  const cleanupSchedulePolicy = new aws.iam.RolePolicy(`${name}-cleanup-schedule`, {
+    policy: pulumi.jsonStringify({
+      Statement: [
+        {
+          Action: "ecs:RunTask",
+          Condition: {
+            ArnEquals: {"ecs:cluster": cluster.arn},
+          },
+          Effect: "Allow",
+          Resource: cleanupTaskDefinition.arn,
+        },
+        {
+          Action: "iam:PassRole",
+          Effect: "Allow",
+          Resource: [taskExecutionRole.arn, taskRole.arn],
+        },
+      ],
+      Version: "2012-10-17",
+    }),
+    role: cleanupScheduleRole.id,
+  });
+  const cleanupSchedule = new aws.cloudwatch.EventRule(`${name}-cleanup`, {
+    description: "Remove expired Artifact Server staging uploads",
+    scheduleExpression: "rate(15 minutes)",
+    tags,
+  });
+  const cleanupTarget = new aws.cloudwatch.EventTarget(`${name}-cleanup`, {
+    arn: cluster.arn,
+    ecsTarget: {
+      enableEcsManagedTags: true,
+      launchType: "FARGATE",
+      networkConfiguration: {
+        assignPublicIp: false,
+        securityGroups: [applicationSecurityGroup.id],
+        subnets: network.applicationSubnetIds,
+      },
+      propagateTags: "TASK_DEFINITION",
+      taskCount: 1,
+      taskDefinitionArn: cleanupTaskDefinition.arn,
+    },
+    retryPolicy: {
+      maximumEventAgeInSeconds: 3_600,
+      maximumRetryAttempts: 1,
+    },
+    roleArn: cleanupScheduleRole.arn,
+    rule: cleanupSchedule.name,
+  }, {dependsOn: [cleanupSchedulePolicy, service]});
   const scalingTarget = new aws.appautoscaling.Target(`${name}-application`, {
     maxCapacity: input.capacity.maximumInstances,
     minCapacity: input.capacity.minimumInstances,
@@ -596,6 +695,7 @@ export async function defineAwsStack(
   );
 
   void contentListenerCertificate;
+  void cleanupTarget;
   void cpuScalingPolicy;
   void dnsAliases;
   void memoryScalingPolicy;
@@ -629,6 +729,10 @@ function runtimeEnvironment(
     {name: "ARTIFACT_SERVER_ORIGIN", value: `https://${input.applicationDomain}`},
     {name: "ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS", value: "1000"},
     {name: "ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE", value: String(input.requestLogSampleRate)},
+    {name: "ARTIFACT_SERVER_STAGING_CLEANUP_BATCH_SIZE", value: "100"},
+    {name: "ARTIFACT_SERVER_STAGING_CLEANUP_CONCURRENCY", value: "4"},
+    {name: "ARTIFACT_SERVER_STAGING_CLEANUP_SCHEDULE", value: "external"},
+    {name: "ARTIFACT_SERVER_STAGING_CLEANUP_SETTLE_DELAY_MS", value: "300000"},
     {name: "ARTIFACT_SERVER_S3_BUCKET", value: bucket},
     {name: "ARTIFACT_SERVER_S3_FORCE_PATH_STYLE", value: "false"},
     {name: "ARTIFACT_SERVER_S3_REGION", value: input.region},

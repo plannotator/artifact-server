@@ -65,7 +65,7 @@ expect_render_failure "terminationGracePeriodSeconds must be longer" \
   "${artifactserver_values[@]}" \
   --set terminationGracePeriodSeconds=5
 
-expect_render_failure "postgresConnectionBudget must be at least 31" \
+expect_render_failure "postgresConnectionBudget must be at least 32" \
   "${artifactserver_values[@]}" \
   --set replicaCount=3
 

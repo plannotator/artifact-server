@@ -182,6 +182,7 @@ describe("Alchemy foundation plan", () => {
         date: validDeploymentInput.compatibilityDate,
         flags: ["nodejs_compat"],
       },
+      crons: ["*/15 * * * *"],
       domain: {
         name: validDeploymentInput.applicationDomain,
       },

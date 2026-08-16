@@ -53,6 +53,10 @@ describe("Cloudflare Worker runtime", () => {
     const ready = await worker.fetch(`${origin}/ready`);
     expect(health.status).toBe(200);
     expect(ready.status).toBe(200);
+    const scheduled = await worker.fetch(
+      `${origin}/__scheduled?cron=${encodeURIComponent("*/15 * * * *")}`,
+    );
+    expect(scheduled.status).toBe(200);
 
     const unauthorized = await worker.fetch(`${origin}/api/v1/artifacts`);
     expect(unauthorized.status).toBe(401);
@@ -209,6 +213,7 @@ function startWorker(persistenceDirectory: string): Promise<Unstable_DevWorker> 
       }],
       disableExperimentalWarning: true,
       disableDevRegistry: true,
+      testScheduled: true,
       watch: false,
     },
     inspect: false,

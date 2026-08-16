@@ -1,0 +1,69 @@
+{{- include "artifact-server.validation" . -}}
+{{- if .Values.cleanup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "artifact-server.fullname" . }}-cleanup-staging
+  labels:
+    {{- include "artifact-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cleanup
+spec:
+  schedule: {{ .Values.cleanup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: {{ .Values.cleanup.activeDeadlineSeconds }}
+      backoffLimit: {{ .Values.cleanup.backoffLimit }}
+      template:
+        metadata:
+          labels:
+            {{- include "artifact-server.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: cleanup
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "artifact-server.serviceAccountName" . }}
+          automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: cleanup-staging
+              image: {{ include "artifact-server.image" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              args:
+                - maintenance
+                - cleanup-staging
+                - --once
+                - --mode
+                - external-storage
+                - --limit
+                - {{ .Values.cleanup.batchSize | quote }}
+              env:
+                {{- include "artifact-server.runtimeEnvironment" . | nindent 16 }}
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              volumeMounts:
+                - name: runtime-secrets
+                  mountPath: /run/secrets/artifact-server
+                  readOnly: true
+                - name: temporary
+                  mountPath: /tmp
+          volumes:
+            - name: runtime-secrets
+              secret:
+                secretName: {{ .Values.secret.name | quote }}
+                defaultMode: 288
+                items:
+                  {{- include "artifact-server.secretItems" . | nindent 18 }}
+            - name: temporary
+              emptyDir:
+                medium: Memory
+                sizeLimit: 64Mi
+{{- end }}

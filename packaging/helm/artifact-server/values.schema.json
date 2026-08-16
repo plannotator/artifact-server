@@ -18,6 +18,7 @@
     "podDisruptionBudget",
     "topologySpread",
     "migration",
+    "cleanup",
     "ingress",
     "networkPolicy"
   ],
@@ -193,6 +194,28 @@
       "required": ["enabled", "activeDeadlineSeconds", "backoffLimit"],
       "properties": {
         "enabled": {"type": "boolean"},
+        "activeDeadlineSeconds": {"type": "integer", "minimum": 10, "maximum": 3600},
+        "backoffLimit": {"type": "integer", "minimum": 0, "maximum": 10}
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "schedule",
+        "batchSize",
+        "concurrency",
+        "settleDelayMilliseconds",
+        "activeDeadlineSeconds",
+        "backoffLimit"
+      ],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "schedule": {"type": "string", "minLength": 1},
+        "batchSize": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "concurrency": {"type": "integer", "minimum": 1, "maximum": 32},
+        "settleDelayMilliseconds": {"type": "integer", "minimum": 1000, "maximum": 86400000},
         "activeDeadlineSeconds": {"type": "integer", "minimum": 10, "maximum": 3600},
         "backoffLimit": {"type": "integer", "minimum": 0, "maximum": 10}
       }

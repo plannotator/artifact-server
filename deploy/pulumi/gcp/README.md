@@ -9,6 +9,17 @@ This Pulumi project deploys the Artifact Server container to Cloud Run with:
 - Certificate Manager DNS authorization for the application name and wildcard content name; and
 - Cloud DNS records in two existing managed zones.
 
+Cloud Scheduler invokes one private Cloud Run Job every 15 minutes to remove
+expired uploads that were never committed. The Job uses the application
+workload identity, Cloud SQL connection, GCS bucket, and Secret Manager values.
+A separate scheduler identity has only permission to invoke that Job. Serving
+instances disable their internal cleanup loop.
+
+Cloud CDN honors the application's cache headers for ordinary requests.
+Requests that contain a `Range` header bypass the CDN and reach Artifact Server
+so single ranges, malformed ranges, and unsupported multiple ranges have the
+same result on cache hits and cache misses.
+
 The current package supports public ingress. It rejects `ingress: private` instead of creating an unqualified private path. A future private path needs its own internal load-balancer and network qualification.
 
 ## Required provider configuration

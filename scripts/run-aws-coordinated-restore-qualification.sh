@@ -30,6 +30,7 @@ task_policy_file=$(mktemp)
 task_definition_file=$(mktemp)
 secret_value_file=$(mktemp)
 delete_objects_file=$(mktemp)
+readiness_response_file=$(mktemp)
 chmod 0600 "$secret_value_file"
 
 capacity_changed=0
@@ -137,6 +138,9 @@ cleanup() {
       --db-instance-identifier "$restored_database_id" >/dev/null 2>&1 || true
   fi
   if (( snapshot_created == 1 )); then
+    aws rds wait db-snapshot-available \
+      --region "$aws_region" \
+      --db-snapshot-identifier "$snapshot_id" >/dev/null 2>&1 || true
     aws rds delete-db-snapshot \
       --region "$aws_region" \
       --db-snapshot-identifier "$snapshot_id" >/dev/null 2>&1 || true
@@ -183,9 +187,30 @@ cleanup() {
     "$task_policy_file" \
     "$task_definition_file" \
     "$secret_value_file" \
-    "$delete_objects_file"
+    "$delete_objects_file" \
+    "$readiness_response_file"
 }
 trap cleanup EXIT
+
+wait_for_readiness() {
+  local attempt
+  local status_code
+  for attempt in $(seq 1 24); do
+    status_code=$(curl \
+      --silent \
+      --show-error \
+      --output "$readiness_response_file" \
+      --write-out '%{http_code}' \
+      "$readiness_url" || true)
+    if [[ "$status_code" == "200" ]] && \
+      jq -e '.status == "ready"' "$readiness_response_file" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 5
+  done
+  echo "The production service did not become ready after backup quiescing." >&2
+  return 1
+}
 
 create_secure_bucket() {
   local bucket=$1
@@ -235,6 +260,9 @@ aws ecs wait services-stable \
   --cluster "$cluster_name" \
   --services "$service_name"
 
+aws rds wait db-instance-available \
+  --region "$aws_region" \
+  --db-instance-identifier "$database_id"
 aws rds create-db-snapshot \
   --region "$aws_region" \
   --db-instance-identifier "$database_id" \
@@ -246,7 +274,7 @@ aws s3 sync \
   "s3://$source_bucket" \
   "s3://$backup_bucket"
 restore_capacity
-curl -fsS "$readiness_url" | jq -e '.status == "ready"' >/dev/null
+wait_for_readiness
 
 aws rds wait db-snapshot-available \
   --region "$aws_region" \

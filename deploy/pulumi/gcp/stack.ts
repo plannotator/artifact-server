@@ -16,6 +16,7 @@ const databaseName = "artifactserver";
 const databaseUsername = "artifactadmin";
 const enabledServices = [
   "certificatemanager.googleapis.com",
+  "cloudscheduler.googleapis.com",
   "compute.googleapis.com",
   "dns.googleapis.com",
   "run.googleapis.com",
@@ -56,6 +57,21 @@ interface GcpPublicEdge {
 
 interface GcpLabels {
   [key: string]: string;
+}
+
+interface GcpEnvironmentVariable {
+  readonly name: string;
+  readonly value: pulumi.Input<string>;
+}
+
+interface GcpSecretEnvironmentVariable {
+  readonly name: string;
+  readonly valueSource: {
+    readonly secretKeyRef: {
+      readonly secret: pulumi.Input<string>;
+      readonly version: pulumi.Input<string>;
+    };
+  };
 }
 
 /** Define the complete first-party public GCP deployment. */
@@ -252,7 +268,7 @@ export function defineGcpStack(
       value: input.workosClientId,
     });
   }
-  const secretEnvironment: gcp.types.input.cloudrunv2.ServiceTemplateContainerEnv[] = [
+  const secretEnvironment: GcpSecretEnvironmentVariable[] = [
     {
       name: "ARTIFACT_SERVER_API_TOKEN",
       valueSource: {secretKeyRef: {secret: apiTokenSecret.secretId, version: "latest"}},
@@ -349,6 +365,104 @@ export function defineGcpStack(
     ],
     protect: input.deletionProtection,
   });
+  const cleanupJobName = `${physicalName}-cleanup`;
+  const cleanupJob = new gcp.cloudrunv2.Job(`${name}-cleanup`, {
+    deletionProtection: input.deletionProtection,
+    labels,
+    location: input.region,
+    name: cleanupJobName,
+    project: projectId,
+    template: {
+      parallelism: 1,
+      taskCount: 1,
+      template: {
+        containers: [{
+          args: [
+            "maintenance",
+            "cleanup-staging",
+            "--once",
+            "--mode",
+            "external-storage",
+            "--limit",
+            "100",
+          ],
+          envs: [...runtimeEnvironment, ...secretEnvironment],
+          image: input.imageReference,
+          name: "artifact-server-cleanup",
+          resources: {limits: {cpu: plan.cpu, memory: plan.memory}},
+          volumeMounts: [{mountPath: "/cloudsql", name: "cloudsql"}],
+        }],
+        executionEnvironment: "EXECUTION_ENVIRONMENT_GEN2",
+        maxRetries: 1,
+        serviceAccount: serviceAccount.email,
+        timeout: "300s",
+        volumes: [{
+          cloudSqlInstance: {instances: [database.connectionName]},
+          name: "cloudsql",
+        }],
+        vpcAccess: {
+          egress: "PRIVATE_RANGES_ONLY",
+          networkInterfaces: [{
+            network: network.networkName,
+            subnetwork: network.subnetworkId,
+          }],
+        },
+      },
+    },
+  }, {
+    dependsOn: [
+      ...services,
+      apiTokenAccess,
+      apiTokenVersion,
+      bucketInspection,
+      cloudSqlAccess,
+      databaseUrlAccess,
+      databaseUrlVersion,
+      objectAccess,
+      runtime,
+    ],
+    protect: input.deletionProtection,
+  });
+  const cleanupInvoker = new gcp.serviceaccount.Account(`${name}-cleanup-invoker`, {
+    accountId: `${physicalName}-cleanup`,
+    description: "Invokes the Artifact Server staging cleanup job",
+    displayName: `${input.installationName} cleanup scheduler`,
+    project: projectId,
+  }, {dependsOn: services});
+  const cleanupInvokerAccess = new gcp.cloudrunv2.JobIamMember(
+    `${name}-cleanup-invoker`,
+    {
+      location: input.region,
+      member: pulumi.interpolate`serviceAccount:${cleanupInvoker.email}`,
+      name: cleanupJob.name,
+      project: projectId,
+      role: "roles/run.invoker",
+    },
+  );
+  const cleanupSchedule = new gcp.cloudscheduler.Job(`${name}-cleanup`, {
+    attemptDeadline: "300s",
+    description: "Remove expired Artifact Server staging uploads",
+    httpTarget: {
+      httpMethod: "POST",
+      oauthToken: {
+        scope: "https://www.googleapis.com/auth/cloud-platform",
+        serviceAccountEmail: cleanupInvoker.email,
+      },
+      uri: `https://${input.region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${projectId}/jobs/${cleanupJobName}:run`,
+    },
+    name: cleanupJobName,
+    project: projectId,
+    region: input.region,
+    retryConfig: {
+      maxBackoffDuration: "60s",
+      maxDoublings: 1,
+      maxRetryDuration: "300s",
+      minBackoffDuration: "10s",
+      retryCount: 1,
+    },
+    schedule: "*/15 * * * *",
+    timeZone: "Etc/UTC",
+  }, {dependsOn: [cleanupInvokerAccess]});
 
   const edge = defineGcpPublicEdge({input, labels, name, projectId, runtime, services});
   const imageDigest = extractImageDigest(input.imageReference);
@@ -406,6 +520,7 @@ export function defineGcpStack(
     name: supportManifestKey,
   }, {dependsOn: [objectAccess]});
   void supportManifest;
+  void cleanupSchedule;
   return {deployment};
 }
 
@@ -476,6 +591,7 @@ function defineGcpPublicEdge(input: {
   const backend = new gcp.compute.BackendService(`${input.name}-application`, {
     backends: [{group: neg.id}],
     cdnPolicy: {
+      bypassCacheOnRequestHeaders: [{headerName: "Range"}],
       cacheKeyPolicy: {
         includeHost: true,
         includeProtocol: true,
@@ -568,8 +684,8 @@ function gcpRuntimeEnvironment(
   installationId: pulumi.Input<string>,
   bucket: pulumi.Input<string>,
   projectId: string,
-): gcp.types.input.cloudrunv2.ServiceTemplateContainerEnv[] {
-  const environment: gcp.types.input.cloudrunv2.ServiceTemplateContainerEnv[] = [
+): GcpEnvironmentVariable[] {
+  const environment: GcpEnvironmentVariable[] = [
     {name: "ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL", value: input.bootstrapAdministratorEmail},
     {name: "ARTIFACT_SERVER_CONTENT_DOMAIN", value: input.contentDomain},
     {name: "ARTIFACT_SERVER_GCS_BUCKET", value: bucket},
@@ -579,6 +695,10 @@ function gcpRuntimeEnvironment(
     {name: "ARTIFACT_SERVER_ORIGIN", value: `https://${input.applicationDomain}`},
     {name: "ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS", value: "1000"},
     {name: "ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE", value: String(input.requestLogSampleRate)},
+    {name: "ARTIFACT_SERVER_STAGING_CLEANUP_BATCH_SIZE", value: "100"},
+    {name: "ARTIFACT_SERVER_STAGING_CLEANUP_CONCURRENCY", value: "4"},
+    {name: "ARTIFACT_SERVER_STAGING_CLEANUP_SCHEDULE", value: "external"},
+    {name: "ARTIFACT_SERVER_STAGING_CLEANUP_SETTLE_DELAY_MS", value: "300000"},
     {name: "ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS", value: "10000"},
     {name: "NODE_ENV", value: "production"},
   ];

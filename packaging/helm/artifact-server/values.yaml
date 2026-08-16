@@ -16,7 +16,7 @@ configuration:
   bootstrapAdministratorEmail: ""
   applicationOrigin: ""
   contentDomain: ""
-  postgresConnectionBudget: 21
+  postgresConnectionBudget: 22
   requestLogSampleRate: 0.01
   readinessWithdrawalMilliseconds: 1000
   shutdownDeadlineMilliseconds: 10000
@@ -110,6 +110,15 @@ migration:
   enabled: true
   activeDeadlineSeconds: 300
   backoffLimit: 0
+
+cleanup:
+  enabled: true
+  schedule: "*/15 * * * *"
+  batchSize: 100
+  concurrency: 4
+  settleDelayMilliseconds: 300000
+  activeDeadlineSeconds: 300
+  backoffLimit: 1
 
 ingress:
   enabled: false

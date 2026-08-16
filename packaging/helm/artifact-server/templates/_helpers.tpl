@@ -70,9 +70,10 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- fail "terminationGracePeriodSeconds must be longer than readinessWithdrawalMilliseconds plus shutdownDeadlineMilliseconds" -}}
 {{- end -}}
 {{- $migrationConnections := ternary 1 0 .Values.migration.enabled -}}
-{{- $requiredConnections := add (mul (int .Values.replicaCount) 10) $migrationConnections -}}
+{{- $cleanupConnections := ternary 1 0 .Values.cleanup.enabled -}}
+{{- $requiredConnections := add (mul (int .Values.replicaCount) 10) $migrationConnections $cleanupConnections -}}
 {{- if lt (int .Values.configuration.postgresConnectionBudget) $requiredConnections -}}
-{{- fail (printf "configuration.postgresConnectionBudget must be at least %d for %d replicas and the configured migration Job" $requiredConnections (int .Values.replicaCount)) -}}
+{{- fail (printf "configuration.postgresConnectionBudget must be at least %d for %d replicas and the enabled migration and cleanup Jobs" $requiredConnections (int .Values.replicaCount)) -}}
 {{- end -}}
 {{- range $key := keys .Values.podLabels -}}
 {{- if or (hasPrefix "app.kubernetes.io/" $key) (hasPrefix "helm.sh/" $key) (hasPrefix "artifactserver.com/" $key) -}}
@@ -149,6 +150,14 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
   value: {{ .Values.configuration.s3.region | quote }}
 - name: ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS
   value: {{ .Values.configuration.shutdownDeadlineMilliseconds | quote }}
+- name: ARTIFACT_SERVER_STAGING_CLEANUP_BATCH_SIZE
+  value: {{ .Values.cleanup.batchSize | quote }}
+- name: ARTIFACT_SERVER_STAGING_CLEANUP_CONCURRENCY
+  value: {{ .Values.cleanup.concurrency | quote }}
+- name: ARTIFACT_SERVER_STAGING_CLEANUP_SCHEDULE
+  value: "external"
+- name: ARTIFACT_SERVER_STAGING_CLEANUP_SETTLE_DELAY_MS
+  value: {{ .Values.cleanup.settleDelayMilliseconds | quote }}
 {{- if .Values.configuration.s3.endpoint }}
 - name: ARTIFACT_SERVER_S3_ENDPOINT
   value: {{ .Values.configuration.s3.endpoint | quote }}

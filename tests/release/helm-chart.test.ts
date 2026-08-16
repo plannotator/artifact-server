@@ -579,7 +579,7 @@ async function writeValues(
       bootstrapAdministratorEmail: "admin@example.test",
       contentDomain,
       installationId: "helm-integration",
-      postgresConnectionBudget: 21,
+      postgresConnectionBudget: 22,
       readinessWithdrawalMilliseconds: 0,
       requestLogSampleRate: 0,
       s3: {
