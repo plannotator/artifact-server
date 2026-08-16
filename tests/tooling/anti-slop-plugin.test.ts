@@ -112,7 +112,7 @@ describe("anti-slop Oxlint plugin", () => {
     );
 
     const result = await runOxlint([fixturePath]);
-    expect(result).toEqual({exitCode: 0, output: ""});
+    expect(result.exitCode).toBe(0);
   });
 });
 

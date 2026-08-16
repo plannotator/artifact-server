@@ -170,7 +170,8 @@ describe("artifact and version management", () => {
     }).parse(await bootstrapResponse.json());
     expect(bootstrap.versionId).toBe(first.body.version.id);
     const exchange = await fetchVersion(server, bootstrap.bootstrapUrl);
-    expect(exchange.status).toBe(303);
+    expect(exchange.status).toBe(200);
+    expect(await exchange.clone().text()).toContain('content="0;url=/"');
     const cookie = exchange.headers.get("set-cookie");
     expect(cookie).not.toBeNull();
     const earlier = await fetchVersion(
