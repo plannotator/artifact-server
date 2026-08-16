@@ -23,9 +23,7 @@ export const principalCapabilities = {
   createArtifact: "artifact:create",
   issueContentSession: "content-session:issue",
   manageAnyArtifact: "artifact:manage:any",
-  manageOwnedArtifact: "artifact:manage:owned",
   publishAnyArtifact: "artifact:publish:any",
-  publishOwnedArtifact: "artifact:publish:owned",
   readArtifacts: "artifact:read",
   manageProjects: "project:manage",
 } as const;

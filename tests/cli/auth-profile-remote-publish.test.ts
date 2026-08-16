@@ -711,7 +711,7 @@ async function startOAuthFixture(): Promise<OAuthFixture> {
           authorizedByPrincipalId: null,
           capabilities: [
             "artifact:create",
-            "artifact:publish:owned",
+            "artifact:publish:any",
             "artifact:read",
           ],
           id: "usr_oauth_test",

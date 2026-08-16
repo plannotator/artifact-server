@@ -66,7 +66,6 @@ const artifactRecordSchema = z.object({
   deletedAt: z.string().nullable(),
   id: z.string(),
   name: z.string(),
-  ownerPrincipalId: z.string(),
   projectId: z.string(),
   tags: z.array(z.string()),
 }).strict();
@@ -788,37 +787,6 @@ export function createArtifactMcpServer(
         dependencies,
         ArtifactManagementService.use((management) =>
           management.changeTags({...input, principal: identity.principal})
-        ),
-      );
-      return {
-        artifact: state.artifact,
-        replayed: state.replayed,
-        version: state.version,
-      };
-    }),
-  );
-
-  server.registerTool(
-    "artifact_change_owner",
-    {
-      title: "Change artifact owner",
-      description:
-        "Transfer an artifact to another active member of this Artifact Server. Only a signed-in human administrator can do this. The saved version does not change.",
-      inputSchema: z.object({
-        artifactId: artifactIdSchema,
-        expectedCurrentVersionId: expectedVersionSchema,
-        idempotencyKey: idempotencyKeySchema,
-        projectId: optionalProjectIdSchema,
-        targetOwnerPrincipalId: z.string().min(1).max(200),
-      }).strict(),
-      outputSchema: artifactStateSchema,
-      annotations: idempotentWriteAnnotations,
-    },
-    async (input) => toolResult(async () => {
-      const state = await runMcpApplicationEffect(
-        dependencies,
-        ArtifactManagementService.use((management) =>
-          management.changeOwner({...input, principal: identity.principal})
         ),
       );
       return {

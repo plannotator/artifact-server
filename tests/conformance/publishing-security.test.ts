@@ -128,7 +128,7 @@ describe("local publishing security boundaries", () => {
       name: "Protected mutation",
     });
     expect(authorized.response.status).toBe(201);
-    expect(authorized.body.artifact.ownerPrincipalId).toBe("local-api-token");
+    expect(authorized.body.artifact.id).not.toBe("");
   });
 
   test("AUTH-002-B: account-required is the default and an admitted principal can open it", async () => {

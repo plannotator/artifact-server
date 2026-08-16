@@ -79,7 +79,7 @@ allowed_modules:
 required_source_sections:
   top: [PRD-001, PRD-002]
   product: [PRD-003]
-  artifact: [PRJ-001, PRJ-002, PRJ-003, PRJ-004, ART-001, ART-002, ART-003, ART-004, ART-005, ART-008, ART-009]
+  artifact: [PRJ-001, PRJ-002, PRJ-003, PRJ-004, ART-001, ART-002, ART-003, ART-004, ART-005, ART-008]
   experience: [CNT-001, CNT-002, VER-001, DIF-001, GIT-001]
   sharing: [AUTH-001, AUTH-002, AUTH-003, AUTH-004]
   plannotator: [PLN-001, PLN-002, PLN-003, PLN-004, PLN-005, PLN-017]
@@ -191,7 +191,7 @@ requirements:
     owner: database-adapters
     source: {file: artifact-server-product-spec.html, anchor: artifact}
     acceptance:
-      behavior: {id: PRJ-004-B, description: Upgrade populated SQLite and Postgres installations and verify preserved installation, artifact, version, manifest, content, action, ownership, visibility, tag, and link values under the default project.}
+      behavior: {id: PRJ-004-B, description: Upgrade populated SQLite and Postgres installations and verify preserved installation, artifact, version, manifest, content, action, visibility, tag, and link values under the default project.}
       failure: {id: PRJ-004-F, description: Interrupted, repeated, partially applied, and rolled-back migrations cannot duplicate projects, orphan artifacts, change IDs, lose bytes, or widen access.}
     deployments: *all
     status: behavior_verified
@@ -236,12 +236,12 @@ requirements:
 
   - id: ART-002
     kind: behavior
-    behavior: An artifact records its project, name, owner, access setting, current version, creation time, and deletion state.
+    behavior: An artifact records its project, name, access setting, current version, creation time, and deletion state.
     owner: artifact-core
     source: {file: artifact-server-product-spec.html, anchor: artifact}
     acceptance:
       behavior: {id: ART-002-B, description: Create an artifact in a project and retrieve every required field with stable types and values.}
-      failure: {id: ART-002-F, description: Reject creation when required project, identity, or ownership data is missing or refers to another project or installation.}
+      failure: {id: ART-002-F, description: Reject creation when required project or artifact data is missing or refers to another project or installation.}
     deployments: *all
     status: behavior_verified
     depends_on: [PRJ-002, ART-001]
@@ -359,24 +359,6 @@ requirements:
         result: pass
         run: evidence/local-foundation.json
         recorded_at: "2026-08-13T08:03:55Z"
-
-  - id: ART-009
-    kind: security
-    behavior: Only a direct human installation administrator can atomically reassign an active artifact to another active human member of the same installation; the change keeps every version unchanged and records the responsible action.
-    owner: artifact-core
-    source: {file: artifact-server-product-spec.html, anchor: artifact}
-    acceptance:
-      behavior: {id: ART-009-B, description: Reassign an artifact to an active member, retry the exact command, and confirm one owner change, one immutable action, unchanged versions, the old owner's lost mutation authority, and the new owner's immediate mutation authority.}
-      failure: {id: ART-009-F, description: Reject an owner, ordinary member, service principal, delegated principal, unchanged target, inactive or nonhuman target, cross-installation target, stale version, and changed idempotency retry without changing ownership or action history.}
-    deployments: *all
-    status: behavior_verified
-    depends_on: [ART-002, AUTH-008, AUD-001]
-    evidence:
-      - deployment: local
-        tests: [ART-009-B, ART-009-F]
-        result: pass
-        run: evidence/local-foundation.json
-        recorded_at: "2026-08-16T01:23:20Z"
 
   - id: MAN-001
     kind: behavior
@@ -740,7 +722,7 @@ requirements:
 
   - id: AUD-001
     kind: security
-    behavior: Every publish, restore, access change, ownership change, connection change, and deletion records the responsible effective principal and human authorizer when present.
+    behavior: Every publish, restore, access change, connection change, and deletion records the responsible effective principal and human authorizer when present.
     owner: authorization
     source: {file: artifact-server-product-spec.html, anchor: safety}
     acceptance:
@@ -1204,7 +1186,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: sharing}
     acceptance:
       behavior: {id: AUTH-006-B, description: Disable public links and confirm that new and existing artifacts cannot be made or remain publicly readable under server policy.}
-      failure: {id: AUTH-006-F, description: Owners, agents, API keys, and Plannotator cannot bypass the administrator's public-link policy.}
+      failure: {id: AUTH-006-F, description: Members, agents, API keys, and Plannotator cannot bypass the administrator's public-link policy.}
     deployments: *all
     status: specified
     depends_on: [AUTH-003]
@@ -1225,16 +1207,21 @@ requirements:
 
   - id: AUTH-008
     kind: security
-    behavior: Read visibility is separate from mutation authorization; owners and administrators can mutate, other admitted members cannot by default, and service principals act only within explicit capabilities.
+    behavior: Every admitted human member can manage artifacts in the installation's projects; service principals act only within explicit capabilities.
     owner: authorization
     source: {file: artifact-server-product-spec.html, anchor: sharing}
     acceptance:
-      behavior: {id: AUTH-008-B, description: Run the documented read, publish, restore, visibility, ownership, and delete matrix for every principal type.}
-      failure: {id: AUTH-008-F, description: A readable artifact never implies permission to publish, restore, reassign, change access, or delete it.}
+      behavior: {id: AUTH-008-B, description: Confirm that admitted human members can read, publish, restore, change visibility, tag, and delete project artifacts.}
+      failure: {id: AUTH-008-F, description: Reject service principals that lack the explicit capability required for the requested read or mutation.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [AUTH-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [AUTH-008-B, AUTH-008-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-16T20:00:00Z"
 
   - id: AUTH-009
     kind: security
@@ -1576,7 +1563,7 @@ requirements:
 
   - id: MCP-009
     kind: security
-    behavior: MCP tool handlers use the same ownership, visibility, tenant, and mutation authorization layer as browser and HTTP operations.
+    behavior: MCP tool handlers use the same membership, capability, visibility, tenant, and mutation authorization layer as browser and HTTP operations.
     owner: mcp
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
@@ -1854,12 +1841,12 @@ requirements:
 
   - id: PLN-005
     kind: behavior
-    behavior: Plannotator workspaces reference artifacts and exact versions from their paired project; a workspace ID can identify the referring collaboration context but never becomes the artifact storage owner.
+    behavior: Plannotator workspaces reference artifacts and exact versions from their paired project; a workspace ID identifies only the referring collaboration context.
     owner: plannotator-integration
     source: {file: artifact-server-product-spec.html, anchor: plannotator}
     acceptance:
       behavior: {id: PLN-005-B, description: Reference and review a project artifact from two workspaces and retain stable installation, project, artifact, exact version, workspace, and actor references.}
-      failure: {id: PLN-005-F, description: Moving, unfiling, deleting, or changing visibility of a workspace cannot move, delete, retarget, or change ownership of the project artifact or version.}
+      failure: {id: PLN-005-F, description: Moving, unfiling, deleting, or changing visibility of a workspace cannot move, delete, or retarget the project artifact or version.}
     deployments: *plannotator_capable
     status: specified
     depends_on: [PLN-004]
@@ -1885,7 +1872,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: plannotator}
     acceptance:
       behavior: {id: PLN-007-B, description: Execute each delegated mutation and observe the connection, project, optional referring workspace, external actor, artifact, version, operation, and outcome in audit evidence.}
-      failure: {id: PLN-007-F, description: A Plannotator-signed request cannot bypass installation or project policy, operation scope, artifact ownership, or action logging.}
+      failure: {id: PLN-007-F, description: A Plannotator-signed request cannot bypass installation or project policy, operation scope, or action logging.}
     deployments: *plannotator_capable
     status: specified
     depends_on: [PLN-006, AUD-001, AUTH-008]
@@ -1976,7 +1963,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: plannotator}
     acceptance:
       behavior: {id: PLN-017-B, description: Open one referenced artifact version from private, organization-gated, link-view, and link-edit workspaces through the approved narrow session without exposing the project list.}
-      failure: {id: PLN-017-F, description: Workspace access, including public and link-edit access, cannot list the project library or publish, restore, change visibility, reassign ownership, delete, or open an unreferenced artifact or version.}
+      failure: {id: PLN-017-F, description: Workspace access, including public and link-edit access, cannot list the project library or publish, restore, change visibility, delete, or open an unreferenced artifact or version.}
     deployments: *plannotator_capable
     status: specified
     depends_on: [PLN-005, PLN-006, PLN-008]
@@ -2080,7 +2067,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: architecture}
     acceptance:
       behavior: {id: ARC-005-B, description: Authorize equivalent principals from each supported authentication method and observe the same object and capability decisions.}
-      failure: {id: ARC-005-F, description: Provider claims, tokens, cookies, or keys cannot bypass tenant, ownership, capability, or object authorization by reaching a handler directly.}
+      failure: {id: ARC-005-F, description: Provider claims, tokens, cookies, or keys cannot bypass tenant, membership, capability, or object authorization by reaching a handler directly.}
     deployments: *all
     status: specified
     depends_on: [AUTH-008, MCP-009, PLN-007]
@@ -2805,7 +2792,7 @@ requirements:
     owner: authorization
     source: {file: artifact-server-product-spec.html, anchor: scope}
     acceptance:
-      behavior: {id: SCP-008-B, description: Confirm that account-required reads in every project derive from admitted installation membership while mutation rules derive from ownership, administrator role, or explicit capability.}
+      behavior: {id: SCP-008-B, description: Confirm that admitted human members can read and manage artifacts in every project while service mutations require explicit capabilities.}
       failure: {id: SCP-008-F, description: A project or artifact cannot create an undocumented reader ACL or inherit Plannotator workspace membership.}
     deployments: *all
     status: specified
@@ -2832,7 +2819,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: decisions}
     acceptance:
       behavior: {id: HOST-002-B, description: Run a tabletop and staging exercise from report intake through containment, audit, communication, deletion or restoration, and domain-reputation monitoring.}
-      failure: {id: HOST-002-F, description: A malicious or disputed artifact cannot remain publicly reachable because the system lacks owner lookup, suspension, evidence preservation, or deletion controls.}
+      failure: {id: HOST-002-F, description: A malicious or disputed artifact cannot remain publicly reachable because the system lacks project and actor lookup, suspension, evidence preservation, or deletion controls.}
     deployments: *hosted
     status: specified
     depends_on: [AUTH-012, AUD-001]
@@ -2922,7 +2909,7 @@ requirements:
     owner: mcp
     source: {file: artifact-server-product-spec.html, anchor: decisions}
     acceptance:
-      behavior: {id: GATE-006-B, description: Run the complete hosted OAuth matrix against the embedded provider and document operational ownership and upgrade behavior.}
+      behavior: {id: GATE-006-B, description: Run the complete hosted OAuth matrix against the embedded provider and document operational responsibility and upgrade behavior.}
       failure: {id: GATE-006-F, description: Beta incompatibility, lost client or consent state, weak audience binding, refresh replay, failed migration, or missing revocation keeps the option disabled.}
     deployments: *external_storage
     status: specified
@@ -2948,8 +2935,8 @@ requirements:
     owner: hosted-policy
     source: {file: artifact-server-product-spec.html, anchor: decisions}
     acceptance:
-      behavior: {id: GATE-008-B, description: Complete policy approval and operational exercises for every public-hosting abuse path with named owners and response evidence.}
-      failure: {id: GATE-008-F, description: A public-link launch is blocked when any report, containment, deletion, appeal, or domain-reputation path has no working owner or control.}
+      behavior: {id: GATE-008-B, description: Complete policy approval and operational exercises for every public-hosting abuse path with responsible teams and response evidence.}
+      failure: {id: GATE-008-F, description: A public-link launch is blocked when any report, containment, deletion, appeal, or domain-reputation path has no responsible team or working control.}
     deployments: *hosted
     status: specified
     depends_on: [HOST-002]
@@ -3001,7 +2988,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: decisions}
     acceptance:
       behavior: {id: GATE-012-B, description: Prove the complete domain lifecycle and browser security model without weakening application and version origin isolation.}
-      failure: {id: GATE-012-F, description: Domain takeover, stale certificate, unsafe cookie scope, shared version origin, broken purge, or unresolved abuse ownership keeps custom domains disabled.}
+      failure: {id: GATE-012-F, description: Domain takeover, stale certificate, unsafe cookie scope, shared version origin, broken purge, or unresolved abuse responsibility keeps custom domains disabled.}
     deployments: *external_storage
     status: specified
     depends_on: [CNT-003, DEP-014]
@@ -3040,7 +3027,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: decisions}
     acceptance:
       behavior: {id: GATE-015-B, description: Qualify customer networking, Cloudflare Tunnel, or the product connector with a published install-to-recovery test matrix.}
-      failure: {id: GATE-015-F, description: A route that exposes another service, grants inbound general network access, hides failure, loses pairing state, or lacks support ownership cannot be called one-click.}
+      failure: {id: GATE-015-F, description: A route that exposes another service, grants inbound general network access, hides failure, loses pairing state, or lacks a responsible support team cannot be called one-click.}
     deployments: *plannotator_capable
     status: specified
     depends_on: [PLN-014, PLN-015]

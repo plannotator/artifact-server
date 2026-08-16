@@ -47,7 +47,6 @@ import {
 import type {
   ArtifactRepository,
   ChangeArtifactAccessSetting,
-  ChangeArtifactOwnership,
   ChangeArtifactTags,
   CommitArtifactVersion,
   CommitNewArtifact,
@@ -84,7 +83,6 @@ const uploadStatusSchema = z.enum([
 const routingModeSchema = z.enum([routingModes.static, routingModes.spa]);
 const artifactActionKindSchema = z.enum([
   artifactActionKinds.changeAccess,
-  artifactActionKinds.changeOwner,
   artifactActionKinds.changeTags,
   artifactActionKinds.delete,
   artifactActionKinds.publish,
@@ -100,7 +98,6 @@ const publishedRowSchema = z.object({
   currentVersionId: z.string(),
   entryPath: z.string(),
   manifestDigest: z.string(),
-  ownerPrincipalId: z.string(),
   publisherPrincipalId: z.string(),
   projectId: z.string(),
   routingMode: routingModeSchema,
@@ -125,14 +122,12 @@ const idempotencyRowSchema = z.object({
   inputDigest: z.string(),
   operation: z.enum([
     "change_access",
-    "change_owner",
     "change_tags",
     "delete",
     "publish",
     "restore",
   ]),
   tagsJson: z.string().nullable(),
-  targetOwnerPrincipalId: z.string().nullable(),
   versionId: z.string(),
 });
 const artifactActionRowSchema = z.object({
@@ -144,7 +139,6 @@ const artifactActionRowSchema = z.object({
   idempotencyKey: z.string(),
   principalId: z.string(),
   projectId: z.string(),
-  targetOwnerPrincipalId: z.string().nullable(),
   versionId: z.string(),
 });
 const artifactRowSchema = z.object({
@@ -154,7 +148,6 @@ const artifactRowSchema = z.object({
   deletedAt: z.string().nullable(),
   id: z.string(),
   name: z.string(),
-  ownerPrincipalId: z.string(),
   projectId: z.string(),
 });
 const artifactTagRowSchema = z.object({
@@ -364,15 +357,14 @@ export class SqliteArtifactRepository implements
         this.#database
           .prepare(
             `INSERT INTO artifacts (
-              id, project_id, name, owner_principal_id, access_setting,
+              id, project_id, name, access_setting,
               current_version_id, created_at, deleted_at
-            ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL)`,
+            ) VALUES (?, ?, ?, ?, NULL, ?, NULL)`,
           )
           .run(
             command.artifactId,
             command.projectId,
             command.name,
-            command.ownerPrincipalId,
             command.accessSetting,
             command.createdAt,
           );
@@ -580,75 +572,6 @@ export class SqliteArtifactRepository implements
     );
   }
 
-  changeOwnership(command: ChangeArtifactOwnership): Promise<ArtifactState> {
-    return Promise.resolve().then(() =>
-      this.#transaction(() => {
-        const replayed = this.#findIdempotentOwnershipResult(
-          command.projectId,
-          command.idempotencyKey,
-          command.inputDigest,
-        );
-        if (replayed !== null) return replayed;
-        const artifact = this.#readArtifact(command.projectId, command.artifactId);
-        if (artifact.ownerPrincipalId === command.targetOwnerPrincipalId) {
-          throw new ArtifactMutationConflict({
-            message: "The target member already owns this artifact.",
-          });
-        }
-        this.#assertExpectedCurrentVersion(
-          artifact,
-          command.expectedCurrentVersionId,
-        );
-        const update = this.#database
-          .prepare(
-            `UPDATE artifacts
-             SET owner_principal_id = ?
-             WHERE project_id = ? AND id = ? AND current_version_id = ?
-               AND deleted_at IS NULL`,
-          )
-          .run(
-            command.targetOwnerPrincipalId,
-            command.projectId,
-            command.artifactId,
-            command.expectedCurrentVersionId,
-          );
-        if (update.changes !== 1) throw changedDuringManagement();
-        this.#insertAction(
-          command.projectId,
-          command.artifactId,
-          command.expectedCurrentVersionId,
-          command.idempotencyKey,
-          command.createdAt,
-          artifactActionKinds.changeOwner,
-          command.principalId,
-          command.authorizedByPrincipalId,
-          command.targetOwnerPrincipalId,
-        );
-        this.#insertIdempotency(
-          command.projectId,
-          command.idempotencyKey,
-          command.inputDigest,
-          command.artifactId,
-          command.expectedCurrentVersionId,
-          command.createdAt,
-          "change_owner",
-          artifact.accessSetting,
-          null,
-          command.targetOwnerPrincipalId,
-        );
-        return this.#readArtifactState(
-          command.projectId,
-          command.artifactId,
-          command.expectedCurrentVersionId,
-          artifact.accessSetting,
-          false,
-          null,
-          command.targetOwnerPrincipalId,
-        );
-      }),
-    );
-  }
-
   changeTags(command: ChangeArtifactTags): Promise<ArtifactState> {
     return Promise.resolve().then(() =>
       this.#transaction(() => {
@@ -843,7 +766,6 @@ export class SqliteArtifactRepository implements
             id,
             project_id AS projectId,
             name,
-            owner_principal_id AS ownerPrincipalId,
             access_setting AS accessSetting,
             current_version_id AS currentVersionId,
             created_at AS createdAt,
@@ -851,7 +773,6 @@ export class SqliteArtifactRepository implements
            FROM artifacts
            WHERE project_id = ?
              AND deleted_at IS NULL
-             AND (? IS NULL OR owner_principal_id = ?)
              AND (
                ? IS NULL
                OR EXISTS (
@@ -870,8 +791,6 @@ export class SqliteArtifactRepository implements
         )
         .all(
           command.projectId,
-          command.ownerPrincipalId,
-          command.ownerPrincipalId,
           command.tag,
           command.tag,
           cursorCreatedAt,
@@ -901,7 +820,6 @@ export class SqliteArtifactRepository implements
             action,
             principal_id AS principalId,
             authorized_by_principal_id AS authorizedByPrincipalId,
-            target_owner_principal_id AS targetOwnerPrincipalId,
             idempotency_key AS idempotencyKey,
             created_at AS createdAt
            FROM actions
@@ -1407,7 +1325,6 @@ export class SqliteArtifactRepository implements
           input_digest AS inputDigest,
           operation,
           tags_json AS tagsJson,
-          target_owner_principal_id AS targetOwnerPrincipalId,
           version_id AS versionId
          FROM idempotency_records
          WHERE project_id = ? AND idempotency_key = ?`,
@@ -1433,48 +1350,6 @@ export class SqliteArtifactRepository implements
     );
   }
 
-  #findIdempotentOwnershipResult(
-    projectId: string,
-    idempotencyKey: string,
-    inputDigest: string,
-  ): ArtifactState | null {
-    const row = this.#database
-      .prepare(
-        `SELECT
-          access_setting AS accessSetting,
-          artifact_id AS artifactId,
-          input_digest AS inputDigest,
-          operation,
-          tags_json AS tagsJson,
-          target_owner_principal_id AS targetOwnerPrincipalId,
-          version_id AS versionId
-         FROM idempotency_records
-         WHERE project_id = ? AND idempotency_key = ?`,
-      )
-      .get(projectId, idempotencyKey);
-    const parsed = idempotencyRowSchema.nullable().parse(row ?? null);
-    if (parsed === null) return null;
-    if (
-      parsed.inputDigest !== inputDigest ||
-      parsed.operation !== "change_owner" ||
-      parsed.accessSetting === null ||
-      parsed.targetOwnerPrincipalId === null
-    ) {
-      throw new IdempotencyConflict({
-        message: "The idempotency key was already used with different input.",
-      });
-    }
-    return this.#readArtifactState(
-      projectId,
-      parsed.artifactId,
-      parsed.versionId,
-      parsed.accessSetting,
-      true,
-      null,
-      parsed.targetOwnerPrincipalId,
-    );
-  }
-
   #findIdempotentTagResult(
     projectId: string,
     idempotencyKey: string,
@@ -1488,7 +1363,6 @@ export class SqliteArtifactRepository implements
           input_digest AS inputDigest,
           operation,
           tags_json AS tagsJson,
-          target_owner_principal_id AS targetOwnerPrincipalId,
           version_id AS versionId
          FROM idempotency_records
          WHERE project_id = ? AND idempotency_key = ?`,
@@ -1531,7 +1405,6 @@ export class SqliteArtifactRepository implements
           input_digest AS inputDigest,
           operation,
           tags_json AS tagsJson,
-          target_owner_principal_id AS targetOwnerPrincipalId,
           version_id AS versionId
          FROM idempotency_records
          WHERE project_id = ? AND idempotency_key = ?`,
@@ -1562,7 +1435,6 @@ export class SqliteArtifactRepository implements
           id,
           project_id AS projectId,
           name,
-          owner_principal_id AS ownerPrincipalId,
           access_setting AS accessSetting,
           current_version_id AS currentVersionId,
           created_at AS createdAt,
@@ -1585,7 +1457,6 @@ export class SqliteArtifactRepository implements
           id,
           project_id AS projectId,
           name,
-          owner_principal_id AS ownerPrincipalId,
           access_setting AS accessSetting,
           current_version_id AS currentVersionId,
           created_at AS createdAt,
@@ -1680,7 +1551,6 @@ export class SqliteArtifactRepository implements
     accessSetting: ArtifactRecord["accessSetting"],
     replayed: boolean,
     tags: readonly string[] | null = null,
-    ownerPrincipalId: string | null = null,
   ): ArtifactState {
     const artifact = this.#readArtifact(projectId, artifactId);
     const version = this.#readVersionOrNull(projectId, versionId, artifactId);
@@ -1692,7 +1562,6 @@ export class SqliteArtifactRepository implements
         ...artifact,
         accessSetting,
         currentVersionId: versionId,
-        ownerPrincipalId: ownerPrincipalId ?? artifact.ownerPrincipalId,
         tags: tags ?? artifact.tags,
       },
       replayed,
@@ -1778,7 +1647,6 @@ export class SqliteArtifactRepository implements
           input_digest AS inputDigest,
           operation,
           tags_json AS tagsJson,
-          target_owner_principal_id AS targetOwnerPrincipalId,
           version_id AS versionId
          FROM idempotency_records
          WHERE project_id = ? AND idempotency_key = ?`,
@@ -1803,15 +1671,13 @@ export class SqliteArtifactRepository implements
     action: ArtifactActionRecord["action"],
     principalId: string,
     authorizedByPrincipalId: string | null,
-    targetOwnerPrincipalId: string | null = null,
   ): void {
     this.#database
       .prepare(
         `INSERT INTO actions (
           id, project_id, artifact_id, version_id, action, principal_id,
-          authorized_by_principal_id, target_owner_principal_id,
-          idempotency_key, created_at
-        ) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          authorized_by_principal_id, idempotency_key, created_at
+        ) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         projectId,
@@ -1820,7 +1686,6 @@ export class SqliteArtifactRepository implements
         action,
         principalId,
         authorizedByPrincipalId,
-        targetOwnerPrincipalId,
         idempotencyKey,
         createdAt,
       );
@@ -1892,22 +1757,19 @@ export class SqliteArtifactRepository implements
     createdAt: string,
     operation:
       | "change_access"
-      | "change_owner"
       | "change_tags"
       | "delete"
       | "publish"
       | "restore" = "publish",
     accessSetting: ArtifactRecord["accessSetting"] | null = null,
     tagsJson: string | null = null,
-    targetOwnerPrincipalId: string | null = null,
   ): void {
     this.#database
       .prepare(
         `INSERT INTO idempotency_records (
           project_id, idempotency_key, input_digest, artifact_id, version_id,
-          operation, access_setting, tags_json, target_owner_principal_id,
-          created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          operation, access_setting, tags_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         projectId,
@@ -1918,7 +1780,6 @@ export class SqliteArtifactRepository implements
         operation,
         accessSetting,
         tagsJson,
-        targetOwnerPrincipalId,
         createdAt,
       );
   }
@@ -1984,7 +1845,6 @@ export class SqliteArtifactRepository implements
         id TEXT PRIMARY KEY,
         project_id TEXT NOT NULL REFERENCES projects(id),
         name TEXT NOT NULL,
-        owner_principal_id TEXT NOT NULL,
         access_setting TEXT NOT NULL CHECK (access_setting IN ('account_required', 'public_link')),
         current_version_id TEXT,
         created_at TEXT NOT NULL,
@@ -2027,10 +1887,9 @@ export class SqliteArtifactRepository implements
         input_digest TEXT NOT NULL,
         artifact_id TEXT NOT NULL REFERENCES artifacts(id),
         version_id TEXT NOT NULL REFERENCES versions(id),
-        operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete')),
+        operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access', 'change_tags', 'delete')),
         access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
         tags_json TEXT,
-        target_owner_principal_id TEXT,
         created_at TEXT NOT NULL,
         PRIMARY KEY (project_id, idempotency_key)
       ) STRICT;
@@ -2043,7 +1902,6 @@ export class SqliteArtifactRepository implements
         action TEXT NOT NULL,
         principal_id TEXT NOT NULL,
         authorized_by_principal_id TEXT,
-        target_owner_principal_id TEXT,
         idempotency_key TEXT NOT NULL,
         created_at TEXT NOT NULL
       ) STRICT;
@@ -2117,7 +1975,6 @@ export class SqliteArtifactRepository implements
       CREATE INDEX IF NOT EXISTS content_sessions_expiry
         ON content_sessions (expires_at);
     `);
-    this.#addArtifactOwnerColumnIfMissing();
     this.#addVersionPublisherColumnIfMissing();
     this.#addActionAuthorizerColumnIfMissing();
     this.#addIdempotencyOperationColumnsIfMissing();
@@ -2125,13 +1982,8 @@ export class SqliteArtifactRepository implements
     this.#addProjectScopeIfMissing(installationId);
     this.#addSpaRoutingModeIfMissing();
     this.#addProjectScopeIfMissing(installationId);
-    this.#addOwnershipOperationIfMissing();
     this.#addProjectScopeIfMissing(installationId);
     this.#database.exec(`
-      CREATE INDEX IF NOT EXISTS artifacts_owner_active_created
-        ON artifacts (
-          project_id, owner_principal_id, deleted_at, created_at DESC, id DESC
-        );
       CREATE INDEX IF NOT EXISTS projects_active_created
         ON projects (archived_at, created_at, id);
     `);
@@ -2226,73 +2078,6 @@ export class SqliteArtifactRepository implements
     const failures = this.#database.prepare("PRAGMA foreign_key_check").all();
     if (failures.length > 0) {
       throw new Error("SQLite routing migration produced invalid foreign keys.");
-    }
-  }
-
-  #addOwnershipOperationIfMissing(): void {
-    if (!this.#tableColumns("actions").includes("target_owner_principal_id")) {
-      this.#database.exec(
-        "ALTER TABLE actions ADD COLUMN target_owner_principal_id TEXT",
-      );
-    }
-    const row = this.#database
-      .prepare(
-        "SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'idempotency_records'",
-      )
-      .get();
-    const {sql} = z.object({sql: z.string()}).parse(row);
-    if (
-      sql.includes("'change_owner'") &&
-      this.#tableColumns("idempotency_records").includes(
-        "target_owner_principal_id",
-      )
-    ) return;
-
-    this.#database.exec("PRAGMA foreign_keys = OFF;");
-    try {
-      this.#database.exec(`
-        BEGIN IMMEDIATE;
-        DROP TRIGGER IF EXISTS idempotency_project_insert;
-        DROP TRIGGER IF EXISTS idempotency_project_update;
-
-        CREATE TABLE idempotency_records_next (
-          project_id TEXT NOT NULL REFERENCES projects(id),
-          idempotency_key TEXT NOT NULL,
-          input_digest TEXT NOT NULL,
-          artifact_id TEXT NOT NULL REFERENCES artifacts(id),
-          version_id TEXT NOT NULL REFERENCES versions(id),
-          operation TEXT NOT NULL DEFAULT 'publish'
-            CHECK (operation IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete')),
-          access_setting TEXT
-            CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
-          tags_json TEXT,
-          target_owner_principal_id TEXT,
-          created_at TEXT NOT NULL,
-          PRIMARY KEY (project_id, idempotency_key)
-        ) STRICT;
-
-        INSERT INTO idempotency_records_next (
-          project_id, idempotency_key, input_digest, artifact_id, version_id,
-          operation, access_setting, tags_json, target_owner_principal_id,
-          created_at
-        ) SELECT
-          project_id, idempotency_key, input_digest, artifact_id, version_id,
-          operation, access_setting, tags_json, NULL, created_at
-        FROM idempotency_records;
-
-        DROP TABLE idempotency_records;
-        ALTER TABLE idempotency_records_next RENAME TO idempotency_records;
-        COMMIT;
-      `);
-    } catch (cause) {
-      this.#database.exec("ROLLBACK;");
-      throw cause;
-    } finally {
-      this.#database.exec("PRAGMA foreign_keys = ON;");
-    }
-    const failures = this.#database.prepare("PRAGMA foreign_key_check").all();
-    if (failures.length > 0) {
-      throw new Error("SQLite ownership migration produced invalid foreign keys.");
     }
   }
 
@@ -2409,7 +2194,6 @@ export class SqliteArtifactRepository implements
       this.#database.exec(`
         DROP INDEX IF EXISTS versions_artifact_id;
         DROP INDEX IF EXISTS artifacts_active_created;
-        DROP INDEX IF EXISTS artifacts_owner_active_created;
         DROP INDEX IF EXISTS actions_artifact_created;
         DROP INDEX IF EXISTS staged_uploads_expiry;
 
@@ -2417,10 +2201,6 @@ export class SqliteArtifactRepository implements
           ON versions (project_id, artifact_id, number);
         CREATE INDEX artifacts_active_created
           ON artifacts (project_id, deleted_at, created_at DESC, id DESC);
-        CREATE INDEX artifacts_owner_active_created
-          ON artifacts (
-            project_id, owner_principal_id, deleted_at, created_at DESC, id DESC
-          );
         CREATE INDEX actions_artifact_created
           ON actions (project_id, artifact_id, created_at DESC, id DESC);
         CREATE INDEX staged_uploads_expiry
@@ -2576,14 +2356,6 @@ export class SqliteArtifactRepository implements
     if (columns.includes("authorized_by_principal_id")) return;
     this.#database.exec(
       "ALTER TABLE actions ADD COLUMN authorized_by_principal_id TEXT",
-    );
-  }
-
-  #addArtifactOwnerColumnIfMissing(): void {
-    const columns = this.#tableColumns("artifacts");
-    if (columns.includes("owner_principal_id")) return;
-    this.#database.exec(
-      "ALTER TABLE artifacts ADD COLUMN owner_principal_id TEXT NOT NULL DEFAULT 'local-api-token'",
     );
   }
 
@@ -2743,7 +2515,6 @@ export class SqliteArtifactRepository implements
           a.id AS artifactId,
           a.project_id AS projectId,
           a.name AS artifactName,
-          a.owner_principal_id AS ownerPrincipalId,
           a.access_setting AS accessSetting,
           a.current_version_id AS currentVersionId,
           a.created_at AS artifactCreatedAt,
@@ -2769,7 +2540,6 @@ export class SqliteArtifactRepository implements
       deletedAt: parsed.artifactDeletedAt,
       id: parsed.artifactId,
       name: parsed.artifactName,
-      ownerPrincipalId: parsed.ownerPrincipalId,
       projectId: parsed.projectId,
       tags: this.#readTags(parsed.artifactId),
     };

@@ -56,6 +56,4 @@ deployment.
 The public-ingress GCP package has now passed its minimum create-to-delete gate.
 The broader GCP target remains `implementing`, not fully supported, because the
 product specification also requires a qualified private-ingress option. The
-current package intentionally rejects private ingress. The positive two-human
-ownership-transfer check is tracked with hosted authentication and was not part
-of this cleanup pass.
+current package intentionally rejects private ingress.

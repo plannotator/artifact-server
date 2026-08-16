@@ -71,7 +71,7 @@ Phase 3A includes:
   streaming writes;
 - remote staged-upload inspection, reads, and verified writes;
 - multipart-safe streaming without buffering a complete artifact in memory;
-- explicit provider resource ownership and cleanup at the composition root;
+- explicit provider resource responsibility and cleanup at the composition root;
 - a pinned MinIO container used as the first real S3-compatible conformance
   target; and
 - normal, hostile, concurrent, restart, and installation-isolation tests.

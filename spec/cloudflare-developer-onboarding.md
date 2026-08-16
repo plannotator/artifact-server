@@ -82,7 +82,7 @@ pnpm check
 The complete pre-merge gate is `pnpm verify:iteration`. It requires Docker and
 the repository's disposable Kubernetes test tools.
 
-## Parallel ownership
+## Parallel responsibilities
 
 The main development track owns:
 

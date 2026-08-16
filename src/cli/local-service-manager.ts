@@ -213,7 +213,7 @@ function refuseCompetingDatabaseOwner(inspection: LocalServiceInspection): void 
     && !inspection.reachable
   ) {
     throw new Error(
-      "The managed local Artifact Server process is running but is not healthy. Run artifactserver doctor; a second database owner was not started.",
+      "The managed local Artifact Server process is running but is not healthy. Run artifactserver doctor; a second process was not started against the same database.",
     );
   }
 }

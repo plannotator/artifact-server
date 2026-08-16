@@ -72,7 +72,7 @@ describe("local MCP onboarding", () => {
     const first = await connectStdio(dataDirectory);
     const firstTools = await first.client.listTools();
     expect(first.client.getNegotiatedProtocolVersion()).toBe(modernProtocolRevision);
-    expect(firstTools.tools).toHaveLength(18);
+    expect(firstTools.tools).toHaveLength(17);
     const capabilities = await first.client.callTool({
       arguments: {},
       name: "artifact_capabilities",
@@ -94,11 +94,11 @@ describe("local MCP onboarding", () => {
     )).toEqual({status: "ok"});
 
     const second = await connectStdio(dataDirectory);
-    expect((await second.client.listTools()).tools).toHaveLength(18);
+    expect((await second.client.listTools()).tools).toHaveLength(17);
     await second.client.close();
 
     const legacy = await connectStdio(dataDirectory, "legacy");
-    expect((await legacy.client.listTools()).tools).toHaveLength(18);
+    expect((await legacy.client.listTools()).tools).toHaveLength(17);
     const legacyCapabilities = await legacy.client.callTool({
       arguments: {},
       name: "artifact_capabilities",
@@ -114,7 +114,7 @@ describe("local MCP onboarding", () => {
     const doctor = await runCli(["doctor", "--data", dataDirectory]);
     expect(doctor.exitCode).toBe(0);
     expect(doctorSchema.parse(JSON.parse(doctor.stdout))).toMatchObject({
-      discovery: {tools: 18},
+      discovery: {tools: 17},
       status: "healthy",
     });
     const apiCredential = (await readFile(
@@ -343,7 +343,7 @@ describe("local MCP onboarding", () => {
       environment,
     );
     expect(refused.exitCode).not.toBe(0);
-    expect(refused.stderr).toContain("a second database owner was not started");
+    expect(refused.stderr).toContain("a second process was not started against the same database");
     expect(await readFile(staleRecordPath, "utf8")).toBe(runningUnhealthyRecord);
   });
 });

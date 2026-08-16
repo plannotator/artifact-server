@@ -24,7 +24,6 @@ const schemaSql = `
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES projects(id),
     name TEXT NOT NULL,
-    owner_principal_id TEXT NOT NULL,
     access_setting TEXT NOT NULL CHECK (access_setting IN ('account_required', 'public_link')),
     current_version_id TEXT,
     created_at TEXT NOT NULL,
@@ -67,10 +66,9 @@ const schemaSql = `
     input_digest TEXT NOT NULL,
     artifact_id TEXT NOT NULL REFERENCES artifacts(id),
     version_id TEXT NOT NULL REFERENCES versions(id),
-    operation TEXT NOT NULL CHECK (operation IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete')),
+    operation TEXT NOT NULL CHECK (operation IN ('publish', 'restore', 'change_access', 'change_tags', 'delete')),
     access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
     tags_json TEXT,
-    target_owner_principal_id TEXT,
     created_at TEXT NOT NULL,
     PRIMARY KEY (project_id, idempotency_key)
   );
@@ -80,10 +78,9 @@ const schemaSql = `
     project_id TEXT NOT NULL REFERENCES projects(id),
     artifact_id TEXT NOT NULL REFERENCES artifacts(id),
     version_id TEXT NOT NULL REFERENCES versions(id),
-    action TEXT NOT NULL CHECK (action IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete')),
+    action TEXT NOT NULL CHECK (action IN ('publish', 'restore', 'change_access', 'change_tags', 'delete')),
     principal_id TEXT NOT NULL,
     authorized_by_principal_id TEXT,
-    target_owner_principal_id TEXT,
     idempotency_key TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
@@ -207,8 +204,6 @@ const schemaSql = `
     ON versions(project_id, artifact_id, number DESC);
   CREATE INDEX IF NOT EXISTS artifacts_active_created
     ON artifacts(project_id, deleted_at, created_at DESC, id DESC);
-  CREATE INDEX IF NOT EXISTS artifacts_owner_active_created
-    ON artifacts(project_id, owner_principal_id, deleted_at, created_at DESC, id DESC);
   CREATE INDEX IF NOT EXISTS artifact_tags_tag_artifact
     ON artifact_tags(tag, artifact_id);
   CREATE INDEX IF NOT EXISTS actions_artifact_created
@@ -288,10 +283,9 @@ const upgradeFromVersion1Statements = [
     input_digest TEXT NOT NULL,
     artifact_id TEXT NOT NULL REFERENCES artifacts(id),
     version_id TEXT NOT NULL REFERENCES versions(id),
-    operation TEXT NOT NULL CHECK (operation IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete')),
+    operation TEXT NOT NULL CHECK (operation IN ('publish', 'restore', 'change_access', 'change_tags', 'delete')),
     access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
     tags_json TEXT,
-    target_owner_principal_id TEXT,
     created_at TEXT NOT NULL,
     PRIMARY KEY (project_id, idempotency_key)
   )`,
@@ -299,9 +293,9 @@ const upgradeFromVersion1Statements = [
   "ALTER TABLE idempotency_records_next RENAME TO idempotency_records",
   `INSERT INTO idempotency_records (
     project_id, idempotency_key, input_digest, artifact_id, version_id,
-    operation, access_setting, tags_json, target_owner_principal_id, created_at
+    operation, access_setting, tags_json, created_at
   ) SELECT project_id, idempotency_key, input_digest, artifact_id, version_id,
-    operation, access_setting, tags_json, NULL, created_at
+    operation, access_setting, tags_json, created_at
     FROM idempotency_records_upgrade_snapshot`,
   "DROP TABLE idempotency_records_upgrade_snapshot",
   `CREATE TABLE actions_upgrade_snapshot AS SELECT
@@ -313,10 +307,9 @@ const upgradeFromVersion1Statements = [
     project_id TEXT NOT NULL REFERENCES projects(id),
     artifact_id TEXT NOT NULL REFERENCES artifacts(id),
     version_id TEXT NOT NULL REFERENCES versions(id),
-    action TEXT NOT NULL CHECK (action IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete')),
+    action TEXT NOT NULL CHECK (action IN ('publish', 'restore', 'change_access', 'change_tags', 'delete')),
     principal_id TEXT NOT NULL,
     authorized_by_principal_id TEXT,
-    target_owner_principal_id TEXT,
     idempotency_key TEXT NOT NULL,
     created_at TEXT NOT NULL
   )`,
@@ -324,10 +317,9 @@ const upgradeFromVersion1Statements = [
   "ALTER TABLE actions_next RENAME TO actions",
   `INSERT INTO actions (
     id, project_id, artifact_id, version_id, action, principal_id,
-    authorized_by_principal_id, target_owner_principal_id,
-    idempotency_key, created_at
+    authorized_by_principal_id, idempotency_key, created_at
   ) SELECT id, project_id, artifact_id, version_id, action, principal_id,
-    authorized_by_principal_id, NULL, idempotency_key, created_at
+    authorized_by_principal_id, idempotency_key, created_at
     FROM actions_upgrade_snapshot`,
   "DROP TABLE actions_upgrade_snapshot",
   `CREATE INDEX versions_artifact_id

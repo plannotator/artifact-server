@@ -88,7 +88,6 @@ export interface CommitNewArtifact {
   readonly inputDigest: string;
   readonly manifest: CanonicalManifest;
   readonly name: string;
-  readonly ownerPrincipalId: string;
   readonly principalId: string;
   readonly projectId: string;
   readonly authorizedByPrincipalId: string | null;
@@ -138,19 +137,6 @@ export interface ChangeArtifactAccessSetting {
   readonly projectId: string;
 }
 
-/** Values used to atomically transfer one artifact to an active member. */
-export interface ChangeArtifactOwnership {
-  readonly artifactId: string;
-  readonly authorizedByPrincipalId: string | null;
-  readonly createdAt: string;
-  readonly expectedCurrentVersionId: string;
-  readonly idempotencyKey: string;
-  readonly inputDigest: string;
-  readonly principalId: string;
-  readonly projectId: string;
-  readonly targetOwnerPrincipalId: string;
-}
-
 /** Values used to atomically replace one artifact's complete tag set. */
 export interface ChangeArtifactTags {
   readonly artifactId: string;
@@ -180,7 +166,6 @@ export interface DeleteArtifact {
 export interface ListArtifacts {
   readonly cursor: PageCursor | null;
   readonly limit: number;
-  readonly ownerPrincipalId: string | null;
   readonly projectId: string;
   readonly tag: string | null;
 }
@@ -255,7 +240,6 @@ export interface ArtifactRepository {
   commitNewArtifact(command: CommitNewArtifact): Promise<PublishedVersion>;
   commitVersion(command: CommitArtifactVersion): Promise<PublishedVersion>;
   changeAccessSetting(command: ChangeArtifactAccessSetting): Promise<ArtifactState>;
-  changeOwnership(command: ChangeArtifactOwnership): Promise<ArtifactState>;
   changeTags(command: ChangeArtifactTags): Promise<ArtifactState>;
   deleteArtifact(command: DeleteArtifact): Promise<ArtifactDeletion>;
   findArtifact(projectId: string, artifactId: string): Promise<ArtifactRecord | null>;

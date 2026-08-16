@@ -80,7 +80,6 @@
   "remainingReleaseGates": [
     "qualify Visual Studio Code",
     "qualify claude.ai from public ingress",
-    "run ownership transfer with two authenticated humans",
     "restore the staging MCP Resource Indicator as the WorkOS default and remove the temporary Worker resource after client qualification"
   ]
 }

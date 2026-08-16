@@ -89,7 +89,7 @@ record is never trusted as a live service.
 
 Only the service owns SQLite and local blob storage. Every stdio bridge reaches
 that process over the existing authenticated HTTP boundary, so multiple clients
-do not create multiple database owners.
+do not create multiple processes that manage the same database lifecycle.
 
 ## Client configuration
 

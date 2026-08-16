@@ -223,11 +223,13 @@ Provider-specific claims stop at this boundary. Product services do not know whe
 
 ## Product authorization
 
-A valid token maps the caller to an account admitted to this installation. That account can read account-required artifacts because the installation is one closed person or team. It does not automatically grant permission to publish a new version, change access, restore, or delete.
+A valid token maps the caller to an account admitted to this installation. An
+admitted human member can read and manage artifacts in the installation's
+projects. Service principals require explicit capabilities.
 
 - Map the OAuth subject to one local Artifact Server user admitted to this installation.
 - Do not accept a user merely because an authorization provider authenticated them. Admission is controlled by the installation administrator or configured company login.
-- Verify artifact ownership or an explicit write capability on every upload, publish, access-setting change, restore, and delete.
+- Verify installation membership or an explicit service capability on every upload, publish, access-setting change, restore, and delete.
 - Bind upload and operation handles to the verified principal and installation.
 - API keys bind to a local user or service principal, installation, capabilities, expiry, and revoke state.
 - MCP handlers call the same authorization layer as the browser and normal HTTP API.

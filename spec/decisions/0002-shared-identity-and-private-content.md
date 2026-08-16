@@ -6,8 +6,7 @@ Status: accepted for the local foundation
 
 Every supported credential is converted once into a provider-neutral
 `Principal`. Application services receive that principal and enforce
-installation, membership, ownership, and capability policy before performing
-an operation.
+installation, membership, and capability policy before performing an operation.
 
 HTTP, MCP, CLI, browser login, and Plannotator adapters do not define separate
 permission rules. Each adapter verifies its credential format, obtains a
@@ -19,16 +18,13 @@ installation. It has explicit artifact-creation, publication, and
 content-session capabilities. This preserves the local workflow without
 turning possession of an API token into an implicit boolean bypass.
 
-## Artifact ownership and attribution
+## Attribution
 
-New artifacts persist the creating principal as their owner. Publication
-commands carry the effective principal through the application service and
-SQLite transaction. Action records store that principal instead of a
-hard-coded actor.
-
-Human owners and installation administrators may publish a new version.
-Service principals require an explicit capability. A principal from another
-installation fails before storage is selected.
+Publication commands carry the effective principal through the application
+service and storage transaction. Immutable action records identify the actor.
+Admitted human members may manage project artifacts. Service principals require
+explicit capabilities. A principal from another installation fails before
+storage is selected.
 
 ## Private browser delivery
 
@@ -93,8 +89,8 @@ gate before a team deployment is marked supported.
 The local foundation verifies:
 
 - credentials produce a provider-neutral principal;
-- ownership and action attribution persist with publication;
-- membership, ownership, capability, and installation policy fail closed;
+- action attribution persists with publication;
+- membership, capability, and installation policy fail closed;
 - private HTML and root-relative assets require one exact session;
 - bootstrap exchange is single-use and hostname-bound;
 - tampered, replayed, expired, and cross-host tokens fail;

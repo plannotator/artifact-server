@@ -1762,7 +1762,7 @@
                 <p>The server stores seven kinds of records:</p>
                 <ul>
                   <li><strong>Project:</strong> a stable project ID, name, installation ID, creation time, and archive state.</li>
-                  <li><strong>Artifact:</strong> the same item over time, including its project, name, owner, access setting, optional tags, and current version.</li>
+                  <li><strong>Artifact:</strong> the same item over time, including its project, name, access setting, optional tags, and current version.</li>
                   <li><strong>Version:</strong> the saved copy created when someone publishes. It never changes and points to one manifest.</li>
                   <li><strong>Manifest:</strong> the canonical, ordered list of file paths, fingerprints, sizes, media types, and the entry file.</li>
                   <li><strong>File:</strong> one file in a version, including its name, folder path, file type, size, and SHA-256 fingerprint.</li>
@@ -2007,9 +2007,7 @@
                   <table>
                     <thead><tr><th>Actor</th><th>Read account-required</th><th>Publish</th><th>Change access or delete</th></tr></thead>
                     <tbody>
-                      <tr><td>Owner</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
-                      <tr><td>Installation administrator</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
-                      <tr><td>Other admitted person</td><td>Yes</td><td>No by default</td><td>No</td></tr>
+                      <tr><td>Admitted person</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
                       <tr><td>Service principal or API key</td><td>Only within its grant</td><td>Only within its grant</td><td>Only when explicitly granted</td></tr>
                     </tbody>
                   </table>
@@ -3093,7 +3091,7 @@ v12-7f3a.content.example.net</code></pre>
                   WorkOS identity scopes do not grant artifact permissions. Artifact Server also verifies the issuer,
                   signature, expiry, and user, then maps that user to an account admitted to this
                   installation. Artifact Server does not copy WorkOS organizations into a second
-                  organization system. The same artifact ownership and write checks used by the
+                  organization system. The same membership and service-capability checks used by the
                   browser still apply.
                 </p>
                 <p>
@@ -3852,7 +3850,7 @@ artifact_delete</code></pre>
             <article class="decision-item"><p>An artifact may have up to 20 normalized tags for exact filtering. Tags belong to the artifact, persist across version changes and tombstones, and are replaced through one authorized, idempotent, audited operation. The first release has no tag hierarchy or per-version tags.</p></article>
             <article class="decision-item"><p>Comparisons use canonical manifests and changed text. Binary comparison shows metadata and links. Git is not required.</p></article>
             <article class="decision-item"><p>Git history is an optional private copy. The normal object store remains authoritative, and Git failure never blocks or loses a saved version.</p></article>
-            <article class="decision-item"><p>Account required and public link are the only two read settings. A public link opens only the current version; history and comparisons still require an account. Publishing, access changes, and deletion follow a separate owner, administrator, and scoped-service authorization matrix.</p></article>
+            <article class="decision-item"><p>Account required and public link are the only two read settings. A public link opens only the current version; history and comparisons still require an account. Every admitted human member may manage project artifacts; services require explicit capabilities.</p></article>
             <article class="decision-item"><p>One installation represents one person, team, or company and contains projects. Every artifact belongs to one project. A new installation creates a default project. There is no organization switcher or separate Artifact Store object.</p></article>
             <article class="decision-item"><p>Projects use installation membership and have no separate member list or access-control list in the first release. Project identity is enforced by storage, authorization, HTTP, MCP, browser sessions, audit, backup, and restore.</p></article>
             <article class="decision-item"><p>One Artifact Server installation may connect to one Plannotator organization. Each Plannotator project pairs with one Artifact Server project. Workspaces reference project artifacts and versions; they do not own artifact storage.</p></article>
@@ -3884,7 +3882,7 @@ artifact_delete</code></pre>
               <li><strong>Hosted abuse:</strong> design quotas, egress limits, rate limits, phishing and malware response, reporting, suspension, and content-domain reputation protection before public hosting.</li>
               <li><strong>Capacity and cost:</strong> load-test manifests, large directories, concurrent uploads, text diffs, CDN behavior, database write limits, and worst-case egress. Set hard limits from measured results.</li>
               <li><strong>Recovery:</strong> define retention, tombstone duration, backup schedule, restore procedure, recovery-point and recovery-time promises, and an operator-visible integrity check.</li>
-              <li><strong>Enterprise data controls:</strong> decide encryption-key ownership, regional placement, audit export, legal hold, deletion proof, data residency, and regulated-content boundaries.</li>
+              <li><strong>Enterprise data controls:</strong> decide who controls encryption keys, regional placement, audit export, legal hold, deletion proof, data residency, and regulated-content boundaries.</li>
               <li><strong>Custom domains:</strong> decide whether customer domains are supported and, if so, how certificates, version isolation, cookies, cache purge, domain takeover, and service workers remain safe.</li>
               <li><strong>Plannotator review bridge:</strong> test the isolated review response against hostile artifact JavaScript, strict content policies, multi-page sites, single-page routes, service workers, anchor stability, session expiry, and browsers without third-party cookies. Use a browser extension if the bridge cannot pass without exposing a reusable credential.</li>
               <li><strong>Existing project binding:</strong> decide how an existing Artifact Server project pairs with a Plannotator project, including name conflicts, existing artifacts, unlinking, rollback, archival, and reconnect behavior. Pairing must not silently move artifacts or change IDs.</li>

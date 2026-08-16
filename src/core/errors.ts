@@ -253,7 +253,6 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
     operation: Schema.Literals([
       "assertPublicationSourceReady",
       "changeAccessSetting",
-      "changeOwnership",
       "changeTags",
       "commitNewArtifact",
       "commitVersion",

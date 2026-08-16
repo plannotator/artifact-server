@@ -26,7 +26,6 @@ const artifactRecordSchema = z.object({
   deletedAt: z.string().nullable(),
   id: z.string(),
   name: z.string(),
-  ownerPrincipalId: z.string(),
 });
 const versionRecordSchema = z.object({
   artifactId: z.string(),
@@ -117,7 +116,6 @@ describe("artifact and version management", () => {
       deletedAt: null,
       id: first.body.artifact.id,
       name: "Managed artifact",
-      ownerPrincipalId: "local-api-token",
     });
     expect(details.current.version).toMatchObject({
       artifactId: first.body.artifact.id,

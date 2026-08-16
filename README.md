@@ -23,7 +23,7 @@ This repository contains the local publication foundation and the first external
 - stable artifact links and unique `*.localhost` version hosts;
 - intentional version publication with stale-write protection;
 - idempotent retries;
-- provider-neutral principals with ownership and explicit capability policy;
+- provider-neutral principals with installation membership and explicit capability policy;
 - installation-owned members with explicit administrator admission and deactivation;
 - opaque browser sessions with host-only cookies and same-origin mutation checks;
 - managed human and service API keys with capabilities, expiry, rotation, and revocation;
@@ -39,7 +39,6 @@ This repository contains the local publication foundation and the first external
 - public-link delivery and version-scoped account-required browser sessions;
 - explicit static-site and single-page-application routing with exact-path-first fallback;
 - safe `GET`, `HEAD`, conditional, and single-range content delivery;
-- administrator-only, audited artifact ownership reassignment;
 - bounded cleanup of expired uncommitted uploads without committed-blob garbage collection;
 - single-use private-content bootstraps and host-only, HttpOnly content cookies;
 - authenticated browser sessions for current or earlier exact versions;
@@ -94,10 +93,9 @@ The remaining product work is:
    Agent Skill in current supported clients.
 2. Complete hosted-product qualification for the implemented and provider-qualified one-installation Cloudflare target.
 3. Optional private Git history, including local and Cloudflare providers.
-4. Complete identity-backed ownership-transfer qualification for the live AWS
-   and GCP deployments. Their Pulumi projects and native S3 and GCS adapters
-   are implemented and provider-qualified. The Azure Blob adapter is
-   preview-only until it passes a live Azure qualification.
+4. The AWS and GCP Pulumi projects and native S3 and GCS adapters are
+   implemented and provider-qualified. The Azure Blob adapter is preview-only
+   until it passes a live Azure qualification.
 5. The optional `operate-artifact-server` skill after its deployment commands
    are stable.
 6. Complete the remaining cross-deployment recovery and live-cloud proof in
@@ -105,7 +103,7 @@ The remaining product work is:
    Its shared behavior, local/package gates, Compose gates, Kubernetes gate,
    provider contract tests, and scheduled cleanup implementations are complete.
    Live Cloudflare, AWS, and GCP provider qualification is complete. Hosted
-   identity, ownership transfer, load, quota, and abuse gates remain.
+   Hosted identity, load, quota, and abuse gates remain.
    Committed-blob garbage collection and permanent deletion are not part of
    the initial product.
 7. Direct Plannotator project pairing and the review bridge after the separate

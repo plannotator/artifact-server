@@ -79,7 +79,6 @@ const artifactSchema = Schema.Struct({
   deletedAt: Schema.NullOr(Schema.String),
   id: Schema.String,
   name: Schema.String,
-  ownerPrincipalId: Schema.String,
   projectId: Schema.String,
   tags: Schema.Array(Schema.String),
 });

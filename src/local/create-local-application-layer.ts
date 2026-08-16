@@ -333,11 +333,6 @@ export function createApplicationLayer(
           try: () => adapters.repository.changeAccessSetting(command),
           catch: classifyChangeAccessFailure,
         }),
-      changeOwnership: (command) =>
-        Effect.tryPromise({
-          try: () => adapters.repository.changeOwnership(command),
-          catch: classifyChangeOwnershipFailure,
-        }),
       changeTags: (command) =>
         Effect.tryPromise({
           try: () => adapters.repository.changeTags(command),
@@ -478,10 +473,8 @@ export function createApplicationLayer(
       principalCapabilities.createArtifact,
       principalCapabilities.issueContentSession,
       principalCapabilities.manageAnyArtifact,
-      principalCapabilities.manageOwnedArtifact,
       principalCapabilities.manageProjects,
       principalCapabilities.publishAnyArtifact,
-      principalCapabilities.publishOwnedArtifact,
       principalCapabilities.readArtifacts,
     ],
     id: "local-api-token",
@@ -910,21 +903,6 @@ function classifyChangeAccessFailure(cause: unknown):
     return cause;
   }
   return repositoryFailure("changeAccessSetting", cause);
-}
-
-function classifyChangeOwnershipFailure(cause: unknown):
-  | ArtifactNotFound
-  | ArtifactMutationConflict
-  | IdempotencyConflict
-  | ArtifactRepositoryFailure {
-  if (
-    cause instanceof ArtifactNotFound ||
-    cause instanceof ArtifactMutationConflict ||
-    cause instanceof IdempotencyConflict
-  ) {
-    return cause;
-  }
-  return repositoryFailure("changeOwnership", cause);
 }
 
 function classifyChangeTagsFailure(cause: unknown):

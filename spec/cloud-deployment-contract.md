@@ -8,7 +8,7 @@ This document is the handoff boundary for the Cloudflare, AWS, and GCP
 deployment work. It says exactly what every package receives, what it creates,
 what it gives the Artifact Server process, and what it returns to an operator.
 
-## Tool and directory ownership
+## Tool and directory responsibilities
 
 | Target | Operator commands | Package directory | Default topology |
 | --- | --- | --- | --- |
@@ -75,7 +75,7 @@ but every package must expose these names and meanings.
 | `workosApiKeySecretRef` | hosted login only | Provider secret-manager reference, never the key value |
 | `otlpEndpoint` | no | HTTPS OTLP collector address |
 | `requestLogSampleRate` | no | Number from 0 through 1; default `0.01` |
-| `resourceTags` | no | String map merged with required Artifact Server ownership tags |
+| `resourceTags` | no | String map merged with required Artifact Server management tags |
 
 The package rejects an unpinned image, equal application and content domains,
 an invalid capacity range, a public deployment without a DNS zone, and a

@@ -157,15 +157,15 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(JSON.parse(before.output)).toMatchObject({
       compatibility: "missing",
       currentVersion: 0,
-      requiredVersion: 4,
+      requiredVersion: 3,
     });
 
     const applied = await runExternalCli(["migrate", "apply"], migrationEnvironment);
     expect(applied.exitCode).toBe(0);
     expect(JSON.parse(applied.output)).toMatchObject({
       compatibility: "current",
-      currentVersion: 4,
-      requiredVersion: 4,
+      currentVersion: 3,
+      requiredVersion: 3,
     });
 
     const after = await runExternalCli(["migrate", "status"], migrationEnvironment);
@@ -248,8 +248,6 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
             DROP CONSTRAINT idempotency_records_operation_check,
             ADD CONSTRAINT idempotency_records_operation_check
               CHECK (operation IN ('publish', 'restore', 'change_access', 'change_tags', 'delete'))`,
-          "ALTER TABLE actions DROP COLUMN target_owner_principal_id",
-          "ALTER TABLE idempotency_records DROP COLUMN target_owner_principal_id",
           `ALTER TABLE versions
             DROP CONSTRAINT versions_routing_mode_check,
             ADD CONSTRAINT versions_routing_mode_check
@@ -274,7 +272,6 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
           "ALTER TABLE actions ADD CONSTRAINT actions_installation_id_idempotency_key_key UNIQUE (installation_id, idempotency_key)",
           "CREATE INDEX versions_artifact_id ON versions (installation_id, artifact_id, number)",
           "CREATE INDEX artifacts_active_created ON artifacts (installation_id, deleted_at, created_at DESC, id DESC)",
-          "CREATE INDEX artifacts_owner_active_created ON artifacts (installation_id, owner_principal_id, deleted_at, created_at DESC, id DESC)",
           "CREATE INDEX actions_artifact_created ON actions (installation_id, artifact_id, created_at DESC, id DESC)",
           "DELETE FROM artifact_server_postgres_migrations WHERE migration_id >= 2",
         ] as const;
@@ -293,7 +290,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(JSON.parse(pending.output)).toMatchObject({
       compatibility: "pending",
       currentVersion: 1,
-      requiredVersion: 4,
+      requiredVersion: 3,
     });
     const migrated = await runExternalCli(["migrate", "apply"], {
       ARTIFACT_SERVER_DATABASE_URL: migrationEnvironment.databaseUrl,
@@ -302,7 +299,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(migrated.exitCode).toBe(0);
     expect(JSON.parse(migrated.output)).toMatchObject({
       compatibility: "current",
-      currentVersion: 4,
+      currentVersion: 3,
     });
 
     const restored = await startExternalStorageProcess(migrationEnvironment, identity);
@@ -354,7 +351,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(repeated.exitCode).toBe(0);
     expect(JSON.parse(repeated.output)).toMatchObject({
       compatibility: "current",
-      currentVersion: 4,
+      currentVersion: 3,
     });
   });
 

@@ -6,8 +6,6 @@
   "results": {
     "staticAndSpaRouting": "pass",
     "mediaRanges": "pass",
-    "ownershipTransfer": "blocked_missing_human_identity_provider",
-    "servicePrincipalOwnershipDenial": "pass",
     "scheduledAbandonedUploadCleanup": "pass",
     "committedArtifactsPreservedByCleanup": "pass",
     "populatedDatabaseMigration": "pass",
@@ -22,7 +20,6 @@
     "scheduledCleanup": "The real EventBridge schedule started the cleanup Fargate task. It removed one expired uncommitted upload record and its exact S3 staging object. Committed artifacts and bytes remained readable.",
     "migration": "The Phase 11 image migrated an existing populated RDS catalog. The source integrity task passed after the integrity scanner was corrected to read each saved version's routing mode.",
     "restore": "The application was quiesced, an RDS snapshot and S3 object copy were restored into clean providers, 60 objects were verified, and the restored installation passed the normal integrity check.",
-    "ownership": "The deployed qualification installation has no hosted human login provider. The service API key is correctly denied; a positive two-human transfer must be run after hosted authentication is configured.",
     "destroy": "Pulumi deleted all 73 managed resources and reports zero remaining stack resources. The versioned S3 bucket was emptied only after its qualification tags were verified. The encrypted qualification-only RDS final snapshot was verified, then deleted. AWS may retain inactive ECS task-definition revisions and Secrets Manager deletion tombstones; they cannot serve traffic or retain Artifact Server data."
   },
   "testResults": [

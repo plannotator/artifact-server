@@ -6,8 +6,6 @@
   "results": {
     "staticAndSpaRouting": "pass",
     "mediaRanges": "pass_after_edge_fix",
-    "ownershipTransfer": "blocked_missing_human_identity_provider",
-    "servicePrincipalOwnershipDenial": "pass",
     "scheduledAbandonedUploadCleanup": "pass",
     "committedArtifactsPreservedByCleanup": "pass",
     "populatedDatabaseMigration": "pass",
@@ -23,7 +21,6 @@
     "restore": "An on-demand Cloud SQL backup and exact GCS copy were restored into clean private targets. Source and restore each scanned 4 artifacts, 4 versions, 7 blobs, and 435 bytes with zero integrity problems.",
     "providerInterruption": "Stopping only the disposable restored Cloud SQL instance made readiness return 503 while GCS remained ready. Restarting it returned the same runtime to readiness 200 with all components ready.",
     "rangeEdgeFix": "Live qualification found that Cloud CDN could answer an unsupported multiple-range request from cache with a full 200 response even though the origin returned 416. The GCP backend now bypasses Cloud CDN whenever Range is present. After the policy converged and an ordinary full GET primed the unchanged URL, repeated valid ranges returned exact 206 slices and repeated multiple ranges returned 416; Cloud Run logs confirmed all ranged requests reached the origin.",
-    "ownership": "The isolated installation has no hosted human login provider. The service key is correctly denied; the positive two-human transfer remains gated on hosted authentication.",
     "destroy": "After Google released the delayed Cloud Run Direct VPC subnet address, the same Pulumi destroy deleted all 17 remaining stack resources. The stack now contains zero resources, and an independent project inventory found no qualification Cloud Run service or job, Cloud SQL instance, VPC, subnet, address, load-balancer resource, certificate authorization, application secret, or application service account. The Pulumi state bucket and digest-pinned image repository remain as qualification prerequisites, not deployment resources."
   },
   "testResults": [

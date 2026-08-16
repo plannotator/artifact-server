@@ -12,8 +12,6 @@ new optional features are added. The implemented behavior is:
   routing;
 - finished sites and ordinary files have the promised browser behavior,
   including safe byte-range delivery;
-- an installation administrator can reassign an artifact to another active
-  member;
 - expired uploads that were never committed are removed safely;
 - backup and restore behavior is proved through the same integrity contract in
   each supported deployment; and
@@ -46,7 +44,7 @@ provider-native database and object-storage procedures.
 
 The common product contract is the restored result, not the archive format.
 Every supported restore must preserve the same installation, project,
-artifact, version, manifest, content, ownership, tag, and action identities and
+artifact, version, manifest, content, tag, and action identities and
 must pass `artifactserver integrity check` before becoming ready.
 
 ## Starting point
@@ -69,12 +67,9 @@ The implementation gaps this phase closed were:
 1. `routingMode` accepts only `static`, and no SPA fallback exists.
 2. Content responses have safe media headers and `GET`/`HEAD`, but not byte
    ranges.
-3. The product promises administrator-only ownership reassignment, but no
-   application operation, repository transaction, HTTP route, or MCP tool
-   exists.
-4. Uploads expire, but no cleanup pass removes expired upload records and
+3. Uploads expire, but no cleanup pass removes expired upload records and
    staging bytes.
-5. Recovery exists in several deployment packages, but the proof is not yet a
+4. Recovery exists in several deployment packages, but the proof is not yet a
    single repeatable acceptance matrix with consistent evidence.
 
 ## Architectural rule
@@ -203,59 +198,7 @@ This work closes the implementation gaps behind `CNT-001`, `CNT-002`,
 for `CNT-003`, `CNT-004`, and `CNT-006` remains a deployment qualification,
 not a reason to put browser policy in the artifact service.
 
-## Workstream B: administrator-only ownership reassignment
-
-Add one application command with:
-
-- project ID;
-- artifact ID;
-- target member ID;
-- expected current version ID; and
-- idempotency key.
-
-The command follows these rules:
-
-1. The caller must be a direct human installation administrator.
-2. The target must be an active human member of the same installation.
-3. Owners, ordinary members, service principals, and delegated principals
-   cannot reassign ownership.
-4. The target must differ from the current owner. A no-op request fails without
-   writing an action.
-5. The artifact must be active and belong to the named project.
-6. The expected current version must still be current.
-7. Reassignment changes only `ownerPrincipalId`. It does not create or edit a
-   version, move the artifact, or change sharing or tags.
-8. The old owner loses owner-only mutation authority when the transaction
-   commits, and the new owner gains it.
-9. The owner change, `change_owner` action, and idempotency result commit in one
-   database transaction.
-10. An exact retry returns the original result. Reusing the key with different
-   input fails without changing ownership.
-
-`AuthorizationService` receives a distinct
-`requireArtifactOwnershipChange` rule. It must not reuse the broader artifact
-management rule. `InstallationAccessService` receives a narrow operation that
-resolves an active human member; `ArtifactManagementService` does not receive
-the raw identity repository.
-
-The repository contract adds `changeOwnership`. SQLite, Postgres, and D1 add
-`change_owner` to action and idempotency constraints and persist the target
-owner in the idempotency result. Existing records and action IDs do not change.
-
-Expose the same operation as:
-
-- `POST /api/v1/artifacts/:artifactId/owner?projectId=:projectId`; and
-- MCP tool `artifact_change_owner`.
-
-Both surfaces call `ArtifactManagementService.changeOwner`. The HTTP body
-contains `targetOwnerPrincipalId` and `expectedCurrentVersionId`; the
-idempotency key remains an HTTP header. The MCP description states plainly
-that only an installation administrator can use it.
-
-Add `ART-009` to the conformance ledger. `AUTH-008` and `AUD-001` cannot become
-fully verified until the ownership row in their existing matrices passes.
-
-## Workstream C: remove expired uncommitted uploads
+## Workstream B: remove expired uncommitted uploads
 
 ### What may be removed
 
@@ -326,7 +269,7 @@ typed storage and repository failures. Do not retry a non-idempotent step.
 This work closes `PUB-009` and supplies the behavior required by `OPS-006`.
 `OPS-007` remains a disabled-feature gate, not an implementation assignment.
 
-## Workstream D: recovery and integrity qualification
+## Workstream C: recovery and integrity qualification
 
 Keep the existing deployment-native procedures:
 
@@ -340,10 +283,10 @@ Keep the existing deployment-native procedures:
 | Cloudflare | D1 backup plus R2 copy, owned by the parallel Cloudflare operations track. |
 
 Add one shared recovery fixture and state-snapshot oracle. The fixture contains
-multiple projects, owners, access settings, tags, versions, a restore action,
-an ownership action, a tombstone, static and SPA manifests, and ordinary and
-ranged media files. The oracle compares stable records and bytes before and
-after restore and then runs the normal integrity check.
+multiple projects, access settings, tags, versions, a restore action, a
+tombstone, static and SPA manifests, and ordinary and ranged media files. The
+oracle compares stable records and bytes before and after restore and then runs
+the normal integrity check.
 
 The target stays unready when the restore is incomplete, corrupt, belongs to a
 different installation, omits either the database or files, contains an unsafe
@@ -354,14 +297,14 @@ This phase does not implement compact-to-external migration (`OPS-011`), point-
 in-time recovery promises, regional disaster recovery, or a customer data
 export format. Those are separate product and deployment gates.
 
-## Workstream E: deployment and end-to-end proof
+## Workstream D: deployment and end-to-end proof
 
 Every implementation step first passes real local services. The completed
 phase then runs this matrix:
 
 | Path | Required proof |
 | --- | --- |
-| Direct local package | Publish static and SPA fixtures, ordinary files and media; open, range-read, reassign, expire, clean, tombstone, restart, back up, restore, and run integrity. |
+| Direct local package | Publish static and SPA fixtures, ordinary files and media; open, range-read, expire, clean, tombstone, restart, back up, restore, and run integrity. |
 | Compact Compose | Repeat the product path across container replacement and stopped-volume backup and restore. |
 | External-storage Compose | Repeat against real Postgres and MinIO, including concurrent cleanup workers and coordinated recovery. |
 | Kubernetes/Helm | Repeat with multiple application replicas, scheduled cleanup, restart, rollback-compatible schema, and external durable providers. |
@@ -379,8 +322,6 @@ Expected application failures are typed Effect errors and keep protocol mapping
 outside the application services. Add specific errors for:
 
 - invalid routing mode or SPA entry;
-- inactive, missing, nonhuman, or cross-installation target owner;
-- ownership conflict and idempotency conflict;
 - expired upload cleanup repository failure; and
 - staging removal failure.
 
@@ -400,12 +341,11 @@ Name public and nontrivial Effect workflows with `Effect.fn`. Add spans for:
 - `ContentAccessService.authorizeVersionContent` with bounded resolution mode;
 - blob full or range open, with byte count but no digest or path as a metric
   label;
-- `ArtifactManagementService.changeOwnership`;
 - `ExpiredStagingCleanupService.runPass`; and
 - lifecycle integrity and recovery qualification.
 
 Record cleanup selected, deleted, failed, and remaining counts; content status
-and bytes; ownership success or denial; and recovery outcome. Logs and traces
+and bytes; and recovery outcome. Logs and traces
 may contain installation-safe internal IDs where existing policy permits them,
 but never credentials, cookies, upload addresses, raw URLs, object keys, file
 content, or unbounded paths. Metrics use bounded operation, adapter, status, and
@@ -425,7 +365,6 @@ Measure these properties before and after implementation:
 - cleanup memory and provider concurrency are bounded by batch settings, not
   the number of expired uploads;
 - several cleanup replicas remain safe and produce bounded duplicate work;
-- ownership change is one database transaction with no provider call; and
 - restore verification streams blobs and does not load an installation into
   memory.
 
@@ -458,9 +397,9 @@ this deployment record:
 
 | Target | Proved live | Still open |
 | --- | --- | --- |
-| AWS | Static and SPA routing, media ranges, populated migration, real EventBridge cleanup, committed-byte retention, redeployment, S3 outage and recovery, clean RDS and S3 restore with integrity, and safe Pulumi destroy. | Positive ownership transfer needs two authenticated human members. |
-| GCP | Static and SPA routing, populated migration, real Scheduler cleanup, committed-byte retention, redeployment, Cloud SQL failure and recovery, clean Cloud SQL and GCS restore with integrity, and media ranges after `Range` was configured to bypass Cloud CDN. | Positive ownership transfer needs two authenticated human members. Google's provider-owned Direct VPC reservation must release before Pulumi can remove the final empty subnet and network. |
-| Cloudflare | Fresh and populated D1 migration, real Cron cleanup, committed-byte retention, Worker replacement, R2 failure detection, coordinated D1 and R2 restore with exact bytes and metadata, exact resource destruction, valid TLS on separate application and content domains, static and SPA routing, and complete media-range behavior through a real wildcard content host. | Positive ownership transfer belongs to hosted identity qualification, not this provider check. Hosted load, quota, and abuse controls remain separate release gates. |
+| AWS | Static and SPA routing, media ranges, populated migration, real EventBridge cleanup, committed-byte retention, redeployment, S3 outage and recovery, clean RDS and S3 restore with integrity, and safe Pulumi destroy. | Hosted load, quota, and abuse controls remain separate release gates. |
+| GCP | Static and SPA routing, populated migration, real Scheduler cleanup, committed-byte retention, redeployment, Cloud SQL failure and recovery, clean Cloud SQL and GCS restore with integrity, and media ranges after `Range` was configured to bypass Cloud CDN. | Google's provider-managed Direct VPC reservation must release before Pulumi can remove the final empty subnet and network. |
+| Cloudflare | Fresh and populated D1 migration, real Cron cleanup, committed-byte retention, Worker replacement, R2 failure detection, coordinated D1 and R2 restore with exact bytes and metadata, exact resource destruction, valid TLS on separate application and content domains, static and SPA routing, and complete media-range behavior through a real wildcard content host. | Hosted load, quota, and abuse controls remain separate release gates. |
 
 The first populated D1 migration found a real foreign-key ordering defect. The
 migration now snapshots the old rows, gives the empty replacement the final
@@ -489,8 +428,6 @@ The following claims remain deployment release gates:
 - Cloudflare coordinated recovery is repeatable through the checked-in operator
   command and runbook and has live exact-byte, metadata, integrity, readiness,
   and cleanup evidence.
-- Administrator-only ownership transfer is deferred to hosted identity
-  qualification and is not a Cloudflare provider blocker.
 
 Each risk has a fail-closed result. It can delay support for one adapter or
 deployment, but it does not change the application model.
@@ -501,28 +438,26 @@ Keep the repository green after every step.
 
 1. Add pure routing and range parsers with focused behavior and hostile tests.
 2. Expand the domain model and forward-only SQLite/Postgres migrations for
-   `spa` and `change_owner`; add the provider-neutral ports.
+   `spa`; add the provider-neutral ports.
 3. Implement content resolution and ranged reads in the local adapters and
    assembled local HTTP path.
 4. Thread routing through HTTP, file client, CLI, MCP, responses, skill text,
    integrity, and backup metadata.
-5. Implement ownership policy, active-member resolution, atomic repository
-   behavior, HTTP, and MCP.
-6. Make staging writes interruptible, enforce expiry at completion, add
+5. Make staging writes interruptible, enforce expiry at completion, add
    idempotent staging removal, and implement one bounded cleanup pass.
-7. Add the Node schedule, lifecycle one-pass command, Kubernetes CronJob, and
+6. Add the Node schedule, lifecycle one-pass command, Kubernetes CronJob, and
    cleanup telemetry.
-8. Implement the same range, interruption, and removal ports in S3, GCS, Azure
+7. Implement the same range, interruption, and removal ports in S3, GCS, Azure
    Blob preview, and external Postgres paths; run adapter contracts.
-9. Add the shared recovery fixture and qualify direct local, Compact Compose,
+8. Add the shared recovery fixture and qualify direct local, Compact Compose,
    External-storage Compose, and Helm.
-10. Integrate the Cloudflare operational work, adapt D1/R2 to the new
+9. Integrate the Cloudflare operational work, adapt D1/R2 to the new
     contracts, and run the Cloudflare-local qualification without changing the
     core design.
-11. Add the scheduled ECS task and Cloud Run job to their existing Pulumi
+10. Add the scheduled ECS task and Cloud Run job to their existing Pulumi
     packages and static tests. Live execution remains part of each cloud's
     release qualification.
-12. Run lint, type checking, conformance validation, high-value tests, package
+11. Run lint, type checking, conformance validation, high-value tests, package
     tests, the capacity baseline, Compose, and Helm through
     `pnpm verify:iteration`; record evidence before changing requirement status.
 
@@ -545,15 +480,15 @@ Keep the repository green after every step.
 
 The phase is complete only when:
 
-- `ART-009`, `PUB-009`, `CNT-001`, `CNT-002`, `CNT-007`, and `CNT-008` have
+- `PUB-009`, `CNT-001`, `CNT-002`, `CNT-007`, and `CNT-008` have
   passing behavior and hostile evidence in every applicable implementation
   path reached by this phase;
 - `AUD-001`, `AUTH-008`, `OPS-003`, `OPS-004`, `OPS-005`, and `OPS-006` have
-  the new ownership, recovery, integrity, and cleanup evidence they require;
+  the new recovery, integrity, and cleanup evidence they require;
 - tombstoned and committed bytes survive cleanup, restart, and restore;
 - no provider can recreate an interrupted staged object after it becomes
   cleanup-eligible;
-- HTTP and MCP make the same ownership and routing decisions;
+- HTTP and MCP make the same routing decisions;
 - the existing capacity envelope shows no critical regression;
 - Oxlint, TypeScript, conformance validation, and all applicable runtime gates
   pass without suppressions or weakened rules; and

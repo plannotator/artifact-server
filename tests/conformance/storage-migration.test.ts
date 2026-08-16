@@ -46,7 +46,7 @@ describe("local storage migration", () => {
     await removeTestInstallation(installation);
   });
 
-  test("foundation: a pre-ownership local database upgrades without losing publication", async () => {
+  test("foundation: an early local database upgrades without losing publication", async () => {
     const database = new DatabaseSync(
       path.join(installation.dataDirectory, "artifact-server.db"),
     );
@@ -96,10 +96,9 @@ describe("local storage migration", () => {
     const published = await publishNew(server, installation, {
       accessSetting: "public_link",
       content: "<!doctype html><title>Migrated</title>",
-      idempotencyKey: "legacy-database-owner-migration",
+      idempotencyKey: "legacy-database-migration",
     });
     expect(published.response.status).toBe(201);
-    expect(published.body.artifact.ownerPrincipalId).toBe("local-api-token");
     expect(published.body.version.publisherPrincipalId).toBe("local-api-token");
 
     const deleted = await fetch(
@@ -148,7 +147,6 @@ describe("local storage migration", () => {
         CREATE TABLE artifacts (
           id TEXT PRIMARY KEY,
           name TEXT NOT NULL,
-          owner_principal_id TEXT NOT NULL,
           access_setting TEXT NOT NULL CHECK (access_setting IN ('account_required', 'public_link')),
           current_version_id TEXT,
           created_at TEXT NOT NULL,
@@ -206,13 +204,12 @@ describe("local storage migration", () => {
       `);
       database.prepare(`
         INSERT INTO artifacts (
-          id, name, owner_principal_id, access_setting, current_version_id,
+          id, name, access_setting, current_version_id,
           created_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, NULL)
+        ) VALUES (?, ?, ?, ?, ?, NULL)
       `).run(
         artifactId,
         "Preserved artifact",
-        "local-api-token",
         "public_link",
         versionId,
         createdAt,

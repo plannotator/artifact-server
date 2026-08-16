@@ -13,7 +13,6 @@ const initialSchema = Effect.gen(function*() {
       installation_id TEXT NOT NULL REFERENCES artifact_installations(id),
       id TEXT NOT NULL,
       name TEXT NOT NULL,
-      owner_principal_id TEXT NOT NULL,
       access_setting TEXT NOT NULL CHECK (access_setting IN ('account_required', 'public_link')),
       current_version_id TEXT,
       created_at TEXT NOT NULL,
@@ -231,7 +230,6 @@ const initialSchema = Effect.gen(function*() {
     )`,
     "CREATE INDEX versions_artifact_id ON versions (installation_id, artifact_id, number)",
     "CREATE INDEX artifacts_active_created ON artifacts (installation_id, deleted_at, created_at DESC, id DESC)",
-    "CREATE INDEX artifacts_owner_active_created ON artifacts (installation_id, owner_principal_id, deleted_at, created_at DESC, id DESC)",
     "CREATE INDEX artifact_tags_tag_artifact ON artifact_tags (installation_id, tag, artifact_id)",
     "CREATE INDEX actions_artifact_created ON actions (installation_id, artifact_id, created_at DESC, id DESC)",
     "CREATE INDEX manifest_entries_sha256 ON manifest_entries (installation_id, sha256)",
@@ -330,11 +328,9 @@ const addProjectScope = Effect.gen(function*() {
       UNIQUE (installation_id, project_id, idempotency_key)`,
     "DROP INDEX versions_artifact_id",
     "DROP INDEX artifacts_active_created",
-    "DROP INDEX artifacts_owner_active_created",
     "DROP INDEX actions_artifact_created",
     "CREATE INDEX versions_project_artifact_id ON versions (installation_id, project_id, artifact_id, number)",
     "CREATE INDEX artifacts_project_active_created ON artifacts (installation_id, project_id, deleted_at, created_at DESC, id DESC)",
-    "CREATE INDEX artifacts_project_owner_active_created ON artifacts (installation_id, project_id, owner_principal_id, deleted_at, created_at DESC, id DESC)",
     "CREATE INDEX actions_project_artifact_created ON actions (installation_id, project_id, artifact_id, created_at DESC, id DESC)",
   ] as const;
 
@@ -355,33 +351,14 @@ const addSpaRouting = Effect.gen(function*() {
       CHECK (routing_mode IN ('static', 'spa'))`);
 });
 
-const addOwnershipTransfer = Effect.gen(function*() {
-  const sql = yield* SqlClient;
-  yield* sql.unsafe(
-    "ALTER TABLE actions ADD COLUMN IF NOT EXISTS target_owner_principal_id TEXT",
-  );
-  yield* sql.unsafe(
-    "ALTER TABLE idempotency_records ADD COLUMN IF NOT EXISTS target_owner_principal_id TEXT",
-  );
-  yield* sql.unsafe(`ALTER TABLE actions
-    DROP CONSTRAINT actions_action_check,
-    ADD CONSTRAINT actions_action_check
-      CHECK (action IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete'))`);
-  yield* sql.unsafe(`ALTER TABLE idempotency_records
-    DROP CONSTRAINT idempotency_records_operation_check,
-    ADD CONSTRAINT idempotency_records_operation_check
-      CHECK (operation IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete'))`);
-});
-
 const migrationLoader = Migrator.fromRecord({
   "0001_initial_shared_schema": initialSchema,
   "0002_project_scoped_artifacts": addProjectScope,
   "0003_spa_routing": addSpaRouting,
-  "0004_ownership_transfer": addOwnershipTransfer,
 });
 
 /** Schema revision required by this Artifact Server build. */
-export const requiredPostgresSchemaVersion = 4;
+export const requiredPostgresSchemaVersion = 3;
 
 /** Migration compatibility observed without changing Postgres. */
 export interface PostgresMigrationStatus {
@@ -445,9 +422,6 @@ export const readPostgresMigrationStatus = Effect.gen(function*() {
   }, {
     migration_id: 3,
     name: "spa_routing",
-  }, {
-    migration_id: 4,
-    name: "ownership_transfer",
   }] as const;
   const observedRequiredHistory = rows.filter(
     (row) => row.migration_id <= requiredPostgresSchemaVersion,

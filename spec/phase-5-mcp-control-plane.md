@@ -119,8 +119,7 @@ lists the artifact through MCP on the other.
 - Cursor Agent `3.15.6` completes DCR and lists all 18 authenticated tools. A
   model-driven tool call remains separate because Cursor Agent also requires a
   Cursor product login.
-- Visual Studio Code and claude.ai remain client release gates. Two-human
-  ownership transfer also remains open.
+- Visual Studio Code and claude.ai remain client release gates.
 - Secret-free live evidence is recorded in
   `evidence/workos-mcp-live-qualification.json`.
 

@@ -30,7 +30,6 @@
   },
   "remainingReleaseGates": [
     "qualify claude.ai and VS Code",
-    "run the two-human ownership-transfer test",
     "restore the staging Resource Indicator as default and remove the temporary Worker resource after client qualification"
   ]
 }

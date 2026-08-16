@@ -26,7 +26,6 @@ const artifactRecordSchema = z.object({
   deletedAt: z.string().nullable(),
   id: z.string(),
   name: z.string(),
-  ownerPrincipalId: z.string(),
 });
 const artifactPageSchema = z.object({
   artifacts: z.array(z.object({

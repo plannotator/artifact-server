@@ -24,7 +24,6 @@ This phase adds projects. It does not add:
 - organizations or an organization switcher inside one installation;
 - a separate Artifact Store or Namespace object;
 - project-specific members, roles, or access-control lists;
-- artifact ownership by a Plannotator workspace;
 - destructive deletion of a nonempty project; or
 - the Plannotator connection itself.
 
@@ -64,7 +63,7 @@ SQLite and Postgres receive the same logical schema change:
 6. advance the schema version only after the complete migration succeeds.
 
 The migration preserves installation IDs, artifact IDs, version IDs, content
-tokens, manifests, fingerprints, action IDs, tags, access settings, owners,
+tokens, manifests, fingerprints, action IDs, tags, access settings,
 links, and file bytes. It is transactional and repeat-safe. A failed or
 interrupted migration cannot leave a partially project-scoped database.
 
@@ -78,7 +77,7 @@ Add one project service for create, list, get, rename, archive, and unarchive.
 Artifact services accept a resolved project identity instead of trusting a raw
 client value. The authorization service first verifies installation identity,
 then verifies that the project belongs to that installation, then evaluates the
-existing artifact ownership or capability rule.
+membership or capability rule.
 
 The same application services must be used by HTTP, MCP, CLI, lifecycle tools,
 backup, restore, integrity checks, and the later Plannotator integration. No

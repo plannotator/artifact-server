@@ -33,8 +33,8 @@ The first member can be created only through an installation bootstrap:
 
 There is no public sign-up, organization switcher, or automatic import of
 provider organizations. Administrators explicitly admit and deactivate members.
-Every active member may read account-required artifacts. Artifact ownership and
-the existing role and capability policy continue to control mutations.
+Every active member may read and manage artifacts in the installation's
+projects. Service principals act only through explicit capabilities.
 
 Browser sessions are opaque random credentials stored only as SHA-256 digests.
 The application session cookie is host-only, HttpOnly, Secure outside loopback,
@@ -75,7 +75,7 @@ local mode-`0600` files and never enter source control.
 ## Consequences
 
 - Local, private-network, and hosted deployments share one authorization model.
-- Changing login providers does not change artifact ownership or policy code.
+- Changing login providers does not change project or artifact identity.
 - A customer can later connect Plannotator without migrating artifact identity or
   replacing the customer's Artifact Server login.
 - Disabling an installation member immediately blocks new sessions and API use,

@@ -12,8 +12,6 @@
     "mediaBytesStored": "pass",
     "mediaRanges": "pass_live_wildcard_content_domain",
     "applicationAndContentTls": "pass",
-    "ownershipTransfer": "blocked_missing_human_identity_provider",
-    "servicePrincipalOwnershipDenial": "pass",
     "scheduledAbandonedUploadCleanup": "pass",
     "committedArtifactsPreservedByCleanup": "pass",
     "workerReplacementPreservesData": "pass",
@@ -25,7 +23,6 @@
   "details": {
     "migration": "The first live populated D1 migration exposed a foreign-key ordering defect. The migration now snapshots rows, renames the empty replacement to the final table name, and only then repopulates it. A second live D1/R2 run preserved all dependent rows, IDs, and exact bytes with zero foreign-key violations.",
     "contentIngress": "A temporary isolated deployment used phase11.artifactserver.com for the trusted application and *.agentartifacts.org for untrusted version content. Cloudflare issued valid edge certificates for both domains. Real publications proved static 404 behavior, SPA navigation fallback without missing-asset fallback, full media delivery, conditional requests, ranged HEAD, exact single byte ranges, and rejection of multiple ranges. Detailed redacted evidence is in cloudflare-phase11-content.json.",
-    "ownership": "Ownership transfer is deferred to hosted identity qualification and is not part of Cloudflare provider qualification.",
     "recovery": "The checked-in coordinated recovery command froze source writes, exported and imported D1 into an empty database, and copied all R2 objects plus metadata into an empty bucket through native Worker bindings. The restored Worker reported health and readiness 200; 3/3 artifacts, 3/3 immutable versions, 10/10 exact R2 objects and metadata, and 5/5 immutable blobs passed. Exact cleanup was verified. Detailed redacted evidence is in cloudflare-coordinated-recovery.json.",
     "destroy": "Every temporary Worker, D1 database, R2 bucket, and cron trigger was removed. The shared account-level Alchemy state Worker was not changed."
   },

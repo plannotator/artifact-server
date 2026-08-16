@@ -41,9 +41,9 @@ After connection, an authorized Plannotator user or agent can:
 
 Project-library operations require permission to use the Plannotator project. A workspace may reference an artifact from its project and request read-only access to that artifact or one exact version. Workspace access never grants project-library listing or mutation. Artifact Server verifies that every request came through the approved connection and is limited to the paired project, named operation, and named artifact or version when applicable.
 
-## System ownership
+## System responsibilities
 
-| Responsibility | Owner |
+| Responsibility | Responsible system |
 | --- | --- |
 | Sign-in and organization membership | Plannotator |
 | Plannotator project and workspace records | Plannotator |
@@ -58,7 +58,7 @@ Project-library operations require permission to use the Plannotator project. A 
 
 Artifact Server remains an enforcing service. It does not become an unauthenticated file bucket. Plannotator decides whether a user may act, and Artifact Server accepts only a short-lived request from the paired Plannotator organization and project.
 
-## Project mapping and artifact ownership
+## Project mapping and artifacts
 
 The systems use this mapping:
 
@@ -78,7 +78,7 @@ Each paired project records:
 - Plannotator project ID;
 - connection ID, creation time, state, and last successful synchronization time.
 
-Each workspace reference records the Artifact Server installation, project, artifact, and exact version when the reference is version-specific. Comments and review anchors also record their route and anchor data. A workspace ID may appear in a delegated read request and audit record, but it is not the artifact's storage owner.
+Each workspace reference records the Artifact Server installation, project, artifact, and exact version when the reference is version-specific. Comments and review anchors also record their route and anchor data. A workspace ID may appear in a delegated read request and audit record, but it does not change where the artifact is stored.
 
 Connecting a server does not silently move existing artifacts. Pairing an existing Artifact Server project with a Plannotator project requires an explicit administrator action. The implementation must define name conflicts, unlinking, archival, and reconnect behavior before existing projects can be paired.
 
@@ -119,7 +119,7 @@ Plannotator sends Artifact Server a short-lived, signed request. The exact token
 - artifact and version IDs when they already exist;
 - issued time, expiration time, and unique request ID.
 
-The token lifetime should not exceed five minutes. A token for reading one referenced version cannot list the project, publish, restore, change visibility, reassign ownership, delete, or read another artifact. A token for project publishing cannot name a project from another connection or installation. Artifact Server records the external actor and, when present, referring workspace ID in its action log.
+The token lifetime should not exceed five minutes. A token for reading one referenced version cannot list the project, publish, restore, change visibility, delete, or read another artifact. A token for project publishing cannot name a project from another connection or installation. Artifact Server records the external actor and, when present, referring workspace ID in its action log.
 
 Plannotator credentials are never sent to artifact content, object storage, optional Git storage, or published JavaScript.
 
@@ -220,7 +220,7 @@ The Plannotator team should return a short findings document that answers:
 7. Whether the hosted Cloudflare deployment should use an internal Artifact Server core directly or exercise the same external connection protocol.
 8. Which private-network path should ship first: customer-provided networking, Cloudflare Tunnel, or a product-owned connector.
 9. The exact user experience for disconnect, unavailable server, expired session, project pairing, workspace references, and project archival.
-10. Revised implementation estimates with named owners and the minimum test environment.
+10. Revised implementation estimates with responsible teams and the minimum test environment.
 11. How the pairing callback validates the server identity and address without creating an open redirect, server-side request forgery path, or connection-claiming race.
 
 ## Acceptance tests
@@ -233,7 +233,7 @@ The integration is ready when these tests pass:
 - A Plannotator project pairs with exactly one Artifact Server project and preserves both stable IDs.
 - An authorized organization member can publish to the paired project and open an exact artifact version.
 - An authorized workspace viewer can open one referenced artifact version without gaining project-list or mutation access.
-- A public or `link_edit` workspace cannot publish, restore, change visibility, reassign ownership, or delete a project artifact.
+- A public or `link_edit` workspace cannot publish, restore, change visibility, or delete a project artifact.
 - An unauthorized member, another project, an unreferenced artifact, another installation, and an expired signed request are rejected without revealing which identifier exists.
 - A one-use browser URL cannot be replayed and leaves no credential in the clean artifact URL.
 - Relative assets and client-side routes work for an account-required multi-file site.

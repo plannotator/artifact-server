@@ -44,9 +44,7 @@ ID. A page has a strict maximum size. The application asks authorization for the
 principal's readable scope before querying persistence:
 
 - admitted humans and principals with installation-wide read or management
-  capability can list every active standalone artifact;
-- a service principal with owned-artifact management capability can list only
-  artifacts it owns; and
+  capability can list every active artifact;
 - an unscoped service principal is denied.
 
 Deleted artifacts do not appear in normal lists. The deletion response is the
@@ -54,11 +52,11 @@ administrative tombstone record.
 
 ## Action history
 
-Action history is management data, not ordinary artifact content. Only the
-artifact owner, an installation administrator, or an explicitly capable service
-principal can read it. Each record exposes its stable action ID, artifact and
-version IDs, action kind, effective principal, human authorizer when present,
-idempotency key, and creation time.
+Action history is management data, not ordinary artifact content. Admitted
+human members and explicitly capable service principals can read it. Each
+record exposes its stable action ID, artifact and version IDs, action kind,
+effective principal, human authorizer when present, idempotency key, and
+creation time.
 
 This is the artifact mutation history. Future installation-level actions such
 as identity-provider connection changes may use a broader audit stream, but

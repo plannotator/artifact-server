@@ -7,7 +7,7 @@ Status: accepted
 Local users need a zero-copy MCP setup, while the application already owns a
 modern authenticated `/mcp` endpoint and one SQLite/local-file runtime. Starting
 a second product runtime inside every coding client's stdio process would create
-multiple database owners, duplicate lifecycle behavior, and make returned
+multiple processes that manage the database lifecycle, duplicate behavior, and make returned
 browser links depend on the client process staying alive.
 
 The existing MCP registry, HTTP authentication adapter, local server, and
@@ -30,7 +30,7 @@ stdout value, ordinary log field, or diagnostic value.
 ## Consequences
 
 - HTTP and stdio share one MCP registry and one product implementation.
-- Multiple AI clients can use one local database owner safely.
+- Multiple AI clients can use one local database service safely.
 - Browser links remain live when one AI client closes.
 - The bridge adds one loopback hop, which is bounded and measured by the MCP
   smoke and performance checks.

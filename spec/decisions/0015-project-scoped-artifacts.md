@@ -25,8 +25,8 @@ A new installation creates one default project. Local publishing uses that
 project automatically. A team can create more projects without changing its
 membership model. Projects do not have their own member list or access-control
 list in the first release. Account-required reads continue to use installation
-membership. Artifact ownership, administrator authority, and scoped service
-credentials continue to control mutations.
+membership. Every admitted human member can manage artifacts in every project;
+service credentials require explicit capabilities.
 
 Project identity is an enforced part of every artifact operation. Repository
 queries, uploads, idempotency records, browser sessions, API operations, MCP
@@ -70,8 +70,8 @@ file bytes, browser delivery, comparisons, and artifact access settings.
 
 A workspace permission may authorize a short-lived, read-only browser session
 for one referenced artifact version. It does not grant access to the project
-artifact list and does not grant publish, restore, visibility, ownership, or
-delete authority. In particular, a public or `link_edit` workspace cannot
+artifact list and does not grant publish, restore, visibility, or delete
+authority. In particular, a public or `link_edit` workspace cannot
 mutate a project artifact.
 
 One Artifact Server installation connects to one Plannotator organization in
@@ -90,12 +90,6 @@ an organization switcher that the standalone product does not need.
 
 This adds a product object with no separate customer behavior. The project is
 the artifact collection and authorization scope.
-
-### Artifacts owned by Plannotator workspaces
-
-This ties durable project work to a temporary collaboration container. It also
-makes workspace moves and deletion affect artifact ownership. Workspaces keep
-stable references instead.
 
 ### Separate standalone and Plannotator-managed artifact areas
 

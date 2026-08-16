@@ -42,7 +42,7 @@ Alchemy deletes the state row for a retained resource. It does not delete the
 Cloudflare resource.
 
 This behavior prevents data loss during a normal destroy. It also removes the
-ownership link that a later plan needs.
+state mapping that a later plan needs.
 
 Use an explicit adoption procedure to manage a retained resource again. Never
 use broad adoption against an unreviewed account.

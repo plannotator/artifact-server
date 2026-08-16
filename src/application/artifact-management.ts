@@ -9,7 +9,6 @@ import {
 } from "./authorization.js";
 import { parseIdempotencyKey } from "./idempotency-key.js";
 import { parseArtifactTag, parseArtifactTags } from "./artifact-tags.js";
-import {InstallationAccessService} from "./installation-access.js";
 import {
   type ProjectManagementFailure,
   ProjectManagementService,
@@ -20,9 +19,6 @@ import {
   type ArtifactRepositoryFailure,
   type AuthorizationDenied,
   type IdempotencyConflict,
-  type IdentityConflict,
-  type IdentityNotFound,
-  type IdentityRepositoryFailure,
   type InvalidArtifactTags,
   type InvalidIdempotencyKey,
   InvalidPagination,
@@ -42,7 +38,6 @@ import type {
 } from "../core/model.js";
 import type {
   ChangeArtifactAccessSetting,
-  ChangeArtifactOwnership,
   ChangeArtifactTags,
   DeleteArtifact,
   ListArtifactActions,
@@ -90,13 +85,6 @@ export interface ChangeArtifactTagsCommand extends ReadArtifactCommand {
   readonly tags: readonly string[];
 }
 
-/** Input for transferring an artifact to another active installation member. */
-export interface ChangeArtifactOwnerCommand extends ReadArtifactCommand {
-  readonly expectedCurrentVersionId: string;
-  readonly idempotencyKey: string;
-  readonly targetOwnerPrincipalId: string;
-}
-
 /** Input for listing active artifacts visible to one principal. */
 export interface ListArtifactsCommand {
   readonly cursor: PageCursor | null;
@@ -131,15 +119,6 @@ export interface ArtifactManagementRepository {
   >;
   readonly changeTags: (
     command: ChangeArtifactTags,
-  ) => Effect.Effect<
-    ArtifactState,
-    | ArtifactMutationConflict
-    | ArtifactNotFound
-    | IdempotencyConflict
-    | ArtifactRepositoryFailure
-  >;
-  readonly changeOwnership: (
-    command: ChangeArtifactOwnership,
   ) => Effect.Effect<
     ArtifactState,
     | ArtifactMutationConflict
@@ -206,9 +185,6 @@ export type ArtifactManagementFailure =
   | InvalidIdempotencyKey
   | InvalidArtifactTags
   | InvalidPagination
-  | IdentityConflict
-  | IdentityNotFound
-  | IdentityRepositoryFailure
   | AuthorizationDenied
   | ArtifactRepositoryFailure
   | ProjectManagementFailure;
@@ -219,9 +195,6 @@ interface ArtifactManagementOperations {
   ) => Effect.Effect<ArtifactState, ArtifactManagementFailure>;
   readonly changeTags: (
     command: ChangeArtifactTagsCommand,
-  ) => Effect.Effect<ArtifactState, ArtifactManagementFailure>;
-  readonly changeOwner: (
-    command: ChangeArtifactOwnerCommand,
   ) => Effect.Effect<ArtifactState, ArtifactManagementFailure>;
   readonly deleteArtifact: (
     command: DeleteArtifactCommand,
@@ -257,18 +230,16 @@ export class ArtifactManagementService extends Context.Service<
   ): Layer.Layer<
     ArtifactManagementService,
     never,
-    AuthorizationService | InstallationAccessService | ProjectManagementService
+    AuthorizationService | ProjectManagementService
   > =>
     Layer.effect(
       ArtifactManagementService,
       Effect.gen(function*() {
         const authorization = yield* AuthorizationService;
-        const installationAccess = yield* InstallationAccessService;
         const projects = yield* ProjectManagementService;
         return makeArtifactManagementService(
           dependencies,
           authorization,
-          installationAccess,
           projects,
         );
       }),
@@ -278,7 +249,6 @@ export class ArtifactManagementService extends Context.Service<
 function makeArtifactManagementService(
   dependencies: ArtifactManagementDependencies,
   authorization: AuthorizationOperations,
-  installationAccess: InstallationAccessService["Service"],
   projects: ProjectManagementService["Service"],
 ): ArtifactManagementOperations {
   const resolveProjectForRead = Effect.fn(
@@ -351,7 +321,7 @@ function makeArtifactManagementService(
         command.projectId,
       );
       const artifact = yield* requireArtifact(project.id, command.artifactId);
-      yield* authorization.requireArtifactRead(command.principal, artifact);
+      yield* authorization.requireArtifactRead(command.principal);
       const current = yield* requireVersion(
         project.id,
         artifact.id,
@@ -368,7 +338,7 @@ function makeArtifactManagementService(
         command.projectId,
       );
       const artifact = yield* requireArtifact(project.id, command.artifactId);
-      yield* authorization.requireArtifactRead(command.principal, artifact);
+      yield* authorization.requireArtifactRead(command.principal);
       return yield* requireVersion(project.id, artifact.id, command.versionId);
     },
   );
@@ -380,7 +350,7 @@ function makeArtifactManagementService(
         command.projectId,
       );
       const artifact = yield* requireArtifact(project.id, command.artifactId);
-      yield* authorization.requireArtifactRead(command.principal, artifact);
+      yield* authorization.requireArtifactRead(command.principal);
       return yield* dependencies.repository.listArtifactVersions(
         project.id,
         artifact.id,
@@ -391,7 +361,7 @@ function makeArtifactManagementService(
   const listArtifacts = Effect.fn("ArtifactManagementService.listArtifacts")(
     function*(command: ListArtifactsCommand) {
       const limit = yield* requirePageSize(command.limit);
-      const scope = yield* authorization.artifactReadScope(command.principal);
+      yield* authorization.requireArtifactListing(command.principal);
       const tag = command.tag === null
         ? null
         : yield* parseArtifactTag(command.tag);
@@ -402,9 +372,6 @@ function makeArtifactManagementService(
       return yield* dependencies.repository.listArtifacts({
         cursor: command.cursor,
         limit,
-        ownerPrincipalId: scope.kind === "owned"
-          ? scope.ownerPrincipalId
-          : null,
         projectId: project.id,
         tag,
       });
@@ -423,7 +390,7 @@ function makeArtifactManagementService(
       project.id,
       command.artifactId,
     );
-    yield* authorization.requireArtifactManagement(command.principal, artifact);
+    yield* authorization.requireArtifactManagement(command.principal);
     return yield* dependencies.repository.listArtifactActions({
       artifactId: artifact.id,
       cursor: command.cursor,
@@ -439,7 +406,7 @@ function makeArtifactManagementService(
         command.projectId,
       );
       const artifact = yield* requireArtifact(project.id, command.artifactId);
-      yield* authorization.requireArtifactManagement(command.principal, artifact);
+      yield* authorization.requireArtifactManagement(command.principal);
       yield* requireVersion(project.id, artifact.id, command.versionId);
       const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
       const createdAt = DateTime.formatIso(yield* dependencies.clock.now);
@@ -471,7 +438,7 @@ function makeArtifactManagementService(
         command.projectId,
       );
       const artifact = yield* requireArtifact(project.id, command.artifactId);
-      yield* authorization.requireArtifactManagement(command.principal, artifact);
+      yield* authorization.requireArtifactManagement(command.principal);
       const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
       const createdAt = DateTime.formatIso(yield* dependencies.clock.now);
       return yield* dependencies.repository.changeAccessSetting({
@@ -502,7 +469,7 @@ function makeArtifactManagementService(
         command.projectId,
       );
       const artifact = yield* requireArtifact(project.id, command.artifactId);
-      yield* authorization.requireArtifactManagement(command.principal, artifact);
+      yield* authorization.requireArtifactManagement(command.principal);
       const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
       const tags = yield* parseArtifactTags(command.tags);
       const createdAt = DateTime.formatIso(yield* dependencies.clock.now);
@@ -527,41 +494,6 @@ function makeArtifactManagementService(
     },
   );
 
-  const changeOwner = Effect.fn("ArtifactManagementService.changeOwner")(
-    function*(command: ChangeArtifactOwnerCommand) {
-      const project = yield* resolveProjectForRead(
-        command.principal,
-        command.projectId,
-      );
-      const artifact = yield* requireArtifact(project.id, command.artifactId);
-      yield* authorization.requireArtifactOwnershipChange(command.principal);
-      const target = yield* installationAccess.resolveActiveMemberForOwnershipChange(
-        command.principal,
-        command.targetOwnerPrincipalId,
-      );
-      const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
-      const createdAt = DateTime.formatIso(yield* dependencies.clock.now);
-      return yield* dependencies.repository.changeOwnership({
-        artifactId: artifact.id,
-        authorizedByPrincipalId: command.principal.authorizedByPrincipalId,
-        createdAt,
-        expectedCurrentVersionId: command.expectedCurrentVersionId,
-        idempotencyKey,
-        inputDigest: managementInputDigest({
-          artifactId: artifact.id,
-          expectedCurrentVersionId: command.expectedCurrentVersionId,
-          operation: "change_owner",
-          principalId: command.principal.id,
-          projectId: project.id,
-          value: target.id,
-        }),
-        principalId: command.principal.id,
-        projectId: project.id,
-        targetOwnerPrincipalId: target.id,
-      });
-    },
-  );
-
   const deleteArtifact = Effect.fn("ArtifactManagementService.deleteArtifact")(
     function*(command: DeleteArtifactCommand) {
       const project = yield* resolveProjectForRead(
@@ -572,7 +504,7 @@ function makeArtifactManagementService(
         project.id,
         command.artifactId,
       );
-      yield* authorization.requireArtifactManagement(command.principal, artifact);
+      yield* authorization.requireArtifactManagement(command.principal);
       const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
       const createdAt = DateTime.formatIso(yield* dependencies.clock.now);
       return yield* dependencies.repository.deleteArtifact({
@@ -597,7 +529,6 @@ function makeArtifactManagementService(
 
   return ArtifactManagementService.of({
     changeAccess,
-    changeOwner,
     changeTags,
     deleteArtifact,
     getArtifact,
@@ -614,7 +545,6 @@ interface ManagementInputDigest {
   readonly expectedCurrentVersionId: string;
   readonly operation:
     | "change_access"
-    | "change_owner"
     | "change_tags"
     | "delete"
     | "restore";

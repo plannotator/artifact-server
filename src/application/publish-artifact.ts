@@ -263,7 +263,6 @@ function makePublishArtifactService(
       inputDigest,
       manifest: command.manifest,
       name,
-      ownerPrincipalId: command.principal.id,
       principalId: command.principal.id,
       projectId: command.projectId,
       authorizedByPrincipalId: command.principal.authorizedByPrincipalId,
@@ -289,7 +288,6 @@ function makePublishArtifactService(
     }
     yield* authorization.requireVersionPublication(
       command.principal,
-      current.artifact,
     );
     const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
     const inputDigest = artifactVersionInputDigest({

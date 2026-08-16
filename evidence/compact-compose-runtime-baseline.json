@@ -1,7 +1,7 @@
 {
-  "backupMilliseconds": 6883.8895840000005,
-  "measuredAt": "2026-08-16T16:42:31.170Z",
+  "backupMilliseconds": 6932.445040999999,
+  "measuredAt": "2026-08-16T20:16:38.706Z",
   "platform": "darwin",
-  "restoreMilliseconds": 1243.5233750000007,
-  "startupMilliseconds": 5666.021041999999
+  "restoreMilliseconds": 1327.3079590000016,
+  "startupMilliseconds": 5685.679792
 }

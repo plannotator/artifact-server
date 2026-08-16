@@ -41,10 +41,8 @@ const principalCapabilitySchema = z.enum([
   principalCapabilities.createArtifact,
   principalCapabilities.issueContentSession,
   principalCapabilities.manageAnyArtifact,
-  principalCapabilities.manageOwnedArtifact,
   principalCapabilities.manageProjects,
   principalCapabilities.publishAnyArtifact,
-  principalCapabilities.publishOwnedArtifact,
   principalCapabilities.readArtifacts,
 ]);
 const memberRowSchema = z.object({

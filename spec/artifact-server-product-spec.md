@@ -17,9 +17,9 @@ The first release runs locally. Later releases add one-server, Kubernetes, Cloud
 | What does it execute? | Only code that a browser can run. Artifact Server does not install packages, compile source code, run Node.js or Python for an artifact, connect an artifact to a database, execute server functions, or perform server-side rendering. |
 | How are files displayed? | Artifact Server sends the correct HTTP headers and lets the browser handle formats it already understands. The first release has no custom document viewer, media converter, thumbnail service, ZIP extractor, Markdown renderer, or syntax-highlighting interface. |
 | How is work organized? | One installation represents one person, team, or company. It contains projects, and every artifact belongs to one project. A new installation creates a default project. There is no organization switcher or separate Artifact Store object. |
-| What is an artifact? | One published item with a stable ID, owner, access setting, optional tags, current version, and immutable saved versions. |
+| What is an artifact? | One published item in a project, with a stable ID, access setting, optional tags, current version, and immutable saved versions. |
 | Who can read it? | Exactly two settings: account required, or public link. On a standalone installation, account required means every person admitted to that one installation may read it. A public link opens only the current version; history and comparisons remain account-required. |
-| Who can change it? | Its owner and installation administrators. A service principal can perform only the actions granted to its API key. |
+| Who can change it? | Every admitted human member of the installation. A service principal can perform only the actions granted to its API key. |
 | How do agents use it? | Through MCP, the CLI, or the normal HTTP API. They share the same product operations and permissions. The `publish-artifact` Agent Skill uses the CLI for files on the user's computer and MCP or the CLI for server-only work. The optional `operate-artifact-server` skill handles deployment and administration. |
 | Where does it run? | Local first. Then one server and Kubernetes. Then Cloudflare. Official AWS and GCP installers follow the same container and storage contracts. Azure teams use Helm on AKS; there is no separate Azure installer. |
 | What stays outside it? | Building source code, artifact backends, comments, annotations, review workflow, workspace collaboration, and general-purpose Git hosting. Plannotator owns review and collaboration. |
@@ -49,11 +49,11 @@ One installation represents one person, team, or company. It contains projects. 
 The core records are:
 
 - **Project:** stable ID, installation ID, name, creation time, and archive state.
-- **Artifact:** stable ID, project ID, name, owner, access setting, zero to 20 tags, current version, created time, and deletion state.
+- **Artifact:** stable ID, project ID, name, access setting, zero to 20 tags, current version, created time, and deletion state.
 - **Version:** stable ID, artifact ID, version number, canonical manifest digest, entry file, routing mode, publisher, and created time.
 - **Manifest entry:** normalized path, byte length, media type, SHA-256 fingerprint, and file disposition.
 - **Blob:** immutable file bytes addressed internally by SHA-256 fingerprint.
-- **Action record:** publish, restore, access change, tag change, ownership change, or deletion with the responsible principal and idempotency key when applicable.
+- **Action record:** publish, restore, access change, tag change, or deletion with the responsible principal and idempotency key when applicable.
 
 Tags are optional artifact metadata for exact filtering. The server trims whitespace,
 normalizes Unicode, folds case, removes duplicates, sorts the result, and stores no more
@@ -67,7 +67,7 @@ tag categories, nesting, per-version tags, or a separate tag-management system.
 - A new installation creates one default project. Local publishing selects it automatically.
 - Every artifact belongs to exactly one project. An artifact cannot move between installations.
 - Projects use the installation's existing membership group. The first release has no project-specific members, roles, or access-control lists.
-- Account-required artifacts remain readable by every admitted installation member. Artifact ownership, administrator authority, and scoped service credentials control mutations.
+- Every admitted human installation member may read and manage project artifacts. Service credentials are limited by their explicit capabilities.
 - Project identity is enforced by the repository, authorization service, uploads, idempotency records, browser sessions, HTTP API, MCP tools, audit records, backup, and restore.
 - Archiving a project stops new artifacts and versions but preserves existing artifacts, links, history, comparisons, and immutable version bytes.
 - The first release does not destructively delete a nonempty project. Project-wide deletion needs a separate retention and recovery decision.
@@ -166,14 +166,13 @@ The public link opens only the artifact's current version. Version lists, compar
 
 The mutation policy is separate from the two read settings:
 
-| Action | Owner | Installation administrator | Other admitted member | Scoped service principal |
-| --- | --- | --- | --- | --- |
-| Read account-required artifact | Yes | Yes | Yes | Only with read capability |
-| Publish a new version | Yes | Yes | No | Only with publish capability for that artifact or for newly created artifacts |
-| Restore a version | Yes | Yes | No | Only with restore capability |
-| Change account required/public link | Yes | Yes | No | Only with visibility capability |
-| Reassign ownership | No | Yes | No | No |
-| Delete the artifact | Yes | Yes | No | Only with explicit delete capability |
+| Action | Admitted human member | Scoped service principal |
+| --- | --- | --- |
+| Read account-required artifact | Yes | Only with read capability |
+| Publish a new version | Yes | Only with publish capability |
+| Restore a version | Yes | Only with management capability |
+| Change account required/public link | Yes | Only with management capability |
+| Delete the artifact | Yes | Only with management capability |
 
 An interactive agent acts as the signed-in person. An API key belongs to one named user or service principal, one installation, an expiry and revoke state, and explicit capabilities. A key with artifact access can use any project in that installation; projects do not add a second access-control list. Every mutation records the effective principal and, when present, the human who authorized the agent connection.
 
@@ -229,7 +228,7 @@ Each Plannotator project maps to one Artifact Server project. Plannotator worksp
 
 Plannotator owns WorkOS sign-in, its organization, project and workspace records, workspace permissions, comments, annotations, replies, review state, notifications, and agent provenance. Artifact Server owns its paired project records, artifact IDs, immutable versions, manifests, blobs, browser delivery, comparisons, and artifact access settings. It does not add an organization table or a second workspace permission model.
 
-Plannotator checks whether the caller may use the project or workspace before sending Artifact Server a short-lived, audience-restricted request. Project-library operations name the paired project and allowed action. A workspace reference may request read-only access to one artifact and exact version. That narrow access cannot list the project library or publish, restore, change visibility, reassign ownership, or delete an artifact. A public or `link_edit` workspace therefore cannot mutate a project artifact.
+Plannotator checks whether the caller may use the project or workspace before sending Artifact Server a short-lived, audience-restricted request. Project-library operations name the paired project and allowed action. A workspace reference may request read-only access to one artifact and exact version. That narrow access cannot list the project library or publish, restore, change visibility, or delete an artifact. A public or `link_edit` workspace therefore cannot mutate a project artifact.
 
 Artifact Server validates the paired installation and project, scope, signature, expiration, and request ID through its normal authorization service. It never receives a WorkOS token, Plannotator browser cookie, or reusable user credential. Connected projects use the same Artifact Server project, artifact, version, storage, audit, backup, and access rules as standalone projects; there is no separate managed storage area.
 

@@ -147,10 +147,6 @@ const changeAccessSchema = z.object({
   accessSetting: accessSettingSchema,
   expectedCurrentVersionId: z.string().min(1).max(200),
 });
-const changeOwnerSchema = z.object({
-  expectedCurrentVersionId: z.string().min(1).max(200),
-  targetOwnerPrincipalId: z.string().min(1).max(200),
-});
 const changeTagsSchema = z.object({
   expectedCurrentVersionId: z.string().min(1).max(200),
   tags: artifactTagsSchema,
@@ -188,10 +184,8 @@ const principalCapabilitySchema = z.enum([
   principalCapabilities.createArtifact,
   principalCapabilities.issueContentSession,
   principalCapabilities.manageAnyArtifact,
-  principalCapabilities.manageOwnedArtifact,
   principalCapabilities.manageProjects,
   principalCapabilities.publishAnyArtifact,
-  principalCapabilities.publishOwnedArtifact,
   principalCapabilities.readArtifacts,
 ]);
 const issueApiKeySchema = z.object({
@@ -1018,35 +1012,6 @@ export function createHttpApp(
             principal: context.get("principal"),
             projectId: requestedProjectId(context),
             tags: body.tags,
-          })
-        ),
-      );
-      return context.json(artifactStateResponse(
-        responseApplicationUrl(context, dependencies),
-        dependencies.contentDomain,
-        state,
-      ));
-    },
-  );
-
-  app.post(
-    "/api/v1/artifacts/:artifactId/owner",
-    boundedJsonBody,
-    async (context) => {
-      const body = changeOwnerSchema.parse(await context.req.json());
-      const state = await runHttpApplicationEffect(
-        context,
-        dependencies,
-        ArtifactManagementService.use((management) =>
-          management.changeOwner({
-            artifactId: context.req.param("artifactId"),
-            expectedCurrentVersionId: body.expectedCurrentVersionId,
-            idempotencyKey: requiredIdempotencyKey(
-              context.req.header("idempotency-key"),
-            ),
-            principal: context.get("principal"),
-            projectId: requestedProjectId(context),
-            targetOwnerPrincipalId: body.targetOwnerPrincipalId,
           })
         ),
       );

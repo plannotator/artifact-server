@@ -89,7 +89,7 @@ update is still propagating.
 Provider command output is represented by hashes because D1 export output can
 contain a signed download URL. Evidence never includes credentials, signed
 URLs, object keys, file bodies, or raw provider output. Temporary export and
-secret files have owner-only permissions and are removed at exit.
+secret files use mode 0600 permissions and are removed at exit.
 
 ## Qualification-only cleanup
 

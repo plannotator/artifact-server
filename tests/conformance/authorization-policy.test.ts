@@ -25,11 +25,10 @@ describe("authorization policy", () => {
     await runtime.dispose();
   });
 
-  test("foundation: standalone reads and mutations use membership, ownership, and explicit capabilities", async () => {
+  test("AUTH-008-B AUTH-008-F: standalone mutations use membership and explicit capabilities", async () => {
     expect.hasAssertions();
-    const artifact = artifactOwnedBy("owner");
-    const owner = humanPrincipal("owner", membershipRoles.member);
-    const otherMember = humanPrincipal("other", membershipRoles.member);
+    const artifact = artifactFixture();
+    const member = humanPrincipal("member", membershipRoles.member);
     const administrator = humanPrincipal(
       "administrator",
       membershipRoles.administrator,
@@ -46,88 +45,52 @@ describe("authorization policy", () => {
       "manager",
       [principalCapabilities.manageAnyArtifact],
     );
-    const ownerManagerService = servicePrincipal(
-      "owner",
-      [principalCapabilities.manageOwnedArtifact],
-    );
-    const foreignOwnerManagerService = servicePrincipal(
-      "not-owner",
-      [principalCapabilities.manageOwnedArtifact],
-    );
     const unscopedService = servicePrincipal("reader", []);
 
     await expectAllowed((authorization) =>
-      authorization.requireArtifactRead(otherMember, artifact)
-    );
-    await expect(runtime.runPromise(
-      AuthorizationService.use((authorization) =>
-        authorization.artifactReadScope(otherMember)
-      ),
-    )).resolves.toEqual({kind: "all"});
-    await expectAllowed((authorization) =>
-      authorization.requireArtifactRead(readerService, artifact)
+      authorization.requireArtifactRead(member)
     );
     await expectAllowed((authorization) =>
-      authorization.requireArtifactManagement(owner, artifact)
+      authorization.requireArtifactListing(member)
     );
     await expectAllowed((authorization) =>
-      authorization.requireArtifactManagement(administrator, artifact)
+      authorization.requireArtifactRead(readerService)
     );
     await expectAllowed((authorization) =>
-      authorization.requireArtifactOwnershipChange(administrator)
+      authorization.requireArtifactManagement(member)
     );
     await expectAllowed((authorization) =>
-      authorization.requireArtifactManagement(managerService, artifact)
+      authorization.requireArtifactManagement(administrator)
     );
     await expectAllowed((authorization) =>
-      authorization.requireArtifactRead(ownerManagerService, artifact)
-    );
-    await expect(runtime.runPromise(
-      AuthorizationService.use((authorization) =>
-        authorization.artifactReadScope(ownerManagerService)
-      ),
-    )).resolves.toEqual({kind: "owned", ownerPrincipalId: "owner"});
-    await expectAllowed((authorization) =>
-      authorization.requireContentSession(otherMember, artifact)
+      authorization.requireArtifactManagement(managerService)
     );
     await expectAllowed((authorization) =>
-      authorization.requireVersionPublication(owner, artifact)
+      authorization.requireContentSession(member, artifact)
     );
     await expectAllowed((authorization) =>
-      authorization.requireVersionPublication(administrator, artifact)
+      authorization.requireVersionPublication(member)
     );
     await expectAllowed((authorization) =>
-      authorization.requireVersionPublication(scopedService, artifact)
+      authorization.requireVersionPublication(administrator)
+    );
+    await expectAllowed((authorization) =>
+      authorization.requireVersionPublication(scopedService)
     );
     await expectDenied((authorization) =>
-      authorization.requireVersionPublication(otherMember, artifact)
+      authorization.requireVersionPublication(unscopedService)
     );
     await expectDenied((authorization) =>
-      authorization.requireArtifactManagement(otherMember, artifact)
+      authorization.requireArtifactRead(unscopedService)
     );
     await expectDenied((authorization) =>
-      authorization.requireArtifactOwnershipChange(owner)
-    );
-    await expectDenied((authorization) =>
-      authorization.requireArtifactOwnershipChange(managerService)
-    );
-    await expectDenied((authorization) =>
-      authorization.requireVersionPublication(unscopedService, artifact)
-    );
-    await expectDenied((authorization) =>
-      authorization.requireArtifactRead(unscopedService, artifact)
-    );
-    await expectDenied((authorization) =>
-      authorization.artifactReadScope(unscopedService).pipe(Effect.asVoid)
-    );
-    await expectDenied((authorization) =>
-      authorization.requireArtifactRead(foreignOwnerManagerService, artifact)
+      authorization.requireArtifactListing(unscopedService).pipe(Effect.asVoid)
     );
   });
 
   test("foundation: another installation or an unscoped service cannot acquire authority", async () => {
     expect.hasAssertions();
-    const artifact = artifactOwnedBy("owner");
+    const artifact = artifactFixture();
     const foreignAdministrator: Principal = {
       ...humanPrincipal("foreign-admin", membershipRoles.administrator),
       installationId: "installation-b",
@@ -216,7 +179,7 @@ describe("authorization policy", () => {
   }
 });
 
-function artifactOwnedBy(ownerPrincipalId: string): ArtifactRecord {
+function artifactFixture(): ArtifactRecord {
   return {
     accessSetting: "account_required",
     createdAt: "2026-08-13T00:00:00.000Z",
@@ -224,7 +187,6 @@ function artifactOwnedBy(ownerPrincipalId: string): ArtifactRecord {
     deletedAt: null,
     id: "artifact-1",
     name: "Authorization fixture",
-    ownerPrincipalId,
     projectId: "prj_default",
     tags: [],
   };
