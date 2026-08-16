@@ -866,6 +866,11 @@ requirements:
         result: pass
         run: evidence/gcp-phase11-qualification.json
         recorded_at: "2026-08-16T04:05:00Z"
+      - deployment: cloudflare
+        tests: [CNT-007-B, CNT-007-F]
+        result: pass
+        run: evidence/cloudflare-phase11-content.json
+        recorded_at: "2026-08-16T17:44:26Z"
 
   - id: CNT-008
     kind: security
@@ -894,6 +899,11 @@ requirements:
         result: pass
         run: evidence/gcp-phase11-qualification.json
         recorded_at: "2026-08-16T04:05:00Z"
+      - deployment: cloudflare
+        tests: [CNT-008-B, CNT-008-F]
+        result: pass
+        run: evidence/cloudflare-phase11-content.json
+        recorded_at: "2026-08-16T17:44:26Z"
 
   - id: CNT-009
     kind: constraint
@@ -2320,7 +2330,12 @@ requirements:
     deployments: *all
     status: specified
     depends_on: [CNT-003, CNT-004]
-    evidence: []
+    evidence:
+      - deployment: cloudflare
+        tests: [DEP-014-B]
+        result: pass
+        run: evidence/cloudflare-phase11-content.json
+        recorded_at: "2026-08-16T17:44:26Z"
 
   - id: DEP-015
     kind: deployment

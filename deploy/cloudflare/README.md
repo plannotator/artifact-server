@@ -257,11 +257,15 @@ release gate, not a dependency of artifact publication.
 
 ## Scope
 
+The live Cloudflare provider qualification now includes public TLS, separate
+trusted and untrusted domains, static and SPA routing, conditional requests,
+and exact media ranges. The redacted result is
+`../../evidence/cloudflare-phase11-content.json`.
+
 The current Cloudflare release work still excludes or has not qualified these
 functions:
 
 - optional Git history
-- public-domain and TLS qualification
 - live WorkOS login, refresh, revocation, and named-client qualification
 - hosted load, quota, and abuse controls
 - the shared hosted control plane

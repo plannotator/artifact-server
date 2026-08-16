@@ -1,0 +1,82 @@
+{
+  "artifacts": {
+    "media": {
+      "artifactId": "art_da414455-639c-45d4-ac5c-fbc2fa354483",
+      "versionId": "ver_c88a1d31-7ea0-45d8-8cb5-87c27a12b8d1",
+      "versionOrigin": "https://d989d459448812add7e105c677821048b5ba.agentartifacts.org"
+    },
+    "spa": {
+      "artifactId": "art_7e9ee915-575b-425e-ad1e-f5c3dfd03045",
+      "versionId": "ver_b692d5a2-e07f-45e0-a44b-d96172d1b5f7",
+      "versionOrigin": "https://011b9af113b51edff67d66f46962bdc77ba7.agentartifacts.org"
+    },
+    "static": {
+      "artifactId": "art_1bf0437f-81f1-479c-bdf9-7ea2cec1b954",
+      "versionId": "ver_b38692aa-62ec-4f7c-8299-f79dc08aafc2",
+      "versionOrigin": "https://61177c47f77674c7ecb22cffe5553c02f39f.agentartifacts.org"
+    }
+  },
+  "completedAt": "2026-08-16T17:44:26.049Z",
+  "ranges": {
+    "etag": "\"be45cb2605bf36bebde684841a28f0fd43c69850a3dce5fedba69928ee3a8991\"",
+    "full": 200,
+    "head": 206,
+    "invalid": 416,
+    "notModified": 304,
+    "partial": 206
+  },
+  "routing": {
+    "spaExactAsset": 200,
+    "spaMissingAsset": 404,
+    "spaNavigation": 200,
+    "staticMissing": 404
+  },
+  "schemaVersion": 1,
+  "target": "cloudflare",
+  "testResults": [
+    {
+      "name": "live Cloudflare public content qualification",
+      "status": "passed",
+      "assertionResults": [
+        {
+          "title": "CNT-007-B: static and SPA routing follow the declared mode",
+          "status": "passed"
+        },
+        {
+          "title": "CNT-007-F: missing SPA assets do not receive the entry document",
+          "status": "passed"
+        },
+        {
+          "title": "CNT-008-B: conditional requests, HEAD, and exact media ranges pass",
+          "status": "passed"
+        },
+        {
+          "title": "CNT-008-F: unsupported multiple ranges return 416",
+          "status": "passed"
+        },
+        {
+          "title": "DEP-014-B: application and version hosts resolve through separate domains with valid TLS",
+          "status": "passed"
+        }
+      ]
+    }
+  ],
+  "tls": {
+    "applicationCertificate": {
+      "hostname": "phase11.artifactserver.com",
+      "issuer": "Google Trust Services WE1",
+      "subjectAltNames": [
+        "artifactserver.com",
+        "phase11.artifactserver.com",
+        "*.phase11.artifactserver.com"
+      ],
+      "validForHostname": true
+    },
+    "contentCertificate": {
+      "hostname": "61177c47f77674c7ecb22cffe5553c02f39f.agentartifacts.org",
+      "issuer": "Google Trust Services WE1",
+      "subjectAltNames": ["agentartifacts.org", "*.agentartifacts.org"],
+      "validForHostname": true
+    }
+  }
+}

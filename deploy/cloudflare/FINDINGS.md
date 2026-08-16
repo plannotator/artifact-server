@@ -136,8 +136,24 @@ It made no DNS changes. The redacted durable result is
 `../../evidence/cloudflare-runtime.json`.
 
 This proves the Cloudflare application core and private deployment lifecycle.
-It does not prove public domains and certificates or hosted load and abuse
-controls.
+Hosted load and abuse controls remain separate release gates.
+
+## Public content qualification
+
+The public content probe passed on August 16, 2026. It used the trusted
+application hostname `phase11.artifactserver.com` and isolated version hosts
+beneath `agentartifacts.org`. Cloudflare served valid edge certificates for
+both. Real publications proved static 404 behavior, SPA navigation fallback,
+missing-asset 404 behavior, full media delivery, conditional requests, ranged
+HEAD, exact single byte ranges, and multiple-range rejection. Redacted evidence
+is checked in at `../../evidence/cloudflare-phase11-content.json`.
+
+The live operator used a proxied wildcard `AAAA` record with the reserved
+originless address `100::` plus a wildcard Worker route. The application used
+an exact Worker custom domain. This matches the resources produced by the
+Alchemy stack. A full Alchemy public deployment needs Cloudflare credentials
+that can read and write DNS; Wrangler's interactive OAuth grant alone does not
+have that permission.
 
 ## Coordinated recovery qualification
 

@@ -460,7 +460,7 @@ this deployment record:
 | --- | --- | --- |
 | AWS | Static and SPA routing, media ranges, populated migration, real EventBridge cleanup, committed-byte retention, redeployment, S3 outage and recovery, clean RDS and S3 restore with integrity, and safe Pulumi destroy. | Positive ownership transfer needs two authenticated human members. |
 | GCP | Static and SPA routing, populated migration, real Scheduler cleanup, committed-byte retention, redeployment, Cloud SQL failure and recovery, clean Cloud SQL and GCS restore with integrity, and media ranges after `Range` was configured to bypass Cloud CDN. | Positive ownership transfer needs two authenticated human members. Google's provider-owned Direct VPC reservation must release before Pulumi can remove the final empty subnet and network. |
-| Cloudflare | Fresh and populated D1 migration, real Cron cleanup, committed-byte retention, Worker replacement, R2 failure detection, coordinated D1 and R2 restore with exact bytes and metadata, and exact resource destruction. | Static, SPA, range, host-isolation, and cache behavior still need an approved wildcard content domain. Ownership transfer belongs to hosted identity qualification, not this provider check. |
+| Cloudflare | Fresh and populated D1 migration, real Cron cleanup, committed-byte retention, Worker replacement, R2 failure detection, coordinated D1 and R2 restore with exact bytes and metadata, exact resource destruction, valid TLS on separate application and content domains, static and SPA routing, and complete media-range behavior through a real wildcard content host. | Positive ownership transfer belongs to hosted identity qualification, not this provider check. Hosted load, quota, and abuse controls remain separate release gates. |
 
 The first populated D1 migration found a real foreign-key ordering defect. The
 migration now snapshots the old rows, gives the empty replacement the final
@@ -475,12 +475,17 @@ multiple ranges through the final public edge.
 
 The following claims remain deployment release gates:
 
-- Live R2 still needs the complete cancellation and ranged-read adapter
-  contract through a real content host before Cloudflare is called fully
-  qualified.
-- Public Cloudflare content-host isolation and cache behavior need a temporary
-  wildcard qualification domain. No production or Plannotator DNS was changed
-  for this run.
+- Live R2 passed the public content contract through a real wildcard content
+  host. The run proved static routing, SPA navigation fallback, missing-asset
+  failure, conditional requests, ranged HEAD, exact single byte ranges, and
+  multiple-range rejection.
+- The public Cloudflare run used `phase11.artifactserver.com` for the trusted
+  application and `*.agentartifacts.org` for isolated version content.
+  Cloudflare served valid certificates for both. The temporary resources are
+  qualification infrastructure, not the production installation.
+- An interrupted-client cancellation probe against live R2 remains an adapter
+  resilience check. It does not block the public routing, TLS, or byte-range
+  delivery claims proved here.
 - Cloudflare coordinated recovery is repeatable through the checked-in operator
   command and runbook and has live exact-byte, metadata, integrity, readiness,
   and cleanup evidence.

@@ -92,18 +92,20 @@ The remaining product work is:
 
 1. Release validation for the implemented locality-aware `publish-artifact`
    Agent Skill in current supported clients.
-2. Complete and qualify the separately developed one-installation Cloudflare target.
+2. Complete hosted-product qualification for the implemented and provider-qualified one-installation Cloudflare target.
 3. Optional private Git history, including local and Cloudflare providers.
-4. Finish real-cloud lifecycle qualification for the implemented AWS and GCP
-   Pulumi projects. Native S3 and GCS adapters are implemented. The Azure Blob
-   adapter is preview-only until it passes a live Azure qualification.
+4. Complete identity-backed ownership-transfer qualification for the live AWS
+   and GCP deployments. Their Pulumi projects and native S3 and GCS adapters
+   are implemented and provider-qualified. The Azure Blob adapter is
+   preview-only until it passes a live Azure qualification.
 5. The optional `operate-artifact-server` skill after its deployment commands
    are stable.
 6. Complete the remaining cross-deployment recovery and live-cloud proof in
    [`phase-11-content-and-lifecycle-closure.md`](./spec/phase-11-content-and-lifecycle-closure.md).
    Its shared behavior, local/package gates, Compose gates, Kubernetes gate,
    provider contract tests, and scheduled cleanup implementations are complete.
-   The remaining work is live Cloudflare, AWS, and GCP qualification.
+   Live Cloudflare, AWS, and GCP provider qualification is complete. Hosted
+   identity, ownership transfer, load, quota, and abuse gates remain.
    Committed-blob garbage collection and permanent deletion are not part of
    the initial product.
 7. Direct Plannotator project pairing and the review bridge after the separate
