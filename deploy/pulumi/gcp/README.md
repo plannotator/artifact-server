@@ -55,9 +55,10 @@ This is deliberately a minimum provider qualification. It does not claim
 cross-region failover, automated disaster recovery, continuous chaos tests, or
 private ingress. The supported direct GCP target is public ingress with private
 Cloud SQL, private object storage, workload identity, and the lifecycle checks
-listed above. Teams that require private ingress use the qualified Helm chart
-on GKE until a separate Cloud Run private-ingress path is implemented and
-qualified.
+listed above. That public-ingress package has passed its minimum
+create-to-delete gate. Teams that require private ingress use the qualified
+Helm chart on GKE until a separate Cloud Run private-ingress path is implemented
+and qualified.
 
 Run the repeatable live product and upgrade checks against an existing isolated
 qualification stack with:
@@ -101,6 +102,41 @@ to two hours after the service is deleted. If the second destroy reports a
 `serverless-ipv4-*` address using the subnet, wait for Google to release it and
 run the same destroy command again. Do not manually delete that address. See
 [Google's Direct VPC egress cleanup documentation](https://docs.cloud.google.com/run/docs/configuring/vpc-direct-vpc#cannot_delete_subnet).
+
+Use the same backend and fully qualified stack name for every retry:
+
+```bash
+pulumi login gs://example-state/artifact-server
+pulumi destroy \
+  --stack organization/artifact-server-gcp/gcp-qualification \
+  --yes \
+  --non-interactive
+```
+
+After the destroy succeeds, verify both Pulumi and the provider inventory. The
+Pulumi stack must report zero resources, and every query for the deployment's
+name prefix must return an empty list:
+
+```bash
+pulumi stack ls --all
+gcloud run services list --project=example-project
+gcloud run jobs list --project=example-project
+gcloud sql instances list --project=example-project
+gcloud compute networks list \
+  --project=example-project \
+  --filter='name:gcp-qualification*'
+gcloud compute networks subnets list \
+  --project=example-project \
+  --filter='name:gcp-qualification*'
+gcloud compute addresses list \
+  --project=example-project \
+  --filter='name:gcp-qualification*'
+```
+
+The qualification state bucket and image repository are test prerequisites,
+not deployment resources. Keep them when qualification history and digest-pinned
+reruns are required; remove them separately only when retiring the entire
+qualification project.
 
 Cloud SQL can retain producer-side network resources for up to four days after
 instance deletion. The service-networking connection therefore uses

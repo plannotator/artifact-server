@@ -1,25 +1,74 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-08-15T21:44:24Z",
+  "recordedAt": "2026-08-16T14:36:48Z",
   "target": "gcp",
-  "result": "pending_provider_cleanup",
+  "project": "artifact-server-qual",
+  "pulumiBackend": "gs://artifact-server-qual-pulumi-state/artifact-server",
+  "pulumiStack": "organization/artifact-server-gcp/gcp-qualification",
+  "result": "passed",
   "deleted": {
     "cloudRunService": true,
     "cloudSqlInstance": true,
     "artifactBucket": true,
     "loadBalancerForwardingRule": true,
     "applicationSecrets": true,
-    "applicationServiceAccount": true
+    "applicationServiceAccount": true,
+    "qualificationNetwork": true,
+    "qualificationSubnet": true,
+    "certificateDnsAuthorizations": true,
+    "serviceEnablementRecordsRemovedFromStack": true
   },
   "artifactData": {
     "explicitlyPurgedAfterRecoveryCheck": true,
     "remainingObjectVersions": 0
   },
-  "pending": {
-    "serverlessIpv4Addresses": 1,
-    "reason": "Cloud Run Direct VPC egress retains subnet addresses for one to two hours after service deletion.",
-    "operatorAction": "Wait for Google to release the address, then run the same Pulumi destroy command again."
+  "verification": {
+    "pulumiResources": 0,
+    "cloudRunServices": 0,
+    "cloudRunJobs": 0,
+    "cloudSqlInstances": 0,
+    "qualificationNetworks": 0,
+    "qualificationSubnets": 0,
+    "qualificationAddresses": 0,
+    "qualificationForwardingRules": 0,
+    "qualificationBackendServices": 0,
+    "qualificationUrlMaps": 0,
+    "qualificationCertificateDnsAuthorizations": 0,
+    "qualificationCertificates": 0,
+    "applicationSecrets": 0,
+    "applicationServiceAccounts": 0
   },
-  "remainingPulumiResources": 18,
-  "fullSafeDestroy": "not_yet_passed"
+  "retainedQualificationPrerequisites": {
+    "pulumiStateBucket": "artifact-server-qual-pulumi-state",
+    "pulumiStateObjects": 59,
+    "pulumiStateBytes": 5364652,
+    "artifactRegistryRepository": "projects/artifact-server-qual/locations/us-central1/repositories/artifact-server-images",
+    "artifactRegistryImageRecords": 26,
+    "enabledServiceApis": [
+      "artifactregistry.googleapis.com",
+      "certificatemanager.googleapis.com",
+      "cloudkms.googleapis.com",
+      "cloudtrace.googleapis.com",
+      "compute.googleapis.com",
+      "containerregistry.googleapis.com",
+      "dns.googleapis.com",
+      "logging.googleapis.com",
+      "oslogin.googleapis.com",
+      "pubsub.googleapis.com",
+      "run.googleapis.com",
+      "secretmanager.googleapis.com",
+      "servicenetworking.googleapis.com",
+      "sqladmin.googleapis.com",
+      "storage-api.googleapis.com",
+      "storage-component.googleapis.com",
+      "storage.googleapis.com",
+      "telemetry.googleapis.com"
+    ],
+    "reason": "The state backend preserves qualification provenance, and the image repository preserves digest-pinned inputs for later reruns. Neither is part of the deployment stack."
+  },
+  "projectResourcesOutsideTheStack": {
+    "defaultNetwork": "default",
+    "defaultComputeServiceAccount": "887616867660-compute@developer.gserviceaccount.com"
+  },
+  "fullSafeDestroy": "passed"
 }

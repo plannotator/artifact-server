@@ -29,7 +29,7 @@ remain covered by the real adapter integration suite.
 
 The first destroy attempt removed Cloud Run and Cloud SQL, then Google rejected
 immediate deletion of the private-services connection because Cloud SQL retains
-producer-side resources for up to four days. The package now uses the provider's
+producer-side resources for up to four days. The package uses the provider's
 `ABANDON` deletion policy for that connection, which is Google's documented
 workaround for declarative destroys during the recovery window. This does not
 retain the database or application data; it lets Google finish removing its
@@ -37,14 +37,25 @@ temporary producer-side networking while Pulumi deletes the customer stack.
 
 The qualification destroy removed Cloud Run, Cloud SQL, the load balancer,
 public DNS records, secrets, service identity, and the explicitly emptied
-artifact bucket. The final Pulumi pass is waiting only for Cloud Run to release
-one serverless subnet address. Google documents a one-to-two-hour release delay
-and does not permit manual deletion of that address. The remaining stack state
-contains the subnet, network, API enablement, certificate DNS authorizations,
-and Pulumi-generated identifiers so the same destroy can finish cleanly after
-the provider releases it.
+artifact bucket. Cloud Run initially retained one serverless subnet address.
+After Google released it, the same Pulumi destroy removed the subnet, VPC,
+certificate DNS authorizations, Pulumi service-enablement records, and generated
+identifiers. The `gcp-qualification` stack now contains zero resources.
 
-The GCP target remains `implementing`, not fully supported, because the product
-specification still requires that final destroy retry and a qualified
-private-ingress option. The current package intentionally rejects private
-ingress.
+An independent inventory found no qualification Cloud Run service or job,
+Cloud SQL instance, VPC, subnet, address, forwarding rule, backend service, URL
+map, certificate authorization, certificate, application secret, or application
+service account. The qualification project deliberately retains the versioned
+Pulumi state bucket and the digest-pinned Artifact Registry repository used to
+reproduce the tests. Those prerequisites are outside the deployment stack and
+contain no published artifact data. Provider APIs remain enabled in the isolated
+qualification project, and its default network and default Compute Engine
+service account remain outside the stack; none is a running Artifact Server
+deployment.
+
+The public-ingress GCP package has now passed its minimum create-to-delete gate.
+The broader GCP target remains `implementing`, not fully supported, because the
+product specification also requires a qualified private-ingress option. The
+current package intentionally rejects private ingress. The positive two-human
+ownership-transfer check is tracked with hosted authentication and was not part
+of this cleanup pass.
