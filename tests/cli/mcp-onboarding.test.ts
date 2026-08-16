@@ -96,6 +96,15 @@ describe("local MCP onboarding", () => {
     const second = await connectStdio(dataDirectory);
     expect((await second.client.listTools()).tools).toHaveLength(18);
     await second.client.close();
+
+    const legacy = await connectStdio(dataDirectory, "legacy");
+    expect((await legacy.client.listTools()).tools).toHaveLength(18);
+    const legacyCapabilities = await legacy.client.callTool({
+      arguments: {},
+      name: "artifact_capabilities",
+    });
+    expect(legacyCapabilities.isError).not.toBe(true);
+    await legacy.client.close();
     const secondRecord = serviceRecordSchema.parse(JSON.parse(await readFile(
       path.join(dataDirectory, "local-service.json"),
       "utf8",
@@ -341,6 +350,7 @@ describe("local MCP onboarding", () => {
 
 async function connectStdio(
   dataDirectory: string,
+  protocolEra: "legacy" | "modern" = "modern",
 ): Promise<{readonly client: Client}> {
   const transport = new StdioClientTransport({
     args: [cliEntrypoint, "mcp", "--data", dataDirectory],
@@ -350,7 +360,11 @@ async function connectStdio(
   transport.stderr?.on("data", () => undefined);
   const client = new Client(
     {name: "artifact-server-test-client", version: "0.0.0"},
-    {versionNegotiation: {mode: {pin: modernProtocolRevision}}},
+    {
+      versionNegotiation: protocolEra === "modern"
+        ? {mode: {pin: modernProtocolRevision}}
+        : {mode: "legacy"},
+    },
   );
   await client.connect(transport);
   return {client};

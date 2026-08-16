@@ -264,7 +264,7 @@ describe("modern MCP HTTP", () => {
         params: {
           capabilities: {},
           clientInfo: {name: "legacy-probe", version: "1"},
-          protocolVersion: "2025-11-25",
+          protocolVersion: "2025-06-18",
         },
       }),
       headers: {
@@ -274,7 +274,47 @@ describe("modern MCP HTTP", () => {
       },
       method: "POST",
     });
-    expect(legacy.status).toBeGreaterThanOrEqual(400);
+    expect(legacy.status).toBe(200);
+    expect(legacy.headers.has("mcp-session-id")).toBe(false);
+    expect(legacy.headers.get("content-type")).toContain("text/event-stream");
+    const legacyData = (await legacy.text())
+      .split(/\r?\n/u)
+      .find((line) => line.startsWith("data: "));
+    if (legacyData === undefined) {
+      throw new Error("The legacy initialization response had no SSE data event.");
+    }
+    expect(JSON.parse(legacyData.slice("data: ".length))).toMatchObject({
+      id: 99,
+      jsonrpc: "2.0",
+      result: {
+        capabilities: {resources: {}, tools: {}},
+        protocolVersion: "2025-06-18",
+        serverInfo: {name: "artifact-server"},
+      },
+    });
+
+    const legacyClient = new Client(
+      {name: "artifact-server-codex-era-test", version: "1"},
+      {versionNegotiation: {mode: "legacy"}},
+    );
+    const legacyTransport = new StreamableHTTPClientTransport(
+      new URL(`${server.baseUrl}/mcp`),
+      {authProvider: {token: async () => installation.apiToken}},
+    );
+    try {
+      await legacyClient.connect(legacyTransport);
+      const legacyCapabilities = await legacyClient.callTool({
+        arguments: {},
+        name: "artifact_capabilities",
+      });
+      expect(legacyCapabilities.isError).not.toBe(true);
+      expect(legacyCapabilities.structuredContent).toMatchObject({
+        deployment: {mode: "local"},
+        publishing: {acceptsInlineContent: false},
+      });
+    } finally {
+      await legacyClient.close();
+    }
 
     const listen = await mcpRequest(
       server,

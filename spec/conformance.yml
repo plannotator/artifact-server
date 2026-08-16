@@ -1494,12 +1494,12 @@ requirements:
 
   - id: MCP-005
     kind: constraint
-    behavior: Older stateful MCP behavior, if supported, is isolated from the modern primary path as an optional compatibility surface.
+    behavior: The official SDK serves required 2025-era clients through a stateless compatibility path while the primary 2026-07-28 request family remains unchanged.
     owner: mcp
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
-      behavior: {id: MCP-005-B, description: Run the modern conformance suite with compatibility disabled and unchanged.}
-      failure: {id: MCP-005-F, description: Compatibility sessions, routes, or credentials cannot alter modern endpoint behavior or authorization.}
+      behavior: {id: MCP-005-B, description: Complete an exact 2025-06-18 initialization and tool call alongside the pinned modern conformance suite using the same authenticated product services.}
+      failure: {id: MCP-005-F, description: Compatibility cannot create session IDs, sticky routing, GET streams, DELETE session operations, replay state, different credentials, or altered modern endpoint behavior.}
     deployments: *all
     status: behavior_verified
     depends_on: [MCP-002]
@@ -2890,7 +2890,7 @@ requirements:
 
   - id: GATE-005
     kind: release_gate
-    behavior: Hosted WorkOS MCP authorization ships only after live consent, token lifetime, refresh rotation, revocation, claims, audience, scope, CIMD, DCR, callback, and stale-client probes pass.
+    behavior: Hosted WorkOS MCP authorization ships only after live consent, token lifetime, refresh rotation, revocation, claims, audience, CIMD, DCR, callback, and stale-client probes pass.
     owner: mcp
     source: {file: artifact-server-product-spec.html, anchor: decisions}
     acceptance:

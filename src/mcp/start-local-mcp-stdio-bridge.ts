@@ -26,14 +26,14 @@ export interface LocalMcpStdioBridgeOptions {
   readonly productVersion: string;
 }
 
-/** Start a strict modern stdio bridge to the single managed local service. */
+/** Start a dual-era stdio bridge to the single managed local service. */
 export function startLocalMcpStdioBridge(
   options: LocalMcpStdioBridgeOptions,
 ): StdioServerHandle {
   return serveStdio(
     async () => createForwardingServer(options),
     {
-      legacy: "reject",
+      legacy: "serve",
       maxSubscriptions: 0,
       onerror: () => {
         console.error("Artifact Server MCP bridge error.");

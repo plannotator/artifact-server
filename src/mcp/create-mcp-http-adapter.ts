@@ -50,7 +50,7 @@ const principalSchema = z.object({
   ]),
 }).strict();
 
-/** Configuration for the modern stateless MCP HTTP boundary. */
+/** Configuration for the stateless modern MCP boundary and its 2025-era bridge. */
 export interface McpHttpAdapterDependencies {
   readonly allowedHostnames: readonly string[];
   readonly allowedOriginHostnames: readonly string[];
@@ -61,13 +61,13 @@ export interface McpHttpAdapterDependencies {
   readonly oauthResource: string | null;
 }
 
-/** Modern stateless MCP HTTP adapter mounted by every Artifact Server deployment. */
+/** Stateless MCP HTTP adapter mounted by every Artifact Server deployment. */
 export interface McpHttpAdapter {
   readonly fetch: (request: Request) => Promise<Response>;
   readonly close: () => Promise<void>;
 }
 
-/** Construct the authenticated modern MCP HTTP adapter over shared application services. */
+/** Construct one authenticated MCP adapter over shared application services. */
 export function createMcpHttpAdapter(
   dependencies: McpHttpAdapterDependencies,
 ): McpHttpAdapter {
@@ -90,7 +90,7 @@ export function createMcpHttpAdapter(
       );
     },
     {
-      legacy: "reject",
+      legacy: "stateless",
       maxSubscriptions: 0,
       responseMode: "auto",
     },
@@ -169,6 +169,9 @@ async function authenticateToken(
         dependencies.applicationRuntime,
         Effect.logError("mcp.authentication.failed").pipe(
           Effect.annotateLogs({
+            failure_reason: cause._tag === "IdentityRepositoryFailure"
+              ? `identity_repository_${cause.operation}`
+              : cause.message,
             failure_tag: cause._tag,
             request_id: requestId,
           }),
