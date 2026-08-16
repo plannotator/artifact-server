@@ -1,3 +1,9 @@
+import {
+  buildOAuthProtectedResourceMetadata,
+  getOAuthProtectedResourceMetadataUrl,
+  oauthMetadataResponse,
+  type OAuthMetadata,
+} from "@modelcontextprotocol/server";
 import {Clock, Effect, Exit, Redacted, type Tracer} from "effect";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -229,6 +235,7 @@ export interface HttpAppDependencies {
   readonly blobs: BlobStore;
   readonly completedRequestLogSampleRate: number;
   readonly contentDomain: string;
+  readonly mcpOAuthResource?: McpOAuthResourceConfiguration;
   readonly readiness?: ReadinessProbe;
   readonly runtimeLifecycle?: RuntimeLifecycle;
   readonly trustedApplicationOrigin: string | null;
@@ -237,6 +244,12 @@ export interface HttpAppDependencies {
 /** RFC 9728 metadata for the separately audience-bound HTTP API resource. */
 export interface ApiOAuthResourceConfiguration {
   readonly authorizationServers: readonly [string, ...string[]];
+  readonly resource: string;
+}
+
+/** WorkOS metadata and exact audience for the hosted MCP protected resource. */
+export interface McpOAuthResourceConfiguration {
+  readonly authorizationServerMetadata: OAuthMetadata;
   readonly resource: string;
 }
 
@@ -278,6 +291,7 @@ export function createHttpApp(
     applicationRuntime: dependencies.applicationRuntime,
     contentDomain: dependencies.contentDomain,
     mode: dependencies.trustedApplicationOrigin === null ? "local" : "remote",
+    oauthResource: dependencies.mcpOAuthResource?.resource ?? null,
   });
   const boundedJsonBody = bodyLimit({
     maxSize: maximumJsonRequestBytes,
@@ -319,6 +333,50 @@ export function createHttpApp(
         },
         413,
       ),
+  });
+
+  if (dependencies.mcpOAuthResource !== undefined) {
+    const resourceServerUrl = new URL(
+      dependencies.mcpOAuthResource.resource,
+    );
+    const metadataOptions = {
+      oauthMetadata:
+        dependencies.mcpOAuthResource.authorizationServerMetadata,
+      resourceName: "Artifact Server MCP",
+      resourceServerUrl,
+      scopesSupported: ["mcp"],
+    };
+    const protectedMetadata = {
+      ...buildOAuthProtectedResourceMetadata(metadataOptions),
+      bearer_methods_supported: ["header"],
+    };
+    const protectedMetadataPath = new URL(
+      getOAuthProtectedResourceMetadataUrl(resourceServerUrl),
+    ).pathname;
+    app.get(
+      protectedMetadataPath,
+      (context) => context.json(protectedMetadata),
+    );
+  }
+
+  app.use("*", async (context, next) => {
+    if (dependencies.mcpOAuthResource !== undefined) {
+      const response = oauthMetadataResponse(
+        context.req.raw,
+        {
+          oauthMetadata:
+            dependencies.mcpOAuthResource.authorizationServerMetadata,
+          resourceName: "Artifact Server MCP",
+          resourceServerUrl: new URL(dependencies.mcpOAuthResource.resource),
+          scopesSupported: ["mcp"],
+        },
+      );
+      if (response !== undefined) {
+        context.res = response;
+        return;
+      }
+    }
+    await next();
   });
 
   app.use("*", async (context, next) => {

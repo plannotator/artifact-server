@@ -402,21 +402,31 @@ self-sign-up. Administrators manage human-owned or service-owned credentials
 through `/api/v1/api-keys`; each key has explicit capabilities and a required
 future expiration and can be rotated or revoked.
 
-### Optional WorkOS browser login
+### Optional hosted WorkOS authentication
 
-WorkOS is only an interactive identity provider. Artifact Server still owns its
-member list, authorization decisions, application sessions, and API keys. Copy
-`.env.example` into a secret local environment file or secret manager. Set the
-application origin, bootstrap administrator email, client ID, and either the
-WorkOS API-key value or its `_FILE` path before starting the server. Use a
-dedicated Artifact Server WorkOS environment, configure the exact
-`/auth/callback` redirect, and disable AuthKit self-sign-up. Never reuse a
-Plannotator Workspaces staging or production environment.
+WorkOS owns browser authorization for hosted MCP and interactive application
+login. Artifact Server still owns its member list, authorization decisions,
+application sessions, and API keys. Copy `.env.example` into a secret local
+environment file or secret manager. Set the application origin, bootstrap
+administrator email, client ID, exact AuthKit issuer, and either the WorkOS
+API-key value or its `_FILE` path before starting the server.
+
+Use a dedicated Artifact Server WorkOS environment. Configure the exact
+`/auth/callback` redirect. Enable CIMD, retain DCR for current-client
+compatibility, and configure the exact application origin plus `/mcp` as the
+default Resource Indicator. Disable public AuthKit self-sign-up. Never reuse a
+Plannotator Workspaces staging or production environment. Staging and
+production use different WorkOS environments, issuers, MCP resources, clients,
+grants, and qualification evidence.
+
+Artifact Server publishes protected-resource metadata and validates each MCP
+access token for the exact issuer and `/mcp` audience. The client owns browser
+approval, access-token refresh, and grant revocation. Artifact Server never
+stores the provider access token or refresh token.
 
 The first successful WorkOS login is accepted only when its verified email is
 the configured bootstrap administrator email. Later logins require a member
-already admitted to this Artifact Server. Provider access and refresh tokens are
-not stored by Artifact Server.
+already admitted to this Artifact Server.
 
 ## Publishing input contract
 

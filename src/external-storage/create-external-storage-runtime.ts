@@ -1,12 +1,19 @@
 import {Effect, Layer, ManagedRuntime, type Redacted} from "effect";
 
 import type {ApplicationRuntime} from "../application/application-runtime.js";
-import type {BearerCredentialVerifier} from "../application/authentication.js";
+import type {
+  BearerCredentialVerifier,
+  ExternalMcpBearerVerifier,
+} from "../application/authentication.js";
 import type {InteractiveIdentityProvider} from "../application/interactive-login.js";
 import type {Clock} from "../core/ports.js";
 import {SystemClock, SystemIdGenerator} from "../core/system.js";
 import {createHttpApp} from "../http/create-http-app.js";
-import type {ApiOAuthResourceConfiguration} from "../http/create-http-app.js";
+import type {
+  ApiOAuthResourceConfiguration,
+  HttpAppDependencies,
+  McpOAuthResourceConfiguration,
+} from "../http/create-http-app.js";
 import {
   defaultCompletedRequestLogSampleRate,
   otlpLayer,
@@ -42,9 +49,11 @@ export interface ExternalStorageRuntimeConfig {
   readonly databaseUrl: Redacted.Redacted;
   readonly externalApiBearerVerifier?: BearerCredentialVerifier;
   readonly externalMcpBearerVerifier?: BearerCredentialVerifier;
+  readonly externalMcpOAuthVerifier?: ExternalMcpBearerVerifier;
   readonly installationId: string;
   readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
   readonly localBootstrapCredential?: Redacted.Redacted;
+  readonly mcpOAuthResource?: McpOAuthResourceConfiguration;
   readonly objectStorage: ObjectStorageProviderFactory;
   readonly runtimeLifecycle?: RuntimeLifecycle;
   readonly serviceVersion?: string;
@@ -96,6 +105,7 @@ export async function createExternalStorageRuntime(
       clock: config.clock ?? new SystemClock(),
       externalApiBearerVerifier: config.externalApiBearerVerifier ?? null,
       externalMcpBearerVerifier: config.externalMcpBearerVerifier ?? null,
+      externalMcpOAuthVerifier: config.externalMcpOAuthVerifier ?? null,
       ids: new SystemIdGenerator(),
       identityRepository,
       installationId: config.installationId,
@@ -122,21 +132,28 @@ export async function createExternalStorageRuntime(
     await applicationRuntime.context();
     const readyRuntime = applicationRuntime;
     const appDependenciesWithoutOAuth = {
-        applicationRuntime: readyRuntime,
-        blobs,
-        completedRequestLogSampleRate:
-          config.completedRequestLogSampleRate ??
-            defaultCompletedRequestLogSampleRate,
-        contentDomain: config.contentDomain,
-        readiness: () => externalStorageReadiness(database, connectedObjectStorage),
-        trustedApplicationOrigin: config.applicationOrigin ?? null,
+      applicationRuntime: readyRuntime,
+      blobs,
+      completedRequestLogSampleRate:
+        config.completedRequestLogSampleRate ??
+          defaultCompletedRequestLogSampleRate,
+      contentDomain: config.contentDomain,
+      readiness: () => externalStorageReadiness(database, connectedObjectStorage),
+      trustedApplicationOrigin: config.applicationOrigin ?? null,
     };
-    const appDependencies = config.apiOAuthResource === undefined
-      ? appDependenciesWithoutOAuth
-      : {
-        ...appDependenciesWithoutOAuth,
+    let appDependencies: HttpAppDependencies = appDependenciesWithoutOAuth;
+    if (config.apiOAuthResource !== undefined) {
+      appDependencies = {
+        ...appDependencies,
         apiOAuthResource: config.apiOAuthResource,
       };
+    }
+    if (config.mcpOAuthResource !== undefined) {
+      appDependencies = {
+        ...appDependencies,
+        mcpOAuthResource: config.mcpOAuthResource,
+      };
+    }
     const closeCleanupSchedule = stagingCleanupPolicy.schedule === "background"
       ? startStagingCleanupSchedule(readyRuntime, stagingCleanupPolicy)
       : null;

@@ -7,9 +7,15 @@ import {
   type LocalServerConfig,
   startLocalServer,
 } from "../../src/local/start-local-server.js";
-import type {BearerCredentialVerifier} from "../../src/application/authentication.js";
+import type {
+  BearerCredentialVerifier,
+  ExternalMcpBearerVerifier,
+} from "../../src/application/authentication.js";
 import type {InteractiveIdentityProvider} from "../../src/application/interactive-login.js";
-import type {ApiOAuthResourceConfiguration} from "../../src/http/create-http-app.js";
+import type {
+  ApiOAuthResourceConfiguration,
+  McpOAuthResourceConfiguration,
+} from "../../src/http/create-http-app.js";
 import type {Clock} from "../../src/core/ports.js";
 import {defaultCompletedRequestLogSampleRate} from
   "../../src/observability/application-observability.js";
@@ -54,7 +60,9 @@ export async function startTestServer(
     readonly completedRequestLogSampleRate?: number;
     readonly externalApiBearerVerifier?: BearerCredentialVerifier;
     readonly externalMcpBearerVerifier?: BearerCredentialVerifier;
+    readonly externalMcpOAuthVerifier?: ExternalMcpBearerVerifier;
     readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
+    readonly mcpOAuthResource?: McpOAuthResourceConfiguration;
     readonly observability?: boolean;
   } = {},
 ): Promise<RunningTestServer> {
@@ -93,11 +101,20 @@ export async function startTestServer(
       externalMcpBearerVerifier: options.externalMcpBearerVerifier,
     };
   }
+  if (options.externalMcpOAuthVerifier !== undefined) {
+    config = {
+      ...config,
+      externalMcpOAuthVerifier: options.externalMcpOAuthVerifier,
+    };
+  }
   if (options.interactiveIdentityProvider !== undefined) {
     config = {
       ...config,
       interactiveIdentityProvider: options.interactiveIdentityProvider,
     };
+  }
+  if (options.mcpOAuthResource !== undefined) {
+    config = {...config, mcpOAuthResource: options.mcpOAuthResource};
   }
   const server = await startLocalServer(config);
 

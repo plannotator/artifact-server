@@ -7,7 +7,8 @@ import path from "node:path";
 import {Command, Option} from "commander";
 import {z} from "zod";
 
-import {WorkOsIdentityProvider} from "../identity/workos-identity-provider.js";
+import {createWorkOsHostedAuthentication} from
+  "../identity/workos-hosted-authentication.js";
 import {
   loadOrCreateLocalCredential,
   localCredentialFiles,
@@ -101,10 +102,13 @@ function configureDirectLocalStart(programToConfigure: Command): void {
         localCredentialFiles.browser,
       );
       const workOs = await loadWorkOsConfiguration(process.env);
+      const hostedAuthentication = workOs === null
+        ? null
+        : await createWorkOsHostedAuthentication(workOs);
       const observability = observabilityEnvironmentSchema.parse(process.env);
       const server = await startLocalServer({
         apiToken,
-        ...(workOs === null
+        ...(workOs === null || hostedAuthentication === null
           ? {
             bootstrapAdministratorEmail:
               "local-administrator@artifactserver.invalid",
@@ -112,14 +116,7 @@ function configureDirectLocalStart(programToConfigure: Command): void {
           : {
             applicationOrigin: workOs.applicationOrigin,
             bootstrapAdministratorEmail: workOs.bootstrapAdministratorEmail,
-            interactiveIdentityProvider: new WorkOsIdentityProvider({
-              apiKey: workOs.apiKey,
-              clientId: workOs.clientId,
-              redirectUri: new URL(
-                "/auth/callback",
-                workOs.applicationOrigin,
-              ).toString(),
-            }),
+            ...hostedAuthentication,
           }),
         contentDomain: "localhost",
         completedRequestLogSampleRate:

@@ -113,7 +113,9 @@ describe("Artifact Server lifecycle CLI", () => {
         ARTIFACT_SERVER_WORKOS_API_KEY: "workos-secret-value",
       });
       expect(incompleteWorkOs.exitCode).not.toBe(0);
-      expect(incompleteWorkOs.output).toContain("WorkOS login requires");
+      expect(incompleteWorkOs.output).toContain(
+        "Hosted WorkOS authentication requires",
+      );
       expect(incompleteWorkOs.output).not.toContain("workos-secret-value");
       await chmod(path.join(dataDirectory, "secrets/api-token"), 0o644);
       const permissiveSecret = await runCli([

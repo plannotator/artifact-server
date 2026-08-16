@@ -5,6 +5,7 @@ import { DateTime, Effect, Layer, Redacted } from "effect";
 import {
   AuthenticationService,
   type BearerCredentialVerifier,
+  type ExternalMcpBearerVerifier,
 } from "../application/authentication.js";
 import {
   digestIdentitySecret,
@@ -47,6 +48,7 @@ import {
   ArtifactMutationConflict,
   ArtifactRepositoryFailure,
   AuthenticationRequired,
+  AuthorizationDenied,
   BlobStorageFailure,
   IdempotencyConflict,
   IdentityConflict,
@@ -97,6 +99,7 @@ export interface ApplicationAdapters {
   readonly clock: Clock;
   readonly externalApiBearerVerifier: BearerCredentialVerifier | null;
   readonly externalMcpBearerVerifier: BearerCredentialVerifier | null;
+  readonly externalMcpOAuthVerifier: ExternalMcpBearerVerifier | null;
   readonly ids: IdGenerator;
   readonly identityRepository: IdentityRepository;
   readonly installationId: string;
@@ -617,14 +620,67 @@ export function createApplicationLayer(
           message: "A valid Artifact Server API key is required.",
         }));
       };
+      const authenticateMcpBearer = Effect.fn(
+        "AuthenticationService.authenticateMcpBearer",
+      )(function*(credential: Redacted.Redacted) {
+        const raw = Redacted.value(credential);
+        if (raw.startsWith("as_key_")) {
+          return {
+            clientId: "artifact-server-managed-api-key",
+            expiresAt: Math.floor(adapters.clock.now().getTime() / 1_000) + 60,
+            principal: yield* installationAccess.authenticateManagedApiKey(credential),
+            scopes: ["mcp"],
+          };
+        }
+        if (credentialsEqual(raw, Redacted.value(adapters.apiToken))) {
+          return {
+            clientId: localPrincipal.id,
+            expiresAt: Math.floor(adapters.clock.now().getTime() / 1_000) + 60,
+            principal: localPrincipal,
+            scopes: ["mcp"],
+          };
+        }
+        if (adapters.externalMcpBearerVerifier !== null) {
+          return {
+            clientId: "external-bearer",
+            expiresAt: Math.floor(adapters.clock.now().getTime() / 1_000) + 60,
+            principal: yield* adapters.externalMcpBearerVerifier.verify(credential),
+            scopes: ["mcp"],
+          };
+        }
+        const verifier = adapters.externalMcpOAuthVerifier;
+        if (verifier === null) {
+          return yield* Effect.fail(new AuthenticationRequired({
+            message: "A valid Artifact Server MCP credential is required.",
+          }));
+        }
+        const verified = yield* verifier.verify(credential);
+        if (!verified.scopes.includes("mcp")) {
+          return yield* Effect.fail(new AuthorizationDenied({
+            message: "The access token does not grant Artifact Server MCP access.",
+          }));
+        }
+        let principal = yield* installationAccess.authenticateExternalSubject(
+          verified.provider,
+          verified.subject,
+        );
+        if (principal === null) {
+          const identity = yield* verifier.resolveIdentity(verified);
+          principal = yield* installationAccess.authenticateExternalIdentity(identity);
+        }
+        return {
+          clientId: verified.clientId ?? verified.subject,
+          expiresAt: verified.expiresAt,
+          principal,
+          scopes: verified.scopes,
+        };
+      });
       return Effect.succeed(AuthenticationService.of({
         authenticateApiBearer: authenticateBearerWith(
           adapters.externalApiBearerVerifier,
         ),
         authenticateApplicationSession: installationAccess.authenticateSession,
-        authenticateMcpBearer: authenticateBearerWith(
-          adapters.externalMcpBearerVerifier,
-        ),
+        authenticateMcpBearer,
       }));
     }),
   ).pipe(Layer.provideMerge(identityLayer));

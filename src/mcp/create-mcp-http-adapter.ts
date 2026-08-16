@@ -3,6 +3,7 @@ import {
   type AuthInfo,
   OAuthError,
   OAuthErrorCode,
+  getOAuthProtectedResourceMetadataUrl,
   requireBearerAuth,
   validateHostHeader,
   validateOriginHeader,
@@ -58,6 +59,7 @@ export interface McpHttpAdapterDependencies {
   readonly applicationRuntime: ApplicationRuntime;
   readonly contentDomain: string;
   readonly mode: ArtifactMcpServerDependencies["mode"];
+  readonly oauthResource: string | null;
 }
 
 /** Modern stateless MCP HTTP adapter mounted by every Artifact Server deployment. */
@@ -101,13 +103,22 @@ export function createMcpHttpAdapter(
       const edgeRejection = validateRequestEdge(request, dependencies);
       if (edgeRejection !== undefined) return edgeRejection;
       const requestId = requestIdFrom(request);
-      const authenticate = requireBearerAuth({
+      let bearerOptions: Parameters<typeof requireBearerAuth>[0] = {
         requiredScopes: [mcpScope],
         verifier: {
           verifyAccessToken: (token) =>
             authenticateToken(dependencies, token, requestId),
         },
-      });
+      };
+      if (dependencies.oauthResource !== null) {
+        bearerOptions = {
+          ...bearerOptions,
+          resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(
+            new URL(dependencies.oauthResource),
+          ),
+        };
+      }
+      const authenticate = requireBearerAuth(bearerOptions);
       const auth = await authenticate(request);
       if (auth instanceof Response) return auth;
       return handler.fetch(request, {authInfo: auth});
@@ -121,7 +132,7 @@ async function authenticateToken(
   requestId: string,
 ): Promise<AuthInfo> {
   try {
-    const principal = await runApplicationEffect(
+    const authenticated = await runApplicationEffect(
       dependencies.applicationRuntime,
       AuthenticationService.use((authentication) =>
         authentication.authenticateMcpBearer(
@@ -131,20 +142,30 @@ async function authenticateToken(
       {requestId, spanName: "mcp.authenticate"},
     );
     return {
-      clientId: principal.id,
-      // SDK v2 requires request AuthInfo to have a finite horizon. The real
-      // credential was verified above on this request; this value is not an
-      // API-key lifetime and every later request is verified again.
-      expiresAt: Math.floor(Date.now() / 1_000) + 60,
-      extra: {artifactServerPrincipal: principal},
-      scopes: [mcpScope],
+      clientId: authenticated.clientId,
+      expiresAt: authenticated.expiresAt,
+      extra: {artifactServerPrincipal: authenticated.principal},
+      scopes: [...authenticated.scopes],
       token,
     };
   } catch (cause) {
     if (
       cause instanceof Error
       && isArtifactServerFailure(cause)
-      && cause._tag === "IdentityRepositoryFailure"
+      && cause._tag === "AuthorizationDenied"
+    ) {
+      throw new OAuthError(
+        OAuthErrorCode.InsufficientScope,
+        "The bearer credential does not grant Artifact Server MCP access.",
+      );
+    }
+    if (
+      cause instanceof Error
+      && isArtifactServerFailure(cause)
+      && (
+        cause._tag === "IdentityRepositoryFailure" ||
+        cause._tag === "IdentityProviderFailure"
+      )
     ) {
       await runApplicationEffect(
         dependencies.applicationRuntime,

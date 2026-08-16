@@ -11,7 +11,8 @@ import {
   startExternalStorageServer,
   type ExternalStorageServerConfig,
 } from "../external-storage/start-external-storage-server.js";
-import {WorkOsIdentityProvider} from "../identity/workos-identity-provider.js";
+import {createWorkOsHostedAuthentication} from
+  "../identity/workos-hosted-authentication.js";
 import {
   checkCompactIntegrity,
   checkExternalStorageIntegrity,
@@ -290,6 +291,9 @@ function configureExternalStorageStart(
     .action(async (options: StartExternalStorageOptions) => {
       const parsed = await parseExternalConfiguration(options.host, options.port);
       const workOs = await loadWorkOsConfiguration(process.env);
+      const hostedAuthentication = workOs === null
+        ? null
+        : await createWorkOsHostedAuthentication(workOs);
       let serverConfig: ExternalStorageServerConfig = {
         apiToken: parsed.apiToken,
         applicationOrigin: parsed.applicationOrigin,
@@ -306,17 +310,10 @@ function configureExternalStorageStart(
         shutdownDeadlineMilliseconds: parsed.shutdownDeadlineMilliseconds,
         stagingCleanupPolicy: parsed.stagingCleanupPolicy,
       };
-      if (workOs !== null) {
+      if (hostedAuthentication !== null) {
         serverConfig = {
           ...serverConfig,
-          interactiveIdentityProvider: new WorkOsIdentityProvider({
-            apiKey: workOs.apiKey,
-            clientId: workOs.clientId,
-            redirectUri: new URL(
-              "/auth/callback",
-              workOs.applicationOrigin,
-            ).toString(),
-          }),
+          ...hostedAuthentication,
         };
       }
       if (parsed.localBootstrapCredential !== null) {
@@ -346,6 +343,9 @@ async function startCompactServer(
       configuration.bootstrapAdministratorEmail,
     ARTIFACT_SERVER_ORIGIN: configuration.applicationOrigin,
   });
+  const hostedAuthentication = workOs === null
+    ? null
+    : await createWorkOsHostedAuthentication(workOs);
   let serverConfig: LocalServerConfig = {
     apiToken: Redacted.value(configuration.apiToken),
     applicationOrigin: configuration.applicationOrigin,
@@ -363,17 +363,10 @@ async function startCompactServer(
     shutdownDeadlineMilliseconds: configuration.shutdownDeadlineMilliseconds,
     stagingCleanupPolicy: configuration.stagingCleanupPolicy,
   };
-  if (workOs !== null) {
+  if (hostedAuthentication !== null) {
     serverConfig = {
       ...serverConfig,
-      interactiveIdentityProvider: new WorkOsIdentityProvider({
-        apiKey: workOs.apiKey,
-        clientId: workOs.clientId,
-        redirectUri: new URL(
-          "/auth/callback",
-          workOs.applicationOrigin,
-        ).toString(),
-      }),
+      ...hostedAuthentication,
     };
   }
   return startLocalServer(serverConfig);

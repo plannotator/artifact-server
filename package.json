@@ -76,6 +76,7 @@
     "commander": "15.0.0",
     "effect": "4.0.0-rc.108",
     "hono": "4.13.1",
+    "jose": "6.2.9",
     "jsonc-parser": "3.3.1",
     "tldts": "7.4.10",
     "unicode-case-folding": "1.1.1",

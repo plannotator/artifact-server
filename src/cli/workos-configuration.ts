@@ -11,6 +11,7 @@ const workOsEnvironmentSchema = z.object({
   ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL: z.email().optional(),
   ARTIFACT_SERVER_ORIGIN: z.url().optional(),
   ARTIFACT_SERVER_WORKOS_CLIENT_ID: z.string().min(1).optional(),
+  ARTIFACT_SERVER_WORKOS_ISSUER: z.url().optional(),
 });
 
 /** Complete optional WorkOS browser-login configuration. */
@@ -19,6 +20,7 @@ export interface WorkOsConfiguration {
   readonly applicationOrigin: string;
   readonly bootstrapAdministratorEmail: string;
   readonly clientId: string;
+  readonly issuer: string;
 }
 
 /** Load all-or-nothing WorkOS settings, including a file-backed API key. */
@@ -39,10 +41,11 @@ export async function loadWorkOsConfiguration(
     parsed.ARTIFACT_SERVER_ORIGIN,
     apiKey,
     parsed.ARTIFACT_SERVER_WORKOS_CLIENT_ID,
+    parsed.ARTIFACT_SERVER_WORKOS_ISSUER,
   ];
   if (requiredValues.some((value) => value === undefined || value === null)) {
     throw new Error(
-      "WorkOS login requires ARTIFACT_SERVER_ORIGIN, ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL, ARTIFACT_SERVER_WORKOS_API_KEY or ARTIFACT_SERVER_WORKOS_API_KEY_FILE, and ARTIFACT_SERVER_WORKOS_CLIENT_ID.",
+      "Hosted WorkOS authentication requires ARTIFACT_SERVER_ORIGIN, ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL, ARTIFACT_SERVER_WORKOS_API_KEY or ARTIFACT_SERVER_WORKOS_API_KEY_FILE, ARTIFACT_SERVER_WORKOS_CLIENT_ID, and ARTIFACT_SERVER_WORKOS_ISSUER.",
     );
   }
   return {
@@ -52,6 +55,7 @@ export async function loadWorkOsConfiguration(
       parsed.ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL,
     ),
     clientId: requireString(parsed.ARTIFACT_SERVER_WORKOS_CLIENT_ID),
+    issuer: requireString(parsed.ARTIFACT_SERVER_WORKOS_ISSUER),
   };
 }
 

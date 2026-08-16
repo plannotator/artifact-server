@@ -3,12 +3,19 @@ import path from "node:path";
 
 import { Effect, Layer, ManagedRuntime, Redacted } from "effect";
 import type { ApplicationRuntime } from "../application/application-runtime.js";
-import type { BearerCredentialVerifier } from "../application/authentication.js";
+import type {
+  BearerCredentialVerifier,
+  ExternalMcpBearerVerifier,
+} from "../application/authentication.js";
 import type { InteractiveIdentityProvider } from "../application/interactive-login.js";
 import type { Clock } from "../core/ports.js";
 import { SystemClock, SystemIdGenerator } from "../core/system.js";
 import { createHttpApp } from "../http/create-http-app.js";
-import type {ApiOAuthResourceConfiguration} from "../http/create-http-app.js";
+import type {
+  ApiOAuthResourceConfiguration,
+  HttpAppDependencies,
+  McpOAuthResourceConfiguration,
+} from "../http/create-http-app.js";
 import {
   defaultCompletedRequestLogSampleRate,
   otlpLayer,
@@ -41,8 +48,10 @@ export interface LocalRuntimeConfig {
   readonly dataDirectory: string;
   readonly externalApiBearerVerifier?: BearerCredentialVerifier;
   readonly externalMcpBearerVerifier?: BearerCredentialVerifier;
+  readonly externalMcpOAuthVerifier?: ExternalMcpBearerVerifier;
   readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
   readonly localBootstrapToken?: string;
+  readonly mcpOAuthResource?: McpOAuthResourceConfiguration;
   readonly observability?: boolean;
   readonly runtimeLifecycle?: RuntimeLifecycle;
   readonly installationId?: string;
@@ -85,6 +94,7 @@ export async function createLocalRuntime(
     clock: config.clock ?? new SystemClock(),
     externalApiBearerVerifier: config.externalApiBearerVerifier ?? null,
     externalMcpBearerVerifier: config.externalMcpBearerVerifier ?? null,
+    externalMcpOAuthVerifier: config.externalMcpOAuthVerifier ?? null,
     ids: new SystemIdGenerator(),
     identityRepository,
     installationId,
@@ -119,12 +129,19 @@ export async function createLocalRuntime(
       contentDomain: config.contentDomain,
       trustedApplicationOrigin: config.applicationOrigin ?? null,
     };
-    const appDependencies = config.apiOAuthResource === undefined
-      ? appDependenciesWithoutOAuth
-      : {
-        ...appDependenciesWithoutOAuth,
+    let appDependencies: HttpAppDependencies = appDependenciesWithoutOAuth;
+    if (config.apiOAuthResource !== undefined) {
+      appDependencies = {
+        ...appDependencies,
         apiOAuthResource: config.apiOAuthResource,
       };
+    }
+    if (config.mcpOAuthResource !== undefined) {
+      appDependencies = {
+        ...appDependencies,
+        mcpOAuthResource: config.mcpOAuthResource,
+      };
+    }
     const app = createHttpApp(config.runtimeLifecycle === undefined
       ? appDependencies
       : {...appDependencies, runtimeLifecycle: config.runtimeLifecycle});

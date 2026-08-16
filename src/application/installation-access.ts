@@ -176,6 +176,16 @@ export interface InstallationAccessOperations {
   readonly authenticateManagedApiKey: (
     credential: Redacted.Redacted,
   ) => Effect.Effect<Principal, AuthenticationRequired | IdentityRepositoryFailure>;
+  readonly authenticateExternalIdentity: (
+    identity: ExternalIdentity,
+  ) => Effect.Effect<
+    Principal,
+    IdentityAdmissionDenied | IdentityConflict | IdentityRepositoryFailure
+  >;
+  readonly authenticateExternalSubject: (
+    provider: string,
+    subject: string,
+  ) => Effect.Effect<Principal | null, IdentityRepositoryFailure>;
   readonly authenticateSession: (
     credential: Redacted.Redacted,
   ) => Effect.Effect<
@@ -325,6 +335,13 @@ function makeInstallationAccessService(
   const completeExternalIdentity = Effect.fn(
     "InstallationAccessService.completeExternalIdentity",
   )(function*(identity: ExternalIdentity) {
+    const member = yield* resolveExternalMember(identity);
+    return yield* issueSession(member);
+  });
+
+  const resolveExternalMember = Effect.fn(
+    "InstallationAccessService.resolveExternalMember",
+  )(function*(identity: ExternalIdentity) {
     if (!identity.emailVerified) {
       return yield* Effect.fail(new IdentityAdmissionDenied({
         message: "The login provider did not verify the email address.",
@@ -373,7 +390,24 @@ function makeInstallationAccessService(
       provider: identity.provider,
       subject: identity.subject,
     });
-    return yield* issueSession(member);
+    return member;
+  });
+
+  const authenticateExternalIdentity = Effect.fn(
+    "InstallationAccessService.authenticateExternalIdentity",
+  )(function*(identity: ExternalIdentity) {
+    return humanPrincipal(yield* resolveExternalMember(identity));
+  });
+
+  const authenticateExternalSubject = Effect.fn(
+    "InstallationAccessService.authenticateExternalSubject",
+  )(function*(provider: string, subject: string) {
+    const member = yield* dependencies.repository.findActiveMemberByExternalIdentity(
+      dependencies.installationId,
+      provider,
+      subject,
+    );
+    return member === null ? null : humanPrincipal(member);
   });
 
   const authenticateSession = Effect.fn(
@@ -592,6 +626,8 @@ function makeInstallationAccessService(
 
   return InstallationAccessService.of({
     admitMember,
+    authenticateExternalIdentity,
+    authenticateExternalSubject,
     authenticateManagedApiKey,
     authenticateSession,
     completeExternalIdentity,
