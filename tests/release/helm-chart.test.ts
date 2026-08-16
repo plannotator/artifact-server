@@ -425,6 +425,10 @@ describe.sequential("Artifact Server Helm release", () => {
     expect(rolloutActivity.successfulPublications).toBeGreaterThan(0);
     expect(rolloutActivity.successfulReads).toBeGreaterThan(0);
 
+    // Helm can return after the Deployment reports available while the pod
+    // list is still between terminating and replacement snapshots. Require
+    // the same bounded steady-state condition used after explicit pod loss.
+    await waitForDeployment();
     const rolledPods = await readyPods();
     expect(rolledPods).toHaveLength(2);
     expect(intersection(podUids(initialPods), podUids(rolledPods))).toEqual([]);
