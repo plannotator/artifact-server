@@ -7,7 +7,7 @@ import "./index.css";
 const rootElement = document.querySelector("#root");
 
 if (!(rootElement instanceof HTMLElement)) {
-  throw new Error("QAMiner could not find its root element.");
+  throw new Error("Artifact Server could not find its root element.");
 }
 
 createRoot(rootElement).render(
