@@ -174,4 +174,5 @@ process.on("message", (input) => {
   });
 });
 
-await import("../dist/cli/main.js");
+const compiledCliUrl = new URL("../dist/cli/main.js", import.meta.url);
+await import(compiledCliUrl.href);
