@@ -24,6 +24,11 @@ login wiring are implemented. Live browser approval, refresh, revocation, and
 named-client qualification remain release gates, so this package must not yet
 be advertised as the complete hosted Artifact Server service.
 
+The isolated WorkOS staging environment has CIMD, compatibility DCR, the exact
+staging MCP resource, and its callback configured. The secret-free dashboard
+record is `../../evidence/workos-mcp-staging-configuration.json`. That record
+proves configuration only; it does not replace the live client-flow gate.
+
 ## Pinned tools
 
 | Tool | Version |

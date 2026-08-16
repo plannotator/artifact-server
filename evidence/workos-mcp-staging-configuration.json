@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-16T15:44:57Z",
+  "scope": "Live WorkOS staging configuration only; this is not a hosted MCP client-flow conformance claim.",
+  "workos": {
+    "project": "Artifact Server",
+    "environment": "Staging",
+    "environmentId": "environment_01KZX4K46TQD6VDGQSW0D8E5G9",
+    "application": "Artifact Server",
+    "applicationId": "app_01KZX4K4SQ5A9YE5AMGECTKTWB",
+    "clientId": "client_01KZX4K4JQDM70TRRXPYXCSDNS",
+    "issuer": "https://eloquent-cello-83-staging.authkit.app"
+  },
+  "mcp": {
+    "clientIdMetadataDocument": "enabled",
+    "dynamicClientRegistration": "enabled_for_compatibility",
+    "defaultResourceIndicator": "https://staging.artifactserver.com/mcp"
+  },
+  "redirects": {
+    "default": "https://staging.artifactserver.com/auth/callback",
+    "localDevelopmentRetained": "http://localhost:8787/auth/callback"
+  },
+  "serverCredential": {
+    "created": true,
+    "storedOutsideRepository": true,
+    "storage": "macOS Keychain through the WorkOS CLI environment store",
+    "valueRecorded": false
+  },
+  "remainingReleaseGates": [
+    "deploy the exact staging MCP resource",
+    "complete browser approval and callback",
+    "verify token use, refresh, revocation, and reconnect",
+    "qualify Codex, Claude Code, claude.ai, Cursor, and VS Code",
+    "run the two-human ownership-transfer test"
+  ]
+}
