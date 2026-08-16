@@ -329,7 +329,7 @@ The publishing skill resolves its target in this order: an explicit address or l
 
 ## Deployment architecture
 
-The portable product is the container or local process, database schema, blob-storage interface, URL and manifest contract, API, MCP tools, migrations, health checks, backup format, and conformance tests. Infrastructure tools are replaceable deployment adapters.
+The portable product is the container or local process, database schema, blob-storage interface, URL and manifest contract, API, MCP tools, migrations, health checks, backup and restore acceptance contract, and conformance tests. Each deployment uses the backup mechanism native to its durable providers. Infrastructure tools are replaceable deployment adapters.
 
 Every deployed process records request counts, handling time, and spans. It writes a configurable sample of normal request logs and always logs server failures and requests that take at least one second. It creates a server request ID, returns it in `X-Request-Id`, and uses it to connect HTTP or MCP work to Effect spans. Operators can export logs, metrics, and traces to any standard OTLP collector with OpenTelemetry environment variables. Telemetry records HTTP method, matched route pattern, status, protocol, deployment mode, and installation identity. It does not record authorization values, cookies, query strings, file contents, raw artifact IDs, or raw unbounded paths.
 

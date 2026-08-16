@@ -1,0 +1,36 @@
+{
+  "artifacts": {
+    "media": {
+      "artifactId": "art_5b20498d-98b2-4bed-9ea2-41f55a1a688f",
+      "versionId": "ver_e4a6af69-08ee-48d2-b1d6-e9b313707080",
+      "versionOrigin": "https://afd6a16dbae8d975dc98175b7d7e00385ed7.aws-qualification-content.contextmix.com"
+    },
+    "spa": {
+      "artifactId": "art_1bd1b3e1-3714-4e0d-9385-3a88d41d6189",
+      "versionId": "ver_cc466a69-9718-4d63-9c43-da33db452218",
+      "versionOrigin": "https://5e1ea8d84e84b55f3d3a9393e0ee06a2c715.aws-qualification-content.contextmix.com"
+    },
+    "static": {
+      "artifactId": "art_46e8dd9b-3274-4672-9e2b-4318e405de42",
+      "versionId": "ver_d2dc136b-e5e6-486e-b46c-356219f6a7a5",
+      "versionOrigin": "https://044d323af85174bc9315d1c0806618844ba2.aws-qualification-content.contextmix.com"
+    }
+  },
+  "completedAt": "2026-08-16T02:37:15.373Z",
+  "ranges": {
+    "etag": "\"be45cb2605bf36bebde684841a28f0fd43c69850a3dce5fedba69928ee3a8991\"",
+    "full": 200,
+    "head": 206,
+    "invalid": 416,
+    "notModified": 304,
+    "partial": 206
+  },
+  "routing": {
+    "spaExactAsset": 200,
+    "spaMissingAsset": 404,
+    "spaNavigation": 200,
+    "staticMissing": 404
+  },
+  "schemaVersion": 1,
+  "target": "aws"
+}

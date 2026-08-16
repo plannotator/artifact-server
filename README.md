@@ -35,6 +35,10 @@ This repository contains the local publication foundation and the first external
 - normalized artifact tags with exact filtering and audited replacement;
 - idempotent artifact tombstones that retain committed versions and block every content path;
 - public-link delivery and version-scoped account-required browser sessions;
+- explicit static-site and single-page-application routing with exact-path-first fallback;
+- safe `GET`, `HEAD`, conditional, and single-range content delivery;
+- administrator-only, audited artifact ownership reassignment;
+- bounded cleanup of expired uncommitted uploads without committed-blob garbage collection;
 - single-use private-content bootstraps and host-only, HttpOnly content cookies;
 - authenticated browser sessions for current or earlier exact versions;
 - persistence of committed versions and in-progress uploads across a full server restart;
@@ -93,8 +97,13 @@ The remaining product work is:
    adapter is preview-only until it passes a live Azure qualification.
 5. The optional `operate-artifact-server` skill after its deployment commands
    are stable.
-6. SPA fallback routing, ownership changes, expired-staging cleanup, and
-   permanent deletion.
+6. Complete the remaining cross-deployment recovery and live-cloud proof in
+   [`phase-11-content-and-lifecycle-closure.md`](./spec/phase-11-content-and-lifecycle-closure.md).
+   Its shared behavior, local/package gates, Compose gates, Kubernetes gate,
+   provider contract tests, and scheduled cleanup implementations are complete.
+   The remaining work is live Cloudflare, AWS, and GCP qualification.
+   Committed-blob garbage collection and permanent deletion are not part of
+   the initial product.
 7. Direct Plannotator project pairing and the review bridge after the separate
    integration contract passes.
 
@@ -146,6 +155,24 @@ Move the extracted `artifactserver` directory anywhere user-owned. Add its
 `bin` directory to `PATH` if the shorter `artifactserver` command is preferred.
 The executable directory and persistent data directory are separate: replacing
 the executable directory must not replace or remove local data.
+
+Direct local and Compose processes remove expired uploads that were never
+committed. They run one bounded pass at startup and every 15 minutes. Operators
+can run the same operation directly:
+
+```sh
+artifactserver maintenance cleanup-staging --once --mode compact --limit 100
+```
+
+The defaults are a 100-upload batch, four concurrent removals, a 15-minute
+interval, and a five-minute delay after upload expiry. These can be changed
+with `ARTIFACT_SERVER_STAGING_CLEANUP_BATCH_SIZE`,
+`ARTIFACT_SERVER_STAGING_CLEANUP_CONCURRENCY`,
+`ARTIFACT_SERVER_STAGING_CLEANUP_INTERVAL_MS`, and
+`ARTIFACT_SERVER_STAGING_CLEANUP_SETTLE_DELAY_MS`. Setting
+`ARTIFACT_SERVER_STAGING_CLEANUP_SCHEDULE=external` disables the process loop
+when a deployment scheduler owns it. Cleanup never selects committed versions
+or content-addressed blobs.
 
 The package is built without native Node extensions, so the same archive can be
 used with supported Node installations on macOS, Linux, and Windows. The

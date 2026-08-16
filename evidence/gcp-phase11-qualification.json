@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "target": "gcp",
+  "completedAt": null,
+  "services": ["Cloud Run", "Cloud SQL for PostgreSQL", "Google Cloud Storage", "Cloud Scheduler"],
+  "results": {
+    "staticAndSpaRouting": "pass",
+    "mediaRanges": "pass_after_edge_fix",
+    "ownershipTransfer": "blocked_missing_human_identity_provider",
+    "servicePrincipalOwnershipDenial": "pass",
+    "scheduledAbandonedUploadCleanup": "pass",
+    "committedArtifactsPreservedByCleanup": "pass",
+    "populatedDatabaseMigration": "pass",
+    "redeploymentPreservesData": "pass",
+    "providerInterruptionFailsClosedAndRecovers": "pass",
+    "backupAndRestorePreserveIdsAndBytes": "pass",
+    "restoredIntegrityCheck": "pass",
+    "safeDestroy": "in_progress"
+  },
+  "details": {
+    "cleanup": "A real Cloud Scheduler execution invoked the repository-managed Cloud Run cleanup job. It selected and deleted exactly one expired uncommitted upload with zero failures; the staging row and live GCS generation disappeared while committed bytes remained exact.",
+    "migration": "The final image upgraded a populated pre-Phase-11 Cloud SQL catalog and both the source and restored installations passed the current integrity scanner.",
+    "restore": "An on-demand Cloud SQL backup and exact GCS copy were restored into clean private targets. Source and restore each scanned 4 artifacts, 4 versions, 7 blobs, and 435 bytes with zero integrity problems.",
+    "providerInterruption": "Stopping only the disposable restored Cloud SQL instance made readiness return 503 while GCS remained ready. Restarting it returned the same runtime to readiness 200 with all components ready.",
+    "rangeEdgeFix": "Live qualification found that Cloud CDN could answer an unsupported multiple-range request from cache with a full 200 response even though the origin returned 416. The GCP backend now bypasses Cloud CDN whenever Range is present. After the policy converged and an ordinary full GET primed the unchanged URL, repeated valid ranges returned exact 206 slices and repeated multiple ranges returned 416; Cloud Run logs confirmed all ranged requests reached the origin.",
+    "ownership": "The isolated installation has no hosted human login provider. The service key is correctly denied; the positive two-human transfer remains gated on hosted authentication."
+  },
+  "testResults": [
+    {
+      "name": "live GCP Phase 11 qualification",
+      "status": "passed",
+      "assertionResults": [
+        {"title": "PUB-009-B: Cloud Scheduler cleanup removed an expired uncommitted upload and its staging bytes", "status": "passed"},
+        {"title": "PUB-009-F: scheduled cleanup preserved committed artifacts and referenced bytes", "status": "passed"},
+        {"title": "CNT-007-B: static and SPA routing followed the saved routing mode", "status": "passed"},
+        {"title": "CNT-007-F: missing SPA assets returned 404 instead of entry HTML", "status": "passed"},
+        {"title": "CNT-008-B: full, conditional, HEAD, and cache-bypassed single-range media requests returned the required responses", "status": "passed"},
+        {"title": "CNT-008-F: repeated invalid and multiple ranges returned 416 after the GCP edge fix", "status": "passed"},
+        {"title": "OPS-003-B: Cloud SQL and GCS restored into clean providers with stable IDs and exact bytes", "status": "passed"},
+        {"title": "OPS-004-B: source and restored installations passed the normal read-only integrity scan", "status": "passed"},
+        {"title": "OPS-005-B: the provider qualification procedure produced a verified clean restore", "status": "passed"},
+        {"title": "OPS-006-B: committed artifacts survived cleanup, redeployment, provider recovery, and restore", "status": "passed"},
+        {"title": "OPS-006-F: cleanup selected only the expired uncommitted staging record", "status": "passed"}
+      ]
+    }
+  ]
+}

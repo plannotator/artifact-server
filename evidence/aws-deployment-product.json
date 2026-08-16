@@ -1,17 +1,17 @@
 {
   "applicationOrigin": "https://aws-qualification.reala2a.org",
   "artifact": {
-    "id": "art_cb8c3fde-8dcf-4a58-b98c-a3ccce8929b9",
+    "id": "art_f1f82d7c-9d0c-4257-be62-428ccadfbc57",
     "versionIds": [
-      "ver_70984501-5ee0-43f1-aa8f-f0fe9b015b5d",
-      "ver_951c8a68-c843-4df4-893e-a9f67d5b7b38"
+      "ver_568e907e-da5e-4062-8930-fb922e2aba60",
+      "ver_a609deed-ac97-4f8a-93da-fafd209e4e8b"
     ],
     "versionOrigins": [
-      "https://31a0304086b8bae70390e5444bcd9b4aadd3.aws-qualification-content.contextmix.com",
-      "https://c7a55601bc2e10ec2b7add6ad8182ebd0afc.aws-qualification-content.contextmix.com"
+      "https://6876bf8501c215e74cf615c19d736f6a426f.aws-qualification-content.contextmix.com",
+      "https://28d809f52b238ba264d76c49ddc5bb0675b5.aws-qualification-content.contextmix.com"
     ]
   },
-  "completedAt": "2026-08-15T16:36:10.291Z",
+  "completedAt": "2026-08-16T03:14:21.104Z",
   "mcp": {
     "discoveryStatus": 200,
     "unauthenticatedStatus": 401
@@ -19,38 +19,38 @@
   "performance": [
     {
       "concurrentUsers": 1,
-      "maximumMilliseconds": 105.41,
-      "medianMilliseconds": 105.41,
+      "maximumMilliseconds": 184.12,
+      "medianMilliseconds": 184.12,
       "requests": 1,
-      "wallMilliseconds": 105.62
+      "wallMilliseconds": 184.34
     },
     {
       "concurrentUsers": 10,
-      "maximumMilliseconds": 520.81,
-      "medianMilliseconds": 480.37,
+      "maximumMilliseconds": 547.32,
+      "medianMilliseconds": 396.62,
       "requests": 10,
-      "wallMilliseconds": 527.56
+      "wallMilliseconds": 550.41
     },
     {
       "concurrentUsers": 25,
-      "maximumMilliseconds": 756.47,
-      "medianMilliseconds": 470.64,
+      "maximumMilliseconds": 652.4,
+      "medianMilliseconds": 450.75,
       "requests": 25,
-      "wallMilliseconds": 757.89
+      "wallMilliseconds": 659.59
     },
     {
       "concurrentUsers": 50,
-      "maximumMilliseconds": 1103.77,
-      "medianMilliseconds": 602.58,
+      "maximumMilliseconds": 1219.28,
+      "medianMilliseconds": 700.83,
       "requests": 50,
-      "wallMilliseconds": 1107.35
+      "wallMilliseconds": 1226.07
     },
     {
       "concurrentUsers": 100,
-      "maximumMilliseconds": 1894.88,
-      "medianMilliseconds": 998.57,
+      "maximumMilliseconds": 1980.82,
+      "medianMilliseconds": 1161.13,
       "requests": 100,
-      "wallMilliseconds": 1914.89
+      "wallMilliseconds": 1994.85
     }
   ],
   "readiness": {
@@ -72,6 +72,6 @@
     "status": "ready"
   },
   "schemaVersion": 1,
-  "startedAt": "2026-08-15T16:36:00.862Z",
+  "startedAt": "2026-08-16T03:14:10.674Z",
   "target": "aws"
 }

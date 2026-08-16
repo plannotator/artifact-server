@@ -1,6 +1,6 @@
 version: 1
 product: artifactserver.com
-updated: "2026-08-15"
+updated: "2026-08-16"
 evidence_root: ".."
 
 source:
@@ -79,7 +79,7 @@ allowed_modules:
 required_source_sections:
   top: [PRD-001, PRD-002]
   product: [PRD-003]
-  artifact: [PRJ-001, PRJ-002, PRJ-003, PRJ-004, ART-001, ART-002, ART-003, ART-004, ART-005, ART-008]
+  artifact: [PRJ-001, PRJ-002, PRJ-003, PRJ-004, ART-001, ART-002, ART-003, ART-004, ART-005, ART-008, ART-009]
   experience: [CNT-001, CNT-002, VER-001, DIF-001, GIT-001]
   sharing: [AUTH-001, AUTH-002, AUTH-003, AUTH-004]
   plannotator: [PLN-001, PLN-002, PLN-003, PLN-004, PLN-005, PLN-017]
@@ -360,6 +360,24 @@ requirements:
         run: evidence/local-foundation.json
         recorded_at: "2026-08-13T08:03:55Z"
 
+  - id: ART-009
+    kind: security
+    behavior: Only a direct human installation administrator can atomically reassign an active artifact to another active human member of the same installation; the change keeps every version unchanged and records the responsible action.
+    owner: artifact-core
+    source: {file: artifact-server-product-spec.html, anchor: artifact}
+    acceptance:
+      behavior: {id: ART-009-B, description: Reassign an artifact to an active member, retry the exact command, and confirm one owner change, one immutable action, unchanged versions, the old owner's lost mutation authority, and the new owner's immediate mutation authority.}
+      failure: {id: ART-009-F, description: Reject an owner, ordinary member, service principal, delegated principal, unchanged target, inactive or nonhuman target, cross-installation target, stale version, and changed idempotency retry without changing ownership or action history.}
+    deployments: *all
+    status: behavior_verified
+    depends_on: [ART-002, AUTH-008, AUD-001]
+    evidence:
+      - deployment: local
+        tests: [ART-009-B, ART-009-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-16T01:23:20Z"
+
   - id: MAN-001
     kind: behavior
     behavior: A canonical manifest contains a sorted list of normalized paths, fingerprints, sizes, media types, disposition, entry file, routing mode, and serving metadata.
@@ -611,9 +629,29 @@ requirements:
       behavior: {id: PUB-009-B, description: Expire abandoned staging records and confirm that their staging bytes are removed.}
       failure: {id: PUB-009-F, description: Cleanup cannot delete a blob referenced by a committed version or one involved in a concurrent commit.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [PUB-005]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [PUB-009-B, PUB-009-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-16T01:23:20Z"
+      - deployment: cloudflare
+        tests: [PUB-009-B, PUB-009-F]
+        result: pass
+        run: evidence/cloudflare-phase11-qualification.json
+        recorded_at: "2026-08-16T03:54:44Z"
+      - deployment: aws
+        tests: [PUB-009-B, PUB-009-F]
+        result: pass
+        run: evidence/aws-phase11-qualification.json
+        recorded_at: "2026-08-16T03:24:47Z"
+      - deployment: gcp
+        tests: [PUB-009-B, PUB-009-F]
+        result: pass
+        run: evidence/gcp-phase11-qualification.json
+        recorded_at: "2026-08-16T04:05:00Z"
 
   - id: PUB-010
     kind: security
@@ -735,9 +773,14 @@ requirements:
       behavior: {id: CNT-002-B, description: Exercise image, PDF, audio, video, text, Markdown, JSON, source, ZIP, office, and unknown-file fixtures and verify the declared native or download behavior.}
       failure: {id: CNT-002-F, description: A misleading filename or media type cannot cause active content to be served with an unsafe disposition or sniffed type.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [CNT-008]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [CNT-002-B, CNT-002-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-16T01:23:20Z"
 
   - id: CNT-003
     kind: security
@@ -805,9 +848,24 @@ requirements:
       behavior: {id: CNT-007-B, description: Run static and SPA fixtures through navigation and missing-asset cases and observe the declared routing.}
       failure: {id: CNT-007-F, description: Missing JavaScript, stylesheets, images, fonts, and data never receive the SPA entry HTML.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [MAN-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [CNT-007-B, CNT-007-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-16T01:23:20Z"
+      - deployment: aws
+        tests: [CNT-007-B, CNT-007-F]
+        result: pass
+        run: evidence/aws-phase11-qualification.json
+        recorded_at: "2026-08-16T02:37:15Z"
+      - deployment: gcp
+        tests: [CNT-007-B, CNT-007-F]
+        result: pass
+        run: evidence/gcp-phase11-qualification.json
+        recorded_at: "2026-08-16T04:05:00Z"
 
   - id: CNT-008
     kind: security
@@ -818,9 +876,24 @@ requirements:
       behavior: {id: CNT-008-B, description: Verify headers, conditional requests, HEAD, and media range requests for the content fixture suite.}
       failure: {id: CNT-008-F, description: Unsupported methods, malformed ranges, misleading extensions, and active unknown files do not bypass safe serving rules.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [MAN-002]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [CNT-008-B, CNT-008-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-16T01:23:20Z"
+      - deployment: aws
+        tests: [CNT-008-B, CNT-008-F]
+        result: pass
+        run: evidence/aws-phase11-qualification.json
+        recorded_at: "2026-08-16T02:37:15Z"
+      - deployment: gcp
+        tests: [CNT-008-B, CNT-008-F]
+        result: pass
+        run: evidence/gcp-phase11-qualification.json
+        recorded_at: "2026-08-16T04:05:00Z"
 
   - id: CNT-009
     kind: constraint
@@ -2372,6 +2445,21 @@ requirements:
         result: pass
         run: evidence/compact-compose.json
         recorded_at: "2026-08-14T04:37:40Z"
+      - deployment: cloudflare
+        tests: [OPS-003-B]
+        result: pass
+        run: evidence/cloudflare-phase11-qualification.json
+        recorded_at: "2026-08-16T03:54:44Z"
+      - deployment: aws
+        tests: [OPS-003-B]
+        result: pass
+        run: evidence/aws-phase11-qualification.json
+        recorded_at: "2026-08-16T03:24:47Z"
+      - deployment: gcp
+        tests: [OPS-003-B]
+        result: pass
+        run: evidence/gcp-phase11-qualification.json
+        recorded_at: "2026-08-16T04:05:00Z"
 
   - id: OPS-004
     kind: behavior
@@ -2382,9 +2470,19 @@ requirements:
       behavior: {id: OPS-004-B, description: Scan a valid installation and report all manifests, fingerprints, sizes, paths, and blobs consistent.}
       failure: {id: OPS-004-F, description: Detect missing blobs, digest mismatches, invalid paths, orphaned current pointers, and cross-installation references without repairing them silently.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [MAN-001, MAN-006]
-    evidence: []
+    evidence:
+      - deployment: aws
+        tests: [OPS-004-B]
+        result: pass
+        run: evidence/aws-phase11-qualification.json
+        recorded_at: "2026-08-16T03:24:47Z"
+      - deployment: gcp
+        tests: [OPS-004-B]
+        result: pass
+        run: evidence/gcp-phase11-qualification.json
+        recorded_at: "2026-08-16T04:05:00Z"
 
   - id: OPS-005
     kind: release_gate
@@ -2395,9 +2493,19 @@ requirements:
       behavior: {id: OPS-005-B, description: Follow only the published operator procedure on a populated deployment and obtain a verified clean restore.}
       failure: {id: OPS-005-F, description: A target lacking repeatable backup, restore, integrity, and recovery evidence cannot be marked team-ready or supported.}
     deployments: *external_storage
-    status: specified
+    status: behavior_verified
     depends_on: [OPS-003, OPS-004]
-    evidence: []
+    evidence:
+      - deployment: aws
+        tests: [OPS-005-B]
+        result: pass
+        run: evidence/aws-phase11-qualification.json
+        recorded_at: "2026-08-16T03:24:47Z"
+      - deployment: gcp
+        tests: [OPS-005-B]
+        result: pass
+        run: evidence/gcp-phase11-qualification.json
+        recorded_at: "2026-08-16T04:05:00Z"
 
   - id: OPS-006
     kind: constraint
@@ -2408,9 +2516,29 @@ requirements:
       behavior: {id: OPS-006-B, description: Publish, race, restore, restart, and wait beyond staging expiry and confirm every committed version and referenced byte remains.}
       failure: {id: OPS-006-F, description: Cleanup may delete only expired uncommitted staging records and cannot select a committed or possibly referenced blob.}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [PUB-009, ART-007]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [OPS-006-B, OPS-006-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-16T01:23:20Z"
+      - deployment: cloudflare
+        tests: [OPS-006-B, OPS-006-F]
+        result: pass
+        run: evidence/cloudflare-phase11-qualification.json
+        recorded_at: "2026-08-16T03:54:44Z"
+      - deployment: aws
+        tests: [OPS-006-B, OPS-006-F]
+        result: pass
+        run: evidence/aws-phase11-qualification.json
+        recorded_at: "2026-08-16T03:24:47Z"
+      - deployment: gcp
+        tests: [OPS-006-B, OPS-006-F]
+        result: pass
+        run: evidence/gcp-phase11-qualification.json
+        recorded_at: "2026-08-16T04:05:00Z"
 
   - id: OPS-007
     kind: release_gate
@@ -2484,7 +2612,7 @@ requirements:
 
   - id: REL-001
     kind: release_gate
-    behavior: The local release includes one-process offline operation, single-file and complete-site publishing, immutable versions, comparisons, restore, two read settings, HTTP, MCP, the publishing skill, browser isolation, and optional local Git.
+    behavior: The local release includes one-process offline operation, single-file and complete-site publishing, immutable versions, comparisons, restore, two read settings, HTTP, MCP, the publishing skill, and browser isolation. Optional Git history is deferred and is not a first-release gate.
     owner: product-core
     source: {file: artifact-server-product-spec.html, anchor: implementation}
     acceptance:
