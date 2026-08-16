@@ -24,7 +24,7 @@
   "details": {
     "migration": "The first live populated D1 migration exposed a foreign-key ordering defect. The migration now snapshots rows, renames the empty replacement to the final table name, and only then repopulates it. A second live D1/R2 run preserved all dependent rows, IDs, and exact bytes with zero foreign-key violations.",
     "contentIngress": "The isolated stack intentionally created no DNS records or custom domains. Durable static, SPA, and media data was verified in D1/R2, but Cloudflare HTTP routing and range behavior cannot be claimed until a temporary wildcard content domain is approved.",
-    "ownership": "The isolated stack has no interactive human identity provider. Service-principal denial passed; the positive two-human flow remains gated on hosted authentication.",
+    "ownership": "Ownership transfer is deferred to hosted identity qualification and is not part of Cloudflare provider qualification.",
     "recovery": "The checked-in coordinated recovery command froze source writes, exported and imported D1 into an empty database, and copied all R2 objects plus metadata into an empty bucket through native Worker bindings. The restored Worker reported health and readiness 200; 3/3 artifacts, 3/3 immutable versions, 10/10 exact R2 objects and metadata, and 5/5 immutable blobs passed. Exact cleanup was verified. Detailed redacted evidence is in cloudflare-coordinated-recovery.json.",
     "destroy": "Every temporary Worker, D1 database, R2 bucket, and cron trigger was removed. The shared account-level Alchemy state Worker was not changed."
   },
