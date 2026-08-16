@@ -61,9 +61,10 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- fail "secret.keys.s3AccessKeyId and secret.keys.s3SecretAccessKey must be configured together" -}}
 {{- end -}}
 {{- $hasWorkosClient := ne .Values.identity.workosClientId "" -}}
+{{- $hasWorkosIssuer := ne .Values.identity.workosIssuer "" -}}
 {{- $hasWorkosKey := ne .Values.secret.keys.workosApiKey "" -}}
-{{- if ne $hasWorkosClient $hasWorkosKey -}}
-{{- fail "identity.workosClientId and secret.keys.workosApiKey must be configured together" -}}
+{{- if not (or (and (not $hasWorkosClient) (not $hasWorkosIssuer) (not $hasWorkosKey)) (and $hasWorkosClient $hasWorkosIssuer $hasWorkosKey)) -}}
+{{- fail "identity.workosClientId, identity.workosIssuer, and secret.keys.workosApiKey must be configured together" -}}
 {{- end -}}
 {{- $drainMilliseconds := add .Values.configuration.readinessWithdrawalMilliseconds .Values.configuration.shutdownDeadlineMilliseconds -}}
 {{- if le (mul .Values.terminationGracePeriodSeconds 1000) $drainMilliseconds -}}
@@ -177,5 +178,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
   value: /run/secrets/artifact-server/workos-api-key
 - name: ARTIFACT_SERVER_WORKOS_CLIENT_ID
   value: {{ .Values.identity.workosClientId | quote }}
+- name: ARTIFACT_SERVER_WORKOS_ISSUER
+  value: {{ .Values.identity.workosIssuer | quote }}
 {{- end }}
 {{- end -}}

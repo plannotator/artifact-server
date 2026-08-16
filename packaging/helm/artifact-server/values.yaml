@@ -39,6 +39,7 @@ secret:
 
 identity:
   workosClientId: ""
+  workosIssuer: ""
 
 serviceAccount:
   create: true

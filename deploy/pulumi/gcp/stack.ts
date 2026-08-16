@@ -268,6 +268,12 @@ export function defineGcpStack(
       value: input.workosClientId,
     });
   }
+  if (input.workosIssuer !== undefined) {
+    runtimeEnvironment.push({
+      name: "ARTIFACT_SERVER_WORKOS_ISSUER",
+      value: input.workosIssuer,
+    });
+  }
   const secretEnvironment: GcpSecretEnvironmentVariable[] = [
     {
       name: "ARTIFACT_SERVER_API_TOKEN",

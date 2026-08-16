@@ -71,6 +71,7 @@ but every package must expose these names and meanings.
 | `existingNetwork` | no | Provider-specific existing network and subnet identifiers; if absent, the package creates its documented network |
 | `dnsZoneIds` | public only | Existing authoritative zone IDs for `application` and `content`; the IDs must differ because the domains have separate registrable boundaries |
 | `workosClientId` | hosted login only | Non-secret WorkOS client identifier for this environment |
+| `workosIssuer` | hosted login only | Exact HTTPS AuthKit issuer for this environment |
 | `workosApiKeySecretRef` | hosted login only | Provider secret-manager reference, never the key value |
 | `otlpEndpoint` | no | HTTPS OTLP collector address |
 | `requestLogSampleRate` | no | Number from 0 through 1; default `0.01` |
@@ -171,6 +172,9 @@ Secrets Manager. Compose and Kubernetes use the file variants below.
 | `ARTIFACT_SERVER_HOST` | `0.0.0.0` inside the managed runtime |
 | `ARTIFACT_SERVER_PORT` | `8787` |
 | `ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE` | Shared input or `0.01` |
+| `ARTIFACT_SERVER_WORKOS_CLIENT_ID` | Hosted login only; shared WorkOS client input |
+| `ARTIFACT_SERVER_WORKOS_ISSUER` | Hosted login only; exact AuthKit issuer |
+| `ARTIFACT_SERVER_WORKOS_API_KEY_FILE` or `ARTIFACT_SERVER_WORKOS_API_KEY` | Hosted login only; provider secret reference |
 | `ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS` | `1000` unless the package proves another value |
 | `ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS` | `10000` unless the package proves another value |
 
@@ -249,7 +253,8 @@ Provider work is complete only after real-cloud evidence proves:
 - coordinated database and object restore with identical installation,
   project, artifact, and version IDs;
 - workload-identity and secret rotation;
-- public and private ingress modes;
+- every ingress mode that the package advertises (AWS supports public and
+  private; the first GCP package supports public only);
 - bounded 1, 10, 25, 50, and 100-user performance and cost evidence;
 - safe destroy that retains durable data by default; and
 - separately confirmed permanent deletion.

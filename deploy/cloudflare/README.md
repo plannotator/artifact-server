@@ -17,9 +17,12 @@ sharing, and API-key services as the other deployments. The Cloudflare package
 supplies D1 repositories and direct R2 bindings instead of SQLite, Postgres, or
 an S3 client.
 
-The current package uses an Artifact Server API token. Hosted browser login and
-WorkOS MCP authorization remain release gates; this package must not yet be
-advertised as the complete hosted Artifact Server service.
+The package accepts an Artifact Server API token and can also bind one complete
+WorkOS hosted-authentication configuration: API key secret, client ID, and
+exact AuthKit issuer. The verifier, protected-resource metadata, and browser
+login wiring are implemented. Live browser approval, refresh, revocation, and
+named-client qualification remain release gates, so this package must not yet
+be advertised as the complete hosted Artifact Server service.
 
 ## Pinned tools
 
@@ -237,13 +240,12 @@ release gate, not a dependency of artifact publication.
 
 ## Scope
 
-The current Cloudflare release work still excludes these functions:
+The current Cloudflare release work still excludes or has not qualified these
+functions:
 
-- WorkOS login and MCP authorization
 - optional Git history
-- scheduled expired-upload cleanup
-- backup and restore qualification
 - public-domain and TLS qualification
+- live WorkOS login, refresh, revocation, and named-client qualification
 - hosted load, quota, and abuse controls
 - the shared hosted control plane
 - complete hosted-product release qualification

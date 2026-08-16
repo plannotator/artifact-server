@@ -224,6 +224,59 @@ describe("Alchemy foundation plan", () => {
     );
   });
 
+  it("binds hosted WorkOS settings only as one complete deployment contract", async () => {
+    const hostedInput = {
+      ...validDeploymentInput,
+      workosApiKeySecretRef:
+        "cloudflare-secrets-store://artifact-server-workos",
+      workosClientId: "client_01_artifact_server",
+      workosIssuer: "https://artifact-server-staging.authkit.example",
+    };
+    const resolveZoneId: CloudflareZoneResolver = ({hostname}) =>
+      Effect.succeed(
+        hostname === hostedInput.applicationDomain
+          ? hostedInput.dnsZoneIds?.application ?? ""
+          : hostedInput.dnsZoneIds?.content ?? "",
+      );
+    const scratch = Test.scratchStack(options, "hosted-auth-plan");
+    const plan = await Test.run(
+      scratch.plan(
+        defineCloudflareFoundation(
+          hostedInput,
+          Redacted.make("test-only-runtime-token-value"),
+          resolveZoneId,
+          Redacted.make("test-only-workos-key-value"),
+        ),
+      ),
+      options,
+    );
+    const worker = Object.values(plan.resources).find(
+      ({resource}) => resource.Type === "Cloudflare.Worker",
+    );
+
+    expect(worker?.resource.Props).toMatchObject({
+      env: {
+        ARTIFACT_SERVER_WORKOS_CLIENT_ID: hostedInput.workosClientId,
+        ARTIFACT_SERVER_WORKOS_ISSUER: hostedInput.workosIssuer,
+      },
+    });
+
+    await expect(
+      Test.run(
+        scratch.plan(
+          defineCloudflareFoundation(
+            hostedInput,
+            Redacted.make("test-only-runtime-token-value"),
+            resolveZoneId,
+          ),
+        ),
+        options,
+      ),
+    ).rejects.toThrow(
+      "Configured WorkOS authentication requires its deployment secret.",
+    );
+  });
+
   it("keeps private ingress off domains and workers.dev", async () => {
     const {
       dnsZoneIds: _dnsZoneIds,

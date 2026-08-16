@@ -205,6 +205,10 @@ describe("AWS Pulumi deployment", () => {
       name: "NODE_EXTRA_CA_CERTS",
       value: "/usr/local/share/ca-certificates/aws-rds-global-bundle.pem",
     });
+    expect(container?.environment).toContainEqual({
+      name: "ARTIFACT_SERVER_WORKOS_ISSUER",
+      value: "https://artifact-server.authkit.example",
+    });
     expect(container?.environment.map((entry) => entry.name)).not.toContain(
       "ARTIFACT_SERVER_S3_ACCESS_KEY_ID",
     );
@@ -317,6 +321,7 @@ function awsInput(
     workosApiKeySecretRef:
       "arn:aws:secretsmanager:us-east-1:123456789012:secret:workos",
     workosClientId: "client_01",
+    workosIssuer: "https://artifact-server.authkit.example",
     ...overrides,
   };
   if (overrides["dnsZoneIds"] !== null) return document;

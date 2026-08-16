@@ -61,6 +61,11 @@ export function readGcpPulumiConfiguration(
     "workosClientId",
     config.get("workosClientId"),
   );
+  document = withOptional(
+    document,
+    "workosIssuer",
+    config.get("workosIssuer"),
+  );
   return parseGcpPulumiConfiguration(document, pulumi.getStack(), projectId);
 }
 

@@ -67,6 +67,11 @@ export function readAwsPulumiConfiguration(): ParsedAwsPulumiConfiguration {
     "workosClientId",
     config.get("workosClientId"),
   );
+  document = withOptional(
+    document,
+    "workosIssuer",
+    config.get("workosIssuer"),
+  );
   return parseAwsPulumiConfiguration(document, pulumi.getStack());
 }
 

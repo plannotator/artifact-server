@@ -124,8 +124,11 @@
     "identity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["workosClientId"],
-      "properties": {"workosClientId": {"type": "string"}}
+      "required": ["workosClientId", "workosIssuer"],
+      "properties": {
+        "workosClientId": {"type": "string"},
+        "workosIssuer": {"type": "string"}
+      }
     },
     "serviceAccount": {
       "type": "object",

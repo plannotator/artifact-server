@@ -26,3 +26,4 @@ config:
   artifact-server-aws:stateBackendUrl: s3://replace-with-existing-pulumi-state/artifact-server
   artifact-server-aws:workosApiKeySecretRef: arn:aws:secretsmanager:us-east-1:123456789012:secret:artifact-server-workos
   artifact-server-aws:workosClientId: client_replace_me
+  artifact-server-aws:workosIssuer: https://replace-production.authkit.app

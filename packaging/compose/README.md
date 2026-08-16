@@ -131,8 +131,8 @@ not make a private server reachable from the internet.
 ## Optional WorkOS login
 
 The base installation supports its generated local administrator and admitted
-members without WorkOS. To use WorkOS, set
-`ARTIFACT_SERVER_WORKOS_CLIENT_ID` and either
+members without WorkOS. To use WorkOS, set the exact AuthKit issuer in
+`ARTIFACT_SERVER_WORKOS_ISSUER`, set `ARTIFACT_SERVER_WORKOS_CLIENT_ID`, and set either
 `ARTIFACT_SERVER_WORKOS_API_KEY` or
 `ARTIFACT_SERVER_WORKOS_API_KEY_FILE`. A file-backed key also needs a Compose
 override that mounts the file read-only. Use a dedicated Artifact Server WorkOS

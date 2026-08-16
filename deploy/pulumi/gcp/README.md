@@ -52,9 +52,12 @@ instance; and an exact GCS object copy by name, size, and checksum. Temporary
 restore resources were deleted after verification.
 
 This is deliberately a minimum provider qualification. It does not claim
-cross-region failover, automated disaster recovery, or continuous chaos tests.
-The broader GCP release remains unsupported until the documented private-ingress
-option and final create-to-delete gate are complete.
+cross-region failover, automated disaster recovery, continuous chaos tests, or
+private ingress. The supported direct GCP target is public ingress with private
+Cloud SQL, private object storage, workload identity, and the lifecycle checks
+listed above. Teams that require private ingress use the qualified Helm chart
+on GKE until a separate Cloud Run private-ingress path is implemented and
+qualified.
 
 Run the repeatable live product and upgrade checks against an existing isolated
 qualification stack with:

@@ -103,6 +103,15 @@ names empty, add the provider annotations under `serviceAccount.annotations`,
 and set `serviceAccount.automountServiceAccountToken` only when that identity
 mechanism requires the projected Kubernetes token.
 
+## Optional WorkOS authentication
+
+Leave `identity.workosClientId`, `identity.workosIssuer`, and
+`secret.keys.workosApiKey` empty when the installation uses only local members
+and administration-issued API keys. Hosted browser and MCP authentication
+requires all three values. `identity.workosIssuer` is the exact HTTPS AuthKit
+origin for this environment, and `secret.keys.workosApiKey` names a key in the
+existing Kubernetes Secret. The chart rejects a partial WorkOS configuration.
+
 ## NetworkPolicy
 
 NetworkPolicy is disabled by default. Standard Kubernetes policies cannot allow

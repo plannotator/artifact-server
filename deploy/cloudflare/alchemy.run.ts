@@ -2,6 +2,7 @@ import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
+import type * as Redacted from "effect/Redacted";
 
 import {
   cloudflareDeploymentDocumentConfig,
@@ -19,6 +20,15 @@ export default Alchemy.Stack(
     const document = yield* cloudflareDeploymentDocumentConfig;
     const input = yield* parseCloudflareDeploymentInput(document);
     const apiToken = yield* Config.redacted("ARTIFACT_SERVER_API_TOKEN");
-    return yield* defineCloudflareFoundation(input, apiToken);
+    let workOsApiKey: Redacted.Redacted | undefined;
+    if (input.workosApiKeySecretRef !== undefined) {
+      workOsApiKey = yield* Config.redacted("ARTIFACT_SERVER_WORKOS_API_KEY");
+    }
+    return yield* defineCloudflareFoundation(
+      input,
+      apiToken,
+      undefined,
+      workOsApiKey,
+    );
   }),
 );

@@ -354,9 +354,11 @@ export async function defineAwsStack(
     {name: "ARTIFACT_SERVER_DATABASE_URL", valueFrom: databaseUrlSecret.arn},
   ];
   if (
-    input.workosApiKeySecretRef !== undefined && input.workosClientId !== undefined
+    input.workosApiKeySecretRef !== undefined &&
+    input.workosClientId !== undefined && input.workosIssuer !== undefined
   ) {
     environment.push({name: "ARTIFACT_SERVER_WORKOS_CLIENT_ID", value: input.workosClientId});
+    environment.push({name: "ARTIFACT_SERVER_WORKOS_ISSUER", value: input.workosIssuer});
     secrets.push({
       name: "ARTIFACT_SERVER_WORKOS_API_KEY",
       valueFrom: input.workosApiKeySecretRef,

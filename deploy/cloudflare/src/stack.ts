@@ -111,6 +111,7 @@ export const defineCloudflareFoundation = Effect.fn(
   apiToken: Redacted.Redacted,
   resolveZoneId: CloudflareZoneResolver =
     Cloudflare.Zone.resolveZoneId,
+  workOsApiKey?: Redacted.Redacted,
 ) {
   const manifest = buildCloudflareDeploymentManifest(input);
   const credentials = yield* yield* Cloudflare.CloudflareEnvironment;
@@ -151,6 +152,22 @@ export const defineCloudflareFoundation = Effect.fn(
     workerEnvironment = {
       ...workerEnvironment,
       ARTIFACT_SERVER_QUALIFICATION_MODE: "enabled",
+    };
+  }
+  if (
+    input.workosApiKeySecretRef !== undefined &&
+    input.workosClientId !== undefined && input.workosIssuer !== undefined
+  ) {
+    if (workOsApiKey === undefined) {
+      return yield* Effect.die(
+        new Error("Configured WorkOS authentication requires its deployment secret."),
+      );
+    }
+    workerEnvironment = {
+      ...workerEnvironment,
+      ARTIFACT_SERVER_WORKOS_API_KEY: workOsApiKey,
+      ARTIFACT_SERVER_WORKOS_CLIENT_ID: input.workosClientId,
+      ARTIFACT_SERVER_WORKOS_ISSUER: input.workosIssuer,
     };
   }
   const workerProps: Cloudflare.WorkerProps = {

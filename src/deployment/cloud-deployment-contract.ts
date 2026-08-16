@@ -128,6 +128,7 @@ const sharedInputFields = {
   ),
   workosApiKeySecretRef: Schema.optionalKey(providerResourceIdentifier),
   workosClientId: Schema.optionalKey(identifier),
+  workosIssuer: Schema.optionalKey(httpsUrl),
 } as const;
 
 /** AWS network identifiers accepted instead of creating a new VPC. */
@@ -256,12 +257,14 @@ export const CloudDeploymentInput = uncheckedCloudDeploymentInput.check(
         path: ["tlsCertificateArn"],
       });
     }
-    if (
-      (input.workosClientId === undefined) !==
-      (input.workosApiKeySecretRef === undefined)
-    ) {
+    const workOsPresence = [
+      input.workosApiKeySecretRef,
+      input.workosClientId,
+      input.workosIssuer,
+    ].map((value) => value !== undefined);
+    if (workOsPresence.some((present) => present !== workOsPresence[0])) {
       issues.push({
-        issue: "WorkOS client and secret reference must be configured together",
+        issue: "WorkOS issuer, client, and secret reference must be configured together",
         path: ["workosClientId"],
       });
     }

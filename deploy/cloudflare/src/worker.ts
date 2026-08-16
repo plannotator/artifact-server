@@ -18,6 +18,8 @@ import {createD1ArtifactRepository} from "./d1-artifact-repository.js";
 import {createD1IdentityRepository} from "./d1-identity-repository.js";
 import {migrateD1, requiredD1SchemaVersion} from "./d1-migrations.js";
 import {createR2ObjectStorageAdapters} from "./r2-object-storage.js";
+import {createWorkOsHostedAuthentication} from
+  "../../../src/identity/workos-hosted-authentication.js";
 
 interface WorkerEnvironment {
   readonly ARTIFACT_SERVER_API_TOKEN: string;
@@ -29,6 +31,9 @@ interface WorkerEnvironment {
   readonly ARTIFACT_SERVER_QUALIFICATION_MODE?: "enabled";
   readonly ARTIFACT_SERVER_R2_BUCKET: R2Bucket;
   readonly ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE?: string | number;
+  readonly ARTIFACT_SERVER_WORKOS_API_KEY?: string;
+  readonly ARTIFACT_SERVER_WORKOS_CLIENT_ID?: string;
+  readonly ARTIFACT_SERVER_WORKOS_ISSUER?: string;
 }
 
 interface CloudflareRuntime {
@@ -114,6 +119,7 @@ async function createCloudflareRuntime(
     environment.ARTIFACT_SERVER_R2_BUCKET,
     environment.ARTIFACT_SERVER_INSTALLATION_ID,
   );
+  const hostedAuthentication = await workOsAuthentication(environment);
   const applicationLayer = createApplicationLayer({
     apiToken: Redacted.make(environment.ARTIFACT_SERVER_API_TOKEN, {
       label: "cloudflare-api-token",
@@ -124,10 +130,13 @@ async function createCloudflareRuntime(
     clock: new SystemClock(),
     externalApiBearerVerifier: null,
     externalMcpBearerVerifier: null,
+    externalMcpOAuthVerifier:
+      hostedAuthentication?.externalMcpOAuthVerifier ?? null,
     ids: new SystemIdGenerator(),
     identityRepository,
     installationId: environment.ARTIFACT_SERVER_INSTALLATION_ID,
-    interactiveIdentityProvider: null,
+    interactiveIdentityProvider:
+      hostedAuthentication?.interactiveIdentityProvider ?? null,
     localBootstrapCredential: null,
     repository,
     staging,
@@ -137,14 +146,20 @@ async function createCloudflareRuntime(
   );
   await applicationRuntime.context();
   const origin = new URL(environment.ARTIFACT_SERVER_ORIGIN);
-  const app = createHttpApp({
+  const appDependencies = {
     applicationRuntime,
     blobs,
     completedRequestLogSampleRate: requestLogSampleRate(environment),
     contentDomain: environment.ARTIFACT_SERVER_CONTENT_DOMAIN,
     readiness: () => readiness(environment),
     trustedApplicationOrigin: origin.origin,
-  });
+  };
+  const app = createHttpApp(hostedAuthentication === null
+    ? appDependencies
+    : {
+      ...appDependencies,
+      mcpOAuthResource: hostedAuthentication.mcpOAuthResource,
+    });
   return {
     app,
     applicationHostname: origin.hostname,
@@ -161,6 +176,42 @@ async function createCloudflareRuntime(
     qualificationMode:
       environment.ARTIFACT_SERVER_QUALIFICATION_MODE === "enabled",
   };
+}
+
+async function workOsAuthentication(
+  environment: WorkerEnvironment,
+) {
+  const values = [
+    environment.ARTIFACT_SERVER_WORKOS_API_KEY,
+    environment.ARTIFACT_SERVER_WORKOS_CLIENT_ID,
+    environment.ARTIFACT_SERVER_WORKOS_ISSUER,
+  ];
+  const configured = values.filter((value) => value !== undefined).length;
+  if (configured === 0) return null;
+  if (configured !== values.length) {
+    throw new Error(
+      "Hosted WorkOS authentication requires an API key, client ID, and issuer.",
+    );
+  }
+  return createWorkOsHostedAuthentication({
+    apiKey: Redacted.make(requireEnvironmentValue(
+      environment.ARTIFACT_SERVER_WORKOS_API_KEY,
+    )),
+    applicationOrigin: environment.ARTIFACT_SERVER_ORIGIN,
+    clientId: requireEnvironmentValue(
+      environment.ARTIFACT_SERVER_WORKOS_CLIENT_ID,
+    ),
+    issuer: requireEnvironmentValue(
+      environment.ARTIFACT_SERVER_WORKOS_ISSUER,
+    ),
+  });
+}
+
+function requireEnvironmentValue(value: string | undefined): string {
+  if (value === undefined) {
+    throw new Error("A required hosted authentication value is missing.");
+  }
+  return value;
 }
 
 function prepareRequest(
