@@ -719,7 +719,11 @@ function readPrivatePublishedContent(
       forward,
       new URL(bootstrap.bootstrapUrl),
     );
-    if (exchange.statusCode !== 303 || exchange.setCookie === null) {
+    if (
+      exchange.statusCode !== 200
+      || exchange.setCookie === null
+      || !exchange.body.includes('content="0;url=/"')
+    ) {
       throw new Error(
         `Private-content exchange returned HTTP ${exchange.statusCode} without a cookie.`,
       );
