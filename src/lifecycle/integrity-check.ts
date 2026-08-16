@@ -54,13 +54,19 @@ const decodeProjectReferenceRows = Schema.decodeUnknownSync(
   Schema.Array(projectReferenceRowSchema),
 );
 
-type ArtifactRow = typeof artifactRowSchema.Type;
-type VersionRow = typeof versionRowSchema.Type;
-type EntryRow = typeof entryRowSchema.Type;
-type ProjectRow = typeof projectRowSchema.Type;
-type ProjectReferenceRow = typeof projectReferenceRowSchema.Type;
+/** Artifact fields required by a deployment-native integrity reader. */
+export type ArtifactRow = typeof artifactRowSchema.Type;
+/** Version fields required by a deployment-native integrity reader. */
+export type VersionRow = typeof versionRowSchema.Type;
+/** Manifest-entry fields required by a deployment-native integrity reader. */
+export type EntryRow = typeof entryRowSchema.Type;
+/** Project fields required by a deployment-native integrity reader. */
+export type ProjectRow = typeof projectRowSchema.Type;
+/** Project-scoped references required by a deployment-native integrity reader. */
+export type ProjectReferenceRow = typeof projectReferenceRowSchema.Type;
 
-interface IntegrityCatalog {
+/** Provider-neutral catalog consumed by the shared integrity checker. */
+export interface IntegrityCatalog {
   readonly artifacts: readonly ArtifactRow[];
   readonly entries: readonly EntryRow[];
   readonly projects: readonly ProjectRow[];
@@ -126,7 +132,7 @@ export const checkCompactIntegrity = Effect.fn("checkCompactIntegrity")(
       }),
     });
     const blobs = new LocalBlobStore(path.join(dataDirectory, "blobs"));
-    return yield* checkCatalog(catalog, blobs);
+    return yield* checkIntegrityCatalog(catalog, blobs);
   },
 );
 
@@ -181,7 +187,9 @@ export async function checkExternalStorageIntegrity(
         provider: objectStorage.kind,
       });
     });
-    return await Effect.runPromise(checkCatalog(catalog, objectStorage.blobs));
+    return await Effect.runPromise(
+      checkIntegrityCatalog(catalog, objectStorage.blobs),
+    );
   } catch (error) {
     if (error instanceof IntegrityCheckError) throw error;
     throw new IntegrityCheckError({
@@ -339,7 +347,8 @@ function readExternalCatalog(installationId: string) {
   });
 }
 
-const checkCatalog = Effect.fn("checkIntegrityCatalog")(function*(
+/** Check a parsed provider catalog and its immutable blob store together. */
+export const checkIntegrityCatalog = Effect.fn("checkIntegrityCatalog")(function*(
   catalog: IntegrityCatalog,
   blobs: BlobStore,
 ): Effect.fn.Return<IntegrityReport> {

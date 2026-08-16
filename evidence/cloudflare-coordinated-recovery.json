@@ -1,0 +1,169 @@
+{
+  "accountId": "ee6997c7d9bdfb52ef0ceeaff6f2fa5f",
+  "backup": {
+    "d1ExportBytes": 17361,
+    "d1ExportSha256": "1b3fb0da6277717c5629298c0cf4ab9ceadfb209e5f62744a05380a96b0c249a",
+    "providerOperation": "wrangler d1 export/import --remote"
+  },
+  "checks": {
+    "exactBytes": true,
+    "healthStatus": 200,
+    "normalIntegrity": "healthy",
+    "readinessStatus": 200,
+    "sourceStayedQuiesced": true,
+    "stableIdentifiers": true
+  },
+  "destruction": {
+    "confirmed": true,
+    "databasesRemaining": false,
+    "restoreObjectsDeleted": 10,
+    "r2BucketsRemaining": false,
+    "sourceObjectsDeleted": 10,
+    "workersRemaining": false
+  },
+  "finishedAt": "2026-08-16T14:48:36.935Z",
+  "installationId": "artifact-server-qual-cfr-816a1",
+  "qualification": "Cloudflare coordinated D1 and R2 recovery",
+  "resources": {
+    "recoveryWorkerName": "artifact-server-qual-cfr-816a1-helper",
+    "restore": {
+      "bucketName": "artifact-server-qual-cfr-816a1-dst-r2",
+      "databaseId": "1017ab59-1e4e-46a3-a833-fcf0e4572fdc",
+      "databaseName": "artifact-server-qual-cfr-816a1-dst-db",
+      "workerName": "artifact-server-qual-cfr-816a1-dst-worker"
+    },
+    "source": {
+      "bucketName": "artifact-server-qual-cfr-816a1-src-r2",
+      "databaseId": "e857492b-276b-491f-a7f6-9ffc682e2216",
+      "databaseName": "artifact-server-qual-cfr-816a1-src-db",
+      "writerWorkerName": "artifact-server-qual-cfr-816a1-src-worker"
+    }
+  },
+  "result": "pass",
+  "r2Copy": {
+    "byteExact": 10,
+    "copied": 10,
+    "customMetadataExact": 10,
+    "httpMetadataExact": 10
+  },
+  "schemaVersion": 1,
+  "restored": {
+    "foreignKeyViolations": 0,
+    "identitySha256": "1eb25d91d78763bdff87f2083e36153c574d0634ff9e938eb24ab6a4e8d8659f",
+    "integrity": {
+      "artifactsChecked": 3,
+      "blobsChecked": 5,
+      "bytesChecked": 188,
+      "manifestsChecked": 3,
+      "problemCount": 0,
+      "status": "healthy",
+      "versionsChecked": 3
+    },
+    "objectCount": 10,
+    "objectInventorySha256": "1a8e1f7612908919478b146c8cb56d6f07f81d6c4e093892d8307ee6315dc3e1",
+    "schemaVersion": 2,
+    "stateSha256": "f760cc44af7619aa1c92acacdf017648181d96b30ad7f453e30942256b35416d",
+    "tableRows": {
+      "artifact_server_schema": 1,
+      "projects": 1,
+      "artifacts": 3,
+      "versions": 3,
+      "manifest_entries": 5,
+      "artifact_tags": 3,
+      "idempotency_records": 3,
+      "actions": 3,
+      "staged_uploads": 3,
+      "staged_upload_files": 5,
+      "content_bootstraps": 0,
+      "content_sessions": 0,
+      "installation_members": 0,
+      "external_identities": 0,
+      "application_sessions": 0,
+      "managed_api_keys": 0,
+      "login_attempts": 0,
+      "mutation_checks": 0
+    }
+  },
+  "source": {
+    "foreignKeyViolations": 0,
+    "identitySha256": "1eb25d91d78763bdff87f2083e36153c574d0634ff9e938eb24ab6a4e8d8659f",
+    "integrity": {
+      "artifactsChecked": 3,
+      "blobsChecked": 5,
+      "bytesChecked": 188,
+      "manifestsChecked": 3,
+      "problemCount": 0,
+      "status": "healthy",
+      "versionsChecked": 3
+    },
+    "objectCount": 10,
+    "objectInventorySha256": "1a8e1f7612908919478b146c8cb56d6f07f81d6c4e093892d8307ee6315dc3e1",
+    "schemaVersion": 2,
+    "stateSha256": "f760cc44af7619aa1c92acacdf017648181d96b30ad7f453e30942256b35416d",
+    "tableRows": {
+      "artifact_server_schema": 1,
+      "projects": 1,
+      "artifacts": 3,
+      "versions": 3,
+      "manifest_entries": 5,
+      "artifact_tags": 3,
+      "idempotency_records": 3,
+      "actions": 3,
+      "staged_uploads": 3,
+      "staged_upload_files": 5,
+      "content_bootstraps": 0,
+      "content_sessions": 0,
+      "installation_members": 0,
+      "external_identities": 0,
+      "application_sessions": 0,
+      "managed_api_keys": 0,
+      "login_attempts": 0,
+      "mutation_checks": 0
+    }
+  },
+  "startedAt": "2026-08-16T14:47:48.885Z",
+  "steps": [
+    {
+      "operation": "deploy-recovery-source",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "e8255de562a99bc196c4c2079e0a850b1aaf8e94cdc4266802b437e4aefdb57a"
+    },
+    {
+      "operation": "export-source-d1",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "a4ff16f7e0531e464f1730dc86a0f8a731c1d65095cff4739ca2ee9644413422"
+    },
+    {
+      "operation": "deploy-recovery-copy",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "44fcff507e3ce98945d0a8f08e27ae6545e5e52c5cd15adbbd3588ba797c5076"
+    },
+    {
+      "operation": "import-restore-d1",
+      "exitCode": 0,
+      "stderrSha256": "7b737f937184be037c98d29bac67c02b4aabe0bc172b778c23d4dbf1026eeded",
+      "stdoutSha256": "1b7f6df650916036072ba359ced4b3e3eac26f41e538c66d5daf87462a69eae9"
+    },
+    {
+      "operation": "deploy-recovery-source",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "3c2c7298b2568b991a2390d22f97e9b14fbd40c153a4db7616d5d1db61f7fa83"
+    },
+    {
+      "operation": "deploy-recovery-restore",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "a80675f4a559a98bf1144625e9a0dc7431ed1cad5c1d9d5d18ccab773119d7b7"
+    },
+    {
+      "operation": "deploy-restored-application",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "bb17f3cc0b1008332d2d25be52e572b478eb63635f0a445ff1fb2b7e43d9bc98"
+    }
+  ]
+}

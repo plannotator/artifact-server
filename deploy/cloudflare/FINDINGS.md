@@ -136,8 +136,33 @@ It made no DNS changes. The redacted durable result is
 `../../evidence/cloudflare-runtime.json`.
 
 This proves the Cloudflare application core and private deployment lifecycle.
-It does not prove public domains and certificates, WorkOS login, backup and
-restore, or hosted load and abuse controls.
+It does not prove public domains and certificates or hosted load and abuse
+controls.
+
+## Coordinated recovery qualification
+
+The checked-in coordinated recovery command passed against live Cloudflare D1,
+R2, and Workers on August 16, 2026. A quiesced source installation contained
+three artifacts, three immutable versions, five manifest entries, and ten R2
+objects. Wrangler remote D1 export/import and the R2 binding copy preserved the
+complete application-row digest, identifier-set digest, every object-body
+digest, and HTTP/custom metadata digest. The normal product integrity scan was
+healthy against only the restored targets, and the current Worker returned
+`200` for health and readiness.
+
+Qualification cleanup deleted both exact D1 UUIDs, both exact R2 buckets and
+their ten objects each, and the exact helper and restored Workers. The command
+did not access DNS or the account-level Alchemy state Worker. Redacted evidence
+is checked in at `../../evidence/cloudflare-coordinated-recovery.json`.
+
+The live qualification also exposed Worker revision propagation between rapid
+helper redeployments. The command now waits until the helper reports the exact
+source, copy, or restore binding mode before it starts that phase. It does not
+use an arbitrary delay and never retries the non-idempotent copy request.
+
+The procedure and safety boundary are documented in `RECOVERY.md`. It is a
+coordinated quiesced-write recovery procedure, not a promise of point-in-time,
+zero-downtime, or region-wide disaster recovery.
 
 ## Dependency findings
 

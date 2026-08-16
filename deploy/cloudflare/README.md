@@ -224,6 +224,18 @@ file. Do not use a wildcard or an account-wide cleanup command.
 If destroy fails, the probe does not delete D1 or R2. First, remove the Worker.
 Then, delete the two probe-only durable resources.
 
+## Recover D1 and R2 together
+
+Use the checked-in coordinated recovery command only after writes to the source
+installation are quiesced and clean restore targets have been created. It uses
+Cloudflare's remote D1 export/import, copies R2 bodies plus required metadata,
+runs the normal product integrity scanner, and starts the current Worker against
+only the restored targets. The command rejects nonempty, mismatched, changing,
+partial, or corrupt targets.
+
+Follow [RECOVERY.md](./RECOVERY.md). Do not substitute an independent D1 export
+or partial R2 copy; those operations do not form a recoverable installation.
+
 ## Support outputs
 
 The stack returns the required output keys. The values contain resource

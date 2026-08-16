@@ -460,7 +460,7 @@ this deployment record:
 | --- | --- | --- |
 | AWS | Static and SPA routing, media ranges, populated migration, real EventBridge cleanup, committed-byte retention, redeployment, S3 outage and recovery, clean RDS and S3 restore with integrity, and safe Pulumi destroy. | Positive ownership transfer needs two authenticated human members. |
 | GCP | Static and SPA routing, populated migration, real Scheduler cleanup, committed-byte retention, redeployment, Cloud SQL failure and recovery, clean Cloud SQL and GCS restore with integrity, and media ranges after `Range` was configured to bypass Cloud CDN. | Positive ownership transfer needs two authenticated human members. Google's provider-owned Direct VPC reservation must release before Pulumi can remove the final empty subnet and network. |
-| Cloudflare | Fresh and populated D1 migration, real Cron cleanup, committed-byte retention, Worker replacement, R2 failure detection, coordinated D1 and R2 restore with exact bytes and metadata, and exact resource destruction. | Static, SPA, and range behavior still need an approved wildcard content domain. Positive ownership transfer needs two authenticated human members. The proved recovery procedure still needs a checked-in harness and operator runbook. |
+| Cloudflare | Fresh and populated D1 migration, real Cron cleanup, committed-byte retention, Worker replacement, R2 failure detection, coordinated D1 and R2 restore with exact bytes and metadata, and exact resource destruction. | Static, SPA, range, host-isolation, and cache behavior still need an approved wildcard content domain. Ownership transfer belongs to hosted identity qualification, not this provider check. |
 
 The first populated D1 migration found a real foreign-key ordering defect. The
 migration now snapshots the old rows, gives the empty replacement the final
@@ -481,11 +481,11 @@ The following claims remain deployment release gates:
 - Public Cloudflare content-host isolation and cache behavior need a temporary
   wildcard qualification domain. No production or Plannotator DNS was changed
   for this run.
-- The administrator-only positive ownership path needs a hosted human identity
-  provider. Service credentials are correctly denied and are not a substitute
-  for that test.
-- Cloudflare recovery is provider-proven but not yet repeatable from a
-  checked-in command and runbook.
+- Cloudflare coordinated recovery is repeatable through the checked-in operator
+  command and runbook and has live exact-byte, metadata, integrity, readiness,
+  and cleanup evidence.
+- Administrator-only ownership transfer is deferred to hosted identity
+  qualification and is not a Cloudflare provider blocker.
 
 Each risk has a fail-closed result. It can delay support for one adapter or
 deployment, but it does not change the application model.

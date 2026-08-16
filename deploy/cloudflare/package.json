@@ -15,6 +15,7 @@
     "lint": "oxlint --config ./.oxlintrc.json --type-aware --type-check --deny-warnings .",
     "plan": "alchemy plan",
     "probe:account": "node ./scripts/account-probe.mjs",
+    "recovery:coordinated": "node ./scripts/coordinated-recovery.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "wrangler": "wrangler"
