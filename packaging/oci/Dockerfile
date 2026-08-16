@@ -2,10 +2,11 @@
 
 ARG NODE_IMAGE=node:24.12.0-bookworm-slim@sha256:7326fb2dbdce998edd72140946851be64ef4a643e8715e138ca467e8e9d92c99
 
-FROM ${NODE_IMAGE} AS build
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS build
 
 ENV PNPM_HOME=/opt/pnpm
-ENV PATH=${PNPM_HOME}:${PATH}
+ENV PATH=${PNPM_HOME}:${PATH} \
+    CI=true
 WORKDIR /build
 
 RUN corepack enable \
