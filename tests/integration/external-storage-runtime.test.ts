@@ -985,7 +985,8 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       server.baseUrl,
       bootstrap.bootstrapUrl,
     );
-    expect(exchange.status).toBe(303);
+    expect(exchange.status).toBe(200);
+    expect(await exchange.clone().text()).toContain('content="0;url=/"');
     const contentCookie = exchange.headers.get("set-cookie")?.split(";", 1)[0];
     if (contentCookie === undefined) {
       throw new Error("The private-content exchange did not issue a cookie.");
