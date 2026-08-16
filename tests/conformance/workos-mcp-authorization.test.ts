@@ -53,6 +53,7 @@ describe("hosted WorkOS MCP authorization", () => {
     const verifier = new WorkOsMcpBearerVerifier({
       apiKey: Redacted.make("sk_test_artifact_server"),
       apiOrigin: provider.origin,
+      fetch: receiverSensitiveFetch,
       issuer,
       jwksUri: `${provider.origin}/oauth2/jwks`,
       resource,
@@ -312,6 +313,18 @@ function authorizationMetadata(): OAuthMetadata {
     scopes_supported: ["openid", "profile", "email", "offline_access"],
     token_endpoint: `${issuer}/oauth2/token`,
   };
+}
+
+/** Match hosts such as Cloudflare Workers whose fetch rejects a foreign receiver. */
+function receiverSensitiveFetch(
+  this: typeof globalThis | undefined,
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  if (this !== undefined && this !== globalThis) {
+    throw new TypeError("fetch called with an incompatible receiver");
+  }
+  return fetch(input, init);
 }
 
 function metadataResponse(metadata: OAuthMetadata): Response {

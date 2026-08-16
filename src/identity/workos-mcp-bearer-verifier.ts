@@ -61,7 +61,8 @@ export class WorkOsMcpBearerVerifier implements ExternalMcpBearerVerifier {
   constructor(config: WorkOsMcpBearerVerifierConfig) {
     this.#apiKey = config.apiKey;
     this.#apiOrigin = new URL(config.apiOrigin ?? "https://api.workos.com");
-    this.#fetch = config.fetch ?? globalThis.fetch;
+    const providerFetch = config.fetch ?? globalThis.fetch;
+    this.#fetch = (input, init) => providerFetch(input, init);
     this.#issuer = exactHttpsOrigin(config.issuer, "WorkOS issuer");
     this.#resource = exactHttpsResource(config.resource);
     const jwksUri = config.jwksUri === undefined
@@ -116,7 +117,9 @@ export class WorkOsMcpBearerVerifier implements ExternalMcpBearerVerifier {
         },
         signal,
       }),
-      catch: () => providerUnavailable(),
+      catch: () => providerUnavailable(
+        "WorkOS user lookup could not reach the provider.",
+      ),
     });
     if (response.status === 404) {
       return yield* invalidToken(
@@ -124,18 +127,30 @@ export class WorkOsMcpBearerVerifier implements ExternalMcpBearerVerifier {
       );
     }
     if (response.status === 401 || response.status === 403) {
-      return yield* providerUnavailable();
+      return yield* providerUnavailable(
+        "WorkOS rejected the Artifact Server API credential.",
+      );
     }
-    if (!response.ok) return yield* providerUnavailable();
+    if (!response.ok) {
+      return yield* providerUnavailable(
+        "WorkOS user lookup returned an unexpected response.",
+      );
+    }
     const body = yield* Effect.tryPromise({
       try: () => response.json(),
-      catch: () => providerUnavailable(),
+      catch: () => providerUnavailable(
+        "WorkOS user lookup returned invalid JSON.",
+      ),
     });
     const user = yield* decodeWorkOsUser(body).pipe(
-      Effect.mapError(() => providerUnavailable()),
+      Effect.mapError(() => providerUnavailable(
+        "WorkOS user lookup returned an invalid user record.",
+      )),
     );
     if (user.id !== verified.subject) {
-      return yield* providerUnavailable();
+      return yield* providerUnavailable(
+        "WorkOS user lookup returned a different subject.",
+      );
     }
     return workOsExternalIdentity(user);
   });
@@ -213,7 +228,11 @@ function verificationFailure(
       cause["code"] === "ERR_JWKS_FETCH_FAILED"
     )
   ) {
-    return providerUnavailable();
+    return providerUnavailable(
+      cause instanceof joseErrors.JWKSTimeout
+        ? "WorkOS signing-key lookup timed out."
+        : "WorkOS signing keys could not be loaded.",
+    );
   }
   return new AuthenticationRequired({
     message: "The WorkOS MCP access token is invalid or no longer active.",
@@ -224,9 +243,9 @@ function invalidToken(message: string): AuthenticationRequired {
   return new AuthenticationRequired({message});
 }
 
-function providerUnavailable(): IdentityProviderFailure {
+function providerUnavailable(message: string): IdentityProviderFailure {
   return new IdentityProviderFailure({
-    message: "WorkOS could not verify the hosted MCP identity.",
+    message,
   });
 }
 
