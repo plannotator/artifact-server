@@ -46,6 +46,7 @@ import {
 import type {
   ArtifactRepository,
   ChangeArtifactAccessSetting,
+  ChangeArtifactOwnership,
   ChangeArtifactTags,
   CommitArtifactVersion,
   CommitNewArtifact,
@@ -55,6 +56,7 @@ import type {
   CreateStagedUpload,
   DeleteArtifact,
   ExchangeContentBootstrap,
+  ExpiredStagedUpload,
   ListArtifactActions,
   ListArtifacts,
   PublicationSource,
@@ -75,13 +77,14 @@ const dispositionSchema = z.enum([
   fileDispositions.attachment,
   fileDispositions.inline,
 ]);
-const routingModeSchema = z.enum([routingModes.static]);
+const routingModeSchema = z.enum([routingModes.static, routingModes.spa]);
 const uploadStatusSchema = z.enum([
   uploadStatuses.committed,
   uploadStatuses.open,
 ]);
 const artifactActionKindSchema = z.enum([
   artifactActionKinds.changeAccess,
+  artifactActionKinds.changeOwner,
   artifactActionKinds.changeTags,
   artifactActionKinds.delete,
   artifactActionKinds.publish,
@@ -156,12 +159,14 @@ const idempotencyRowSchema = z.object({
   inputDigest: z.string(),
   operation: z.enum([
     "change_access",
+    "change_owner",
     "change_tags",
     "delete",
     "publish",
     "restore",
   ]),
   tagsJson: z.string().nullable(),
+  targetOwnerPrincipalId: z.string().nullable(),
   versionId: z.string(),
 });
 const artifactActionRowSchema = z.object({
@@ -173,6 +178,7 @@ const artifactActionRowSchema = z.object({
   idempotencyKey: z.string(),
   principalId: z.string(),
   projectId: z.string(),
+  targetOwnerPrincipalId: z.string().nullable(),
   versionId: z.string(),
 });
 const contentRecordRowSchema = z.object({
@@ -205,6 +211,10 @@ const stagedUploadFileRowSchema = z.object({
   size: nonnegativeIntegerSchema,
   storageToken: z.string(),
   uploadedAt: z.string().nullable(),
+});
+const expiredStagedUploadRowSchema = z.object({
+  id: z.string(),
+  storageToken: z.string(),
 });
 const stagedUploadCommitRowSchema = z.object({
   expiresAt: z.string(),
@@ -529,6 +539,74 @@ export class PostgresArtifactRepository implements
     );
   }
 
+  async changeOwnership(command: ChangeArtifactOwnership): Promise<ArtifactState> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        yield* lockIdempotency(
+          sql,
+          installationId,
+          command.projectId,
+          command.idempotencyKey,
+        );
+        const replayed = yield* this.#findIdempotentOwnershipResult(
+          command.projectId,
+          command.idempotencyKey,
+          command.inputDigest,
+        );
+        if (replayed !== null) return replayed;
+        const artifact = yield* this.#readArtifact(
+          command.projectId,
+          command.artifactId,
+          true,
+        );
+        if (artifact.ownerPrincipalId === command.targetOwnerPrincipalId) {
+          return yield* new ArtifactMutationConflict({
+            message: "The target member already owns this artifact.",
+          });
+        }
+        yield* assertExpectedVersion(artifact, command.expectedCurrentVersionId);
+        const updated = yield* sql`UPDATE artifacts
+          SET owner_principal_id = ${command.targetOwnerPrincipalId}
+          WHERE installation_id = ${installationId}
+            AND project_id = ${command.projectId}
+            AND id = ${command.artifactId}
+            AND current_version_id = ${command.expectedCurrentVersionId}
+            AND deleted_at IS NULL
+          RETURNING id`;
+        if (updated.length !== 1) return yield* changedDuringManagement();
+        yield* this.#insertAction(
+          command,
+          artifactActionKinds.changeOwner,
+          command.expectedCurrentVersionId,
+          command.targetOwnerPrincipalId,
+        );
+        yield* this.#insertIdempotency({
+          accessSetting: artifact.accessSetting,
+          artifactId: command.artifactId,
+          createdAt: command.createdAt,
+          idempotencyKey: command.idempotencyKey,
+          inputDigest: command.inputDigest,
+          operation: "change_owner",
+          projectId: command.projectId,
+          tagsJson: null,
+          targetOwnerPrincipalId: command.targetOwnerPrincipalId,
+          versionId: command.expectedCurrentVersionId,
+        });
+        return yield* this.#readArtifactState(
+          command.projectId,
+          command.artifactId,
+          command.expectedCurrentVersionId,
+          artifact.accessSetting,
+          false,
+          null,
+          command.targetOwnerPrincipalId,
+        );
+      }));
+    }));
+  }
+
   async changeTags(command: ChangeArtifactTags): Promise<ArtifactState> {
     const installationId = this.#installationId;
     return this.#database.run(Effect.gen({self: this}, function*() {
@@ -793,6 +871,7 @@ export class PostgresArtifactRepository implements
           version_id AS "versionId",
           action, principal_id AS "principalId",
           authorized_by_principal_id AS "authorizedByPrincipalId",
+          target_owner_principal_id AS "targetOwnerPrincipalId",
           idempotency_key AS "idempotencyKey", created_at AS "createdAt"
          FROM actions
          WHERE installation_id = $1 AND project_id = $2 AND artifact_id = $3
@@ -897,6 +976,7 @@ export class PostgresArtifactRepository implements
   async findVersionContent(
     contentToken: string,
     requestedPath: string,
+    fallback: "entry" | "none",
   ): Promise<VersionContent | null> {
     const installationId = this.#installationId;
     return this.#database.run(Effect.gen({self: this}, function*() {
@@ -913,9 +993,18 @@ export class PostgresArtifactRepository implements
          JOIN manifest_entries e
            ON e.installation_id = v.installation_id AND e.version_id = v.id
          WHERE v.installation_id = $1 AND v.content_token = $2
-           AND e.path = CASE WHEN $3 = '' THEN v.entry_path ELSE $3 END
+           AND e.path = CASE
+             WHEN $3 = '' THEN v.entry_path
+             WHEN EXISTS (
+               SELECT 1 FROM manifest_entries exact
+               WHERE exact.installation_id = v.installation_id
+                 AND exact.version_id = v.id AND exact.path = $3
+             ) THEN $3
+             WHEN $4 = 'entry' AND v.routing_mode = 'spa' THEN v.entry_path
+             ELSE $3
+           END
            AND a.deleted_at IS NULL`,
-        [installationId, contentToken, requestedPath],
+        [installationId, contentToken, requestedPath, fallback],
       );
       const parsed = versionContentRowSchema.nullable().parse(rows[0] ?? null);
       if (parsed === null) return null;
@@ -1087,6 +1176,60 @@ export class PostgresArtifactRepository implements
     ));
   }
 
+  async listExpiredStagedUploads(
+    expiredBefore: string,
+    limit: number,
+  ): Promise<readonly ExpiredStagedUpload[]> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(`
+        WITH selected AS (
+          SELECT id FROM staged_uploads
+          WHERE installation_id = $1 AND status = 'open' AND expires_at <= $2
+          ORDER BY expires_at, id
+          LIMIT $3
+        )
+        SELECT selected.id, file.storage_token AS "storageToken"
+        FROM selected
+        JOIN staged_upload_files file
+          ON file.installation_id = $1 AND file.upload_id = selected.id
+        ORDER BY selected.id, file.storage_token
+      `, [installationId, expiredBefore, limit]);
+      const grouped = new Map<string, Array<{readonly storageToken: string}>>();
+      for (const row of z.array(expiredStagedUploadRowSchema).parse(rows)) {
+        const files = grouped.get(row.id) ?? [];
+        files.push({storageToken: row.storageToken});
+        grouped.set(row.id, files);
+      }
+      return [...grouped].map(([id, files]) => ({files, id}));
+    }));
+  }
+
+  async removeExpiredStagedUpload(
+    uploadId: string,
+    expiredBefore: string,
+  ): Promise<boolean> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen(function*() {
+        const selected = yield* sql`SELECT id FROM staged_uploads
+          WHERE installation_id = ${installationId} AND id = ${uploadId}
+            AND status = 'open' AND expires_at <= ${expiredBefore}
+          FOR UPDATE`;
+        if (selected.length === 0) return false;
+        yield* sql`DELETE FROM staged_upload_files
+          WHERE installation_id = ${installationId} AND upload_id = ${uploadId}`;
+        const deleted = yield* sql`DELETE FROM staged_uploads
+          WHERE installation_id = ${installationId} AND id = ${uploadId}
+            AND status = 'open' AND expires_at <= ${expiredBefore}
+          RETURNING id`;
+        return deleted.length === 1;
+      }));
+    }));
+  }
+
   async markStagedFileUploaded(
     projectId: string,
     uploadId: string,
@@ -1110,6 +1253,7 @@ export class PostgresArtifactRepository implements
             AND upload.id = file.upload_id
             AND upload.principal_id = ${principalId}
             AND upload.status = 'open'
+            AND upload.expires_at > ${uploadedAt}
           RETURNING file.path`;
         if (updated.length !== 1) {
           const upload = yield* this.#readStagedUploadOrNull(
@@ -1125,6 +1269,11 @@ export class PostgresArtifactRepository implements
           if (upload.status !== uploadStatuses.open) {
             return yield* new UploadClosed({
               message: "The staged upload is already committed.",
+            });
+          }
+          if (upload.expiresAt <= uploadedAt) {
+            return yield* new UploadExpired({
+              message: "The staged upload has expired.",
             });
           }
           return yield* new UploadFileNotFound({
@@ -1475,6 +1624,7 @@ export class PostgresArtifactRepository implements
       const rows = yield* sql.unsafe<object>(
         `SELECT access_setting AS "accessSetting", artifact_id AS "artifactId",
           input_digest AS "inputDigest", operation, tags_json AS "tagsJson",
+          target_owner_principal_id AS "targetOwnerPrincipalId",
           version_id AS "versionId"
          FROM idempotency_records
          WHERE installation_id = $1 AND project_id = $2
@@ -1526,6 +1676,36 @@ export class PostgresArtifactRepository implements
         parsed.versionId,
         parsed.accessSetting,
         true,
+      );
+    });
+  }
+
+  #findIdempotentOwnershipResult(
+    projectId: string,
+    idempotencyKey: string,
+    inputDigest: string,
+  ): Effect.Effect<ArtifactState | null, unknown, SqlClient> {
+    return Effect.gen({self: this}, function*() {
+      const parsed = yield* this.#findIdempotency(projectId, idempotencyKey);
+      if (parsed === null) return null;
+      if (
+        parsed.inputDigest !== inputDigest ||
+        parsed.operation !== "change_owner" ||
+        parsed.accessSetting === null ||
+        parsed.targetOwnerPrincipalId === null
+      ) {
+        return yield* new IdempotencyConflict({
+          message: "The idempotency key was already used with different input.",
+        });
+      }
+      return yield* this.#readArtifactState(
+        projectId,
+        parsed.artifactId,
+        parsed.versionId,
+        parsed.accessSetting,
+        true,
+        null,
+        parsed.targetOwnerPrincipalId,
       );
     });
   }
@@ -1585,6 +1765,7 @@ export class PostgresArtifactRepository implements
     accessSetting: ArtifactRecord["accessSetting"],
     replayed: boolean,
     tags: readonly string[] | null = null,
+    ownerPrincipalId: string | null = null,
   ): Effect.Effect<ArtifactState, unknown, SqlClient> {
     return Effect.gen({self: this}, function*() {
       const artifact = yield* this.#readArtifact(projectId, artifactId, false);
@@ -1601,6 +1782,7 @@ export class PostgresArtifactRepository implements
           ...artifact,
           accessSetting,
           currentVersionId: versionId,
+          ownerPrincipalId: ownerPrincipalId ?? artifact.ownerPrincipalId,
           tags: tags ?? artifact.tags,
         },
         replayed,
@@ -1685,18 +1867,21 @@ export class PostgresArtifactRepository implements
     },
     action: ArtifactActionRecord["action"],
     versionId: string,
+    targetOwnerPrincipalId: string | null = null,
   ): Effect.Effect<void, unknown, SqlClient> {
     const installationId = this.#installationId;
     return Effect.gen({self: this}, function*() {
       const sql = yield* SqlClient;
       yield* sql`INSERT INTO actions (
         installation_id, project_id, id, artifact_id, version_id, action, principal_id,
-        authorized_by_principal_id, idempotency_key, created_at
+        authorized_by_principal_id, target_owner_principal_id,
+        idempotency_key, created_at
       ) VALUES (
         ${installationId}, ${command.projectId},
         ${sql.literal("gen_random_uuid()::text")},
         ${command.artifactId}, ${versionId}, ${action}, ${command.principalId},
-        ${command.authorizedByPrincipalId}, ${command.idempotencyKey},
+        ${command.authorizedByPrincipalId}, ${targetOwnerPrincipalId},
+        ${command.idempotencyKey},
         ${command.createdAt}
       )`;
     });
@@ -1711,6 +1896,7 @@ export class PostgresArtifactRepository implements
     readonly operation: z.infer<typeof idempotencyRowSchema>["operation"];
     readonly projectId: string;
     readonly tagsJson: string | null;
+    readonly targetOwnerPrincipalId?: string;
     readonly versionId: string;
   }): Effect.Effect<void, unknown, SqlClient> {
     const installationId = this.#installationId;
@@ -1718,12 +1904,13 @@ export class PostgresArtifactRepository implements
       const sql = yield* SqlClient;
       yield* sql`INSERT INTO idempotency_records (
         installation_id, project_id, idempotency_key, input_digest, artifact_id, version_id,
-        operation, access_setting, tags_json, created_at
+        operation, access_setting, tags_json, target_owner_principal_id, created_at
       ) VALUES (
         ${installationId}, ${record.projectId}, ${record.idempotencyKey},
         ${record.inputDigest},
         ${record.artifactId}, ${record.versionId}, ${record.operation},
-        ${record.accessSetting}, ${record.tagsJson}, ${record.createdAt}
+        ${record.accessSetting}, ${record.tagsJson},
+        ${record.targetOwnerPrincipalId ?? null}, ${record.createdAt}
       )`;
     });
   }

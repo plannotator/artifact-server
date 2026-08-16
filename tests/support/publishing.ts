@@ -31,7 +31,7 @@ const publishResponseSchema = z.object({
     number: z.number().int().positive(),
     publisherPrincipalId: z.string(),
     projectId: z.string(),
-    routingMode: z.literal("static"),
+    routingMode: z.enum(["static", "spa"]),
   }),
 });
 
@@ -147,6 +147,7 @@ export async function createStagedUpload(
   entryPath: string,
   files: readonly TestSiteFile[],
   projectId?: string,
+  routingMode: "spa" | "static" = "static",
 ): Promise<{readonly body: CreateUploadResponse; readonly response: Response}> {
   const declaredFiles = files.map((file) => ({
     mediaType: file.mediaType,
@@ -155,8 +156,8 @@ export async function createStagedUpload(
     size: file.bytes.byteLength,
   }));
   const requestBody = projectId === undefined
-    ? {entryPath, files: declaredFiles}
-    : {entryPath, files: declaredFiles, projectId};
+    ? {entryPath, files: declaredFiles, routingMode}
+    : {entryPath, files: declaredFiles, projectId, routingMode};
   const response = await fetch(`${server.baseUrl}/api/v1/uploads`, {
     body: JSON.stringify(requestBody),
     headers: {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, rename, rm } from "node:fs/promises";
+import {mkdir, open, rename, rm, rmdir} from "node:fs/promises";
 import path from "node:path";
 
 import { z } from "zod";
@@ -71,6 +71,20 @@ export class LocalStagingStore implements StagingStore {
       await rm(temporaryFile, {force: true});
     }
     return {sha256: write.sha256, size: write.size};
+  }
+
+  async remove(uploadId: string, storageToken: string): Promise<void> {
+    const location = this.#location(uploadId, storageToken);
+    await rm(location.file, {force: true});
+    try {
+      await rmdir(location.directory);
+    } catch (cause) {
+      const parsed = z.object({code: z.string().optional()}).safeParse(cause);
+      if (
+        !parsed.success ||
+        !["ENOENT", "ENOTEMPTY"].includes(parsed.data.code ?? "")
+      ) throw cause;
+    }
   }
 
   #location(

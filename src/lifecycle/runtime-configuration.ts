@@ -23,6 +23,10 @@ import {
   readCompactInstallation,
   type CompactInstallationMetadata,
 } from "./compact-installation.js";
+import {
+  loadStagingCleanupPolicy,
+  type StagingCleanupPolicy,
+} from "./staging-cleanup.js";
 
 const bearerCredentialSchema = Schema.String.check(
   Schema.isMinLength(32),
@@ -79,6 +83,7 @@ export interface CompactRuntimeConfiguration {
   readonly port: number;
   readonly readinessWithdrawalMilliseconds: number;
   readonly shutdownDeadlineMilliseconds: number;
+  readonly stagingCleanupPolicy: StagingCleanupPolicy;
 }
 
 /** Parsed external-storage configuration used by serving and lifecycle commands. */
@@ -101,6 +106,7 @@ export interface ExternalStorageRuntimeConfiguration {
   readonly port: number;
   readonly readinessWithdrawalMilliseconds: number;
   readonly shutdownDeadlineMilliseconds: number;
+  readonly stagingCleanupPolicy: StagingCleanupPolicy;
 }
 
 /** Minimum external-storage configuration required by migration commands. */
@@ -124,6 +130,7 @@ export interface RuntimeConfigurationSummary {
   readonly port: number;
   readonly readinessWithdrawalMilliseconds: number;
   readonly shutdownDeadlineMilliseconds: number;
+  readonly stagingCleanup: StagingCleanupPolicy;
   readonly status: "valid";
 }
 
@@ -230,6 +237,7 @@ export const parseCompactRuntimeConfiguration = Effect.fn(
       "ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS",
       10_000,
     ),
+    stagingCleanupPolicy: yield* parseStagingCleanupPolicy(input.environment),
   };
 });
 
@@ -310,6 +318,7 @@ export const parseExternalStorageRuntimeConfiguration = Effect.fn(
       "ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS",
       10_000,
     ),
+    stagingCleanupPolicy: yield* parseStagingCleanupPolicy(environment),
   };
 });
 
@@ -486,6 +495,7 @@ export function summarizeRuntimeConfiguration(
       readinessWithdrawalMilliseconds:
         configuration.readinessWithdrawalMilliseconds,
       shutdownDeadlineMilliseconds: configuration.shutdownDeadlineMilliseconds,
+      stagingCleanup: configuration.stagingCleanupPolicy,
       status: "valid",
     };
   }
@@ -505,8 +515,21 @@ export function summarizeRuntimeConfiguration(
     readinessWithdrawalMilliseconds:
       configuration.readinessWithdrawalMilliseconds,
     shutdownDeadlineMilliseconds: configuration.shutdownDeadlineMilliseconds,
+    stagingCleanup: configuration.stagingCleanupPolicy,
     status: "valid",
   };
+}
+
+function parseStagingCleanupPolicy(
+  environment: NodeJS.ProcessEnv,
+): Effect.Effect<StagingCleanupPolicy, RuntimeConfigurationError> {
+  return loadStagingCleanupPolicy(environment).pipe(
+    Effect.mapError((cause) => new RuntimeConfigurationError({
+      field: "ARTIFACT_SERVER_STAGING_CLEANUP",
+      message: `The staging cleanup configuration is invalid: ${String(cause)}`,
+      reason: "invalid_value",
+    })),
+  );
 }
 
 /** A credential plus its safe configuration-source label. */

@@ -231,6 +231,13 @@ export interface InstallationAccessOperations {
   readonly revokeSession: (
     credential: Redacted.Redacted,
   ) => Effect.Effect<void, IdentityRepositoryFailure>;
+  readonly resolveActiveMemberForOwnershipChange: (
+    principal: Principal,
+    memberId: string,
+  ) => Effect.Effect<
+    InstallationMember,
+    AuthorizationDenied | IdentityNotFound | IdentityRepositoryFailure
+  >;
   readonly rotateApiKey: (
     principal: Principal,
     keyId: string,
@@ -444,6 +451,22 @@ function makeInstallationAccessService(
     return yield* dependencies.repository.listMembers(dependencies.installationId);
   });
 
+  const resolveActiveMemberForOwnershipChange = Effect.fn(
+    "InstallationAccessService.resolveActiveMemberForOwnershipChange",
+  )(function*(principal: Principal, memberId: string) {
+    yield* requireAdministrator(principal, dependencies.installationId);
+    const member = yield* dependencies.repository.findMember(
+      dependencies.installationId,
+      memberId,
+    );
+    if (member === null || member.status !== memberStatuses.active) {
+      return yield* new IdentityNotFound({
+        message: "The target artifact owner is not an active member.",
+      });
+    }
+    return member;
+  });
+
   const deactivateMember = Effect.fn(
     "InstallationAccessService.deactivateMember",
   )(function*(principal: Principal, memberId: string) {
@@ -579,6 +602,7 @@ function makeInstallationAccessService(
     loginWithLocalBootstrap,
     revokeApiKey,
     revokeSession,
+    resolveActiveMemberForOwnershipChange,
     rotateApiKey,
   });
 }

@@ -5,9 +5,11 @@ import {Storage, type Bucket, type FileMetadata} from "@google-cloud/storage";
 import {Option, Schema} from "effect";
 
 import type {
+  BlobByteRange,
   BlobStore,
   BlobWrite,
   OpenedBlob,
+  OpenedBlobRange,
   StagingStore,
   StoredBlob,
 } from "../core/ports.js";
@@ -77,6 +79,12 @@ export function createGcsObjectStorageAdapters(
     blobs: {
       inspect: (digest) => objects.inspect(keyspace.blob(digest), digest, "blob"),
       open: (digest) => objects.open(keyspace.blob(digest), digest, "blob"),
+      openRange: (digest, range) => objects.openRange(
+        keyspace.blob(digest),
+        digest,
+        "blob",
+        range,
+      ),
       put: (write) => objects.put(
         keyspace.blob(write.sha256),
         write,
@@ -85,6 +93,9 @@ export function createGcsObjectStorageAdapters(
       ),
     },
     staging: {
+      remove: (uploadId, storageToken) => objects.remove(
+        keyspace.staging(uploadId, storageToken),
+      ),
       open: async (uploadId, storageToken) => {
         const opened = await objects.open(
           keyspace.staging(uploadId, storageToken),
@@ -136,6 +147,10 @@ class GcsObjects {
     return inspectGcsMetadata(metadata, expectedDigest, kind);
   }
 
+  async remove(key: string): Promise<void> {
+    await this.#bucket.file(key).delete({ignoreNotFound: true});
+  }
+
   async open(
     key: string,
     expectedDigest: string | null,
@@ -146,6 +161,27 @@ class GcsObjects {
     const stored = inspectGcsMetadata(metadata, expectedDigest, kind);
     return {
       body: nodeByteStream(file.createReadStream()),
+      sha256: stored.sha256,
+      size: stored.size,
+    };
+  }
+
+  async openRange(
+    key: string,
+    expectedDigest: string,
+    kind: StoredObjectKind,
+    range: BlobByteRange,
+  ): Promise<OpenedBlobRange> {
+    const file = this.#bucket.file(key);
+    const [metadata] = await file.getMetadata();
+    const stored = inspectGcsMetadata(metadata, expectedDigest, kind);
+    assertProviderRange("GCS", range, stored.size);
+    return {
+      body: nodeByteStream(file.createReadStream({
+        end: range.endInclusive,
+        start: range.start,
+      })),
+      range,
       sha256: stored.sha256,
       size: stored.size,
     };
@@ -173,6 +209,7 @@ class GcsObjects {
         resumable: write.size >= resumableUploadThresholdBytes,
         validation: "crc32c",
       }),
+      write.signal === undefined ? {} : {signal: write.signal},
     );
     return verifyCloudObjectWriteSize(
       await this.inspect(key, expectedDigest, kind),
@@ -180,6 +217,16 @@ class GcsObjects {
       "GCS",
       kind,
     );
+  }
+}
+
+function assertProviderRange(
+  provider: string,
+  range: BlobByteRange,
+  size: number,
+): void {
+  if (range.start < 0 || range.endInclusive < range.start || range.endInclusive >= size) {
+    throw new RangeError(`${provider} blob range is outside the stored object.`);
   }
 }
 

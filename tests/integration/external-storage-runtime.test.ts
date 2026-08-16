@@ -157,15 +157,15 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(JSON.parse(before.output)).toMatchObject({
       compatibility: "missing",
       currentVersion: 0,
-      requiredVersion: 2,
+      requiredVersion: 4,
     });
 
     const applied = await runExternalCli(["migrate", "apply"], migrationEnvironment);
     expect(applied.exitCode).toBe(0);
     expect(JSON.parse(applied.output)).toMatchObject({
       compatibility: "current",
-      currentVersion: 2,
-      requiredVersion: 2,
+      currentVersion: 4,
+      requiredVersion: 4,
     });
 
     const after = await runExternalCli(["migrate", "status"], migrationEnvironment);
@@ -240,6 +240,24 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       await database.run(Effect.gen(function*() {
         const sql = yield* SqlClient;
         const statements = [
+          `ALTER TABLE actions
+            DROP CONSTRAINT actions_action_check,
+            ADD CONSTRAINT actions_action_check
+              CHECK (action IN ('publish', 'restore', 'change_access', 'change_tags', 'delete'))`,
+          `ALTER TABLE idempotency_records
+            DROP CONSTRAINT idempotency_records_operation_check,
+            ADD CONSTRAINT idempotency_records_operation_check
+              CHECK (operation IN ('publish', 'restore', 'change_access', 'change_tags', 'delete'))`,
+          "ALTER TABLE actions DROP COLUMN target_owner_principal_id",
+          "ALTER TABLE idempotency_records DROP COLUMN target_owner_principal_id",
+          `ALTER TABLE versions
+            DROP CONSTRAINT versions_routing_mode_check,
+            ADD CONSTRAINT versions_routing_mode_check
+              CHECK (routing_mode = 'static')`,
+          `ALTER TABLE staged_uploads
+            DROP CONSTRAINT staged_uploads_routing_mode_check,
+            ADD CONSTRAINT staged_uploads_routing_mode_check
+              CHECK (routing_mode = 'static')`,
           "ALTER TABLE content_sessions DROP COLUMN project_id CASCADE",
           "ALTER TABLE content_bootstraps DROP COLUMN project_id CASCADE",
           "ALTER TABLE staged_uploads DROP COLUMN project_id CASCADE",
@@ -258,7 +276,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
           "CREATE INDEX artifacts_active_created ON artifacts (installation_id, deleted_at, created_at DESC, id DESC)",
           "CREATE INDEX artifacts_owner_active_created ON artifacts (installation_id, owner_principal_id, deleted_at, created_at DESC, id DESC)",
           "CREATE INDEX actions_artifact_created ON actions (installation_id, artifact_id, created_at DESC, id DESC)",
-          "DELETE FROM artifact_server_postgres_migrations WHERE migration_id = 2",
+          "DELETE FROM artifact_server_postgres_migrations WHERE migration_id >= 2",
         ] as const;
         for (const statement of statements) {
           yield* sql.unsafe(statement);
@@ -275,7 +293,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(JSON.parse(pending.output)).toMatchObject({
       compatibility: "pending",
       currentVersion: 1,
-      requiredVersion: 2,
+      requiredVersion: 4,
     });
     const migrated = await runExternalCli(["migrate", "apply"], {
       ARTIFACT_SERVER_DATABASE_URL: migrationEnvironment.databaseUrl,
@@ -284,7 +302,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(migrated.exitCode).toBe(0);
     expect(JSON.parse(migrated.output)).toMatchObject({
       compatibility: "current",
-      currentVersion: 2,
+      currentVersion: 4,
     });
 
     const restored = await startExternalStorageProcess(migrationEnvironment, identity);
@@ -336,7 +354,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(repeated.exitCode).toBe(0);
     expect(JSON.parse(repeated.output)).toMatchObject({
       compatibility: "current",
-      currentVersion: 2,
+      currentVersion: 4,
     });
   });
 
@@ -1087,6 +1105,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       content: "external integrity proof",
       idempotencyKey: `external-integrity-${randomUUID()}`,
       name: "External integrity proof",
+      routingMode: "spa",
     });
     expect(published.response.status).toBe(201);
     await server.stop();
@@ -1544,6 +1563,7 @@ async function publishNew(
     readonly idempotencyKey: string;
     readonly name: string;
     readonly projectId?: string;
+    readonly routingMode?: "spa" | "static";
   },
 ) {
   const upload = await stageExternalStorageFile(
@@ -1551,6 +1571,7 @@ async function publishNew(
     token,
     input.content,
     input.projectId,
+    input.routingMode,
   );
   const response = await fetch(upload.commitUrl, {
     body: JSON.stringify({target: {
@@ -1601,6 +1622,7 @@ async function stageExternalStorageFile(
   token: string,
   content: string,
   projectId?: string,
+  routingMode?: "spa" | "static",
 ): Promise<z.infer<typeof uploadResponseSchema>> {
   const bytes = new TextEncoder().encode(content);
   const files = [{
@@ -1609,9 +1631,7 @@ async function stageExternalStorageFile(
     sha256: createHash("sha256").update(bytes).digest("hex"),
     size: bytes.byteLength,
   }];
-  const body = projectId === undefined
-    ? {entryPath: "index.html", files}
-    : {entryPath: "index.html", files, projectId};
+  const body = {entryPath: "index.html", files, projectId, routingMode};
   const createUpload = await fetch(`${baseUrl}/api/v1/uploads`, {
     body: JSON.stringify(body),
     headers: {

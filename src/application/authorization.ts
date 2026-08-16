@@ -32,6 +32,9 @@ export interface AuthorizationOperations {
     principal: Principal,
     artifact: ArtifactRecord,
   ) => Effect.Effect<void, AuthorizationDenied>;
+  readonly requireArtifactOwnershipChange: (
+    principal: Principal,
+  ) => Effect.Effect<void, AuthorizationDenied>;
   readonly requireArtifactRead: (
     principal: Principal,
     artifact: ArtifactRecord,
@@ -164,6 +167,14 @@ function makeAuthorizationService(
     yield* denied();
   });
 
+  const requireArtifactOwnershipChange = Effect.fn(
+    "AuthorizationService.requireArtifactOwnershipChange",
+  )(function*(principal: Principal) {
+    yield* requireInstallation(principal);
+    if (isHumanAdministrator(principal)) return;
+    yield* denied();
+  });
+
   const requirePublicationPreparation = Effect.fn(
     "AuthorizationService.requirePublicationPreparation",
   )(function*(principal: Principal) {
@@ -239,6 +250,7 @@ function makeAuthorizationService(
     artifactReadScope,
     requireArtifactCreation,
     requireArtifactManagement,
+    requireArtifactOwnershipChange,
     requireArtifactRead,
     requireContentSession,
     requirePublicationPreparation,

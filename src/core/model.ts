@@ -8,6 +8,7 @@ export type AccessSetting = (typeof accessSettings)[keyof typeof accessSettings]
 /** Artifact mutation kinds persisted in the standalone action history. */
 export const artifactActionKinds = {
   changeAccess: "change_access",
+  changeOwner: "change_owner",
   changeTags: "change_tags",
   delete: "delete",
   publish: "publish",
@@ -19,6 +20,7 @@ export type ArtifactActionKind =
   (typeof artifactActionKinds)[keyof typeof artifactActionKinds];
 
 export const routingModes = {
+  spa: "spa",
   static: "static",
 } as const;
 
@@ -88,6 +90,7 @@ export interface ArtifactActionRecord {
   readonly idempotencyKey: string;
   readonly principalId: string;
   readonly projectId: string;
+  readonly targetOwnerPrincipalId: string | null;
   readonly versionId: string;
 }
 

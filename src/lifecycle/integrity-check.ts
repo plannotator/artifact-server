@@ -28,6 +28,7 @@ const versionRowSchema = Schema.Struct({
   id: Schema.String,
   manifestDigest: Schema.String,
   projectId: Schema.String,
+  routingMode: Schema.Literals(["static", "spa"]),
 });
 const projectRowSchema = Schema.Struct({id: Schema.String});
 const projectReferenceRowSchema = Schema.Struct({
@@ -254,7 +255,8 @@ function readCompactCatalog(databasePath: string): IntegrityCatalog {
           artifact_id AS artifactId,
           project_id AS projectId,
           manifest_digest AS manifestDigest,
-          entry_path AS entryPath
+          entry_path AS entryPath,
+          routing_mode AS routingMode
         FROM versions
         ORDER BY artifact_id, number
       `).all()),
@@ -282,7 +284,8 @@ function readExternalCatalog(installationId: string) {
           artifact_id AS "artifactId",
           project_id AS "projectId",
           manifest_digest AS "manifestDigest",
-          entry_path AS "entryPath"
+          entry_path AS "entryPath",
+          routing_mode AS "routingMode"
         FROM versions
         WHERE installation_id = ${installationId}
         ORDER BY artifact_id, number
@@ -447,7 +450,7 @@ const checkCatalog = Effect.fn("checkIntegrityCatalog")(function*(
           sha256: entry.sha256,
           size: entry.size,
         })),
-        routingMode: "static",
+        routingMode: version.routingMode,
       });
       const dispositionByPath = new Map(
         manifest.entries.map((entry) => [entry.path, entry.disposition] as const),

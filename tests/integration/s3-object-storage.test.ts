@@ -82,6 +82,12 @@ describe.sequential("S3-compatible object storage", () => {
       })).resolves.toEqual({sha256: blobDigest, size: blobBytes.byteLength});
 
       await expect(readBlob(storage.blobs, blobDigest)).resolves.toEqual(blobBytes);
+      const range = {endInclusive: 4_194_319, start: 4_194_301};
+      const openedRange = await storage.blobs.openRange(blobDigest, range);
+      expect(openedRange).toMatchObject({range, size: blobBytes.byteLength});
+      await expect(new Response(openedRange.body).arrayBuffer()).resolves.toEqual(
+        copiedArrayBuffer(blobBytes.slice(range.start, range.endInclusive + 1)),
+      );
 
       const stagedBytes = new TextEncoder().encode("staged bytes survive remotely");
       const stagedDigest = digest(stagedBytes);
@@ -97,6 +103,10 @@ describe.sequential("S3-compatible object storage", () => {
       await expect(
         readStaged(storage.staging, uploadId, storageToken),
       ).resolves.toEqual(stagedBytes);
+      await storage.staging.remove(uploadId, storageToken);
+      await storage.staging.remove(uploadId, storageToken);
+      await expect(storage.staging.open(uploadId, storageToken)).rejects
+        .toMatchObject({$metadata: {httpStatusCode: 404}});
     } finally {
       await storage.close();
     }
@@ -128,6 +138,46 @@ describe.sequential("S3-compatible object storage", () => {
     );
     expect(multipartUploads.Uploads ?? []).toEqual([]);
     await expect(readBlob(storage.blobs, originalDigest)).resolves.toEqual(original);
+  }, 30_000);
+
+  test("foundation: an aborted multipart staging write settles before removal", async () => {
+    const storage = createStorage(client, "installation-aborted-staging");
+    const declaredBytes = patternedBytes(16 * 1024 * 1024);
+    const uploadId = `upl_${randomUUID()}`;
+    const storageToken = stagedFileToken();
+    const controller = new AbortController();
+    const incoming = new TransformStream<Uint8Array, Uint8Array>();
+    const writer = incoming.writable.getWriter();
+    const write = storage.staging.put({
+      body: incoming.readable,
+      sha256: digest(declaredBytes),
+      signal: controller.signal,
+      size: declaredBytes.byteLength,
+      storageToken,
+      uploadId,
+    });
+    await writer.write(declaredBytes.subarray(0, multipartBytes));
+    controller.abort(new Error("staging deadline reached"));
+    await writer.abort(controller.signal.reason).catch(() => undefined);
+    await expect(write).rejects.toBeDefined();
+    await storage.staging.remove(uploadId, storageToken);
+    await expect(storage.staging.open(uploadId, storageToken)).rejects
+      .toMatchObject({$metadata: {httpStatusCode: 404}});
+    const multipartUploads = await client.send(
+      new ListMultipartUploadsCommand({Bucket: bucket}),
+    );
+    expect(multipartUploads.Uploads ?? []).toEqual([]);
+
+    const alreadyExpired = new AbortController();
+    alreadyExpired.abort(new Error("upload already expired"));
+    await expect(storage.staging.put({
+      body: chunkedBody(new Uint8Array(), 1),
+      sha256: digest(new Uint8Array()),
+      signal: alreadyExpired.signal,
+      size: 0,
+      storageToken: stagedFileToken(),
+      uploadId: `upl_${randomUUID()}`,
+    })).rejects.toBeDefined();
   }, 30_000);
 
   test("concurrent writes are idempotent and installation keys stay isolated", async () => {
@@ -323,6 +373,12 @@ function chunkedBody(
       offset = next;
     },
   });
+}
+
+function copiedArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
 }
 
 async function waitUntilReady(endpoint: string): Promise<void> {

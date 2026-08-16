@@ -47,6 +47,7 @@ import {
 import type {
   ArtifactRepository,
   ChangeArtifactAccessSetting,
+  ChangeArtifactOwnership,
   ChangeArtifactTags,
   CommitArtifactVersion,
   CommitNewArtifact,
@@ -55,6 +56,7 @@ import type {
   CreateStagedUpload,
   DeleteArtifact,
   ExchangeContentBootstrap,
+  ExpiredStagedUpload,
   ListArtifactActions,
   ListArtifacts,
   PublicationSource,
@@ -79,9 +81,10 @@ const uploadStatusSchema = z.enum([
   uploadStatuses.committed,
   uploadStatuses.open,
 ]);
-const routingModeSchema = z.enum([routingModes.static]);
+const routingModeSchema = z.enum([routingModes.static, routingModes.spa]);
 const artifactActionKindSchema = z.enum([
   artifactActionKinds.changeAccess,
+  artifactActionKinds.changeOwner,
   artifactActionKinds.changeTags,
   artifactActionKinds.delete,
   artifactActionKinds.publish,
@@ -122,12 +125,14 @@ const idempotencyRowSchema = z.object({
   inputDigest: z.string(),
   operation: z.enum([
     "change_access",
+    "change_owner",
     "change_tags",
     "delete",
     "publish",
     "restore",
   ]),
   tagsJson: z.string().nullable(),
+  targetOwnerPrincipalId: z.string().nullable(),
   versionId: z.string(),
 });
 const artifactActionRowSchema = z.object({
@@ -139,6 +144,7 @@ const artifactActionRowSchema = z.object({
   idempotencyKey: z.string(),
   principalId: z.string(),
   projectId: z.string(),
+  targetOwnerPrincipalId: z.string().nullable(),
   versionId: z.string(),
 });
 const artifactRowSchema = z.object({
@@ -215,6 +221,10 @@ const stagedUploadFileRowSchema = z.object({
   size: z.number().int().nonnegative(),
   storageToken: z.string(),
   uploadedAt: z.string().nullable(),
+});
+const expiredStagedUploadRowSchema = z.object({
+  id: z.string(),
+  storageToken: z.string(),
 });
 const stagedUploadCommitRowSchema = z.object({
   expiresAt: z.string(),
@@ -570,6 +580,75 @@ export class SqliteArtifactRepository implements
     );
   }
 
+  changeOwnership(command: ChangeArtifactOwnership): Promise<ArtifactState> {
+    return Promise.resolve().then(() =>
+      this.#transaction(() => {
+        const replayed = this.#findIdempotentOwnershipResult(
+          command.projectId,
+          command.idempotencyKey,
+          command.inputDigest,
+        );
+        if (replayed !== null) return replayed;
+        const artifact = this.#readArtifact(command.projectId, command.artifactId);
+        if (artifact.ownerPrincipalId === command.targetOwnerPrincipalId) {
+          throw new ArtifactMutationConflict({
+            message: "The target member already owns this artifact.",
+          });
+        }
+        this.#assertExpectedCurrentVersion(
+          artifact,
+          command.expectedCurrentVersionId,
+        );
+        const update = this.#database
+          .prepare(
+            `UPDATE artifacts
+             SET owner_principal_id = ?
+             WHERE project_id = ? AND id = ? AND current_version_id = ?
+               AND deleted_at IS NULL`,
+          )
+          .run(
+            command.targetOwnerPrincipalId,
+            command.projectId,
+            command.artifactId,
+            command.expectedCurrentVersionId,
+          );
+        if (update.changes !== 1) throw changedDuringManagement();
+        this.#insertAction(
+          command.projectId,
+          command.artifactId,
+          command.expectedCurrentVersionId,
+          command.idempotencyKey,
+          command.createdAt,
+          artifactActionKinds.changeOwner,
+          command.principalId,
+          command.authorizedByPrincipalId,
+          command.targetOwnerPrincipalId,
+        );
+        this.#insertIdempotency(
+          command.projectId,
+          command.idempotencyKey,
+          command.inputDigest,
+          command.artifactId,
+          command.expectedCurrentVersionId,
+          command.createdAt,
+          "change_owner",
+          artifact.accessSetting,
+          null,
+          command.targetOwnerPrincipalId,
+        );
+        return this.#readArtifactState(
+          command.projectId,
+          command.artifactId,
+          command.expectedCurrentVersionId,
+          artifact.accessSetting,
+          false,
+          null,
+          command.targetOwnerPrincipalId,
+        );
+      }),
+    );
+  }
+
   changeTags(command: ChangeArtifactTags): Promise<ArtifactState> {
     return Promise.resolve().then(() =>
       this.#transaction(() => {
@@ -822,6 +901,7 @@ export class SqliteArtifactRepository implements
             action,
             principal_id AS principalId,
             authorized_by_principal_id AS authorizedByPrincipalId,
+            target_owner_principal_id AS targetOwnerPrincipalId,
             idempotency_key AS idempotencyKey,
             created_at AS createdAt
            FROM actions
@@ -933,6 +1013,7 @@ export class SqliteArtifactRepository implements
   findVersionContent(
     contentToken: string,
     requestedPath: string,
+    fallback: "entry" | "none",
   ): Promise<VersionContent | null> {
     return Promise.resolve().then(() => {
       const row = this.#database
@@ -953,10 +1034,25 @@ export class SqliteArtifactRepository implements
           JOIN artifacts a ON a.id = v.artifact_id
           JOIN manifest_entries e ON e.version_id = v.id
           WHERE v.content_token = ?
-            AND e.path = CASE WHEN ? = '' THEN v.entry_path ELSE ? END
+            AND e.path = CASE
+              WHEN ? = '' THEN v.entry_path
+              WHEN EXISTS (
+                SELECT 1 FROM manifest_entries exact
+                WHERE exact.version_id = v.id AND exact.path = ?
+              ) THEN ?
+              WHEN ? = 'entry' AND v.routing_mode = 'spa' THEN v.entry_path
+              ELSE ?
+            END
             AND a.deleted_at IS NULL`,
         )
-        .get(contentToken, requestedPath, requestedPath);
+        .get(
+          contentToken,
+          requestedPath,
+          requestedPath,
+          requestedPath,
+          fallback,
+          requestedPath,
+        );
       const parsed = versionContentRowSchema.nullable().parse(row ?? null);
       if (parsed === null) return null;
       const entry: ManifestEntry = {
@@ -1163,6 +1259,54 @@ export class SqliteArtifactRepository implements
     );
   }
 
+  listExpiredStagedUploads(
+    expiredBefore: string,
+    limit: number,
+  ): Promise<readonly ExpiredStagedUpload[]> {
+    return Promise.resolve().then(() => {
+      const rows = this.#database.prepare(`
+        WITH selected AS (
+          SELECT id FROM staged_uploads
+          WHERE status = 'open' AND expires_at <= ?
+          ORDER BY expires_at, id
+          LIMIT ?
+        )
+        SELECT selected.id, file.storage_token AS storageToken
+        FROM selected
+        JOIN staged_upload_files file ON file.upload_id = selected.id
+        ORDER BY selected.id, file.storage_token
+      `).all(expiredBefore, limit);
+      const grouped = new Map<string, Array<{readonly storageToken: string}>>();
+      for (const row of z.array(expiredStagedUploadRowSchema).parse(rows)) {
+        const files = grouped.get(row.id) ?? [];
+        files.push({storageToken: row.storageToken});
+        grouped.set(row.id, files);
+      }
+      return [...grouped].map(([id, files]) => ({files, id}));
+    });
+  }
+
+  removeExpiredStagedUpload(
+    uploadId: string,
+    expiredBefore: string,
+  ): Promise<boolean> {
+    return Promise.resolve().then(() => this.#transaction(() => {
+      this.#database.prepare(`
+        DELETE FROM staged_upload_files
+        WHERE upload_id = ? AND EXISTS (
+          SELECT 1 FROM staged_uploads upload
+          WHERE upload.id = staged_upload_files.upload_id
+            AND upload.status = 'open' AND upload.expires_at <= ?
+        )
+      `).run(uploadId, expiredBefore);
+      const deleted = this.#database.prepare(`
+        DELETE FROM staged_uploads
+        WHERE id = ? AND status = 'open' AND expires_at <= ?
+      `).run(uploadId, expiredBefore);
+      return deleted.changes === 1;
+    }));
+  }
+
   markStagedFileUploaded(
     projectId: string,
     uploadId: string,
@@ -1185,9 +1329,17 @@ export class SqliteArtifactRepository implements
                    AND u.project_id = ?
                    AND u.principal_id = ?
                    AND u.status = 'open'
+                   AND u.expires_at > ?
                )`,
           )
-          .run(uploadedAt, uploadId, storageToken, projectId, principalId);
+          .run(
+            uploadedAt,
+            uploadId,
+            storageToken,
+            projectId,
+            principalId,
+            uploadedAt,
+          );
         if (update.changes !== 1) {
           const upload = this.#readStagedUploadOrNull(
             projectId,
@@ -1203,6 +1355,9 @@ export class SqliteArtifactRepository implements
             throw new UploadClosed({
               message: "The staged upload is already committed.",
             });
+          }
+          if (upload.expiresAt <= uploadedAt) {
+            throw new UploadExpired({message: "The staged upload has expired."});
           }
           throw new UploadFileNotFound({
             message: "The staged upload file does not exist.",
@@ -1252,6 +1407,7 @@ export class SqliteArtifactRepository implements
           input_digest AS inputDigest,
           operation,
           tags_json AS tagsJson,
+          target_owner_principal_id AS targetOwnerPrincipalId,
           version_id AS versionId
          FROM idempotency_records
          WHERE project_id = ? AND idempotency_key = ?`,
@@ -1277,6 +1433,48 @@ export class SqliteArtifactRepository implements
     );
   }
 
+  #findIdempotentOwnershipResult(
+    projectId: string,
+    idempotencyKey: string,
+    inputDigest: string,
+  ): ArtifactState | null {
+    const row = this.#database
+      .prepare(
+        `SELECT
+          access_setting AS accessSetting,
+          artifact_id AS artifactId,
+          input_digest AS inputDigest,
+          operation,
+          tags_json AS tagsJson,
+          target_owner_principal_id AS targetOwnerPrincipalId,
+          version_id AS versionId
+         FROM idempotency_records
+         WHERE project_id = ? AND idempotency_key = ?`,
+      )
+      .get(projectId, idempotencyKey);
+    const parsed = idempotencyRowSchema.nullable().parse(row ?? null);
+    if (parsed === null) return null;
+    if (
+      parsed.inputDigest !== inputDigest ||
+      parsed.operation !== "change_owner" ||
+      parsed.accessSetting === null ||
+      parsed.targetOwnerPrincipalId === null
+    ) {
+      throw new IdempotencyConflict({
+        message: "The idempotency key was already used with different input.",
+      });
+    }
+    return this.#readArtifactState(
+      projectId,
+      parsed.artifactId,
+      parsed.versionId,
+      parsed.accessSetting,
+      true,
+      null,
+      parsed.targetOwnerPrincipalId,
+    );
+  }
+
   #findIdempotentTagResult(
     projectId: string,
     idempotencyKey: string,
@@ -1290,6 +1488,7 @@ export class SqliteArtifactRepository implements
           input_digest AS inputDigest,
           operation,
           tags_json AS tagsJson,
+          target_owner_principal_id AS targetOwnerPrincipalId,
           version_id AS versionId
          FROM idempotency_records
          WHERE project_id = ? AND idempotency_key = ?`,
@@ -1332,6 +1531,7 @@ export class SqliteArtifactRepository implements
           input_digest AS inputDigest,
           operation,
           tags_json AS tagsJson,
+          target_owner_principal_id AS targetOwnerPrincipalId,
           version_id AS versionId
          FROM idempotency_records
          WHERE project_id = ? AND idempotency_key = ?`,
@@ -1480,6 +1680,7 @@ export class SqliteArtifactRepository implements
     accessSetting: ArtifactRecord["accessSetting"],
     replayed: boolean,
     tags: readonly string[] | null = null,
+    ownerPrincipalId: string | null = null,
   ): ArtifactState {
     const artifact = this.#readArtifact(projectId, artifactId);
     const version = this.#readVersionOrNull(projectId, versionId, artifactId);
@@ -1491,6 +1692,7 @@ export class SqliteArtifactRepository implements
         ...artifact,
         accessSetting,
         currentVersionId: versionId,
+        ownerPrincipalId: ownerPrincipalId ?? artifact.ownerPrincipalId,
         tags: tags ?? artifact.tags,
       },
       replayed,
@@ -1576,6 +1778,7 @@ export class SqliteArtifactRepository implements
           input_digest AS inputDigest,
           operation,
           tags_json AS tagsJson,
+          target_owner_principal_id AS targetOwnerPrincipalId,
           version_id AS versionId
          FROM idempotency_records
          WHERE project_id = ? AND idempotency_key = ?`,
@@ -1600,13 +1803,15 @@ export class SqliteArtifactRepository implements
     action: ArtifactActionRecord["action"],
     principalId: string,
     authorizedByPrincipalId: string | null,
+    targetOwnerPrincipalId: string | null = null,
   ): void {
     this.#database
       .prepare(
         `INSERT INTO actions (
           id, project_id, artifact_id, version_id, action, principal_id,
-          authorized_by_principal_id, idempotency_key, created_at
-        ) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?)`,
+          authorized_by_principal_id, target_owner_principal_id,
+          idempotency_key, created_at
+        ) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         projectId,
@@ -1615,6 +1820,7 @@ export class SqliteArtifactRepository implements
         action,
         principalId,
         authorizedByPrincipalId,
+        targetOwnerPrincipalId,
         idempotencyKey,
         createdAt,
       );
@@ -1686,19 +1892,22 @@ export class SqliteArtifactRepository implements
     createdAt: string,
     operation:
       | "change_access"
+      | "change_owner"
       | "change_tags"
       | "delete"
       | "publish"
       | "restore" = "publish",
     accessSetting: ArtifactRecord["accessSetting"] | null = null,
     tagsJson: string | null = null,
+    targetOwnerPrincipalId: string | null = null,
   ): void {
     this.#database
       .prepare(
         `INSERT INTO idempotency_records (
           project_id, idempotency_key, input_digest, artifact_id, version_id,
-          operation, access_setting, tags_json, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          operation, access_setting, tags_json, target_owner_principal_id,
+          created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         projectId,
@@ -1709,6 +1918,7 @@ export class SqliteArtifactRepository implements
         operation,
         accessSetting,
         tagsJson,
+        targetOwnerPrincipalId,
         createdAt,
       );
   }
@@ -1788,7 +1998,7 @@ export class SqliteArtifactRepository implements
         number INTEGER NOT NULL CHECK (number > 0),
         manifest_digest TEXT NOT NULL,
         entry_path TEXT NOT NULL,
-        routing_mode TEXT NOT NULL CHECK (routing_mode = 'static'),
+        routing_mode TEXT NOT NULL CHECK (routing_mode IN ('static', 'spa')),
         content_token TEXT NOT NULL UNIQUE,
         publisher_principal_id TEXT NOT NULL,
         created_at TEXT NOT NULL,
@@ -1817,9 +2027,10 @@ export class SqliteArtifactRepository implements
         input_digest TEXT NOT NULL,
         artifact_id TEXT NOT NULL REFERENCES artifacts(id),
         version_id TEXT NOT NULL REFERENCES versions(id),
-        operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access', 'change_tags', 'delete')),
+        operation TEXT NOT NULL DEFAULT 'publish' CHECK (operation IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete')),
         access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
         tags_json TEXT,
+        target_owner_principal_id TEXT,
         created_at TEXT NOT NULL,
         PRIMARY KEY (project_id, idempotency_key)
       ) STRICT;
@@ -1832,6 +2043,7 @@ export class SqliteArtifactRepository implements
         action TEXT NOT NULL,
         principal_id TEXT NOT NULL,
         authorized_by_principal_id TEXT,
+        target_owner_principal_id TEXT,
         idempotency_key TEXT NOT NULL,
         created_at TEXT NOT NULL
       ) STRICT;
@@ -1843,7 +2055,7 @@ export class SqliteArtifactRepository implements
         status TEXT NOT NULL CHECK (status IN ('open', 'committed')),
         manifest_digest TEXT NOT NULL,
         entry_path TEXT NOT NULL,
-        routing_mode TEXT NOT NULL CHECK (routing_mode = 'static'),
+        routing_mode TEXT NOT NULL CHECK (routing_mode IN ('static', 'spa')),
         created_at TEXT NOT NULL,
         expires_at TEXT NOT NULL,
         committed_version_id TEXT REFERENCES versions(id),
@@ -1911,6 +2123,10 @@ export class SqliteArtifactRepository implements
     this.#addIdempotencyOperationColumnsIfMissing();
     this.#addTagIdempotencyOperationIfMissing();
     this.#addProjectScopeIfMissing(installationId);
+    this.#addSpaRoutingModeIfMissing();
+    this.#addProjectScopeIfMissing(installationId);
+    this.#addOwnershipOperationIfMissing();
+    this.#addProjectScopeIfMissing(installationId);
     this.#database.exec(`
       CREATE INDEX IF NOT EXISTS artifacts_owner_active_created
         ON artifacts (
@@ -1919,6 +2135,165 @@ export class SqliteArtifactRepository implements
       CREATE INDEX IF NOT EXISTS projects_active_created
         ON projects (archived_at, created_at, id);
     `);
+  }
+
+  #addSpaRoutingModeIfMissing(): void {
+    const rows = this.#database.prepare(
+      `SELECT name, sql FROM sqlite_schema
+       WHERE type = 'table' AND name IN ('versions', 'staged_uploads')`,
+    ).all();
+    const schemas = z.array(z.object({name: z.string(), sql: z.string()})).parse(rows);
+    if (schemas.every(({sql}) => sql.includes("'spa'"))) return;
+
+    this.#database.exec("PRAGMA foreign_keys = OFF;");
+    try {
+      this.#database.exec(`
+        BEGIN IMMEDIATE;
+
+        DROP TRIGGER IF EXISTS artifacts_project_insert;
+        DROP TRIGGER IF EXISTS artifacts_project_update;
+        DROP TRIGGER IF EXISTS artifacts_current_version_update;
+        DROP TRIGGER IF EXISTS staged_uploads_project_insert;
+        DROP TRIGGER IF EXISTS staged_uploads_project_update;
+        DROP TRIGGER IF EXISTS versions_project_insert;
+        DROP TRIGGER IF EXISTS versions_project_update;
+        DROP TRIGGER IF EXISTS actions_project_insert;
+        DROP TRIGGER IF EXISTS actions_project_update;
+        DROP TRIGGER IF EXISTS idempotency_project_insert;
+        DROP TRIGGER IF EXISTS idempotency_project_update;
+        DROP TRIGGER IF EXISTS content_bootstrap_project_insert;
+        DROP TRIGGER IF EXISTS content_bootstrap_project_update;
+        DROP TRIGGER IF EXISTS content_session_project_insert;
+        DROP TRIGGER IF EXISTS content_session_project_update;
+
+        CREATE TABLE versions_next (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id),
+          artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+          number INTEGER NOT NULL CHECK (number > 0),
+          manifest_digest TEXT NOT NULL,
+          entry_path TEXT NOT NULL,
+          routing_mode TEXT NOT NULL CHECK (routing_mode IN ('static', 'spa')),
+          content_token TEXT NOT NULL UNIQUE,
+          publisher_principal_id TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          UNIQUE (artifact_id, number)
+        ) STRICT;
+        INSERT INTO versions_next (
+          id, project_id, artifact_id, number, manifest_digest, entry_path,
+          routing_mode, content_token, publisher_principal_id, created_at
+        ) SELECT
+          id, project_id, artifact_id, number, manifest_digest, entry_path,
+          routing_mode, content_token, publisher_principal_id, created_at
+        FROM versions;
+        DROP TABLE versions;
+        ALTER TABLE versions_next RENAME TO versions;
+
+        CREATE TABLE staged_uploads_next (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id),
+          principal_id TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('open', 'committed')),
+          manifest_digest TEXT NOT NULL,
+          entry_path TEXT NOT NULL,
+          routing_mode TEXT NOT NULL CHECK (routing_mode IN ('static', 'spa')),
+          created_at TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          committed_version_id TEXT REFERENCES versions(id),
+          CHECK (
+            (status = 'open' AND committed_version_id IS NULL)
+            OR (status = 'committed' AND committed_version_id IS NOT NULL)
+          )
+        ) STRICT;
+        INSERT INTO staged_uploads_next (
+          id, project_id, principal_id, status, manifest_digest, entry_path,
+          routing_mode, created_at, expires_at, committed_version_id
+        ) SELECT
+          id, project_id, principal_id, status, manifest_digest, entry_path,
+          routing_mode, created_at, expires_at, committed_version_id
+        FROM staged_uploads;
+        DROP TABLE staged_uploads;
+        ALTER TABLE staged_uploads_next RENAME TO staged_uploads;
+
+        COMMIT;
+      `);
+    } catch (cause) {
+      this.#database.exec("ROLLBACK;");
+      throw cause;
+    } finally {
+      this.#database.exec("PRAGMA foreign_keys = ON;");
+    }
+    const failures = this.#database.prepare("PRAGMA foreign_key_check").all();
+    if (failures.length > 0) {
+      throw new Error("SQLite routing migration produced invalid foreign keys.");
+    }
+  }
+
+  #addOwnershipOperationIfMissing(): void {
+    if (!this.#tableColumns("actions").includes("target_owner_principal_id")) {
+      this.#database.exec(
+        "ALTER TABLE actions ADD COLUMN target_owner_principal_id TEXT",
+      );
+    }
+    const row = this.#database
+      .prepare(
+        "SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'idempotency_records'",
+      )
+      .get();
+    const {sql} = z.object({sql: z.string()}).parse(row);
+    if (
+      sql.includes("'change_owner'") &&
+      this.#tableColumns("idempotency_records").includes(
+        "target_owner_principal_id",
+      )
+    ) return;
+
+    this.#database.exec("PRAGMA foreign_keys = OFF;");
+    try {
+      this.#database.exec(`
+        BEGIN IMMEDIATE;
+        DROP TRIGGER IF EXISTS idempotency_project_insert;
+        DROP TRIGGER IF EXISTS idempotency_project_update;
+
+        CREATE TABLE idempotency_records_next (
+          project_id TEXT NOT NULL REFERENCES projects(id),
+          idempotency_key TEXT NOT NULL,
+          input_digest TEXT NOT NULL,
+          artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+          version_id TEXT NOT NULL REFERENCES versions(id),
+          operation TEXT NOT NULL DEFAULT 'publish'
+            CHECK (operation IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete')),
+          access_setting TEXT
+            CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
+          tags_json TEXT,
+          target_owner_principal_id TEXT,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (project_id, idempotency_key)
+        ) STRICT;
+
+        INSERT INTO idempotency_records_next (
+          project_id, idempotency_key, input_digest, artifact_id, version_id,
+          operation, access_setting, tags_json, target_owner_principal_id,
+          created_at
+        ) SELECT
+          project_id, idempotency_key, input_digest, artifact_id, version_id,
+          operation, access_setting, tags_json, NULL, created_at
+        FROM idempotency_records;
+
+        DROP TABLE idempotency_records;
+        ALTER TABLE idempotency_records_next RENAME TO idempotency_records;
+        COMMIT;
+      `);
+    } catch (cause) {
+      this.#database.exec("ROLLBACK;");
+      throw cause;
+    } finally {
+      this.#database.exec("PRAGMA foreign_keys = ON;");
+    }
+    const failures = this.#database.prepare("PRAGMA foreign_key_check").all();
+    if (failures.length > 0) {
+      throw new Error("SQLite ownership migration produced invalid foreign keys.");
+    }
   }
 
   #addTagIdempotencyOperationIfMissing(): void {

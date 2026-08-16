@@ -21,6 +21,14 @@ import { SqliteArtifactRepository } from "../storage/sqlite-artifact-repository.
 import { SqliteIdentityRepository } from "../storage/sqlite-identity-repository.js";
 import { createLocalApplicationLayer } from "./create-local-application-layer.js";
 import type {RuntimeLifecycle} from "../lifecycle/runtime-readiness.js";
+import {
+  defaultStagingCleanupPolicy,
+  runStagingCleanupPass,
+  startStagingCleanupSchedule,
+  type StagingCleanupPolicy,
+} from "../lifecycle/staging-cleanup.js";
+import type {ExpiredStagingCleanupReport} from
+  "../application/expired-staging-cleanup.js";
 
 export interface LocalRuntimeConfig {
   readonly apiToken: string;
@@ -39,10 +47,12 @@ export interface LocalRuntimeConfig {
   readonly runtimeLifecycle?: RuntimeLifecycle;
   readonly installationId?: string;
   readonly serviceVersion?: string;
+  readonly stagingCleanupPolicy?: StagingCleanupPolicy;
 }
 
 export interface LocalRuntime {
   readonly app: ReturnType<typeof createHttpApp>;
+  cleanupStaging(limit: number): Promise<ExpiredStagingCleanupReport>;
   close(): Promise<void>;
 }
 
@@ -54,6 +64,8 @@ export async function createLocalRuntime(
   const staging = new LocalStagingStore(path.join(config.dataDirectory, "staging"));
   const databasePath = path.join(config.dataDirectory, "artifact-server.db");
   const installationId = config.installationId ?? "local";
+  const stagingCleanupPolicy = config.stagingCleanupPolicy ??
+    defaultStagingCleanupPolicy;
   const repository = new SqliteArtifactRepository(databasePath, installationId);
   const identityRepository = new SqliteIdentityRepository(databasePath);
   const resourceLayer = Layer.effectDiscard(
@@ -84,6 +96,7 @@ export async function createLocalRuntime(
       }),
     repository,
     staging,
+    stagingCleanupPolicy,
   });
   const telemetryLayer = config.observability === true
     ? otlpLayer({
@@ -116,9 +129,16 @@ export async function createLocalRuntime(
       ? appDependencies
       : {...appDependencies, runtimeLifecycle: config.runtimeLifecycle});
 
+    const closeCleanupSchedule = stagingCleanupPolicy.schedule === "background"
+      ? startStagingCleanupSchedule(applicationRuntime, stagingCleanupPolicy)
+      : null;
     return {
       app,
-      close: () => applicationRuntime.dispose(),
+      cleanupStaging: (limit) => runStagingCleanupPass(applicationRuntime, limit),
+      close: async () => {
+        if (closeCleanupSchedule !== null) await closeCleanupSchedule();
+        await applicationRuntime.dispose();
+      },
     };
   } catch (error) {
     await applicationRuntime.dispose();

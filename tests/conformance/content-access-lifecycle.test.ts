@@ -107,6 +107,7 @@ describe("content access lifecycle", () => {
       ContentAccessService.use((contentAccess) =>
         contentAccess.authorizeVersionContent({
           contentToken: liveBootstrap.contentToken,
+          fallback: "none",
           path: "",
           sessionToken: session.token,
         })
@@ -153,6 +154,7 @@ describe("content access lifecycle", () => {
       ContentAccessService.use((contentAccess) =>
         contentAccess.authorizeVersionContent({
           contentToken: issued.contentToken,
+          fallback: "none",
           path: "",
           sessionToken: Redacted.make("tampered-content-session-token"),
         })
@@ -161,6 +163,7 @@ describe("content access lifecycle", () => {
       ContentAccessService.use((contentAccess) =>
         contentAccess.authorizeVersionContent({
           contentToken: issued.contentToken,
+          fallback: "none",
           path: "",
           sessionToken: session.token,
         })

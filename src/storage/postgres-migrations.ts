@@ -343,13 +343,45 @@ const addProjectScope = Effect.gen(function*() {
   }
 });
 
+const addSpaRouting = Effect.gen(function*() {
+  const sql = yield* SqlClient;
+  yield* sql.unsafe(`ALTER TABLE versions
+    DROP CONSTRAINT versions_routing_mode_check,
+    ADD CONSTRAINT versions_routing_mode_check
+      CHECK (routing_mode IN ('static', 'spa'))`);
+  yield* sql.unsafe(`ALTER TABLE staged_uploads
+    DROP CONSTRAINT staged_uploads_routing_mode_check,
+    ADD CONSTRAINT staged_uploads_routing_mode_check
+      CHECK (routing_mode IN ('static', 'spa'))`);
+});
+
+const addOwnershipTransfer = Effect.gen(function*() {
+  const sql = yield* SqlClient;
+  yield* sql.unsafe(
+    "ALTER TABLE actions ADD COLUMN IF NOT EXISTS target_owner_principal_id TEXT",
+  );
+  yield* sql.unsafe(
+    "ALTER TABLE idempotency_records ADD COLUMN IF NOT EXISTS target_owner_principal_id TEXT",
+  );
+  yield* sql.unsafe(`ALTER TABLE actions
+    DROP CONSTRAINT actions_action_check,
+    ADD CONSTRAINT actions_action_check
+      CHECK (action IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete'))`);
+  yield* sql.unsafe(`ALTER TABLE idempotency_records
+    DROP CONSTRAINT idempotency_records_operation_check,
+    ADD CONSTRAINT idempotency_records_operation_check
+      CHECK (operation IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete'))`);
+});
+
 const migrationLoader = Migrator.fromRecord({
   "0001_initial_shared_schema": initialSchema,
   "0002_project_scoped_artifacts": addProjectScope,
+  "0003_spa_routing": addSpaRouting,
+  "0004_ownership_transfer": addOwnershipTransfer,
 });
 
 /** Schema revision required by this Artifact Server build. */
-export const requiredPostgresSchemaVersion = 2;
+export const requiredPostgresSchemaVersion = 4;
 
 /** Migration compatibility observed without changing Postgres. */
 export interface PostgresMigrationStatus {
@@ -410,6 +442,12 @@ export const readPostgresMigrationStatus = Effect.gen(function*() {
   }, {
     migration_id: 2,
     name: "project_scoped_artifacts",
+  }, {
+    migration_id: 3,
+    name: "spa_routing",
+  }, {
+    migration_id: 4,
+    name: "ownership_transfer",
   }] as const;
   const observedRequiredHistory = rows.filter(
     (row) => row.migration_id <= requiredPostgresSchemaVersion,

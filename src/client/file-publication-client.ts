@@ -93,7 +93,7 @@ const versionSchema = Schema.Struct({
   number: positiveIntegerSchema,
   publisherPrincipalId: Schema.String,
   projectId: Schema.String,
-  routingMode: Schema.Literal("static"),
+  routingMode: Schema.Literals(["static", "spa"]),
 });
 const publishResponseSchema = Schema.Struct({
   artifact: artifactSchema,
@@ -203,6 +203,7 @@ export interface FilePublicationCommand {
   readonly idempotencyKey: string;
   readonly inputPath: string;
   readonly projectId?: string;
+  readonly routingMode?: "spa" | "static";
   readonly target: FilePublicationTarget;
 }
 
@@ -227,6 +228,7 @@ interface PreparedPublication {
   readonly defaultName: string;
   readonly entryPath: string;
   readonly files: readonly PreparedFile[];
+  readonly routingMode: "spa" | "static";
 }
 
 interface CreateUploadRequestBody {
@@ -238,6 +240,7 @@ interface CreateUploadRequestBody {
     readonly size: number;
   }[];
   readonly projectId?: string;
+  readonly routingMode: "spa" | "static";
 }
 
 type CommitPublicationTarget =
@@ -325,7 +328,11 @@ const preparePublication = Effect.fn("FilePublicationClient.preparePublication")
   ): Effect.fn.Return<PreparedPublication, FilePublicationInputError> {
     const absoluteInputPath = path.resolve(command.inputPath);
     const prepared = yield* Effect.tryPromise({
-      try: () => inspectPublicationPath(absoluteInputPath, command.entryPath),
+      try: () => inspectPublicationPath(
+        absoluteInputPath,
+        command.entryPath,
+        command.routingMode ?? "static",
+      ),
       catch: (cause) => inputFailureFrom(cause, absoluteInputPath),
     });
     return prepared;
@@ -335,6 +342,7 @@ const preparePublication = Effect.fn("FilePublicationClient.preparePublication")
 async function inspectPublicationPath(
   absoluteInputPath: string,
   requestedEntryPath: string | undefined,
+  routingMode: "spa" | "static",
 ): Promise<PreparedPublication> {
   const rootInfo = await lstat(absoluteInputPath);
   if (rootInfo.isSymbolicLink()) {
@@ -362,6 +370,7 @@ async function inspectPublicationPath(
       relativePath,
       [file],
       absoluteInputPath,
+      routingMode,
     );
   }
   if (!rootInfo.isDirectory()) {
@@ -386,6 +395,7 @@ async function inspectPublicationPath(
     requestedEntryPath ?? defaultDirectoryEntryPath,
     files,
     absoluteInputPath,
+    routingMode,
   );
 }
 
@@ -494,12 +504,13 @@ function canonicalPreparedPublication(
   entryPath: string,
   files: readonly PreparedFile[],
   inputPath: string,
+  routingMode: "spa" | "static",
 ): PreparedPublication {
   try {
     const manifest = createManifest({
       entryPath,
       files,
-      routingMode: "static",
+      routingMode,
     });
     const filesByPath = new Map(files.map((file) => [file.path, file]));
     return {
@@ -512,6 +523,7 @@ function canonicalPreparedPublication(
         }
         return file;
       }),
+      routingMode: manifest.routingMode,
     };
   } catch (cause) {
     if (cause instanceof EmptyManifest) {
@@ -599,10 +611,12 @@ const createUpload = Effect.fn("FilePublicationClient.createUpload")(
     const body: CreateUploadRequestBody = projectId === undefined ? {
       entryPath: prepared.entryPath,
       files,
+      routingMode: prepared.routingMode,
     } : {
       entryPath: prepared.entryPath,
       files,
       projectId,
+      routingMode: prepared.routingMode,
     };
     const request = yield* jsonRequest(
       HttpClientRequest.post(new URL("/api/v1/uploads", serverOrigin)),

@@ -87,6 +87,13 @@ describe("Artifact Server lifecycle CLI", () => {
           deploymentMode: "compact",
           interactiveIdentityProvider: "local",
           installationId: initialization.installationId,
+          stagingCleanup: {
+            batchSize: 100,
+            concurrency: 4,
+            intervalMilliseconds: 900_000,
+            schedule: "background",
+            settleDelayMilliseconds: 300_000,
+          },
           status: "valid",
         },
         providers: {status: "ready"},
@@ -130,6 +137,18 @@ describe("Artifact Server lifecycle CLI", () => {
         hostname: "127.0.0.1",
         port: "8787",
       }))).rejects.toMatchObject({reason: "invalid_origin"});
+      await expect(Effect.runPromise(parseCompactRuntimeConfiguration({
+        dataDirectory,
+        environment: {
+          ...environment,
+          ARTIFACT_SERVER_STAGING_CLEANUP_CONCURRENCY: "0",
+        },
+        hostname: "127.0.0.1",
+        port: "8787",
+      }))).rejects.toMatchObject({
+        field: "ARTIFACT_SERVER_STAGING_CLEANUP",
+        reason: "invalid_value",
+      });
 
       const support = await runCli([
         "support",

@@ -26,13 +26,27 @@ export interface OpenedBlob extends StoredBlob {
   readonly body: ReadableStream<Uint8Array>;
 }
 
+/** One inclusive byte range inside a stored blob. */
+export interface BlobByteRange {
+  readonly endInclusive: number;
+  readonly start: number;
+}
+
+/** A ranged blob read whose size remains the complete stored-object size. */
+export interface OpenedBlobRange extends StoredBlob {
+  readonly body: ReadableStream<Uint8Array>;
+  readonly range: BlobByteRange;
+}
+
 export interface BlobWrite extends StoredBlob {
   readonly body: ReadableStream<Uint8Array>;
+  readonly signal?: AbortSignal;
 }
 
 export interface BlobStore {
   inspect(sha256: string): Promise<StoredBlob>;
   open(sha256: string): Promise<OpenedBlob>;
+  openRange(sha256: string, range: BlobByteRange): Promise<OpenedBlobRange>;
   put(write: BlobWrite): Promise<StoredBlob>;
 }
 
@@ -49,6 +63,13 @@ export interface OpenedStagedFile {
 export interface StagingStore {
   open(uploadId: string, storageToken: string): Promise<OpenedStagedFile>;
   put(write: StagedFileWrite): Promise<StoredBlob>;
+  remove(uploadId: string, storageToken: string): Promise<void>;
+}
+
+/** Exact staging objects selected from one expired, uncommitted upload. */
+export interface ExpiredStagedUpload {
+  readonly files: readonly {readonly storageToken: string}[];
+  readonly id: string;
 }
 
 export interface PublicationSource {
@@ -115,6 +136,19 @@ export interface ChangeArtifactAccessSetting {
   readonly inputDigest: string;
   readonly principalId: string;
   readonly projectId: string;
+}
+
+/** Values used to atomically transfer one artifact to an active member. */
+export interface ChangeArtifactOwnership {
+  readonly artifactId: string;
+  readonly authorizedByPrincipalId: string | null;
+  readonly createdAt: string;
+  readonly expectedCurrentVersionId: string;
+  readonly idempotencyKey: string;
+  readonly inputDigest: string;
+  readonly principalId: string;
+  readonly projectId: string;
+  readonly targetOwnerPrincipalId: string;
 }
 
 /** Values used to atomically replace one artifact's complete tag set. */
@@ -221,6 +255,7 @@ export interface ArtifactRepository {
   commitNewArtifact(command: CommitNewArtifact): Promise<PublishedVersion>;
   commitVersion(command: CommitArtifactVersion): Promise<PublishedVersion>;
   changeAccessSetting(command: ChangeArtifactAccessSetting): Promise<ArtifactState>;
+  changeOwnership(command: ChangeArtifactOwnership): Promise<ArtifactState>;
   changeTags(command: ChangeArtifactTags): Promise<ArtifactState>;
   deleteArtifact(command: DeleteArtifact): Promise<ArtifactDeletion>;
   findArtifact(projectId: string, artifactId: string): Promise<ArtifactRecord | null>;
@@ -242,7 +277,11 @@ export interface ArtifactRepository {
     idempotencyKey: string,
     inputDigest: string,
   ): Promise<PublishedVersion | null>;
-  findVersionContent(contentToken: string, path: string): Promise<VersionContent | null>;
+  findVersionContent(
+    contentToken: string,
+    path: string,
+    fallback: "entry" | "none",
+  ): Promise<VersionContent | null>;
   listArtifactActions(command: ListArtifactActions): Promise<ArtifactActionPage>;
   listArtifacts(command: ListArtifacts): Promise<ArtifactPage>;
   listArtifactVersions(
@@ -281,6 +320,14 @@ export interface StagedUploadRepository {
     storageToken: string,
     uploadedAt: string,
   ): Promise<StagedUpload>;
+  listExpiredStagedUploads(
+    expiredBefore: string,
+    limit: number,
+  ): Promise<readonly ExpiredStagedUpload[]>;
+  removeExpiredStagedUpload(
+    uploadId: string,
+    expiredBefore: string,
+  ): Promise<boolean>;
 }
 
 export interface Clock {

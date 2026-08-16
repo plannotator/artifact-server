@@ -21,6 +21,14 @@ import type {
   ObjectStorageProviderFactory,
 } from "../storage/object-storage-provider.js";
 import type {RuntimeLifecycle} from "../lifecycle/runtime-readiness.js";
+import {
+  defaultStagingCleanupPolicy,
+  runStagingCleanupPass,
+  startStagingCleanupSchedule,
+  type StagingCleanupPolicy,
+} from "../lifecycle/staging-cleanup.js";
+import type {ExpiredStagingCleanupReport} from
+  "../application/expired-staging-cleanup.js";
 
 /** Configuration for one stateless Artifact Server process. */
 export interface ExternalStorageRuntimeConfig {
@@ -40,11 +48,13 @@ export interface ExternalStorageRuntimeConfig {
   readonly objectStorage: ObjectStorageProviderFactory;
   readonly runtimeLifecycle?: RuntimeLifecycle;
   readonly serviceVersion?: string;
+  readonly stagingCleanupPolicy?: StagingCleanupPolicy;
 }
 
 /** One ready external-storage runtime and its protocol adapter. */
 export interface ExternalStorageRuntime {
   readonly app: ReturnType<typeof createHttpApp>;
+  cleanupStaging(limit: number): Promise<ExpiredStagingCleanupReport>;
   close(): Promise<void>;
 }
 
@@ -52,6 +62,8 @@ export interface ExternalStorageRuntime {
 export async function createExternalStorageRuntime(
   config: ExternalStorageRuntimeConfig,
 ): Promise<ExternalStorageRuntime> {
+  const stagingCleanupPolicy = config.stagingCleanupPolicy ??
+    defaultStagingCleanupPolicy;
   const database = await PostgresDatabase.open({
     applicationName: `artifact-server:${config.installationId}`,
     maxConnections: 10,
@@ -91,6 +103,7 @@ export async function createExternalStorageRuntime(
       localBootstrapCredential: config.localBootstrapCredential ?? null,
       repository,
       staging,
+      stagingCleanupPolicy,
     });
     const resources = Layer.effectDiscard(Effect.acquireRelease(
       Effect.void,
@@ -124,11 +137,18 @@ export async function createExternalStorageRuntime(
         ...appDependenciesWithoutOAuth,
         apiOAuthResource: config.apiOAuthResource,
       };
+    const closeCleanupSchedule = stagingCleanupPolicy.schedule === "background"
+      ? startStagingCleanupSchedule(readyRuntime, stagingCleanupPolicy)
+      : null;
     return {
       app: createHttpApp(config.runtimeLifecycle === undefined
         ? appDependencies
         : {...appDependencies, runtimeLifecycle: config.runtimeLifecycle}),
-      close: () => readyRuntime.dispose(),
+      cleanupStaging: (limit) => runStagingCleanupPass(readyRuntime, limit),
+      close: async () => {
+        if (closeCleanupSchedule !== null) await closeCleanupSchedule();
+        await readyRuntime.dispose();
+      },
     };
   } catch (cause) {
     if (applicationRuntime === null) {

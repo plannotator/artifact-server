@@ -43,6 +43,16 @@ export function defineNativeObjectStorageContract(
         size: blobBytes.byteLength,
       })).resolves.toEqual({sha256: blobDigest, size: blobBytes.byteLength});
       await expect(readBlob(storage.blobs, blobDigest)).resolves.toEqual(blobBytes);
+      const range = {endInclusive: 2_097_159, start: 2_097_141};
+      const openedRange = await storage.blobs.openRange(blobDigest, range);
+      expect(openedRange).toMatchObject({
+        range,
+        sha256: blobDigest,
+        size: blobBytes.byteLength,
+      });
+      await expect(new Response(openedRange.body).arrayBuffer()).resolves.toEqual(
+        copiedArrayBuffer(blobBytes.slice(range.start, range.endInclusive + 1)),
+      );
 
       const empty = new Uint8Array();
       const emptyDigest = digest(empty);
@@ -66,6 +76,12 @@ export function defineNativeObjectStorageContract(
       });
       await expect(readStaged(storage.staging, uploadId, storageToken))
         .resolves.toEqual(stagedBytes);
+      await expect(storage.staging.remove(uploadId, storageToken))
+        .resolves.toBeUndefined();
+      await expect(storage.staging.open(uploadId, storageToken))
+        .rejects.toBeDefined();
+      await expect(storage.staging.remove(uploadId, storageToken))
+        .resolves.toBeUndefined();
     });
 
     test("false declarations fail without replacing immutable bytes", async () => {
@@ -107,6 +123,33 @@ export function defineNativeObjectStorageContract(
         .rejects.toThrow(/matching the RegExp/u);
       await expect(second.staging.open(`upl_${randomUUID()}`, "../outside"))
         .rejects.toThrow(/matching the RegExp/u);
+    });
+
+    test("an interrupted staging write settles before cleanup removes it", async () => {
+      const storage = contract.create("installation-interrupted-staging");
+      const declaredBytes = patternedBytes(16 * 1024 * 1024);
+      const uploadId = `upl_${randomUUID()}`;
+      const storageToken = stagedFileToken();
+      const controller = new AbortController();
+      const incoming = new TransformStream<Uint8Array, Uint8Array>();
+      const writer = incoming.writable.getWriter();
+      const write = storage.staging.put({
+        body: incoming.readable,
+        sha256: digest(declaredBytes),
+        signal: controller.signal,
+        size: declaredBytes.byteLength,
+        storageToken,
+        uploadId,
+      });
+      await writer.write(declaredBytes.subarray(0, 9 * 1024 * 1024));
+      controller.abort(new Error("provider cancellation contract"));
+      await writer.abort(controller.signal.reason).catch(() => undefined);
+      await expect(write).rejects.toBeDefined();
+
+      await expect(storage.staging.remove(uploadId, storageToken))
+        .resolves.toBeUndefined();
+      await expect(storage.staging.open(uploadId, storageToken))
+        .rejects.toBeDefined();
     });
 
     test("missing, wrong-kind, and wrong-digest metadata fail closed", async () => {
@@ -204,4 +247,10 @@ function chunkedBody(
       offset = next;
     },
   });
+}
+
+function copiedArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
 }

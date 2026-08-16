@@ -80,7 +80,7 @@ const versionRecordSchema = z.object({
   number: z.number().int().positive(),
   publisherPrincipalId: z.string(),
   projectId: z.string(),
-  routingMode: z.literal("static"),
+  routingMode: z.enum(["static", "spa"]),
 }).strict();
 const projectProjectionSchema = z.object({
   archivedAt: z.string().nullable(),
@@ -99,7 +99,7 @@ const manifestProjectionSchema = z.object({
   digest: z.string(),
   entries: z.array(manifestEntrySchema),
   entryPath: z.string(),
-  routingMode: z.literal("static"),
+  routingMode: z.enum(["static", "spa"]),
 }).strict();
 const artifactStateSchema = z.object({
   artifact: artifactRecordSchema,
@@ -631,6 +631,7 @@ export function createArtifactMcpServer(
         entryPath: z.string().min(1).max(1_024),
         files: z.array(declaredFileSchema).min(1).max(maximumDeclaredFiles),
         projectId: optionalProjectIdSchema,
+        routingMode: z.enum(["static", "spa"]).default("static"),
       }).strict(),
       outputSchema: z.object({
         commit: z.object({
@@ -654,7 +655,7 @@ export function createArtifactMcpServer(
       }).strict(),
       annotations: additiveWriteAnnotations,
     },
-    async ({entryPath, files, projectId}) => toolResult(async () => {
+    async ({entryPath, files, projectId, routingMode}) => toolResult(async () => {
       const upload = await runMcpApplicationEffect(
         dependencies,
         StagedUploadService.use((uploads) =>
@@ -663,6 +664,7 @@ export function createArtifactMcpServer(
             files,
             principal: identity.principal,
             projectId,
+            routingMode,
           })
         ),
       );
@@ -786,6 +788,37 @@ export function createArtifactMcpServer(
         dependencies,
         ArtifactManagementService.use((management) =>
           management.changeTags({...input, principal: identity.principal})
+        ),
+      );
+      return {
+        artifact: state.artifact,
+        replayed: state.replayed,
+        version: state.version,
+      };
+    }),
+  );
+
+  server.registerTool(
+    "artifact_change_owner",
+    {
+      title: "Change artifact owner",
+      description:
+        "Transfer an artifact to another active member of this Artifact Server. Only a signed-in human administrator can do this. The saved version does not change.",
+      inputSchema: z.object({
+        artifactId: artifactIdSchema,
+        expectedCurrentVersionId: expectedVersionSchema,
+        idempotencyKey: idempotencyKeySchema,
+        projectId: optionalProjectIdSchema,
+        targetOwnerPrincipalId: z.string().min(1).max(200),
+      }).strict(),
+      outputSchema: artifactStateSchema,
+      annotations: idempotentWriteAnnotations,
+    },
+    async (input) => toolResult(async () => {
+      const state = await runMcpApplicationEffect(
+        dependencies,
+        ArtifactManagementService.use((management) =>
+          management.changeOwner({...input, principal: identity.principal})
         ),
       );
       return {

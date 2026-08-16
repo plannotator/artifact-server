@@ -339,6 +339,265 @@ describe("complete-site publishing", () => {
     }
   });
 
+  test("CNT-001-B CNT-007-B CNT-007-F: SPA fallback is explicit, navigation-only, and never replaces an exact file", async () => {
+    const files: readonly TestSiteFile[] = [
+      {
+        bytes: utf8("console.log('exact asset');"),
+        mediaType: "text/javascript; charset=utf-8",
+        path: "assets/app.js",
+      },
+      {
+        bytes: utf8("<!doctype html><title>SPA shell</title>"),
+        mediaType: "text/html; charset=utf-8",
+        path: "index.html",
+      },
+    ];
+    const planned = await createStagedUpload(
+      server,
+      installation,
+      "index.html",
+      files,
+      undefined,
+      "spa",
+    );
+    const uploads = await uploadEveryStagedFile(installation, planned.body, files);
+    expect(uploads.every((response) => response.status === 200)).toBe(true);
+    const published = await commitStagedUpload(
+      installation,
+      planned.body,
+      "spa-routing-publication",
+      {accessSetting: "public_link", kind: "new_artifact", name: "SPA"},
+    );
+    expect(published.body.version.routingMode).toBe("spa");
+
+    const navigation = await fetchVersion(
+      server,
+      new URL("/settings/profile", published.body.links.version).toString(),
+      "GET",
+      {Accept: "text/html", "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate"},
+    );
+    expect(navigation.status).toBe(200);
+    expect(await navigation.text()).toContain("SPA shell");
+
+    const exactAsset = await fetchVersion(
+      server,
+      new URL("/assets/app.js", published.body.links.version).toString(),
+      "GET",
+      {Accept: "text/html", "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate"},
+    );
+    expect(await exactAsset.text()).toContain("exact asset");
+
+    await Promise.all([
+      {Accept: "text/javascript"},
+      {Accept: "text/html", "Sec-Fetch-Dest": "script"},
+      {Accept: "text/html", "Sec-Fetch-Mode": "cors"},
+    ].map(async (headers) => {
+      // Each hostile request proves that a non-navigation cannot receive HTML fallback.
+      const missingAsset = await fetchVersion(
+        server,
+        new URL("/assets/missing.js", published.body.links.version).toString(),
+        "GET",
+        headers,
+      );
+      expect(missingAsset.status).toBe(404);
+      await missingAsset.arrayBuffer();
+    }));
+
+    const staticPlan = await createStagedUpload(
+      server,
+      installation,
+      "index.html",
+      files,
+    );
+    await Promise.all((await uploadEveryStagedFile(
+      installation,
+      staticPlan.body,
+      files,
+    )).map((response) => response.arrayBuffer()));
+    const staticSite = await commitStagedUpload(
+      installation,
+      staticPlan.body,
+      "static-routing-remains-exact",
+      {accessSetting: "public_link", kind: "new_artifact", name: "Static"},
+    );
+    const staticMissing = await fetchVersion(
+      server,
+      new URL("/settings/profile", staticSite.body.links.version).toString(),
+      "GET",
+      {Accept: "text/html"},
+    );
+    expect(staticMissing.status).toBe(404);
+  });
+
+  test("CNT-008-B CNT-008-F: immutable files support one bounded byte range without buffering the full object", async () => {
+    const bytes = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    const file = {bytes, mediaType: "video/mp4", path: "clip.mp4"};
+    const planned = await createStagedUpload(
+      server,
+      installation,
+      file.path,
+      [file],
+    );
+    await Promise.all((await uploadEveryStagedFile(
+      installation,
+      planned.body,
+      [file],
+    )).map((response) => response.arrayBuffer()));
+    const published = await commitStagedUpload(
+      installation,
+      planned.body,
+      "byte-range-publication",
+      {accessSetting: "public_link", kind: "new_artifact", name: "Clip"},
+    );
+    const etag = `"${createHash("sha256").update(bytes).digest("hex")}"`;
+
+    const partial = await fetchVersion(
+      server,
+      published.body.links.version,
+      "GET",
+      {Range: "bytes=2-5"},
+    );
+    expect(partial.status).toBe(206);
+    expect(partial.headers.get("accept-ranges")).toBe("bytes");
+    expect(partial.headers.get("content-range")).toBe("bytes 2-5/10");
+    expect(partial.headers.get("content-length")).toBe("4");
+    expect(new Uint8Array(await partial.arrayBuffer())).toEqual(bytes.slice(2, 6));
+
+    const suffix = await fetchVersion(
+      server,
+      published.body.links.version,
+      "GET",
+      {Range: "bytes=-3"},
+    );
+    expect(suffix.headers.get("content-range")).toBe("bytes 7-9/10");
+    expect(new Uint8Array(await suffix.arrayBuffer())).toEqual(bytes.slice(7));
+
+    const head = await fetchVersion(
+      server,
+      published.body.links.version,
+      "HEAD",
+      {Range: "bytes=4-"},
+    );
+    expect(head.status).toBe(206);
+    expect(head.headers.get("content-range")).toBe("bytes 4-9/10");
+    expect(head.headers.get("content-length")).toBe("6");
+    expect((await head.arrayBuffer()).byteLength).toBe(0);
+
+    const staleIfRange = await fetchVersion(
+      server,
+      published.body.links.version,
+      "GET",
+      {"If-Range": '"stale"', Range: "bytes=2-5"},
+    );
+    expect(staleIfRange.status).toBe(200);
+    expect(new Uint8Array(await staleIfRange.arrayBuffer())).toEqual(bytes);
+
+    const notModified = await fetchVersion(
+      server,
+      published.body.links.version,
+      "GET",
+      {"If-None-Match": etag, Range: "bytes=2-5"},
+    );
+    expect(notModified.status).toBe(304);
+
+    await Promise.all([
+      "bytes=20-30",
+      "bytes=5-3",
+      "bytes=0-1,4-5",
+      "items=0-1",
+    ].map(async (range) => {
+      // Every unsupported or impossible range has the same non-amplifying response.
+      const rejected = await fetchVersion(
+        server,
+        published.body.links.version,
+        "GET",
+        {Range: range},
+      );
+      expect(rejected.status).toBe(416);
+      expect(rejected.headers.get("content-range")).toBe("bytes */10");
+      await rejected.arrayBuffer();
+    }));
+  });
+
+  test("CNT-002-B CNT-002-F: ordinary files use browser-native or download-safe responses", async () => {
+    const files = [
+      {bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]), mediaType: "image/png", path: "image.png"},
+      {bytes: utf8("%PDF-1.7\n"), mediaType: "application/pdf", path: "report.pdf"},
+      {bytes: new Uint8Array([0x49, 0x44, 0x33]), mediaType: "audio/mpeg", path: "audio.mp3"},
+      {bytes: new Uint8Array([0, 0, 0, 20]), mediaType: "video/mp4", path: "video.mp4"},
+      {bytes: utf8("plain text"), mediaType: "text/plain; charset=utf-8", path: "notes.txt"},
+      {bytes: utf8("# Markdown"), mediaType: "text/markdown; charset=utf-8", path: "notes.md"},
+      {bytes: utf8('{"valid":true}'), mediaType: "application/json", path: "data.json"},
+      {bytes: utf8("export const value = 1;"), mediaType: "text/javascript; charset=utf-8", path: "source.js"},
+      {bytes: new Uint8Array([0x50, 0x4b, 0x03, 0x04]), mediaType: "application/zip", path: "archive.zip"},
+      {
+        bytes: new Uint8Array([0x50, 0x4b, 0x03, 0x04]),
+        mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        path: "document.docx",
+      },
+      {
+        bytes: utf8("not executable"),
+        mediaType: "application/octet-stream",
+        path: "misleading.html",
+      },
+    ] satisfies readonly TestSiteFile[];
+    const planned = await createStagedUpload(
+      server,
+      installation,
+      "notes.md",
+      files,
+    );
+    await Promise.all((await uploadEveryStagedFile(
+      installation,
+      planned.body,
+      files,
+    )).map((response) => response.arrayBuffer()));
+    const published = await commitStagedUpload(
+      installation,
+      planned.body,
+      "ordinary-file-serving",
+      {accessSetting: "public_link", kind: "new_artifact", name: "File fixture"},
+    );
+
+    const downloadPaths = new Set(["archive.zip", "document.docx", "misleading.html"]);
+    await Promise.all(files.map(async (file) => {
+      // Fetching each stored file proves the manifest classification reaches the HTTP response.
+      const response = await fetchVersion(
+        server,
+        new URL(`/${file.path}`, published.body.links.version).toString(),
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe(file.mediaType);
+      expect(response.headers.get("content-disposition")).toBe(
+        downloadPaths.has(file.path) ? "attachment" : "inline",
+      );
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(new Uint8Array(await response.arrayBuffer())).toEqual(file.bytes);
+    }));
+  });
+
+  test("foundation: SPA routing rejects a non-HTML entry before allocating upload slots", async () => {
+    const bytes = utf8("not html");
+    const response = await fetch(`${server.baseUrl}/api/v1/uploads`, {
+      body: JSON.stringify({
+        entryPath: "app.js",
+        files: [{
+          mediaType: "text/javascript",
+          path: "app.js",
+          sha256: createHash("sha256").update(bytes).digest("hex"),
+          size: bytes.byteLength,
+        }],
+        routingMode: "spa",
+      }),
+      headers: {
+        Authorization: `Bearer ${installation.apiToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+    expect(response.status).toBe(422);
+  });
+
   test("foundation: HTTP upload locations reject invalid credentials and another installation", async () => {
     const file = {
       bytes: utf8("isolated"),

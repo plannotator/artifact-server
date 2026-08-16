@@ -77,8 +77,12 @@ export interface ContentAccessRepository {
   readonly findVersionContent: (
     contentToken: string,
     path: string,
+    fallback: VersionContentFallback,
   ) => Effect.Effect<VersionContent | null, ArtifactRepositoryFailure>;
 }
+
+/** The only repository-level fallback allowed for one content lookup. */
+export type VersionContentFallback = "entry" | "none";
 
 /** Dependencies used to construct private and public content access. */
 export interface ContentAccessDependencies {
@@ -120,6 +124,7 @@ export interface ExchangeContentBootstrapCommand {
 /** Input for authorizing one immutable-version file read. */
 export interface AuthorizeVersionContentCommand {
   readonly contentToken: string;
+  readonly fallback: VersionContentFallback;
   readonly path: string;
   readonly sessionToken: Redacted.Redacted | null;
 }
@@ -270,6 +275,7 @@ function makeContentAccessService(
     const content = yield* dependencies.repository.findVersionContent(
       command.contentToken,
       command.path,
+      command.fallback,
     );
     if (content === null) return null;
     yield* Effect.annotateCurrentSpan({"artifact.project.id": content.projectId});

@@ -11,13 +11,16 @@ import {createHash, randomUUID} from "node:crypto";
 import { z } from "zod";
 
 import type {
+  BlobByteRange,
   BlobStore,
   BlobWrite,
   OpenedBlob,
+  OpenedBlobRange,
   StoredBlob,
 } from "../core/ports.js";
 import {
   readableFile,
+  readableFileRange,
   syncDirectory,
   writeVerifiedStream,
 } from "./verified-file.js";
@@ -51,6 +54,30 @@ export class LocalBlobStore implements BlobStore {
       }
       return {
         body: readableFile(handle, metadata.size),
+        sha256: trustedDigest,
+        size: metadata.size,
+      };
+    } catch (error) {
+      await handle.close();
+      throw error;
+    }
+  }
+
+  async openRange(
+    digest: string,
+    range: BlobByteRange,
+  ): Promise<OpenedBlobRange> {
+    const trustedDigest = sha256Schema.parse(digest);
+    const handle = await open(this.#pathFor(trustedDigest), "r");
+    try {
+      const metadata = await handle.stat();
+      if (!metadata.isFile()) {
+        throw new Error(`Stored blob ${trustedDigest} is not a regular file.`);
+      }
+      assertRangeWithinBlob(range, metadata.size);
+      return {
+        body: readableFileRange(handle, range),
+        range,
         sha256: trustedDigest,
         size: metadata.size,
       };
@@ -96,6 +123,18 @@ export class LocalBlobStore implements BlobStore {
 
   #pathFor(digest: string): string {
     return path.join(this.#root, digest.slice(0, 2), digest);
+  }
+}
+
+function assertRangeWithinBlob(range: BlobByteRange, size: number): void {
+  if (
+    !Number.isSafeInteger(range.start) ||
+    !Number.isSafeInteger(range.endInclusive) ||
+    range.start < 0 ||
+    range.endInclusive < range.start ||
+    range.endInclusive >= size
+  ) {
+    throw new RangeError("The requested blob range is outside the stored object.");
   }
 }
 

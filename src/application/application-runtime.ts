@@ -10,6 +10,7 @@ import type { CompareArtifactService } from "./compare-artifact.js";
 import type { InstallationAccessService } from "./installation-access.js";
 import type { InteractiveLoginService } from "./interactive-login.js";
 import type {ProjectManagementService} from "./project-management.js";
+import type {ExpiredStagingCleanupService} from "./expired-staging-cleanup.js";
 
 /** Application services shared by every Artifact Server entry point. */
 export type ApplicationServices =
@@ -18,6 +19,7 @@ export type ApplicationServices =
   | AuthorizationService
   | CompareArtifactService
   | ContentAccessService
+  | ExpiredStagingCleanupService
   | InstallationAccessService
   | InteractiveLoginService
   | PublishArtifactService

@@ -4,7 +4,7 @@ import {
 } from "../../../src/core/model.js";
 
 /** D1 schema revision required by the Cloudflare runtime. */
-export const requiredD1SchemaVersion = 1;
+export const requiredD1SchemaVersion = 2;
 
 const schemaSql = `
   CREATE TABLE IF NOT EXISTS artifact_server_schema (
@@ -38,7 +38,7 @@ const schemaSql = `
     number INTEGER NOT NULL CHECK (number > 0),
     manifest_digest TEXT NOT NULL,
     entry_path TEXT NOT NULL,
-    routing_mode TEXT NOT NULL CHECK (routing_mode = 'static'),
+    routing_mode TEXT NOT NULL CHECK (routing_mode IN ('static', 'spa')),
     content_token TEXT NOT NULL UNIQUE,
     publisher_principal_id TEXT NOT NULL,
     created_at TEXT NOT NULL,
@@ -67,9 +67,10 @@ const schemaSql = `
     input_digest TEXT NOT NULL,
     artifact_id TEXT NOT NULL REFERENCES artifacts(id),
     version_id TEXT NOT NULL REFERENCES versions(id),
-    operation TEXT NOT NULL CHECK (operation IN ('publish', 'restore', 'change_access', 'change_tags', 'delete')),
+    operation TEXT NOT NULL CHECK (operation IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete')),
     access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
     tags_json TEXT,
+    target_owner_principal_id TEXT,
     created_at TEXT NOT NULL,
     PRIMARY KEY (project_id, idempotency_key)
   );
@@ -79,9 +80,10 @@ const schemaSql = `
     project_id TEXT NOT NULL REFERENCES projects(id),
     artifact_id TEXT NOT NULL REFERENCES artifacts(id),
     version_id TEXT NOT NULL REFERENCES versions(id),
-    action TEXT NOT NULL CHECK (action IN ('publish', 'restore', 'change_access', 'change_tags', 'delete')),
+    action TEXT NOT NULL CHECK (action IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete')),
     principal_id TEXT NOT NULL,
     authorized_by_principal_id TEXT,
+    target_owner_principal_id TEXT,
     idempotency_key TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
@@ -93,7 +95,7 @@ const schemaSql = `
     status TEXT NOT NULL CHECK (status IN ('open', 'committed')),
     manifest_digest TEXT NOT NULL,
     entry_path TEXT NOT NULL,
-    routing_mode TEXT NOT NULL CHECK (routing_mode = 'static'),
+    routing_mode TEXT NOT NULL CHECK (routing_mode IN ('static', 'spa')),
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     committed_version_id TEXT REFERENCES versions(id)
@@ -223,6 +225,119 @@ const schemaSql = `
     ON application_sessions(installation_id, member_id);
 `;
 
+const upgradeFromVersion1Statements = [
+  "PRAGMA defer_foreign_keys = ON",
+  `CREATE TABLE versions_upgrade_snapshot AS SELECT
+    id, project_id, artifact_id, number, manifest_digest, entry_path,
+    routing_mode, content_token, publisher_principal_id, created_at
+    FROM versions`,
+  `CREATE TABLE versions_next (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+    number INTEGER NOT NULL CHECK (number > 0),
+    manifest_digest TEXT NOT NULL,
+    entry_path TEXT NOT NULL,
+    routing_mode TEXT NOT NULL CHECK (routing_mode IN ('static', 'spa')),
+    content_token TEXT NOT NULL UNIQUE,
+    publisher_principal_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (artifact_id, number)
+  )`,
+  "DROP TABLE versions",
+  "ALTER TABLE versions_next RENAME TO versions",
+  `INSERT INTO versions (
+    id, project_id, artifact_id, number, manifest_digest, entry_path,
+    routing_mode, content_token, publisher_principal_id, created_at
+  ) SELECT id, project_id, artifact_id, number, manifest_digest, entry_path,
+    routing_mode, content_token, publisher_principal_id, created_at
+    FROM versions_upgrade_snapshot`,
+  "DROP TABLE versions_upgrade_snapshot",
+  `CREATE TABLE staged_uploads_upgrade_snapshot AS SELECT
+    id, project_id, principal_id, status, manifest_digest, entry_path,
+    routing_mode, created_at, expires_at, committed_version_id
+    FROM staged_uploads`,
+  `CREATE TABLE staged_uploads_next (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    principal_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('open', 'committed')),
+    manifest_digest TEXT NOT NULL,
+    entry_path TEXT NOT NULL,
+    routing_mode TEXT NOT NULL CHECK (routing_mode IN ('static', 'spa')),
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    committed_version_id TEXT REFERENCES versions(id)
+  )`,
+  "DROP TABLE staged_uploads",
+  "ALTER TABLE staged_uploads_next RENAME TO staged_uploads",
+  `INSERT INTO staged_uploads (
+    id, project_id, principal_id, status, manifest_digest, entry_path,
+    routing_mode, created_at, expires_at, committed_version_id
+  ) SELECT id, project_id, principal_id, status, manifest_digest, entry_path,
+    routing_mode, created_at, expires_at, committed_version_id
+    FROM staged_uploads_upgrade_snapshot`,
+  "DROP TABLE staged_uploads_upgrade_snapshot",
+  `CREATE TABLE idempotency_records_upgrade_snapshot AS SELECT
+    project_id, idempotency_key, input_digest, artifact_id, version_id,
+    operation, access_setting, tags_json, created_at
+    FROM idempotency_records`,
+  `CREATE TABLE idempotency_records_next (
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    idempotency_key TEXT NOT NULL,
+    input_digest TEXT NOT NULL,
+    artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+    version_id TEXT NOT NULL REFERENCES versions(id),
+    operation TEXT NOT NULL CHECK (operation IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete')),
+    access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
+    tags_json TEXT,
+    target_owner_principal_id TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (project_id, idempotency_key)
+  )`,
+  "DROP TABLE idempotency_records",
+  "ALTER TABLE idempotency_records_next RENAME TO idempotency_records",
+  `INSERT INTO idempotency_records (
+    project_id, idempotency_key, input_digest, artifact_id, version_id,
+    operation, access_setting, tags_json, target_owner_principal_id, created_at
+  ) SELECT project_id, idempotency_key, input_digest, artifact_id, version_id,
+    operation, access_setting, tags_json, NULL, created_at
+    FROM idempotency_records_upgrade_snapshot`,
+  "DROP TABLE idempotency_records_upgrade_snapshot",
+  `CREATE TABLE actions_upgrade_snapshot AS SELECT
+    id, project_id, artifact_id, version_id, action, principal_id,
+    authorized_by_principal_id, idempotency_key, created_at
+    FROM actions`,
+  `CREATE TABLE actions_next (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+    version_id TEXT NOT NULL REFERENCES versions(id),
+    action TEXT NOT NULL CHECK (action IN ('publish', 'restore', 'change_access', 'change_owner', 'change_tags', 'delete')),
+    principal_id TEXT NOT NULL,
+    authorized_by_principal_id TEXT,
+    target_owner_principal_id TEXT,
+    idempotency_key TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  "DROP TABLE actions",
+  "ALTER TABLE actions_next RENAME TO actions",
+  `INSERT INTO actions (
+    id, project_id, artifact_id, version_id, action, principal_id,
+    authorized_by_principal_id, target_owner_principal_id,
+    idempotency_key, created_at
+  ) SELECT id, project_id, artifact_id, version_id, action, principal_id,
+    authorized_by_principal_id, NULL, idempotency_key, created_at
+    FROM actions_upgrade_snapshot`,
+  "DROP TABLE actions_upgrade_snapshot",
+  `CREATE INDEX versions_artifact_id
+    ON versions(project_id, artifact_id, number DESC)`,
+  `CREATE INDEX actions_artifact_created
+    ON actions(project_id, artifact_id, created_at DESC, id DESC)`,
+  `CREATE INDEX staged_uploads_expiry
+    ON staged_uploads(status, expires_at)`,
+] as const;
+
 /** Create or verify the Cloudflare D1 schema and installation default project. */
 export async function migrateD1(
   database: D1Database,
@@ -239,6 +354,12 @@ export async function migrateD1(
   if (current !== null && current > requiredD1SchemaVersion) {
     throw new Error(
       `D1 schema ${current} is newer than supported revision ${requiredD1SchemaVersion}.`,
+    );
+  }
+  if (current === 1) {
+    await database.batch(
+      upgradeFromVersion1Statements.map((statement) =>
+        database.prepare(statement)),
     );
   }
   await database.batch([

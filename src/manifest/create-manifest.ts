@@ -30,7 +30,13 @@ export interface ManifestInput {
 }
 
 const encodedSeparatorPattern = /%(?:2f|5c)/iu;
-const inlineMediaTypePattern = /^(?:audio\/|image\/|text\/|video\/|application\/pdf$)/u;
+const inlineApplicationMediaTypes = new Set([
+  "application/javascript",
+  "application/json",
+  "application/pdf",
+  "application/xhtml+xml",
+  "application/xml",
+]);
 const mediaTypePattern = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+(?:[ \t]*;[ \t]*[!#$%&'*+.^_`|~0-9A-Za-z-]+=(?:[!#$%&'*+.^_`|~0-9A-Za-z-]+|"[\t\x20-\x21\x23-\x5b\x5d-\x7e]*"))*$/u;
 const sha256Pattern = /^[a-f0-9]{64}$/u;
 
@@ -90,9 +96,18 @@ export function createManifest(input: ManifestInput): CanonicalManifest {
   const entries = input.files.map(createManifestEntry).toSorted(compareEntries);
   assertDistinctPortablePaths(entries);
   const entryPath = parseManifestPath(input.entryPath);
-  if (!entries.some((entry) => entry.path === entryPath)) {
+  const entry = entries.find((candidate) => candidate.path === entryPath);
+  if (entry === undefined) {
     throw new MissingManifestEntry({
       message: "The manifest entry file must name one of the published files.",
+    });
+  }
+  if (
+    input.routingMode === "spa" &&
+    entry.mediaType.split(";", 1)[0]?.trim().toLowerCase() !== "text/html"
+  ) {
+    throw new InvalidManifestFile({
+      message: "Single-page application routing requires an HTML entry file.",
     });
   }
   const canonicalValue = {
@@ -158,7 +173,12 @@ function portableCaseFold(candidate: string): string {
 }
 
 function dispositionFor(mediaType: string): FileDisposition {
-  return inlineMediaTypePattern.test(mediaType)
+  const essence = mediaType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  return essence.startsWith("audio/") ||
+      essence.startsWith("image/") ||
+      essence.startsWith("text/") ||
+      essence.startsWith("video/") ||
+      inlineApplicationMediaTypes.has(essence)
     ? fileDispositions.inline
     : fileDispositions.attachment;
 }

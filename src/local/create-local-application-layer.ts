@@ -27,6 +27,8 @@ import {
   type ContentAccessDependencies,
   ContentAccessService,
 } from "../application/content-access.js";
+import {ExpiredStagingCleanupService} from
+  "../application/expired-staging-cleanup.js";
 
 import {
   type PublishArtifactDependencies,
@@ -84,6 +86,8 @@ import type {IdentityRepository} from "../core/identity-ports.js";
 import type { ManifestEntry } from "../core/model.js";
 import {randomBase64Url} from "../core/random.js";
 import { FileVerificationError } from "../storage/verified-file.js";
+import {defaultStagingCleanupPolicy} from
+  "../lifecycle/staging-cleanup.js";
 
 /** Concrete Node adapters reused by the Effect application layer. */
 export interface ApplicationAdapters {
@@ -103,6 +107,10 @@ export interface ApplicationAdapters {
     ProjectRepository &
     StagedUploadRepository;
   readonly staging: StagingStore;
+  readonly stagingCleanupPolicy?: {
+    readonly concurrency: number;
+    readonly settleDelayMilliseconds: number;
+  };
 }
 
 /** Build Node application services over the selected persistence adapters. */
@@ -114,6 +122,7 @@ export function createApplicationLayer(
   | AuthorizationService
   | CompareArtifactService
   | ContentAccessService
+  | ExpiredStagingCleanupService
   | InstallationAccessService
   | InteractiveLoginService
   | PublishArtifactService
@@ -127,7 +136,10 @@ export function createApplicationLayer(
     blobs: {
       put: (write) =>
         Effect.tryPromise({
-          try: () => adapters.blobs.put(write),
+          try: (fiberSignal) => adapters.blobs.put({
+            ...write,
+            signal: combineAbortSignals(fiberSignal, write.signal),
+          }),
           catch: (cause) =>
             new BlobStorageFailure({cause, operation: "put"}),
         }),
@@ -187,7 +199,10 @@ export function createApplicationLayer(
         }),
       put: (write) =>
         Effect.tryPromise({
-          try: () => adapters.staging.put(write),
+          try: (fiberSignal) => adapters.staging.put({
+            ...write,
+            signal: combineAbortSignals(fiberSignal, write.signal),
+          }),
           catch: (cause) =>
             cause instanceof FileVerificationError
               ? new UploadedFileMismatch({
@@ -195,6 +210,12 @@ export function createApplicationLayer(
                   "The uploaded bytes do not match the declared size and SHA-256 fingerprint.",
               })
               : new StagingStorageFailure({cause, operation: "put"}),
+        }),
+      remove: (uploadId, storageToken) =>
+        Effect.tryPromise({
+          try: () => adapters.staging.remove(uploadId, storageToken),
+          catch: (cause) =>
+            new StagingStorageFailure({cause, operation: "remove"}),
         }),
     },
     uploads: {
@@ -214,6 +235,17 @@ export function createApplicationLayer(
               principalId,
             ),
           catch: (cause) => repositoryFailure("findStagedUpload", cause),
+        }),
+      listExpiredStagedUploads: (expiredBefore, limit) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.listExpiredStagedUploads(
+            expiredBefore,
+            limit,
+          ),
+          catch: (cause) => repositoryFailure(
+            "listExpiredStagedUploads",
+            cause,
+          ),
         }),
       markStagedFileUploaded: (
         projectId,
@@ -236,12 +268,24 @@ export function createApplicationLayer(
               cause instanceof UploadNotFound ||
               cause instanceof UploadClosed ||
               cause instanceof UploadFileNotFound ||
+              cause instanceof UploadExpired ||
               cause instanceof ProjectArchived
             ) {
               return cause;
             }
             return repositoryFailure("markStagedFileUploaded", cause);
           },
+        }),
+      removeExpiredStagedUpload: (uploadId, expiredBefore) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.removeExpiredStagedUpload(
+            uploadId,
+            expiredBefore,
+          ),
+          catch: (cause) => repositoryFailure(
+            "removeExpiredStagedUpload",
+            cause,
+          ),
         }),
     },
   };
@@ -286,6 +330,11 @@ export function createApplicationLayer(
         Effect.tryPromise({
           try: () => adapters.repository.changeAccessSetting(command),
           catch: classifyChangeAccessFailure,
+        }),
+      changeOwnership: (command) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.changeOwnership(command),
+          catch: classifyChangeOwnershipFailure,
         }),
       changeTags: (command) =>
         Effect.tryPromise({
@@ -397,10 +446,14 @@ export function createApplicationLayer(
             ),
           catch: (cause) => repositoryFailure("findArtifactVersion", cause),
         }),
-      findVersionContent: (contentToken, requestedPath) =>
+      findVersionContent: (contentToken, requestedPath, fallback) =>
         Effect.tryPromise({
           try: () =>
-            adapters.repository.findVersionContent(contentToken, requestedPath),
+            adapters.repository.findVersionContent(
+              contentToken,
+              requestedPath,
+              fallback,
+            ),
           catch: (cause) => repositoryFailure("findVersionContent", cause),
         }),
     },
@@ -608,12 +661,26 @@ export function createApplicationLayer(
   const stagedLayer = StagedUploadService.layer(stagedDependencies).pipe(
     Layer.provideMerge(Layer.mergeAll(publishLayer, projectLayer)),
   );
+  const cleanupLayer = ExpiredStagingCleanupService.layer({
+    clock,
+    concurrency: adapters.stagingCleanupPolicy?.concurrency ??
+      defaultStagingCleanupPolicy.concurrency,
+    repository: stagedDependencies.uploads,
+    settleDelayMilliseconds:
+      adapters.stagingCleanupPolicy?.settleDelayMilliseconds ??
+        defaultStagingCleanupPolicy.settleDelayMilliseconds,
+    storage: stagedDependencies.staging,
+  });
   const contentLayer = ContentAccessService.layer(contentDependencies).pipe(
     Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)),
   );
   const managementLayer = ArtifactManagementService.layer(
     managementDependencies,
-  ).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)));
+  ).pipe(
+    Layer.provideMerge(
+      Layer.mergeAll(authorizationLayer, identityLayer, projectLayer),
+    ),
+  );
   const comparisonLayer = CompareArtifactService.layer(
     comparisonDependencies,
   ).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)));
@@ -623,6 +690,7 @@ export function createApplicationLayer(
     interactiveLoginLayer,
     stagedLayer,
     contentLayer,
+    cleanupLayer,
     managementLayer,
     comparisonLayer,
     projectLayer,
@@ -631,6 +699,15 @@ export function createApplicationLayer(
 
 /** Backward-compatible local composition name. */
 export const createLocalApplicationLayer = createApplicationLayer;
+
+function combineAbortSignals(
+  fiberSignal: AbortSignal,
+  deadlineSignal: AbortSignal | undefined,
+): AbortSignal {
+  return deadlineSignal === undefined
+    ? fiberSignal
+    : AbortSignal.any([fiberSignal, deadlineSignal]);
+}
 
 function identityEffect<A>(
   operation: IdentityRepositoryFailure["operation"],
@@ -781,6 +858,21 @@ function classifyChangeAccessFailure(cause: unknown):
     return cause;
   }
   return repositoryFailure("changeAccessSetting", cause);
+}
+
+function classifyChangeOwnershipFailure(cause: unknown):
+  | ArtifactNotFound
+  | ArtifactMutationConflict
+  | IdempotencyConflict
+  | ArtifactRepositoryFailure {
+  if (
+    cause instanceof ArtifactNotFound ||
+    cause instanceof ArtifactMutationConflict ||
+    cause instanceof IdempotencyConflict
+  ) {
+    return cause;
+  }
+  return repositoryFailure("changeOwnership", cause);
 }
 
 function classifyChangeTagsFailure(cause: unknown):

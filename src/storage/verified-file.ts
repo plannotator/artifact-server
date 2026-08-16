@@ -25,7 +25,7 @@ export function verifiedBlobStream(
   const fingerprint = createHash("sha256");
   let size = 0;
 
-  return write.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+  const verified = new TransformStream<Uint8Array, Uint8Array>({
     flush: (controller) => {
       if (size !== write.size) {
         controller.error(new FileVerificationError(
@@ -50,7 +50,10 @@ export function verifiedBlobStream(
       fingerprint.update(chunk);
       controller.enqueue(chunk);
     },
-  }));
+  });
+  return write.signal === undefined
+    ? write.body.pipeThrough(verified)
+    : write.body.pipeThrough(verified, {signal: write.signal});
 }
 
 /** Writes and verifies one incoming stream without buffering the complete file. */
@@ -83,9 +86,17 @@ export function readableFile(
   handle: FileHandle,
   size: number,
 ): ReadableStream<Uint8Array> {
+  return readableFileRange(handle, {endInclusive: size - 1, start: 0});
+}
+
+/** Creates a byte-range Web stream that owns and closes the file handle. */
+export function readableFileRange(
+  handle: FileHandle,
+  range: {readonly endInclusive: number; readonly start: number},
+): ReadableStream<Uint8Array> {
   const chunkBytes = 65_536;
   let closed = false;
-  let position = 0;
+  let position = range.start;
 
   const close = async (): Promise<void> => {
     if (closed) return;
@@ -97,7 +108,13 @@ export function readableFile(
     cancel: close,
     pull: async (controller) => {
       try {
-        const chunk = new Uint8Array(chunkBytes);
+        const remaining = range.endInclusive - position + 1;
+        if (remaining <= 0) {
+          await close();
+          controller.close();
+          return;
+        }
+        const chunk = new Uint8Array(Math.min(chunkBytes, remaining));
         const {bytesRead} = await handle.read(
           chunk,
           0,
@@ -111,7 +128,7 @@ export function readableFile(
         }
         position += bytesRead;
         controller.enqueue(chunk.subarray(0, bytesRead));
-        if (position >= size) {
+        if (position > range.endInclusive) {
           await close();
           controller.close();
         }

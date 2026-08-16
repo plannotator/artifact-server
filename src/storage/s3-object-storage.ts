@@ -1,6 +1,7 @@
 import { Readable } from "node:stream";
 
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   HeadBucketCommand,
@@ -11,9 +12,11 @@ import { Upload } from "@aws-sdk/lib-storage";
 import { Redacted } from "effect";
 
 import type {
+  BlobByteRange,
   BlobStore,
   BlobWrite,
   OpenedBlob,
+  OpenedBlobRange,
   StagingStore,
   StoredBlob,
 } from "../core/ports.js";
@@ -149,6 +152,12 @@ export function createS3ObjectStorageAdapters(
         digest,
         "blob",
       ),
+      openRange: (digest, range) => objects.openRange(
+        keyspace.blob(digest),
+        digest,
+        "blob",
+        range,
+      ),
       put: (write) => objects.put(
         keyspace.blob(write.sha256),
         write,
@@ -157,6 +166,9 @@ export function createS3ObjectStorageAdapters(
       ),
     },
     staging: {
+      remove: (uploadId, storageToken) => objects.remove(
+        keyspace.staging(uploadId, storageToken),
+      ),
       open: async (uploadId, storageToken) => {
         const opened = await objects.open(
           keyspace.staging(uploadId, storageToken),
@@ -202,6 +214,13 @@ class S3Objects {
     });
   }
 
+  async remove(key: string): Promise<void> {
+    await this.#client.send(new DeleteObjectCommand({
+      Bucket: this.#bucket,
+      Key: key,
+    }));
+  }
+
   async open(
     key: string,
     expectedDigest: string | null,
@@ -231,6 +250,39 @@ class S3Objects {
     };
   }
 
+  async openRange(
+    key: string,
+    expectedDigest: string,
+    kind: StoredObjectKind,
+    range: BlobByteRange,
+  ): Promise<OpenedBlobRange> {
+    const output = await this.#client.send(new GetObjectCommand({
+      Bucket: this.#bucket,
+      Key: key,
+      Range: `bytes=${range.start}-${range.endInclusive}`,
+    }));
+    const totalSize = parseS3ContentRange(output.ContentRange, range);
+    const stored = inspectCloudObjectMetadata({
+      expectedDigest,
+      kind,
+      metadata: output.Metadata,
+      provider: "S3",
+      size: totalSize,
+    });
+    const body = requireCloudObjectBody(
+      output.Body,
+      "S3",
+      kind,
+      "provider returned no ranged body",
+    );
+    return {
+      body: body.transformToWebStream(),
+      range,
+      sha256: stored.sha256,
+      size: stored.size,
+    };
+  }
+
   async put(
     key: string,
     write: BlobWrite,
@@ -238,7 +290,12 @@ class S3Objects {
     kind: StoredObjectKind,
   ): Promise<StoredBlob> {
     const verifiedBody = verifiedBlobStream(write, expectedDigest);
+    const abortController = new AbortController();
+    const abort = () => abortController.abort(write.signal?.reason);
+    if (write.signal?.aborted === true) abort();
+    else write.signal?.addEventListener("abort", abort, {once: true});
     const upload = new Upload({
+      abortController,
       client: this.#client,
       leavePartsOnError: false,
       params: {
@@ -254,7 +311,11 @@ class S3Objects {
       partSize: multipartPartBytes,
       queueSize: 2,
     });
-    await upload.done();
+    try {
+      await upload.done();
+    } finally {
+      write.signal?.removeEventListener("abort", abort);
+    }
 
     return verifyCloudObjectWriteSize(
       await this.inspect(key, expectedDigest, kind),
@@ -263,4 +324,27 @@ class S3Objects {
       kind,
     );
   }
+}
+
+function parseS3ContentRange(
+  contentRange: string | undefined,
+  expected: BlobByteRange,
+): number {
+  const match = contentRange === undefined
+    ? null
+    : /^bytes (\d+)-(\d+)\/(\d+)$/u.exec(contentRange);
+  if (match === null) throw new Error("S3 returned an invalid ranged response.");
+  const [, startText, endText, sizeText] = match;
+  const start = Number(startText);
+  const endInclusive = Number(endText);
+  const size = Number(sizeText);
+  if (
+    !Number.isSafeInteger(size) ||
+    start !== expected.start ||
+    endInclusive !== expected.endInclusive ||
+    expected.endInclusive >= size
+  ) {
+    throw new Error("S3 returned a range other than the requested blob bytes.");
+  }
+  return size;
 }

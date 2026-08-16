@@ -4,6 +4,10 @@ import {type Command, Option} from "commander";
 import {Redacted} from "effect";
 
 import {
+  createExternalStorageRuntime,
+  type ExternalStorageRuntimeConfig,
+} from "../external-storage/create-external-storage-runtime.js";
+import {
   startExternalStorageServer,
   type ExternalStorageServerConfig,
 } from "../external-storage/start-external-storage-server.js";
@@ -28,6 +32,10 @@ import {
   createSupportManifest,
   type ProductBuildInformation,
 } from "../lifecycle/support-manifest.js";
+import {
+  createLocalRuntime,
+  type LocalRuntimeConfig,
+} from "../local/create-local-runtime.js";
 import {
   startLocalServer,
   type LocalServerConfig,
@@ -55,6 +63,11 @@ interface InitOptions {
   readonly data: string;
 }
 
+interface CleanupStagingOptions extends LifecycleOptions {
+  readonly limit: string;
+  readonly once: boolean;
+}
+
 /** Values injected from the release entrypoint into lifecycle commands. */
 export interface LifecycleCommandOptions {
   readonly build: ProductBuildInformation;
@@ -71,7 +84,40 @@ export function configureLifecycleCommands(
   configureMigrations(program);
   configureSupportManifest(program, options.build);
   configureIntegrity(program);
+  configureMaintenance(program);
   configureExternalStorageStart(program, options.build.productVersion);
+}
+
+function configureMaintenance(program: Command): void {
+  const maintenance = program
+    .command("maintenance")
+    .description("Run bounded operator maintenance tasks.");
+  maintenance
+    .command("cleanup-staging")
+    .description("Remove expired uploads that were never committed.")
+    .requiredOption("--once", "run one bounded pass and exit")
+    .option("--limit <count>", "maximum uploads to examine", "100")
+    .addOption(modeOption())
+    .addOption(dataOption())
+    .addOption(hostOption())
+    .addOption(portOption())
+    .action(async (options: CleanupStagingOptions) => {
+      const configuration = await lifecycleConfiguration(options);
+      const runtime = configuration.deploymentMode === "compact"
+        ? await createLocalRuntime(compactMaintenanceConfig(configuration))
+        : await createExternalStorageRuntime(
+          externalMaintenanceConfig(configuration),
+        );
+      try {
+        const report = await runtime.cleanupStaging(
+          parseCleanupLimit(options.limit),
+        );
+        console.log(JSON.stringify(report, null, 2));
+        if (report.failed > 0) process.exitCode = 2;
+      } finally {
+        await runtime.close();
+      }
+    });
 }
 
 function configureInitialization(program: Command): void {
@@ -258,6 +304,7 @@ function configureExternalStorageStart(
         readinessWithdrawalMilliseconds: parsed.readinessWithdrawalMilliseconds,
         serviceVersion: productVersion,
         shutdownDeadlineMilliseconds: parsed.shutdownDeadlineMilliseconds,
+        stagingCleanupPolicy: parsed.stagingCleanupPolicy,
       };
       if (workOs !== null) {
         serverConfig = {
@@ -314,6 +361,7 @@ async function startCompactServer(
       configuration.readinessWithdrawalMilliseconds,
     serviceVersion: productVersion,
     shutdownDeadlineMilliseconds: configuration.shutdownDeadlineMilliseconds,
+    stagingCleanupPolicy: configuration.stagingCleanupPolicy,
   };
   if (workOs !== null) {
     serverConfig = {
@@ -342,6 +390,52 @@ async function lifecycleConfiguration(
       port: options.port,
     }))
     : parseExternalConfiguration(options.host, options.port);
+}
+
+function compactMaintenanceConfig(
+  configuration: CompactRuntimeConfiguration,
+): LocalRuntimeConfig {
+  return {
+    apiToken: Redacted.value(configuration.apiToken),
+    applicationOrigin: configuration.applicationOrigin,
+    bootstrapAdministratorEmail: configuration.bootstrapAdministratorEmail,
+    completedRequestLogSampleRate: 0,
+    contentDomain: configuration.contentDomain,
+    dataDirectory: configuration.dataDirectory,
+    installationId: configuration.installation.installationId,
+    observability: true,
+    stagingCleanupPolicy: {
+      ...configuration.stagingCleanupPolicy,
+      schedule: "external",
+    },
+  };
+}
+
+function externalMaintenanceConfig(
+  configuration: ExternalStorageRuntimeConfiguration,
+): ExternalStorageRuntimeConfig {
+  return {
+    apiToken: configuration.apiToken,
+    applicationOrigin: configuration.applicationOrigin,
+    bootstrapAdministratorEmail: configuration.bootstrapAdministratorEmail,
+    completedRequestLogSampleRate: 0,
+    contentDomain: configuration.contentDomain,
+    databaseUrl: configuration.databaseUrl,
+    installationId: configuration.installationId,
+    objectStorage: configuration.objectStorage,
+    stagingCleanupPolicy: {
+      ...configuration.stagingCleanupPolicy,
+      schedule: "external",
+    },
+  };
+}
+
+function parseCleanupLimit(value: string): number {
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
+    throw new Error("The cleanup limit must be an integer from 1 through 1000.");
+  }
+  return limit;
 }
 
 async function summarizeConfiguration(

@@ -56,6 +56,11 @@ import {
 } from "../core/model.js";
 import type { BlobStore } from "../core/ports.js";
 import {
+  decideByteRange,
+  ifRangeAllowsPartialResponse,
+} from "./byte-range.js";
+import {permitsSpaEntryFallback} from "./spa-navigation.js";
+import {
   maximumDeclaredFiles,
   maximumUploadPlanRequestBytes,
 } from "../core/publishing-limits.js";
@@ -95,6 +100,7 @@ const createUploadSchema = z.object({
   entryPath: z.string().min(1).max(1_024),
   files: z.array(declaredFileSchema).min(1).max(maximumDeclaredFiles),
   projectId: projectIdSchema.optional(),
+  routingMode: z.enum(["static", "spa"]).default("static"),
 }).strict();
 const commitUploadSchema = z.object({
   target: z.discriminatedUnion("kind", [
@@ -134,6 +140,10 @@ const restoreVersionSchema = z.object({
 const changeAccessSchema = z.object({
   accessSetting: accessSettingSchema,
   expectedCurrentVersionId: z.string().min(1).max(200),
+});
+const changeOwnerSchema = z.object({
+  expectedCurrentVersionId: z.string().min(1).max(200),
+  targetOwnerPrincipalId: z.string().min(1).max(200),
 });
 const changeTagsSchema = z.object({
   expectedCurrentVersionId: z.string().min(1).max(200),
@@ -963,6 +973,35 @@ export function createHttpApp(
     },
   );
 
+  app.post(
+    "/api/v1/artifacts/:artifactId/owner",
+    boundedJsonBody,
+    async (context) => {
+      const body = changeOwnerSchema.parse(await context.req.json());
+      const state = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ArtifactManagementService.use((management) =>
+          management.changeOwner({
+            artifactId: context.req.param("artifactId"),
+            expectedCurrentVersionId: body.expectedCurrentVersionId,
+            idempotencyKey: requiredIdempotencyKey(
+              context.req.header("idempotency-key"),
+            ),
+            principal: context.get("principal"),
+            projectId: requestedProjectId(context),
+            targetOwnerPrincipalId: body.targetOwnerPrincipalId,
+          })
+        ),
+      );
+      return context.json(artifactStateResponse(
+        responseApplicationUrl(context, dependencies),
+        dependencies.contentDomain,
+        state,
+      ));
+    },
+  );
+
   app.delete(
     "/api/v1/artifacts/:artifactId",
     boundedJsonBody,
@@ -1008,6 +1047,7 @@ export function createHttpApp(
           files: body.files,
           principal: context.get("principal"),
           projectId: body.projectId ?? null,
+          routingMode: body.routingMode,
         })
       ),
     );
@@ -1671,6 +1711,9 @@ async function serveVersionContent(
     ContentAccessService.use((contentAccess) =>
       contentAccess.authorizeVersionContent({
         contentToken,
+        fallback: permitsSpaEntryFallback(context.req.raw.headers)
+          ? "entry"
+          : "none",
         path: requestedPath,
         sessionToken: contentSessionToken(cookieHeader),
       })
@@ -1692,13 +1735,43 @@ async function serveVersionContent(
     return new Response(null, {headers, status: 304});
   }
 
+
+  const strongEtag = `"${content.entry.sha256}"`;
+  const rangeDecision = ifRangeAllowsPartialResponse(
+    context.req.header("if-range"),
+    strongEtag,
+  )
+    ? decideByteRange(context.req.header("range"), content.entry.size)
+    : {kind: "full"} as const;
+  if (rangeDecision.kind === "unsatisfiable") {
+    headers.delete("Content-Length");
+    headers.set("Content-Range", `bytes */${content.entry.size}`);
+    return new Response(null, {headers, status: 416});
+  }
+
   if (method === "HEAD") {
     const blob = await dependencies.blobs.inspect(content.entry.sha256);
     assertBlobSize(blob.size, content.entry.size, content.entry.sha256);
+    if (rangeDecision.kind === "partial") {
+      applyPartialContentHeaders(headers, rangeDecision.range, content.entry.size);
+    }
     return new Response(null, {
       headers,
-      status: 200,
+      status: rangeDecision.kind === "partial" ? 206 : 200,
     });
+  }
+
+  if (rangeDecision.kind === "partial") {
+    const blob = await dependencies.blobs.openRange(
+      content.entry.sha256,
+      rangeDecision.range,
+    );
+    if (blob.size !== content.entry.size) {
+      await blob.body.cancel();
+      assertBlobSize(blob.size, content.entry.size, content.entry.sha256);
+    }
+    applyPartialContentHeaders(headers, rangeDecision.range, content.entry.size);
+    return new Response(blob.body, {headers, status: 206});
   }
 
   const blob = await dependencies.blobs.open(content.entry.sha256);
@@ -1727,6 +1800,7 @@ function contentHeaders(
   publiclyCacheable: boolean,
 ): Headers {
   return new Headers({
+    "Accept-Ranges": "bytes",
     "Cache-Control": publiclyCacheable
       ? "public, no-cache, must-revalidate"
       : "private, no-store",
@@ -1737,6 +1811,18 @@ function contentHeaders(
     "X-Content-Type-Options": "nosniff",
     "X-Robots-Tag": "noindex, nofollow",
   });
+}
+
+function applyPartialContentHeaders(
+  headers: Headers,
+  range: {readonly endInclusive: number; readonly length: number; readonly start: number},
+  totalSize: number,
+): void {
+  headers.set("Content-Length", String(range.length));
+  headers.set(
+    "Content-Range",
+    `bytes ${range.start}-${range.endInclusive}/${totalSize}`,
+  );
 }
 
 function assertBlobSize(actual: number, expected: number, digest: string): void {

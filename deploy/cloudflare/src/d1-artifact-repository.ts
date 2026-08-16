@@ -41,6 +41,7 @@ import {
 import type {
   ArtifactRepository,
   ChangeArtifactAccessSetting,
+  ChangeArtifactOwnership,
   ChangeArtifactTags,
   CommitArtifactVersion,
   CommitNewArtifact,
@@ -50,6 +51,7 @@ import type {
   CreateStagedUpload,
   DeleteArtifact,
   ExchangeContentBootstrap,
+  ExpiredStagedUpload,
   ListArtifactActions,
   ListArtifacts,
   PublicationSource,
@@ -69,13 +71,14 @@ const dispositionSchema = z.enum([
   fileDispositions.attachment,
   fileDispositions.inline,
 ]);
-const routingModeSchema = z.enum([routingModes.static]);
+const routingModeSchema = z.enum([routingModes.static, routingModes.spa]);
 const uploadStatusSchema = z.enum([
   uploadStatuses.committed,
   uploadStatuses.open,
 ]);
 const actionSchema = z.enum([
   artifactActionKinds.changeAccess,
+  artifactActionKinds.changeOwner,
   artifactActionKinds.changeTags,
   artifactActionKinds.delete,
   artifactActionKinds.publish,
@@ -124,6 +127,7 @@ const idempotencyRowSchema = z.object({
   inputDigest: z.string(),
   operation: actionSchema,
   tagsJson: z.string().nullable(),
+  targetOwnerPrincipalId: z.string().nullable(),
   versionId: z.string(),
 });
 const actionRowSchema = z.object({
@@ -135,6 +139,7 @@ const actionRowSchema = z.object({
   idempotencyKey: z.string(),
   principalId: z.string(),
   projectId: z.string(),
+  targetOwnerPrincipalId: z.string().nullable(),
   versionId: z.string(),
 });
 const stagedUploadBaseSchema = z.object({
@@ -165,6 +170,10 @@ const stagedFileSchema = z.object({
   size: z.number().int().nonnegative(),
   storageToken: z.string(),
   uploadedAt: z.string().nullable(),
+});
+const expiredStagedUploadRowSchema = z.object({
+  id: z.string(),
+  storageToken: z.string(),
 });
 const stagedCommitSchema = z.object({
   expiresAt: z.string(),
@@ -215,6 +224,7 @@ const versionSelect = `
 const idempotencySelect = `
   SELECT access_setting AS accessSetting, artifact_id AS artifactId,
     input_digest AS inputDigest, operation, tags_json AS tagsJson,
+    target_owner_principal_id AS targetOwnerPrincipalId,
     version_id AS versionId
   FROM idempotency_records
 `;
@@ -446,6 +456,7 @@ export function createD1ArtifactRepository(
     replayed: boolean,
     accessSetting?: ArtifactRecord["accessSetting"],
     tags?: readonly string[],
+    ownerPrincipalId?: string,
   ): Promise<ArtifactState> => {
     const artifact = await readArtifact(projectId, artifactId);
     const version = await readVersionOrNull(projectId, versionId, artifactId);
@@ -455,6 +466,7 @@ export function createD1ArtifactRepository(
         ...artifact,
         accessSetting: accessSetting ?? artifact.accessSetting,
         currentVersionId: versionId,
+        ownerPrincipalId: ownerPrincipalId ?? artifact.ownerPrincipalId,
         tags: tags ?? artifact.tags,
       },
       replayed,
@@ -472,11 +484,13 @@ export function createD1ArtifactRepository(
     },
     versionId: string,
     action: ArtifactActionRecord["action"],
+    targetOwnerPrincipalId: string | null = null,
   ) => database.prepare(`
     INSERT INTO actions (
       id, project_id, artifact_id, version_id, action, principal_id,
-      authorized_by_principal_id, idempotency_key, created_at
-    ) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?)
+      authorized_by_principal_id, target_owner_principal_id,
+      idempotency_key, created_at
+    ) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     command.projectId,
     command.artifactId,
@@ -484,6 +498,7 @@ export function createD1ArtifactRepository(
     action,
     command.principalId,
     command.authorizedByPrincipalId,
+    targetOwnerPrincipalId,
     command.idempotencyKey,
     command.createdAt,
   );
@@ -499,11 +514,13 @@ export function createD1ArtifactRepository(
     operation: ArtifactActionRecord["action"],
     accessSetting: ArtifactRecord["accessSetting"] | null = null,
     tagsJson: string | null = null,
+    targetOwnerPrincipalId: string | null = null,
   ) => database.prepare(`
     INSERT INTO idempotency_records (
       project_id, idempotency_key, input_digest, artifact_id, version_id,
-      operation, access_setting, tags_json, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      operation, access_setting, tags_json, target_owner_principal_id,
+      created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     command.projectId,
     command.idempotencyKey,
@@ -513,6 +530,7 @@ export function createD1ArtifactRepository(
     operation,
     accessSetting,
     tagsJson,
+    targetOwnerPrincipalId,
     command.createdAt,
   );
   const mutationGuardStatements = (
@@ -620,6 +638,7 @@ export function createD1ArtifactRepository(
   const managementReplay = async (
     command: {readonly idempotencyKey: string; readonly inputDigest: string; readonly projectId: string},
     operation: typeof artifactActionKinds.changeAccess | typeof artifactActionKinds.changeTags |
+      typeof artifactActionKinds.changeOwner |
       typeof artifactActionKinds.restore,
   ): Promise<ArtifactState | null> => {
     const record = await readIdempotency(command.projectId, command.idempotencyKey);
@@ -637,6 +656,7 @@ export function createD1ArtifactRepository(
       true,
       record.accessSetting ?? undefined,
       tags,
+      record.targetOwnerPrincipalId ?? undefined,
     );
   };
   const applyManagementMutation = async (
@@ -646,6 +666,7 @@ export function createD1ArtifactRepository(
       readonly projectId: string;
     },
     operation: typeof artifactActionKinds.changeAccess |
+      typeof artifactActionKinds.changeOwner |
       typeof artifactActionKinds.changeTags |
       typeof artifactActionKinds.restore,
     statements: D1PreparedStatement[],
@@ -772,13 +793,24 @@ export function createD1ArtifactRepository(
           SELECT 1 FROM staged_uploads u
           WHERE u.id = staged_upload_files.upload_id AND u.project_id = ?
             AND u.principal_id = ? AND u.status = 'open'
+            AND u.expires_at > ?
         )
-      `).bind(uploadedAt, uploadId, storageToken, projectId, principalId).run();
+      `).bind(
+        uploadedAt,
+        uploadId,
+        storageToken,
+        projectId,
+        principalId,
+        uploadedAt,
+      ).run();
       if (result.meta.changes !== 1) {
         const upload = await readStagedUploadOrNull(projectId, uploadId, principalId);
         if (upload === null) throw new UploadNotFound({message: "The staged upload does not exist."});
         if (upload.status !== uploadStatuses.open) {
           throw new UploadClosed({message: "The staged upload is already committed."});
+        }
+        if (upload.expiresAt <= uploadedAt) {
+          throw new UploadExpired({message: "The staged upload has expired."});
         }
         throw new UploadFileNotFound({message: "The staged upload file does not exist."});
       }
@@ -931,6 +963,52 @@ export function createD1ArtifactRepository(
       `).bind(projectId, artifactId).all<z.input<typeof versionRowSchema>>();
       return result.results.map((row) => versionRowSchema.parse(row));
     },
+    listExpiredStagedUploads: async (
+      expiredBefore: string,
+      limit: number,
+    ): Promise<readonly ExpiredStagedUpload[]> => {
+      const result = await database.prepare(`
+        WITH selected AS (
+          SELECT id FROM staged_uploads
+          WHERE status = 'open' AND expires_at <= ?
+          ORDER BY expires_at, id
+          LIMIT ?
+        )
+        SELECT selected.id, file.storage_token AS storageToken
+        FROM selected
+        JOIN staged_upload_files file ON file.upload_id = selected.id
+        ORDER BY selected.id, file.storage_token
+      `).bind(expiredBefore, limit)
+        .all<z.input<typeof expiredStagedUploadRowSchema>>();
+      const grouped = new Map<string, Array<{readonly storageToken: string}>>();
+      for (const candidate of result.results) {
+        const row = expiredStagedUploadRowSchema.parse(candidate);
+        const files = grouped.get(row.id) ?? [];
+        files.push({storageToken: row.storageToken});
+        grouped.set(row.id, files);
+      }
+      return [...grouped].map(([id, files]) => ({files, id}));
+    },
+    removeExpiredStagedUpload: async (
+      uploadId: string,
+      expiredBefore: string,
+    ): Promise<boolean> => {
+      const results = await database.batch([
+        database.prepare(`
+          DELETE FROM staged_upload_files
+          WHERE upload_id = ? AND EXISTS (
+            SELECT 1 FROM staged_uploads upload
+            WHERE upload.id = staged_upload_files.upload_id
+              AND upload.status = 'open' AND upload.expires_at <= ?
+          )
+        `).bind(uploadId, expiredBefore),
+        database.prepare(`
+          DELETE FROM staged_uploads
+          WHERE id = ? AND status = 'open' AND expires_at <= ?
+        `).bind(uploadId, expiredBefore),
+      ]);
+      return results[1]?.meta.changes === 1;
+    },
     listArtifacts: async (command: ListArtifacts): Promise<ArtifactPage> => {
       const result = await database.prepare(`${artifactSelect}
         WHERE project_id = ? AND deleted_at IS NULL
@@ -965,6 +1043,7 @@ export function createD1ArtifactRepository(
         SELECT id, project_id AS projectId, artifact_id AS artifactId,
           version_id AS versionId, action, principal_id AS principalId,
           authorized_by_principal_id AS authorizedByPrincipalId,
+          target_owner_principal_id AS targetOwnerPrincipalId,
           idempotency_key AS idempotencyKey, created_at AS createdAt
         FROM actions WHERE project_id = ? AND artifact_id = ?
           AND (? IS NULL OR created_at < ? OR (created_at = ? AND id < ?))
@@ -981,7 +1060,7 @@ export function createD1ArtifactRepository(
       const parsed = result.results.map((row) => actionRowSchema.parse(row));
       return pageResult(parsed.slice(0, command.limit), parsed, command.limit);
     },
-    findVersionContent: async (contentToken, requestedPath) => {
+    findVersionContent: async (contentToken, requestedPath, fallback) => {
       const row = await database.prepare(`
         SELECT a.access_setting AS accessSetting, a.id AS artifactId,
           a.project_id AS projectId, v.content_token AS contentToken,
@@ -991,9 +1070,24 @@ export function createD1ArtifactRepository(
         FROM versions v JOIN artifacts a ON a.id = v.artifact_id
         JOIN manifest_entries e ON e.version_id = v.id
         WHERE v.content_token = ?
-          AND e.path = CASE WHEN ? = '' THEN v.entry_path ELSE ? END
+          AND e.path = CASE
+            WHEN ? = '' THEN v.entry_path
+            WHEN EXISTS (
+              SELECT 1 FROM manifest_entries exact
+              WHERE exact.version_id = v.id AND exact.path = ?
+            ) THEN ?
+            WHEN ? = 'entry' AND v.routing_mode = 'spa' THEN v.entry_path
+            ELSE ?
+          END
           AND a.deleted_at IS NULL
-      `).bind(contentToken, requestedPath, requestedPath)
+      `).bind(
+        contentToken,
+        requestedPath,
+        requestedPath,
+        requestedPath,
+        fallback,
+        requestedPath,
+      )
         .first<z.input<typeof versionContentRowSchema>>();
       if (row === null) return null;
       const parsed = versionContentRowSchema.parse(row);
@@ -1052,6 +1146,66 @@ export function createD1ArtifactRepository(
           false,
           command.accessSetting,
         ));
+    },
+    changeOwnership: async (command: ChangeArtifactOwnership) => {
+      const replay = await managementReplay(
+        command,
+        artifactActionKinds.changeOwner,
+      );
+      if (replay !== null) return replay;
+      const artifact = await readArtifact(command.projectId, command.artifactId);
+      if (artifact.ownerPrincipalId === command.targetOwnerPrincipalId) {
+        throw new ArtifactMutationConflict({
+          message: "The target member already owns this artifact.",
+        });
+      }
+      assertCurrent(artifact, command.expectedCurrentVersionId);
+      return applyManagementMutation(
+        command,
+        artifactActionKinds.changeOwner,
+        [
+          database.prepare(`
+            UPDATE artifacts SET owner_principal_id = ?
+            WHERE project_id = ? AND id = ? AND current_version_id = ?
+              AND deleted_at IS NULL
+          `).bind(
+            command.targetOwnerPrincipalId,
+            command.projectId,
+            command.artifactId,
+            command.expectedCurrentVersionId,
+          ),
+          actionStatement(
+            command,
+            command.expectedCurrentVersionId,
+            artifactActionKinds.changeOwner,
+            command.targetOwnerPrincipalId,
+          ),
+          idempotencyStatement(
+            command,
+            command.expectedCurrentVersionId,
+            artifactActionKinds.changeOwner,
+            artifact.accessSetting,
+            null,
+            command.targetOwnerPrincipalId,
+          ),
+          ...managementGuardStatements(
+            command,
+            artifactActionKinds.changeOwner,
+            command.expectedCurrentVersionId,
+            "a.deleted_at IS NULL AND a.owner_principal_id = ?",
+            [command.targetOwnerPrincipalId],
+          ),
+        ],
+        () => artifactState(
+          command.projectId,
+          command.artifactId,
+          command.expectedCurrentVersionId,
+          false,
+          artifact.accessSetting,
+          undefined,
+          command.targetOwnerPrincipalId,
+        ),
+      );
     },
     changeTags: async (command: ChangeArtifactTags) => {
       const replay = await managementReplay(command, artifactActionKinds.changeTags);

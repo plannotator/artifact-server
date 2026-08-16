@@ -13,9 +13,11 @@ import {
 import {Option, Schema} from "effect";
 
 import type {
+  BlobByteRange,
   BlobStore,
   BlobWrite,
   OpenedBlob,
+  OpenedBlobRange,
   StagingStore,
   StoredBlob,
 } from "../core/ports.js";
@@ -96,6 +98,12 @@ export function createAzureBlobObjectStorageAdapters(
     blobs: {
       inspect: (digest) => objects.inspect(keyspace.blob(digest), digest, "blob"),
       open: (digest) => objects.open(keyspace.blob(digest), digest, "blob"),
+      openRange: (digest, range) => objects.openRange(
+        keyspace.blob(digest),
+        digest,
+        "blob",
+        range,
+      ),
       put: (write) => objects.put(
         keyspace.blob(write.sha256),
         write,
@@ -104,6 +112,9 @@ export function createAzureBlobObjectStorageAdapters(
       ),
     },
     staging: {
+      remove: (uploadId, storageToken) => objects.remove(
+        keyspace.staging(uploadId, storageToken),
+      ),
       open: async (uploadId, storageToken) => {
         const opened = await objects.open(
           keyspace.staging(uploadId, storageToken),
@@ -161,6 +172,10 @@ class AzureBlobObjects {
     return inspectAzureMetadata(properties, expectedDigest, kind);
   }
 
+  async remove(key: string): Promise<void> {
+    await this.#container.getBlobClient(key).deleteIfExists();
+  }
+
   async open(
     key: string,
     expectedDigest: string | null,
@@ -184,6 +199,42 @@ class AzureBlobObjects {
     };
   }
 
+  async openRange(
+    key: string,
+    expectedDigest: string,
+    kind: StoredObjectKind,
+    range: BlobByteRange,
+  ): Promise<OpenedBlobRange> {
+    const client = this.#container.getBlobClient(key);
+    const properties = await client.getProperties();
+    const stored = inspectAzureMetadata(properties, expectedDigest, kind);
+    if (
+      range.start < 0 ||
+      range.endInclusive < range.start ||
+      range.endInclusive >= stored.size
+    ) {
+      throw new RangeError("Azure Blob range is outside the stored object.");
+    }
+    const response = await client.download(
+      range.start,
+      range.endInclusive - range.start + 1,
+    );
+    const readable = requireCloudObjectBody(
+      response.readableStreamBody instanceof Readable
+        ? response.readableStreamBody
+        : undefined,
+      "Azure Blob",
+      kind,
+      "provider returned no ranged Node.js byte stream",
+    );
+    return {
+      body: nodeByteStream(readable),
+      range,
+      sha256: stored.sha256,
+      size: stored.size,
+    };
+  }
+
   async put(
     key: string,
     write: BlobWrite,
@@ -191,13 +242,18 @@ class AzureBlobObjects {
     kind: StoredObjectKind,
   ): Promise<StoredBlob> {
     const client = this.#container.getBlockBlobClient(key);
-    await ensureLeaseTarget(client, kind);
-    const lease = await acquireWriteLease(client, Date.now() + leaseWaitMilliseconds);
+    await ensureLeaseTarget(client, kind, write.signal);
+    const lease = await acquireWriteLease(
+      client,
+      Date.now() + leaseWaitMilliseconds,
+      write.signal,
+    );
     try {
       const existing = await inspectExistingAzureObject(
         client,
         expectedDigest,
         kind,
+        write.signal,
       );
       if (existing !== null) {
         await drainVerifiedWrite(write, expectedDigest);
@@ -208,9 +264,11 @@ class AzureBlobObjects {
         write,
         expectedDigest,
         lease.leaseId,
-        () => lease.renewLease().then(() => undefined),
+        () => lease.renewLease(abortOptions(write.signal)).then(() => undefined),
+        write.signal,
       );
       await client.commitBlockList(blockIds, {
+        ...abortOptions(write.signal),
         blobHTTPHeaders: {blobContentType: "application/octet-stream"},
         conditions: {leaseId: lease.leaseId},
         metadata: {
@@ -236,39 +294,69 @@ async function stageVerifiedBlocks(
   expectedDigest: string,
   leaseId: string,
   renewLease: () => Promise<void>,
+  signal: AbortSignal | undefined,
 ): Promise<Array<string>> {
   const uploadId = randomUUID();
   const blockIds: Array<string> = [];
   let pending: Array<Promise<unknown>> = [];
-  for await (const block of fixedSizeBlocks(
-    verifiedBlobStream(write, expectedDigest),
-  )) {
-    const index = String(blockIds.length).padStart(10, "0");
-    const blockId = Buffer.from(`${uploadId}:${index}`).toString("base64");
-    blockIds.push(blockId);
-    pending.push(client.stageBlock(blockId, block, block.byteLength, {
-      conditions: {leaseId},
-    }));
-    if (pending.length === uploadConcurrency) {
-      // A batch bounds memory while preserving provider upload concurrency.
-      // eslint-disable-next-line no-await-in-loop
-      await Promise.all(pending);
-      // The fixed lease remains valid while a large stream is staged.
-      // eslint-disable-next-line no-await-in-loop
-      await renewLease();
-      pending = [];
+  let streamingFailed = false;
+  let streamingFailure: unknown;
+  try {
+    for await (const block of fixedSizeBlocks(
+      verifiedBlobStream(write, expectedDigest),
+    )) {
+      const index = String(blockIds.length).padStart(10, "0");
+      const blockId = Buffer.from(`${uploadId}:${index}`).toString("base64");
+      blockIds.push(blockId);
+      pending.push(client.stageBlock(blockId, block, block.byteLength, {
+        ...abortOptions(signal),
+        conditions: {leaseId},
+      }));
+      if (pending.length === uploadConcurrency) {
+        // A batch bounds memory while preserving provider upload concurrency.
+        // eslint-disable-next-line no-await-in-loop
+        await settleStagedBlockBatch(pending);
+        // The fixed lease remains valid while a large stream is staged.
+        // eslint-disable-next-line no-await-in-loop
+        await renewLease();
+        pending = [];
+      }
     }
+  } catch (error) {
+    streamingFailed = true;
+    streamingFailure = error;
   }
-  await Promise.all(pending);
+  let pendingFailed = false;
+  let pendingFailure: unknown;
+  try {
+    await settleStagedBlockBatch(pending);
+  } catch (error) {
+    pendingFailed = true;
+    pendingFailure = error;
+  }
+  if (streamingFailed) throw streamingFailure;
+  if (pendingFailed) throw pendingFailure;
   return blockIds;
+}
+
+async function settleStagedBlockBatch(
+  pending: ReadonlyArray<Promise<unknown>>,
+): Promise<void> {
+  const results = await Promise.allSettled(pending);
+  const failure = results.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (failure !== undefined) throw failure.reason;
 }
 
 async function ensureLeaseTarget(
   client: ReturnType<ContainerClient["getBlockBlobClient"]>,
   kind: StoredObjectKind,
+  signal: AbortSignal | undefined,
 ): Promise<void> {
   try {
     await client.uploadData(new Uint8Array(), {
+      ...abortOptions(signal),
       conditions: {ifNoneMatch: "*"},
       metadata: {[azureKindMetadataName]: kind},
     });
@@ -286,10 +374,11 @@ async function ensureLeaseTarget(
 async function acquireWriteLease(
   client: ReturnType<ContainerClient["getBlockBlobClient"]>,
   deadline: number,
+  signal: AbortSignal | undefined,
 ): Promise<BlobLeaseClient> {
   const lease = client.getBlobLeaseClient(randomUUID());
   try {
-    await lease.acquireLease(leaseDurationSeconds);
+    await lease.acquireLease(leaseDurationSeconds, abortOptions(signal));
     return lease;
   } catch (error) {
     const failure = parseAzureFailure(error);
@@ -299,8 +388,8 @@ async function acquireWriteLease(
     ) {
       throw error;
     }
-    await new Promise((resolve) => setTimeout(resolve, leaseRetryMilliseconds));
-    return acquireWriteLease(client, deadline);
+    await abortableDelay(leaseRetryMilliseconds, signal);
+    return acquireWriteLease(client, deadline, signal);
   }
 }
 
@@ -308,8 +397,9 @@ async function inspectExistingAzureObject(
   client: ReturnType<ContainerClient["getBlockBlobClient"]>,
   expectedDigest: string,
   kind: StoredObjectKind,
+  signal: AbortSignal | undefined,
 ): Promise<StoredBlob | null> {
-  const properties = await client.getProperties();
+  const properties = await client.getProperties(abortOptions(signal));
   try {
     return inspectAzureMetadata(properties, expectedDigest, kind);
   } catch (error) {
@@ -327,7 +417,30 @@ async function drainVerifiedWrite(
     new Writable({
       write: (_chunk, _encoding, callback) => callback(),
     }),
+    write.signal === undefined ? {} : {signal: write.signal},
   );
+}
+
+function abortOptions(signal: AbortSignal | undefined) {
+  return signal === undefined ? {} : {abortSignal: signal};
+}
+
+function abortableDelay(
+  milliseconds: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  if (signal?.aborted === true) return Promise.reject(signal.reason);
+  return new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, milliseconds);
+    const abort = () => {
+      clearTimeout(timeout);
+      reject(signal?.reason);
+    };
+    signal?.addEventListener("abort", abort, {once: true});
+  });
 }
 
 async function* fixedSizeBlocks(

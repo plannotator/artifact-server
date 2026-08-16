@@ -47,6 +47,7 @@ export interface PublicationFileSource {
   readonly path: string;
   readonly sha256: string;
   readonly size: number;
+  readonly signal?: AbortSignal;
   open(): Effect.Effect<ReadableStream<Uint8Array>, StagingStorageFailure>;
 }
 
@@ -196,13 +197,16 @@ function makePublishArtifactService(
             );
           }
           return source.open().pipe(
-            Effect.flatMap((body) =>
-              dependencies.blobs.put({
+            Effect.flatMap((body) => {
+              const write = {
                 body,
                 sha256: entry.sha256,
                 size: entry.size,
-              })
-            ),
+              };
+              return dependencies.blobs.put(source.signal === undefined
+                ? write
+                : {...write, signal: source.signal});
+            }),
           );
         },
         {concurrency: 1, discard: true},

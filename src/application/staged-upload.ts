@@ -17,10 +17,12 @@ import {
   uploadStatuses,
   type AccessSetting,
   type PublishedVersion,
+  type RoutingMode,
   type StagedUpload,
 } from "../core/model.js";
 import type {
   CreateStagedUpload,
+  ExpiredStagedUpload,
   IdGenerator,
   OpenedStagedFile,
   StagedFileWrite,
@@ -51,6 +53,7 @@ export interface CreateStagedUploadCommand {
   readonly files: readonly DeclaredManifestFile[];
   readonly principal: Principal;
   readonly projectId?: string | null;
+  readonly routingMode?: RoutingMode;
 }
 
 /** Input for streaming one file into a staged upload slot. */
@@ -106,9 +109,18 @@ export interface StagedUploadRepositoryPort {
     | UploadNotFound
     | UploadClosed
     | UploadFileNotFound
+    | UploadExpired
     | ProjectArchived
     | ArtifactRepositoryFailure
   >;
+  listExpiredStagedUploads(
+    expiredBefore: string,
+    limit: number,
+  ): Effect.Effect<readonly ExpiredStagedUpload[], ArtifactRepositoryFailure>;
+  removeExpiredStagedUpload(
+    uploadId: string,
+    expiredBefore: string,
+  ): Effect.Effect<boolean, ArtifactRepositoryFailure>;
 }
 
 /** Staging storage capabilities required before immutable publication. */
@@ -120,6 +132,10 @@ export interface StagingStoragePort {
   put(
     write: StagedFileWrite,
   ): Effect.Effect<StoredBlob, UploadedFileMismatch | StagingStorageFailure>;
+  remove(
+    uploadId: string,
+    storageToken: string,
+  ): Effect.Effect<void, StagingStorageFailure>;
 }
 
 /** Dependencies used to construct the staged upload application service. */
@@ -221,7 +237,7 @@ function makeStagedUploadService(
       const manifest = yield* parseManifest({
         entryPath: command.entryPath,
         files: command.files,
-        routingMode: "static",
+        routingMode: command.routingMode ?? "static",
       });
       const created = yield* dependencies.clock.now;
       return yield* dependencies.uploads.createStagedUpload({
@@ -255,7 +271,8 @@ function makeStagedUploadService(
         command.uploadId,
         command.principal.id,
       );
-      yield* ensureUploadAcceptsFiles(upload, yield* dependencies.clock.now);
+      const uploadStartedAt = yield* dependencies.clock.now;
+      yield* ensureUploadAcceptsFiles(upload, uploadStartedAt);
       const file = upload.files.find(
         (candidate) => candidate.storageToken === command.storageToken,
       );
@@ -265,13 +282,17 @@ function makeStagedUploadService(
         });
       }
 
+      const signal = abortSignalUntil(upload.expiresAt, uploadStartedAt);
       yield* dependencies.staging.put({
         body: command.body,
         sha256: file.entry.sha256,
+        signal,
         size: file.entry.size,
         storageToken: file.storageToken,
         uploadId: upload.id,
-      });
+      }).pipe(Effect.catch((error) => Effect.fail(signal.aborted
+        ? new UploadExpired({message: "The staged upload has expired."})
+        : error)));
       const uploadedAt = DateTime.formatIso(yield* dependencies.clock.now);
       return yield* dependencies.uploads.markStagedFileUploaded(
         project.id,
@@ -286,8 +307,10 @@ function makeStagedUploadService(
   const publicationSource = (
     upload: StagedUpload,
     file: StagedUpload["files"][number],
-  ): PublicationFileSource => ({
-    open: Effect.fn("StagedUploadService.openPublicationSource")(
+    signal: AbortSignal | undefined,
+  ): PublicationFileSource => {
+    const source = {
+      open: Effect.fn("StagedUploadService.openPublicationSource")(
       function*(): Effect.fn.Return<
         ReadableStream<Uint8Array>,
         StagingStorageFailure
@@ -311,11 +334,13 @@ function makeStagedUploadService(
         }
         return opened.body;
       },
-    ),
-    path: file.entry.path,
-    sha256: file.entry.sha256,
-    size: file.entry.size,
-  });
+      ),
+      path: file.entry.path,
+      sha256: file.entry.sha256,
+      size: file.entry.size,
+    };
+    return signal === undefined ? source : {...source, signal};
+  };
 
   const commitUpload = Effect.fn("StagedUploadService.commitUpload")(
     function*(
@@ -339,15 +364,20 @@ function makeStagedUploadService(
         command.uploadId,
         command.principal.id,
       );
+      const commitStartedAt = yield* dependencies.clock.now;
+      const signal = upload.status === uploadStatuses.open
+        ? abortSignalUntil(upload.expiresAt, commitStartedAt)
+        : undefined;
       if (upload.status === uploadStatuses.open) {
-        yield* ensureUploadNotExpired(upload, yield* dependencies.clock.now);
+        yield* ensureUploadNotExpired(upload, commitStartedAt);
       }
       if (upload.files.some((file) => file.uploadedAt === null)) {
         return yield* new UploadIncomplete({
           message: "Every declared upload file must be verified before commit.",
         });
       }
-      const files = upload.files.map((file) => publicationSource(upload, file));
+      const files = upload.files.map((file) =>
+        publicationSource(upload, file, signal));
       const source = {
         kind: "staged_upload" as const,
         principalId: command.principal.id,
@@ -356,7 +386,8 @@ function makeStagedUploadService(
       };
       switch (command.target.kind) {
         case "new_artifact":
-          return yield* publish.publishPreparedNew({
+          return yield* expirePublicationAtDeadline(signal,
+            publish.publishPreparedNew({
             accessSetting: command.target.accessSetting,
             files,
             idempotencyKey: command.idempotencyKey,
@@ -366,9 +397,10 @@ function makeStagedUploadService(
             projectId: project.id,
             source,
             tags: command.target.tags ?? [],
-          });
+            }));
         case "new_version":
-          return yield* publish.publishPreparedVersion({
+          return yield* expirePublicationAtDeadline(signal,
+            publish.publishPreparedVersion({
             artifactId: command.target.artifactId,
             expectedCurrentVersionId: command.target.expectedCurrentVersionId,
             files,
@@ -377,7 +409,7 @@ function makeStagedUploadService(
             principal: command.principal,
             projectId: project.id,
             source,
-          });
+            }));
       }
       return yield* Effect.die(
         new Error(
@@ -388,6 +420,25 @@ function makeStagedUploadService(
   );
 
   return StagedUploadService.of({commitUpload, createUpload, uploadFile});
+}
+
+function abortSignalUntil(expiresAt: string, now: DateTime.Utc): AbortSignal {
+  const remainingMilliseconds = Math.max(
+    1,
+    Date.parse(expiresAt) - DateTime.toEpochMillis(now),
+  );
+  return AbortSignal.timeout(remainingMilliseconds);
+}
+
+function expirePublicationAtDeadline<A, E>(
+  signal: AbortSignal | undefined,
+  effect: Effect.Effect<A, E>,
+): Effect.Effect<A, E | UploadExpired> {
+  return effect.pipe(Effect.catch((error) => Effect.fail(
+    signal?.aborted === true
+      ? new UploadExpired({message: "The staged upload has expired."})
+      : error,
+  )));
 }
 
 function ensureUploadAcceptsFiles(

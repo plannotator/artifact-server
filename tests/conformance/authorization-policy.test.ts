@@ -74,6 +74,9 @@ describe("authorization policy", () => {
       authorization.requireArtifactManagement(administrator, artifact)
     );
     await expectAllowed((authorization) =>
+      authorization.requireArtifactOwnershipChange(administrator)
+    );
+    await expectAllowed((authorization) =>
       authorization.requireArtifactManagement(managerService, artifact)
     );
     await expectAllowed((authorization) =>
@@ -101,6 +104,12 @@ describe("authorization policy", () => {
     );
     await expectDenied((authorization) =>
       authorization.requireArtifactManagement(otherMember, artifact)
+    );
+    await expectDenied((authorization) =>
+      authorization.requireArtifactOwnershipChange(owner)
+    );
+    await expectDenied((authorization) =>
+      authorization.requireArtifactOwnershipChange(managerService)
     );
     await expectDenied((authorization) =>
       authorization.requireVersionPublication(unscopedService, artifact)

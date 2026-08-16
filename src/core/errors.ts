@@ -253,6 +253,7 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
     operation: Schema.Literals([
       "assertPublicationSourceReady",
       "changeAccessSetting",
+      "changeOwnership",
       "changeTags",
       "commitNewArtifact",
       "commitVersion",
@@ -271,7 +272,9 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
       "listArtifactActions",
       "listArtifacts",
       "listArtifactVersions",
+      "listExpiredStagedUploads",
       "markStagedFileUploaded",
+      "removeExpiredStagedUpload",
       "restoreVersion",
       "createProject",
       "findProject",
@@ -324,7 +327,7 @@ export class StagingStorageFailure extends Schema.TaggedError<StagingStorageFail
   "StagingStorageFailure",
   {
     cause: Schema.Defect(),
-    operation: Schema.Literals(["open", "put"]),
+    operation: Schema.Literals(["open", "put", "remove"]),
   },
 ) {}
 

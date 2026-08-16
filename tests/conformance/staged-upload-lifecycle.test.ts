@@ -8,6 +8,8 @@ import {afterEach, beforeEach, describe, expect, test} from "vitest";
 
 import type {ApplicationRuntime} from "../../src/application/application-runtime.js";
 import {StagedUploadService} from "../../src/application/staged-upload.js";
+import {ExpiredStagingCleanupService} from
+  "../../src/application/expired-staging-cleanup.js";
 import {
   membershipRoles,
   principalCapabilities,
@@ -25,19 +27,23 @@ import {SqliteIdentityRepository} from "../../src/storage/sqlite-identity-reposi
 describe("staged upload lifecycle", () => {
   let clock: ControlledClock;
   let dataDirectory: string;
+  let blobs: LocalBlobStore;
   let repository: SqliteArtifactRepository;
   let identityRepository: SqliteIdentityRepository;
   let runtime: ApplicationRuntime;
+  let staging: LocalStagingStore;
 
   beforeEach(async () => {
     dataDirectory = await mkdtemp(path.join(tmpdir(), "artifact-upload-lifecycle-"));
     clock = new ControlledClock(new Date("2026-08-13T00:00:00.000Z"));
     const databasePath = path.join(dataDirectory, "artifact-server.db");
+    blobs = new LocalBlobStore(path.join(dataDirectory, "blobs"));
     repository = new SqliteArtifactRepository(databasePath);
     identityRepository = new SqliteIdentityRepository(databasePath);
+    staging = new LocalStagingStore(path.join(dataDirectory, "staging"));
     runtime = ManagedRuntime.make(createLocalApplicationLayer({
       apiToken: Redacted.make("test-api-token"),
-      blobs: new LocalBlobStore(path.join(dataDirectory, "blobs")),
+      blobs,
       bootstrapAdministratorEmail: "admin@example.test",
       clock,
       externalApiBearerVerifier: null,
@@ -48,7 +54,7 @@ describe("staged upload lifecycle", () => {
       interactiveIdentityProvider: null,
       localBootstrapCredential: null,
       repository,
-      staging: new LocalStagingStore(path.join(dataDirectory, "staging")),
+      staging,
     }));
     await runtime.context();
   });
@@ -165,7 +171,7 @@ describe("staged upload lifecycle", () => {
     }
   });
 
-  test("foundation: expiry closes only uncommitted staging while committed retries remain stable", async () => {
+  test("OPS-006-B: expiry closes only uncommitted staging while committed retries remain stable", async () => {
     expect.hasAssertions();
     const bytes = new TextEncoder().encode("staged lifecycle proof");
     const file = {
@@ -257,6 +263,123 @@ describe("staged upload lifecycle", () => {
       })
     );
   });
+
+  test("PUB-009-B PUB-009-F OPS-006-F: cleanup is bounded, waits for settle, tolerates concurrent passes, and preserves committed work", async () => {
+    const bytes = new TextEncoder().encode("cleanup lifecycle proof");
+    const file = {
+      mediaType: "text/plain",
+      path: "proof.txt",
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      size: bytes.byteLength,
+    };
+    const expired = await runStaged(runtime, (service) => service.createUpload({
+      entryPath: file.path,
+      files: [file],
+      principal: testPrincipal("cleanup-principal"),
+    }));
+    const expiredFile = expired.files[0];
+    if (expiredFile === undefined) throw new Error("The cleanup fixture has no file.");
+    await runStaged(runtime, (service) => service.uploadFile({
+      body: byteStream(bytes),
+      principal: testPrincipal(expired.principalId),
+      storageToken: expiredFile.storageToken,
+      uploadId: expired.id,
+    }));
+
+    const committedUpload = await runStaged(runtime, (service) => service.createUpload({
+      entryPath: file.path,
+      files: [file],
+      principal: testPrincipal("cleanup-principal"),
+    }));
+    const committedFile = committedUpload.files[0];
+    if (committedFile === undefined) {
+      throw new Error("The committed cleanup fixture has no file.");
+    }
+    await runStaged(runtime, (service) => service.uploadFile({
+      body: byteStream(bytes),
+      principal: testPrincipal(committedUpload.principalId),
+      storageToken: committedFile.storageToken,
+      uploadId: committedUpload.id,
+    }));
+    await runStaged(runtime, (service) => service.commitUpload({
+      idempotencyKey: "cleanup-preserves-committed-work",
+      principal: testPrincipal(committedUpload.principalId),
+      target: {
+        accessSetting: "account_required",
+        kind: "new_artifact",
+        name: "Committed cleanup control",
+      },
+      uploadId: committedUpload.id,
+    }));
+
+    clock.set(new Date(new Date(expired.expiresAt).getTime() + 5 * 60 * 1_000 - 1));
+    const tooEarly = await runCleanup(runtime, 100);
+    expect(tooEarly).toEqual({
+      alreadyAbsent: 0,
+      deleted: 0,
+      failed: 0,
+      remaining: 0,
+      selected: 0,
+    });
+    const beforeCleanup = await staging.open(expired.id, expiredFile.storageToken);
+    expect(beforeCleanup.size).toBe(bytes.byteLength);
+    await beforeCleanup.body.cancel();
+
+    clock.set(new Date(new Date(expired.expiresAt).getTime() + 5 * 60 * 1_000));
+    const concurrent = await Promise.all([
+      runCleanup(runtime, 100),
+      runCleanup(runtime, 100),
+    ]);
+    expect(concurrent.reduce((sum, report) => sum + report.deleted, 0)).toBe(1);
+    expect(concurrent.reduce((sum, report) => sum + report.failed, 0)).toBe(0);
+    await expect(repository.findStagedUpload(
+      expired.projectId,
+      expired.id,
+      expired.principalId,
+    )).resolves.toBeNull();
+    await expect(staging.open(expired.id, expiredFile.storageToken)).rejects
+      .toThrow(/ENOENT|no such file/u);
+
+    await expect(repository.findStagedUpload(
+      committedUpload.projectId,
+      committedUpload.id,
+      committedUpload.principalId,
+    )).resolves.toMatchObject({status: "committed"});
+    const committedBytes = await staging.open(
+      committedUpload.id,
+      committedFile.storageToken,
+    );
+    expect(committedBytes.size).toBe(bytes.byteLength);
+    await committedBytes.body.cancel();
+    const immutableBlob = await blobs.open(file.sha256);
+    expect(new Uint8Array(await new Response(immutableBlob.body).arrayBuffer()))
+      .toEqual(bytes);
+  });
+
+  test("foundation: an interrupted local write cannot reappear after cleanup", async () => {
+    const declaredBytes = new Uint8Array(1024 * 1024);
+    const controller = new AbortController();
+    const incoming = new TransformStream<Uint8Array, Uint8Array>();
+    const writer = incoming.writable.getWriter();
+    const uploadId = "upl_00000000-0000-4000-8000-000000000001";
+    const storageToken = "a".repeat(36);
+    const write = staging.put({
+      body: incoming.readable,
+      sha256: createHash("sha256").update(declaredBytes).digest("hex"),
+      signal: controller.signal,
+      size: declaredBytes.byteLength,
+      storageToken,
+      uploadId,
+    });
+    await writer.write(declaredBytes.subarray(0, 64 * 1024));
+    controller.abort(new Error("staging deadline reached"));
+    await writer.abort(controller.signal.reason).catch(() => undefined);
+    await expect(write).rejects.toThrow(/deadline|abort/u);
+
+    await staging.remove(uploadId, storageToken);
+    await expect(staging.open(uploadId, storageToken)).rejects
+      .toThrow(/ENOENT|no such file/u);
+  });
 });
 
 function testPrincipal(
@@ -309,6 +432,14 @@ function runStaged<A, E>(
   ) => Effect.Effect<A, E>,
 ): Promise<A> {
   return runtime.runPromise(StagedUploadService.use(operation));
+}
+
+function runCleanup(
+  runtime: ApplicationRuntime,
+  limit: number,
+) {
+  return runtime.runPromise(ExpiredStagingCleanupService.use((service) =>
+    service.runPass({limit})));
 }
 
 async function expectStagedFailure<A, E extends {_tag: string}>(

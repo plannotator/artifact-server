@@ -33,6 +33,7 @@ interface PublishOptions {
   readonly project?: string;
   readonly profile?: string;
   readonly profileData: string;
+  readonly routing: "spa" | "static";
   readonly server?: string;
   readonly tag: readonly string[];
   readonly tokenFile?: string;
@@ -81,6 +82,11 @@ export function configurePublishCommand(
         .env("ARTIFACT_SERVER_HOME"),
     )
     .addOption(new Option("--entry <path>", "directory file that opens first"))
+    .addOption(
+      new Option("--routing <mode>", "path routing for the published files")
+        .choices(["static", "spa"])
+        .default("static"),
+    )
     .addOption(new Option("--name <name>", "name for a new artifact"))
     .addOption(new Option("--public", "allow the link to open without sign-in").default(false))
     .addOption(
@@ -133,8 +139,13 @@ function publicationCommand(
   const idempotencyKey = randomBytes(24).toString("base64url");
   const common: Omit<FilePublicationCommand, "entryPath" | "target"> =
     options.project === undefined
-      ? {idempotencyKey, inputPath}
-      : {idempotencyKey, inputPath, projectId: options.project};
+      ? {idempotencyKey, inputPath, routingMode: options.routing}
+      : {
+        idempotencyKey,
+        inputPath,
+        projectId: options.project,
+        routingMode: options.routing,
+      };
   if (options.artifact !== undefined && options.expectedVersion !== undefined) {
     if (options.name !== undefined || options.public || options.tag.length > 0) {
       throw new Error(

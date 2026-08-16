@@ -37,7 +37,7 @@ const versionRecordSchema = z.object({
   manifestDigest: z.string(),
   number: z.number(),
   publisherPrincipalId: z.string(),
-  routingMode: z.literal("static"),
+  routingMode: z.enum(["static", "spa"]),
 });
 const artifactVersionSchema = z.object({
   links: z.object({version: z.url()}),
@@ -51,7 +51,7 @@ const artifactVersionSchema = z.object({
       size: z.number(),
     })),
     entryPath: z.string(),
-    routingMode: z.literal("static"),
+    routingMode: z.enum(["static", "spa"]),
   }),
   version: versionRecordSchema,
 });
