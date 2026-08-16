@@ -22,6 +22,7 @@ import {createWorkOsHostedAuthentication} from
   "../../../src/identity/workos-hosted-authentication.js";
 
 interface WorkerEnvironment {
+  readonly ASSETS: Fetcher;
   readonly ARTIFACT_SERVER_API_TOKEN: string;
   readonly ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL: string;
   readonly ARTIFACT_SERVER_CONTENT_DOMAIN: string;
@@ -153,6 +154,14 @@ async function createCloudflareRuntime(
     contentDomain: environment.ARTIFACT_SERVER_CONTENT_DOMAIN,
     readiness: () => readiness(environment),
     trustedApplicationOrigin: origin.origin,
+    webAssets: {
+      fetch: async (assetPath: string, method: "GET" | "HEAD") => {
+        const response = await environment.ASSETS.fetch(
+          new Request(new URL(assetPath, origin), {method}),
+        );
+        return response.status === 404 ? null : response;
+      },
+    },
   };
   const app = createHttpApp(hostedAuthentication === null
     ? appDependencies

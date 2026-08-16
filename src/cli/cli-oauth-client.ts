@@ -442,7 +442,8 @@ function closeServer(server: Server): Promise<void> {
   });
 }
 
-function openSystemBrowser(
+/** Open one trusted browser address with the configured operating-system command. */
+export function openSystemBrowser(
   url: URL,
   environment: NodeJS.ProcessEnv,
 ): Promise<void> {

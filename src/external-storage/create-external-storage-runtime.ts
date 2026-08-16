@@ -36,6 +36,7 @@ import {
 } from "../lifecycle/staging-cleanup.js";
 import type {ExpiredStagingCleanupReport} from
   "../application/expired-staging-cleanup.js";
+import {createNodeWebAssetStore} from "../http/node-web-assets.js";
 
 /** Configuration for one stateless Artifact Server process. */
 export interface ExternalStorageRuntimeConfig {
@@ -140,6 +141,7 @@ export async function createExternalStorageRuntime(
       contentDomain: config.contentDomain,
       readiness: () => externalStorageReadiness(database, connectedObjectStorage),
       trustedApplicationOrigin: config.applicationOrigin ?? null,
+      webAssets: createNodeWebAssetStore(),
     };
     let appDependencies: HttpAppDependencies = appDependenciesWithoutOAuth;
     if (config.apiOAuthResource !== undefined) {

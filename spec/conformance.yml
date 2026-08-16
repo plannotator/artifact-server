@@ -1323,7 +1323,7 @@ requirements:
 
   - id: AUTH-015
     kind: security
-    behavior: The bootstrap exchange creates a Secure, HttpOnly, host-only, read-only content session valid only for GET and HEAD on one immutable version origin.
+    behavior: The bootstrap exchange creates a HttpOnly, host-only, read-only content session valid only for GET and HEAD on one immutable version origin. HTTPS origins require Secure; loopback HTTP uses the browser-compatible host-only exception.
     owner: authorization
     source: {file: artifact-server-product-spec.html, anchor: safety}
     acceptance:

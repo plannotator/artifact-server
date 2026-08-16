@@ -349,6 +349,7 @@ async function request<T>(
     ...init,
     credentials: "same-origin",
   });
+  notifySessionExpiry(response);
   if (!response.ok) throw await parseFailure(response);
   if (noContentStatuses.has(response.status)) {
     throw new ApiError(
@@ -373,6 +374,7 @@ async function requestNoContent(path: string, init: RequestInit): Promise<void> 
     ...init,
     credentials: "same-origin",
   });
+  notifySessionExpiry(response);
   if (!response.ok) throw await parseFailure(response);
   if (!noContentStatuses.has(response.status)) {
     throw new ApiError(
@@ -385,6 +387,12 @@ async function requestNoContent(path: string, init: RequestInit): Promise<void> 
 
 function projectQuery(projectId: string): string {
   return `projectId=${encodeURIComponent(projectId)}`;
+}
+
+function notifySessionExpiry(response: Response): void {
+  if (response.status === 401) {
+    window.dispatchEvent(new Event("artifact-session-expired"));
+  }
 }
 
 export const api = {

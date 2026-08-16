@@ -48,6 +48,45 @@ afterAll(async () => {
 });
 
 describe("Cloudflare Worker runtime", () => {
+  it("serves the management application only from its configured origin", async () => {
+    const shell = await worker.fetch(`${origin}/projects/prj_default/artifacts`);
+    const shellHtml = await shell.text();
+    if (shell.status !== 200) {
+      throw new Error(`Management shell returned ${shell.status}: ${shellHtml}`);
+    }
+    expect(shell.headers.get("content-type")).toContain("text/html");
+    expect(shell.headers.get("cache-control")).toBe("no-cache, must-revalidate");
+    expect(shell.headers.get("content-security-policy")).toContain(
+      "frame-ancestors 'none'",
+    );
+    expect(shellHtml).toContain('id="root"');
+
+    const scriptPath = /src="(?<path>\/assets\/[^"]+\.js)"/u.exec(shellHtml)
+      ?.groups?.["path"];
+    if (scriptPath === undefined) {
+      throw new Error("The Cloudflare management shell does not reference its script.");
+    }
+    const script = await worker.fetch(`${origin}${scriptPath}`);
+    expect(script.status).toBe(200);
+    expect(script.headers.get("content-type")).toContain("javascript");
+    expect(script.headers.get("cache-control"))
+      .toBe("public, max-age=31536000, immutable");
+
+    const missingApi = await worker.fetch(`${origin}/api/v1/not-a-route`, {
+      headers: {Authorization: `Bearer ${apiToken}`},
+    });
+    expect(missingApi.status).toBe(404);
+    expect(missingApi.headers.get("content-type")).toContain("application/json");
+
+    const contentHostRoute = await worker.fetch(
+      `https://${"a".repeat(40)}.${contentDomain}/projects`,
+    );
+    expect(contentHostRoute.status).toBe(404);
+    expect(contentHostRoute.headers.get("content-type")).toContain(
+      "application/json",
+    );
+  });
+
   it("publishes through real local D1 and R2 and survives a Worker restart", async () => {
     const health = await worker.fetch(`${origin}/health`);
     const ready = await worker.fetch(`${origin}/ready`);
@@ -203,6 +242,7 @@ async function stageFile(source: string) {
 function startWorker(persistenceDirectory: string): Promise<Unstable_DevWorker> {
   return unstable_dev("src/worker.ts", {
     bundle: true,
+    config: "wrangler.test.jsonc",
     compatibilityDate: "2026-08-15",
     compatibilityFlags: ["nodejs_compat"],
     experimental: {

@@ -41,6 +41,7 @@ export function ApiKeysScreen() {
   const [apiKeys, setApiKeys] = useState<readonly ManagedApiKey[]>([]);
   const [members, setMembers] = useState<readonly InstallationMember[]>([]);
   const [issued, setIssued] = useState<IssuedApiKey | null>(null);
+  const [issueOpen, setIssueOpen] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
@@ -89,6 +90,7 @@ export function ApiKeysScreen() {
         selectedCapabilities,
         memberId === "" ? undefined : memberId,
       );
+      setIssueOpen(false);
       setIssued(result);
       setName("");
       setExpiration("");
@@ -132,7 +134,7 @@ export function ApiKeysScreen() {
     <div className="flex flex-col gap-8">
       <PageHeader
         actions={(
-          <Dialog>
+          <Dialog onOpenChange={setIssueOpen} open={issueOpen}>
             <DialogTrigger render={<Button type="button" />}>Issue API key</DialogTrigger>
             <DialogContent className="sm:max-w-xl">
               <DialogHeader>

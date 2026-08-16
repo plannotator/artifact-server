@@ -1,6 +1,6 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type ProxyOptions } from "vite";
 
 export default defineConfig({
   build: {
@@ -17,8 +17,25 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5173,
     proxy: {
-      "/api": "http://127.0.0.1:8787",
-      "/auth": "http://127.0.0.1:8787",
+      "/api": backendProxy(),
+      "/artifacts": backendProxy(),
+      "/auth": backendProxy(),
+      "/health": backendProxy(),
+      "/mcp": backendProxy(),
+      "/ready": backendProxy(),
     },
   },
 });
+
+function backendProxy(): ProxyOptions {
+  const target = "http://127.0.0.1:8787";
+  return {
+    changeOrigin: true,
+    configure(proxy) {
+      proxy.on("proxyReq", (proxyRequest) => {
+        proxyRequest.setHeader("Origin", target);
+      });
+    },
+    target,
+  };
+}

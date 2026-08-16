@@ -38,12 +38,66 @@ const publicationSchema = z.object({
 const projectResponseSchema = z.object({
   project: z.object({id: z.string(), name: z.string()}),
 });
+const managedServiceRecordSchema = z.object({
+  origin: z.url(),
+  pid: z.number().int().positive(),
+});
 
 afterEach(async () => {
   await Promise.all([...runningProcesses].map(stopProcess));
 });
 
 describe("local Artifact Server CLI", () => {
+  test("opens the managed application without printing its browser credential", async () => {
+    const parentDirectory = await mkdtemp(
+      path.join(tmpdir(), "artifact-server-open-cli-"),
+    );
+    const dataDirectory = path.join(parentDirectory, "data");
+    const browserCommand = path.join(parentDirectory, "capture-browser");
+    const capturedUrl = path.join(parentDirectory, "browser-url");
+    let servicePid: number | undefined;
+    try {
+      await writeFile(
+        browserCommand,
+        '#!/bin/sh\nprintf "%s" "$1" > "$ARTIFACT_SERVER_BROWSER_CAPTURE"\n',
+      );
+      await chmod(browserCommand, 0o700);
+      const result = await runCommandToExit(
+        ["open", "--data", dataDirectory],
+        {
+          ARTIFACT_SERVER_BROWSER_CAPTURE: capturedUrl,
+          ARTIFACT_SERVER_BROWSER_COMMAND: browserCommand,
+        },
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain(
+        "Opened the local Artifact Server management application.",
+      );
+      const browserCredential = (await readFile(
+        path.join(dataDirectory, "local-browser-token"),
+        "utf8",
+      )).trim();
+      expect(result.output).not.toContain(browserCredential);
+      const loginUrl = new URL(await waitForFile(capturedUrl));
+      expect(loginUrl.pathname).toBe("/auth/local");
+      expect(loginUrl.searchParams.get("token")).toBe(browserCredential);
+      const serviceRecord = managedServiceRecordSchema.parse(JSON.parse(
+        await readFile(path.join(dataDirectory, "local-service.json"), "utf8"),
+      ));
+      servicePid = serviceRecord.pid;
+      expect((await fetch(new URL("/health", serviceRecord.origin))).status).toBe(200);
+    } finally {
+      if (servicePid !== undefined) {
+        try {
+          process.kill(servicePid, "SIGTERM");
+        } catch {
+          // The managed process already stopped.
+        }
+      }
+      await rm(parentDirectory, {force: true, recursive: true});
+    }
+  });
+
   test("starts with private reusable credentials without printing them", async () => {
     const dataDirectory = await mkdtemp(path.join(tmpdir(), "artifact-server-cli-"));
     try {
@@ -390,12 +444,19 @@ function runPublishCliToExit(arguments_: readonly string[]): Promise<ProcessResu
   return runCommandToExit(["publish", ...arguments_]);
 }
 
-function runCommandToExit(arguments_: readonly string[]): Promise<ProcessResult> {
+function runCommandToExit(
+  arguments_: readonly string[],
+  environment: NodeJS.ProcessEnv = {},
+): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       path.join(repositoryRoot, "node_modules/.bin/tsx"),
       [path.join(repositoryRoot, "src/cli/main.ts"), ...arguments_],
-      {cwd: repositoryRoot, stdio: ["ignore", "pipe", "pipe"]},
+      {
+        cwd: repositoryRoot,
+        env: {...process.env, ...environment},
+        stdio: ["ignore", "pipe", "pipe"],
+      },
     );
     const output: Uint8Array[] = [];
     child.stdout.on("data", (chunk: Buffer) => output.push(chunk));
@@ -408,6 +469,21 @@ function runCommandToExit(arguments_: readonly string[]): Promise<ProcessResult>
       });
     });
   });
+}
+
+async function waitForFile(
+  filePath: string,
+  deadline = Date.now() + 5_000,
+): Promise<string> {
+  try {
+    return await readFile(filePath, "utf8");
+  } catch {
+    if (Date.now() >= deadline) {
+      throw new Error("The browser command did not capture the management URL.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    return waitForFile(filePath, deadline);
+  }
 }
 
 function fetchPublishedContent(contentUrl: string): Promise<Response> {

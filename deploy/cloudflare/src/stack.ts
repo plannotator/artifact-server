@@ -11,6 +11,7 @@ import {
 } from "./deployment-manifest.ts";
 
 const WORKER_ENTRYPOINT = new URL("./worker.ts", import.meta.url).pathname;
+const WEB_ASSET_DIRECTORY = new URL("../../../dist/web", import.meta.url).pathname;
 
 export type CloudflareZoneResolver =
   typeof Cloudflare.Zone.resolveZoneId;
@@ -171,6 +172,12 @@ export const defineCloudflareFoundation = Effect.fn(
     };
   }
   const workerProps: Cloudflare.WorkerProps = {
+    assets: {
+      directory: WEB_ASSET_DIRECTORY,
+      htmlHandling: "none",
+      notFoundHandling: "none",
+      runWorkerFirst: true,
+    },
     name: manifest.resourceNames.worker,
     main: WORKER_ENTRYPOINT,
     compatibility: {

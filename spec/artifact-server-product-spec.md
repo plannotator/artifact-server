@@ -129,7 +129,7 @@ An account-required site must authorize its HTML and every relative asset withou
 
 1. The stable application link checks that the viewer belongs to the installation.
 2. It creates a short-lived, single-use bootstrap token bound to one project, artifact, version, content hostname, and viewer.
-3. The version content origin exchanges that token for a host-only, `Secure`, `HttpOnly` content cookie and redirects to a clean URL.
+3. The version content origin exchanges that token for a host-only, `Secure`, `HttpOnly` content cookie and redirects to a clean URL. Direct loopback HTTP uses a host-only `HttpOnly` cookie without `Secure` because browsers reject a `Secure` cookie on `*.localhost`.
 4. The cookie is valid only for that immutable version origin and read-only `GET` and `HEAD` requests.
 5. The content origin has no endpoint that can change application or artifact data.
 

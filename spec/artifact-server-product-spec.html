@@ -2565,9 +2565,11 @@ v12-7f3a.content.example.net</code></pre>
                 <p>
                   For account-required content, the application checks the viewer and creates a
                   short-lived, single-use bootstrap token for one version host. That host exchanges
-                  the token for a Secure, HttpOnly, host-only content cookie. Relative CSS,
-                  JavaScript, image, and font requests then work without exposing an application
-                  credential. Private content is not placed in a shared CDN cache in the first release.
+                  the token for a Secure, HttpOnly, host-only content cookie. Direct loopback HTTP
+                  uses the host-only, HttpOnly browser exception because browsers reject a Secure
+                  cookie on <code>*.localhost</code>. Relative CSS, JavaScript, image, and font
+                  requests then work without exposing an application credential. Private content is
+                  not placed in a shared CDN cache in the first release.
                 </p>
                 <p>
                   The current public version uses immutable cache keys and may be cached by a CDN.
@@ -3627,7 +3629,7 @@ artifact_delete</code></pre>
             <article class="feature-row">
               <h3>Private content session</h3>
               <div class="feature-copy">
-                <p>Account-required content begins at the application. After permission is checked, a single-use token creates a Secure, HttpOnly, host-only session for one exact version host. Relative assets use that session. It grants no write operation and no access to another version.</p>
+                <p>Account-required content begins at the application. After permission is checked, a single-use token creates a Secure, HttpOnly, host-only session for one exact version host. Direct loopback HTTP uses the host-only, HttpOnly browser exception because browsers reject a Secure cookie on <code>*.localhost</code>. Relative assets use that session. It grants no write operation and no access to another version.</p>
               </div>
             </article>
             <article class="feature-row">

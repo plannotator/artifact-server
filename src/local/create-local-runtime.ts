@@ -36,6 +36,7 @@ import {
 } from "../lifecycle/staging-cleanup.js";
 import type {ExpiredStagingCleanupReport} from
   "../application/expired-staging-cleanup.js";
+import {createNodeWebAssetStore} from "../http/node-web-assets.js";
 
 export interface LocalRuntimeConfig {
   readonly apiToken: string;
@@ -128,6 +129,7 @@ export async function createLocalRuntime(
           defaultCompletedRequestLogSampleRate,
       contentDomain: config.contentDomain,
       trustedApplicationOrigin: config.applicationOrigin ?? null,
+      webAssets: createNodeWebAssetStore(),
     };
     let appDependencies: HttpAppDependencies = appDependenciesWithoutOAuth;
     if (config.apiOAuthResource !== undefined) {

@@ -27,6 +27,8 @@ This repository contains the local publication foundation and the first external
 - installation-owned members with explicit administrator admission and deactivation;
 - opaque browser sessions with host-only cookies and same-origin mutation checks;
 - managed human and service API keys with capabilities, expiry, rotation, and revocation;
+- a responsive management application for projects, artifacts, immutable
+  versions, comparisons, restores, action history, members, and API keys;
 - replaceable interactive login with a WorkOS AuthKit adapter;
 - authenticated artifact metadata, saved-version history, and canonical manifests;
 - manifest-based file comparisons with unambiguous rename detection;
@@ -62,9 +64,9 @@ This repository contains the local publication foundation and the first external
 
 ## Current implementation
 
-The backend foundation, direct local archive, lifecycle CLI, production OCI
-image, Compact Compose, External-storage Compose, and Helm chart exist and pass
-their current release gates.
+The backend foundation, management application, direct local archive, lifecycle
+CLI, production OCI image, Compact Compose, External-storage Compose, and Helm
+chart exist and pass their current release gates.
 
 Project-scoped artifacts are now implemented:
 
@@ -139,10 +141,11 @@ deploy, upgrade, back up, restore, or repair a server.
 
 ## Install the direct local package
 
-The direct local release is a self-contained Node package. It includes compiled
-JavaScript and all production dependencies. It does not include Artifact Server
-source code, TypeScript, pnpm, test tools, or a container. Node.js 24.12 or newer
-is the only runtime prerequisite after the archive is downloaded.
+The direct local release is a self-contained Node package. It includes the
+compiled management application, server JavaScript, and all production
+dependencies. It does not include Artifact Server source code, TypeScript,
+pnpm, test tools, or a container. Node.js 24.12 or newer is the only runtime
+prerequisite after the archive is downloaded.
 
 Build and unpack the package:
 
@@ -157,6 +160,17 @@ Move the extracted `artifactserver` directory anywhere user-owned. Add its
 `bin` directory to `PATH` if the shorter `artifactserver` command is preferred.
 The executable directory and persistent data directory are separate: replacing
 the executable directory must not replace or remove local data.
+
+Open the local management application:
+
+```sh
+artifactserver open
+```
+
+The command starts or reuses the managed loopback service and opens a private,
+single-use login URL in the system browser. It does not print or store the
+browser credential in shell history. After login, manage projects, artifacts,
+versions, members, and API keys from the application.
 
 Direct local and Compose processes remove expired uploads that were never
 committed. They run one bounded pass at startup and every 15 minutes. Operators
@@ -357,13 +371,31 @@ Requirements: Node.js 24.12 or newer, pnpm 10.34.3, and Ruby for validating the 
 
 ```sh
 pnpm install
-pnpm start -- --data .artifact-server --port 8787
+pnpm dev
 ```
 
-The server creates separate random API and browser-bootstrap credentials in
+This command builds the management shell once, then runs the backend on port
+8787 and the Vite development server on port 5173. In another terminal, run:
+
+```sh
+node --import tsx src/cli/main.ts open --data .artifact-server
+```
+
+The command signs the browser into the backend shell. The session also works
+through the Vite proxy at `http://127.0.0.1:5173`.
+
+For a production-style source run, use `pnpm build` followed by
+`pnpm start -- --data .artifact-server --port 8787`, then open
+`http://localhost:8787`.
+
+The local server creates separate random API and browser-bootstrap credentials in
 `.artifact-server/local-api-token` and `.artifact-server/local-browser-token`
 and keeps both files with mode `0600`. It prints neither credential and does not
 print a URL containing one.
+
+Hosted deployments serve the same application at their configured HTTPS
+application origin. Users sign in through WorkOS. Artifact content remains on
+the separate wildcard content domain.
 
 ## Connect a local AI client
 

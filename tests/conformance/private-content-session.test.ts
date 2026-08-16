@@ -96,14 +96,13 @@ describe("private content sessions", () => {
     server = await startTestServer(installation);
 
     const exchange = await fetchVersion(server, issued.bootstrapUrl);
-    expect(exchange.status).toBe(303);
+    expect(exchange.status).toBe(200);
     expect(exchange.headers.get("cache-control")).toBe("private, no-store");
     expect(exchange.headers.get("referrer-policy")).toBe("no-referrer");
-    const location = exchange.headers.get("location");
-    expect(location).not.toContain("token=");
+    expect(await exchange.clone().text()).toContain('content="0;url=/"');
     const setCookie = requiredHeader(exchange.headers, "set-cookie");
     expect(setCookie).toContain("HttpOnly");
-    expect(setCookie).toContain("Secure");
+    expect(setCookie).not.toContain("Secure");
     expect(setCookie).toContain("SameSite=Strict");
     expect(setCookie).not.toContain("Domain=");
     const cookie = setCookie.split(";", 1)[0];
@@ -195,6 +194,37 @@ describe("private content sessions", () => {
       {Cookie: cookie},
     );
     expect(isolated.status).toBe(404);
+
+    await server.stop();
+    server = await startTestServer(installation, {
+      contentDomain: "content.example.test",
+    });
+    const published = await publishNew(server, installation, {
+      accessSetting: "account_required",
+      content: "<!doctype html><title>Hosted private artifact</title>",
+      idempotencyKey: "hosted-private-session-cookie",
+    });
+    const hostedIssueResponse = await fetch(
+      `${server.baseUrl}/api/v1/artifacts/${published.body.artifact.id}/content-sessions`,
+      {
+        headers: {Authorization: `Bearer ${installation.apiToken}`},
+        method: "POST",
+      },
+    );
+    expect(hostedIssueResponse.status).toBe(201);
+    const hostedIssued = bootstrapResponseSchema.parse(
+      await hostedIssueResponse.json(),
+    );
+    const hostedExchange = await fetchVersion(
+      server,
+      hostedIssued.bootstrapUrl,
+    );
+    expect(hostedExchange.status).toBe(200);
+    const setCookie = requiredHeader(hostedExchange.headers, "set-cookie");
+    expect(setCookie).toContain("__Host-artifact_content=");
+    expect(setCookie).toContain("Secure");
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).not.toContain("Domain=");
   });
 });
 

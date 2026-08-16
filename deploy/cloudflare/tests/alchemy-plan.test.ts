@@ -178,6 +178,11 @@ describe("Alchemy foundation plan", () => {
       ({ resource }) => resource.Type === "Cloudflare.Worker",
     );
     expect(worker?.resource.Props).toMatchObject({
+      assets: {
+        htmlHandling: "none",
+        notFoundHandling: "none",
+        runWorkerFirst: true,
+      },
       compatibility: {
         date: validDeploymentInput.compatibilityDate,
         flags: ["nodejs_compat"],

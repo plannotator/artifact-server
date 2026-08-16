@@ -93,6 +93,17 @@ describe("direct local release package", () => {
 
       const executableA = path.join(firstInstallation, "artifactserver/bin/artifactserver");
       const executableB = path.join(secondInstallation, "artifactserver/bin/artifactserver");
+      const packagedShell = await readFile(
+        path.join(firstInstallation, "artifactserver/dist/web/index.html"),
+        "utf8",
+      );
+      expect(packagedShell).toContain('id="root"');
+      expect(await readdir(
+        path.join(firstInstallation, "artifactserver/dist/web/assets"),
+      )).toEqual(expect.arrayContaining([
+        expect.stringMatching(/\.css$/u),
+        expect.stringMatching(/\.js$/u),
+      ]));
       const windowsLauncher = await readFile(
         path.join(firstInstallation, "artifactserver/bin/artifactserver.cmd"),
         "utf8",
@@ -205,6 +216,16 @@ describe("direct local release package", () => {
       const port = await availablePort();
       server = startPackagedServer(executableA, dataDirectory, port, workspace);
       const startupOutput = await waitForReady(server, port);
+      const management = await fetchPackagedManagement(
+        port,
+        "/projects/prj_default/artifacts",
+      );
+      expect(management.status).toBe(200);
+      expect(management.headers.get("content-type")).toContain("text/html");
+      expect(management.headers.get("content-security-policy")).toContain(
+        "frame-ancestors 'none'",
+      );
+      expect(await management.text()).toContain('id="root"');
 
       const publicationResult = await runCommand(
         executableA,
@@ -489,6 +510,40 @@ async function fetchPublishedContent(contentUrl: string, port: number): Promise<
             return;
           }
           resolve(Buffer.concat(chunks).toString("utf8"));
+        });
+      },
+    );
+    outgoing.once("error", reject);
+    outgoing.end();
+  });
+}
+
+function fetchPackagedManagement(port: number, requestPath: string): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const outgoing = request(
+      {
+        headers: {Host: `localhost:${port}`},
+        hostname: "127.0.0.1",
+        method: "GET",
+        path: requestPath,
+        port,
+      },
+      (incoming) => {
+        const chunks: Uint8Array[] = [];
+        incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
+        incoming.on("end", () => {
+          const headers = new Headers();
+          for (let index = 0; index < incoming.rawHeaders.length; index += 2) {
+            const name = incoming.rawHeaders[index];
+            const value = incoming.rawHeaders[index + 1];
+            if (name !== undefined && value !== undefined) {
+              headers.append(name, value);
+            }
+          }
+          resolve(new Response(Buffer.concat(chunks), {
+            headers,
+            status: incoming.statusCode ?? 500,
+          }));
         });
       },
     );

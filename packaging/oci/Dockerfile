@@ -11,11 +11,13 @@ WORKDIR /build
 RUN corepack enable \
     && corepack prepare pnpm@10.34.3 --activate
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json ./apps/web/package.json
 RUN --mount=type=cache,id=artifact-server-pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts
 
 COPY tsconfig.json tsconfig.build.json ./
+COPY apps/web ./apps/web
 COPY src ./src
 COPY scripts/local-package-metadata.mjs ./scripts/local-package-metadata.mjs
 

@@ -26,6 +26,7 @@ import {configureMcpOnboardingCommands} from "./mcp-onboarding-commands.js";
 import {configurePublishCommand} from "./publish-command.js";
 import {waitForProcessSignal} from "./wait-for-process-signal.js";
 import {loadWorkOsConfiguration} from "./workos-configuration.js";
+import {configureOpenManagementCommand} from "./open-management-command.js";
 
 interface StartOptions {
   readonly data: string;
@@ -62,6 +63,7 @@ configureCliAuthCommands(program, {
 configurePublishCommand(program, {
   defaultProfileDirectory: defaultUserDataDirectory,
 });
+configureOpenManagementCommand(program, defaultUserDataDirectory);
 configureDirectLocalStart(program);
 configureLifecycleCommands(program, {build: productBuild});
 configureMcpOnboardingCommands(program, {

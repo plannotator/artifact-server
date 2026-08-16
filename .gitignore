@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+test-results/
 performance/results/
 /release/
 .artifact-server/

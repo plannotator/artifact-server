@@ -139,6 +139,7 @@ const contentSessionTokenSchema = z
   .regex(/^[A-Za-z0-9_-]+$/u);
 const contentBootstrapQueryParameter = "__artifact_bootstrap";
 const contentSessionCookieName = "__Host-artifact_content";
+const loopbackContentSessionCookieName = "artifact_content";
 const restoreVersionSchema = z.object({
   expectedCurrentVersionId: z.string().min(1).max(200),
   versionId: z.string().min(1).max(200),
@@ -233,6 +234,7 @@ export interface HttpAppDependencies {
   readonly readiness?: ReadinessProbe;
   readonly runtimeLifecycle?: RuntimeLifecycle;
   readonly trustedApplicationOrigin: string | null;
+  readonly webAssets?: WebAssetStore;
 }
 
 /** RFC 9728 metadata for the separately audience-bound HTTP API resource. */
@@ -267,6 +269,14 @@ export interface ReadinessReport {
 
 /** Probe external-storage dependencies without changing application state. */
 export type ReadinessProbe = () => Promise<ReadinessReport>;
+
+/** Static management-application assets supplied by one deployment boundary. */
+export interface WebAssetStore {
+  readonly fetch: (
+    assetPath: string,
+    method: "GET" | "HEAD",
+  ) => Promise<Response | null>;
+}
 
 export function createHttpApp(
   dependencies: HttpAppDependencies,
@@ -445,6 +455,22 @@ export function createHttpApp(
     return next();
   });
 
+  app.on(["GET", "HEAD"], "/assets/*", (context) =>
+    serveWebAsset(context, dependencies, new URL(context.req.url).pathname, false));
+
+  app.on(
+    ["GET", "HEAD"],
+    [
+      "/",
+      "/projects",
+      "/projects/:projectId/artifacts",
+      "/projects/:projectId/artifacts/:artifactId",
+      "/administration/members",
+      "/administration/api-keys",
+    ],
+    (context) => serveWebAsset(context, dependencies, "/index.html", true),
+  );
+
   app.use("/api/*", async (context, next) => {
     const authorization = context.req.header("authorization");
     if (authorization !== undefined) {
@@ -550,7 +576,7 @@ export function createHttpApp(
     setApplicationSessionCookies(context, dependencies, issued);
     context.header("Cache-Control", "private, no-store");
     context.header("Referrer-Policy", "no-referrer");
-    return context.redirect("/api/v1/session", 303);
+    return context.redirect("/", 303);
   });
 
   app.get("/auth/login", async (context) => {
@@ -1896,26 +1922,53 @@ async function exchangeContentBootstrap(
       })
     ),
   );
-  const cleanUrl = new URL(requestUrl);
-  cleanUrl.pathname = "/";
-  cleanUrl.search = "";
-  cleanUrl.hash = "";
-  return new Response(null, {
+  return new Response(contentSessionExchangeHtml, {
     headers: {
       "Cache-Control": "private, no-store",
-      Location: cleanUrl.toString(),
+      "Content-Security-Policy":
+        "default-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+      "Content-Type": "text/html; charset=utf-8",
       "Referrer-Policy": "no-referrer",
       "Set-Cookie": contentSessionCookie(
         Redacted.value(issued.token),
         issued.expiresAt,
+        usesSecureContentCookie(requestUrl),
       ),
     },
-    status: 303,
+    status: 200,
   });
 }
 
-function contentSessionCookie(token: string, expiresAt: string): string {
-  return `${contentSessionCookieName}=${token}; Path=/; Expires=${new Date(expiresAt).toUTCString()}; HttpOnly; Secure; SameSite=Strict`;
+const contentSessionExchangeHtml = [
+  "<!doctype html>",
+  '<html lang="en">',
+  '<meta charset="utf-8">',
+  '<meta http-equiv="refresh" content="0;url=/">',
+  "<title>Opening artifact</title>",
+  '<p><a href="/">Continue to artifact</a></p>',
+  "</html>",
+].join("");
+
+function contentSessionCookie(
+  token: string,
+  expiresAt: string,
+  secure: boolean,
+): string {
+  const name = secure
+    ? contentSessionCookieName
+    : loopbackContentSessionCookieName;
+  const secureAttribute = secure ? "; Secure" : "";
+  return `${name}=${token}; Path=/; Expires=${new Date(expiresAt).toUTCString()}; HttpOnly${secureAttribute}; SameSite=Strict`;
+}
+
+function usesSecureContentCookie(requestUrl: URL): boolean {
+  return !(
+    requestUrl.protocol === "http:"
+    && (
+      requestUrl.hostname === "localhost"
+      || requestUrl.hostname.endsWith(".localhost")
+    )
+  );
 }
 
 function contentSessionToken(
@@ -1926,7 +1979,10 @@ function contentSessionToken(
     const separator = pair.indexOf("=");
     if (separator < 0) continue;
     const name = pair.slice(0, separator).trim();
-    if (name !== contentSessionCookieName) continue;
+    if (
+      name !== contentSessionCookieName
+      && name !== loopbackContentSessionCookieName
+    ) continue;
     const parsed = contentSessionTokenSchema.safeParse(
       pair.slice(separator + 1).trim(),
     );
@@ -1960,4 +2016,41 @@ function tokenFromContentHost(
 function isContentBootstrapRequest(requestUrl: URL): boolean {
   return requestUrl.pathname === "/" &&
     requestUrl.searchParams.has(contentBootstrapQueryParameter);
+}
+
+async function serveWebAsset(
+  context: Context<HttpEnvironment>,
+  dependencies: HttpAppDependencies,
+  assetPath: string,
+  applicationShell: boolean,
+): Promise<Response> {
+  if (dependencies.webAssets === undefined) return context.notFound();
+  const method = context.req.method === "HEAD" ? "HEAD" : "GET";
+  const asset = await dependencies.webAssets.fetch(assetPath, method);
+  if (asset === null || !asset.ok) return context.notFound();
+  const headers = new Headers({
+    "Cache-Control": applicationShell
+      ? "no-cache, must-revalidate"
+      : "public, max-age=31536000, immutable",
+    "Content-Security-Policy":
+      "default-src 'self'; base-uri 'none'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self'",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+  });
+  copyAssetHeader(asset.headers, headers, "Content-Length");
+  copyAssetHeader(asset.headers, headers, "Content-Type");
+  copyAssetHeader(asset.headers, headers, "ETag");
+  return new Response(method === "HEAD" ? null : asset.body, {
+    headers,
+    status: 200,
+  });
+}
+
+function copyAssetHeader(
+  source: Headers,
+  destination: Headers,
+  name: string,
+): void {
+  const value = source.get(name);
+  if (value !== null) destination.set(name, value);
 }
