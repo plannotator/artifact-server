@@ -2,7 +2,7 @@
 
 **Status:** Approved engineering baseline
 **Date:** August 14, 2026
-**Protocol target:** MCP `2026-07-28`
+**Protocol target:** MCP `2026-07-28`, with stateless 2025-era client compatibility
 
 ## Decision
 
@@ -93,7 +93,7 @@ sequenceDiagram
     C->>A: Exchange code with S256 PKCE
     A-->>C: Access token for the exact /mcp resource
     C->>R: POST /mcp with access token
-    R->>R: Verify issuer, audience, expiry, scope and user
+    R->>R: Verify issuer, audience, expiry and user
     R->>P: Call the normal product service as that user
     P-->>C: Small structured result and links
 ```
@@ -109,7 +109,7 @@ The primary implementation uses the released MCP `2026-07-28` protocol and the o
 - Ordinary results use JSON.
 - A request-scoped server-sent event response is used only when progress materially helps.
 - The first release rejects `subscriptions/listen`. It is enabled only after the deployment has a shared event service and tested fan-out, capacity, cancellation, and reconnect behavior.
-- Older MCP behavior is an isolated compatibility handler or route. It is enabled only for a client that has been tested and proven to need it.
+- The official SDK's stateless 2025-era path is enabled because current Codex requires it. It uses `initialize` only inside that request family, creates a fresh server for every request, and adds no session identifier, sticky routing, GET stream, DELETE session operation, or replay state.
 
 The server instructions begin with the normal workflow:
 
@@ -119,7 +119,7 @@ The server instructions begin with the normal workflow:
 
 The outer HTTP route authenticates and validates the request before the MCP SDK dispatches it.
 
-- Accept only `POST` on the modern `/mcp` route.
+- Accept only `POST` on `/mcp` for both protocol eras.
 - Require `Content-Type: application/json`.
 - Support the response types required by Streamable HTTP clients.
 - Require and validate `MCP-Protocol-Version` on modern requests.
@@ -198,7 +198,13 @@ Artifact Server verifies, at minimum:
 - expiry and optional not-before time;
 - a nonempty subject.
 
-The target access-token lifetime is no more than 60 minutes, subject to confirmation in a WorkOS staging environment. Refresh tokens should rotate and each client grant must be independently revocable.
+The live WorkOS staging environment issues five-minute access tokens and rotating
+refresh tokens to the tested MCP clients. WorkOS can revoke one user's grant for
+one client through its Authorized Applications API. The old refresh grant then
+fails, while the user and client remain available. Deleting an isolated dynamic
+Connect application also invalidates its grants, but that broader operation is
+for retiring an unused client, not ordinary user disconnect. WorkOS does not
+advertise a standard OAuth revocation endpoint in this environment.
 
 Artifact Server never forwards the OAuth access token to storage, background jobs, published websites, or another service. The verifier converts it once to an internal principal such as:
 
@@ -234,7 +240,10 @@ applicable, path, action, and expiry. A workspace-scoped read capability may
 open one referenced version, but it cannot list the project library or mutate
 the artifact.
 
-The proposed single OAuth scope is intentionally coarse. Artifact Server keeps file, artifact, version, visibility, publish, and delete permissions in its own policy model. Add separate read and write OAuth scopes only after a client or customer demonstrates a real need.
+WorkOS scopes describe identity and refresh behavior; they do not grant Artifact
+Server operations. Artifact Server keeps file, artifact, version, visibility,
+publish, and delete permissions in its own policy model. Add product scopes only
+if a future authorization provider or customer demonstrates a real need.
 
 ## Local and self-hosted authorization
 
@@ -361,12 +370,12 @@ Status polling remains the compatibility fallback. An open event stream with no 
 | Area | Required checks |
 | --- | --- |
 | Modern wire | `server/discover`, protocol selection, per-request metadata, required headers, header/body mismatch, result type, cache fields, unsupported version, 405 on modern GET and DELETE |
-| Authorization | no token, bad signature, wrong issuer, wrong audience, missing scope, expired token, revoked refresh grant, hostile Origin and Host |
+| Authorization | no token, bad signature, wrong issuer, wrong audience, missing subject, expired token, revoked refresh grant, hostile Origin and Host |
 | Installation safety | user not admitted to the installation, upload handle from another principal, removed member, changed role, list filtering |
 | Publishing | expired upload, hash mismatch, multipart retry, traversal, encoded separators, `.git` paths, symlink escape, case and Unicode collisions, oversized manifest, idempotent replay, intentional identical publish, lost response after commit, concurrent current-version update, and cleanup racing a commit |
 | Hosts | fresh and stale-state tests in Codex, Claude Code, Claude.ai, and one DCR-only client |
 | Deployments | loopback for release 1; one server and multi-container Kubernetes, including AKS, for release 2; Cloudflare for release 3; AWS and GCP packages for release 4 |
-| Optional legacy | older initialization behavior tested separately without adding sessions or old transport behavior to the modern route |
+| Required compatibility | exact `2025-06-18` initialization and a real 2025-era tool call tested separately without adding sessions, GET/DELETE operations, replay, or old behavior to the modern request family |
 
 ## MCP release critical path
 
@@ -406,18 +415,30 @@ gated by every step except the self-hosted API-key onboarding variant.
 
 Claude.ai runs outside the user's private network. A private-only Artifact Server is not reachable from claude.ai without controlled public ingress. Codex and Claude Code running on a machine inside that network can still connect.
 
-## Staging questions
+## Staging findings and remaining questions
 
-The WorkOS staging probe must answer:
+The August 16, 2026 WorkOS staging probe answered:
 
-1. Which setting controls the access-token lifetime for CIMD and DCR MCP clients?
-2. How do refresh rotation, retries, and replay detection behave?
-3. How does per-client and per-user revoke work, and what happens to already issued access tokens?
-4. What exact client, Artifact Server installation, and scope information appears on the approval page?
-5. What are the DCR rate, duplicate-registration, cleanup, and retention rules?
-6. What are the live token claims and signing algorithm?
-7. Does an omitted `resource` still produce the exact `/mcp` audience when the default Resource Indicator is set?
-8. Do fresh and stale cached connections work in Codex, Claude Code, claude.ai, and the selected DCR-only client?
+- the access-token lifetime is 300 seconds;
+- refresh tokens rotate;
+- the exact resource indicator becomes the JWT audience;
+- WorkOS issues identity scopes (`openid`, `profile`, `email`, and
+  `offline_access`) rather than a separate `mcp` product scope;
+- Codex uses DCR and requested MCP `2025-06-18`;
+- Claude Code uses CIMD;
+- Cursor uses DCR;
+- deleting one user's Authorized Application revokes that user's refresh grant
+  without deleting the user or client;
+- deleting an unused dynamic Connect application retires that whole client and
+  invalidates its remaining grants.
+
+The remaining provider and client questions are:
+
+1. What are the DCR rate, duplicate-registration, cleanup, and retention rules?
+2. Does an omitted `resource` still produce the exact `/mcp` audience when the
+   default Resource Indicator is set?
+3. Do fresh and stale cached connections work in claude.ai and Visual Studio
+   Code?
 
 The Better Auth probe must additionally prove its beta CIMD profile, storage migrations, and Cloudflare compatibility before the embedded mode is supported.
 
@@ -426,6 +447,7 @@ The Better Auth probe must additionally prove its beta CIMD profile, storage mig
 - [MCP 2026-07-28 release](https://blog.modelcontextprotocol.io/posts/2026-07-28/)
 - [MCP authorization specification](https://modelcontextprotocol.io/specification/draft/basic/authorization)
 - [WorkOS AuthKit for MCP](https://workos.com/docs/authkit/mcp)
+- [WorkOS Authorized Applications API](https://workos.com/docs/reference/authkit/user/create)
 - [Better Auth MCP beta](https://better-auth.com/docs/beta/plugins/mcp)
 - [Claude Code MCP](https://code.claude.com/docs/en/mcp)
 - [Codex MCP](https://developers.openai.com/codex/mcp/)

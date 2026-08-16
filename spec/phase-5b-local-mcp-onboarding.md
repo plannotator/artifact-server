@@ -32,7 +32,10 @@ diagnostic report.
 - Writes only MCP protocol messages to stdout; diagnostics go to stderr.
 - Starts or locates the per-user loopback service.
 - Connects to the loopback `/mcp` endpoint with the private local credential.
-- Pins protocol revision `2026-07-28` and rejects legacy MCP.
+- Pins the downstream loopback connection to revision `2026-07-28`.
+- Accepts modern stdio clients and the SDK's stateless 2025-era compatibility
+  handshake. Both reach the same modern downstream connection and product
+  implementation; neither creates an application session.
 - Proxies the remote catalog and calls without duplicating tool definitions.
 - Shuts down only the stdio bridge when the client closes. The per-user service
   remains available to other registered clients and browser links.
@@ -114,8 +117,9 @@ limited to the local application address and data directory.
 
 The implementation is not complete until tests prove:
 
-1. one packaged command starts the managed service, performs modern discovery
-   and lists tools through stdio, then reconnects after the bridge exits;
+1. one packaged command starts the managed service, performs modern discovery,
+   lists and calls tools through both modern and stateless 2025-era stdio, then
+   reconnects after the bridge exits;
 2. all four client adapters preserve unrelated configuration and contain no
    credential;
 3. Codex and Claude Code command adapters are exercised through isolated client

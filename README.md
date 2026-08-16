@@ -6,9 +6,11 @@ This repository contains the local publication foundation and the first external
 
 - a file-first CLI with exact-origin profiles, operating-system credential
   storage, a portable browser OAuth client flow, scoped-key fallback, and
-  verified HTTP uploads; hosted OAuth-provider activation remains gated;
-- a strict MCP 2026-07-28 endpoint plus credential-free local registration
-  adapters for Codex, Claude Code, Cursor, and VS Code;
+  verified HTTP uploads; WorkOS hosted MCP is qualified in staging for Codex
+  and Claude Code while the remaining remote-client release matrix stays gated;
+- a primary MCP 2026-07-28 endpoint, a stateless 2025-era compatibility path
+  for current clients, and credential-free local registration adapters for
+  Codex, Claude Code, Cursor, and VS Code;
 - single-file publication through the same verified upload contract used by complete sites;
 - complete multi-file site publication through durable staged uploads;
 - expiring upload records and opaque, streaming file-upload locations;
@@ -421,8 +423,9 @@ grants, and qualification evidence.
 
 Artifact Server publishes protected-resource metadata and validates each MCP
 access token for the exact issuer and `/mcp` audience. The client owns browser
-approval, access-token refresh, and grant revocation. Artifact Server never
-stores the provider access token or refresh token.
+approval and access-token refresh. WorkOS owns the provider grant and can revoke
+one user's authorization for one client. Artifact Server never stores the
+provider access token or refresh token.
 
 The first successful WorkOS login is accepted only when its verified email is
 the configured bootstrap administrator email. Later logins require a member

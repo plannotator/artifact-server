@@ -2715,7 +2715,7 @@ v12-7f3a.content.example.net</code></pre>
                   <rect class="svg-node-auth" x="510" y="84" width="176" height="92" rx="8"></rect>
                   <text class="svg-title" x="530" y="116">Credential check</text>
                   <text class="svg-copy" x="530" y="140">Issuer · server address</text>
-                  <text class="svg-small" x="530" y="159">expiry · scope · user</text>
+                  <text class="svg-small" x="530" y="159">expiry · signature · user</text>
                   <rect class="svg-node-primary" x="318" y="236" width="368" height="92" rx="8"></rect>
                   <text class="svg-title" x="338" y="268">Artifact product rules</text>
                   <text class="svg-copy" x="338" y="292">Permissions, publish, versions, access settings and comparisons</text>
@@ -3089,8 +3089,8 @@ v12-7f3a.content.example.net</code></pre>
                   metadata that tells clients where to sign in and verifies every credential before an MCP request reaches product code.
                 </p>
                 <p>
-                  The credential must name the exact Artifact Server MCP address as its audience and
-                  include the <code>mcp</code> scope. Artifact Server also verifies the issuer,
+                  The credential must name the exact Artifact Server MCP address as its audience.
+                  WorkOS identity scopes do not grant artifact permissions. Artifact Server also verifies the issuer,
                   signature, expiry, and user, then maps that user to an account admitted to this
                   installation. Artifact Server does not copy WorkOS organizations into a second
                   organization system. The same artifact ownership and write checks used by the

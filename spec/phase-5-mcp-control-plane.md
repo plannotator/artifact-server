@@ -1,14 +1,15 @@
 # Phase 5: MCP control plane
 
-Status: local behavior verified
+Status: local behavior verified; hosted staging partially qualified
 
 ## Outcome
 
-Artifact Server now serves a modern, stateless MCP endpoint at `POST /mcp`.
-It uses the official split TypeScript SDK version 2 and protocol revision
-`2026-07-28`. MCP is a protocol adapter over the existing application services;
-it does not contain a second artifact, permission, upload, version, or
-comparison implementation.
+Artifact Server now serves one stateless MCP endpoint at `POST /mcp`. Its
+primary path uses the official split TypeScript SDK version 2 and protocol
+revision `2026-07-28`. The same SDK entry accepts stateless 2025-era requests
+from current clients that have not adopted the modern revision. MCP is a
+protocol adapter over the existing application services; it does not contain a
+second artifact, permission, upload, version, or comparison implementation.
 
 ## Agent contract
 
@@ -56,10 +57,12 @@ artifact://projects/{projectId}/artifacts/{artifactId}/versions/{versionId}/mani
 
 ## Transport and authentication
 
-- The modern route accepts `POST` only. `GET` and `DELETE` return 405.
+- The endpoint accepts `POST` only. `GET` and `DELETE` return 405.
 - A fresh MCP server is created for every HTTP request.
-- There is no `initialize`, MCP session identifier, sticky routing, replay
-  stream, or HTTP+SSE legacy route.
+- Modern requests use `server/discover` and no initialization handshake.
+- A 2025-era `initialize` request is handled by the SDK's stateless
+  compatibility path. It creates no MCP session identifier and adds no sticky
+  routing, replay stream, GET stream, or DELETE session operation.
 - `subscriptions/listen` rejects without opening an event stream.
 - Host and any present Origin are validated before MCP dispatch.
 - Bearer authentication completes before MCP dispatch.
@@ -84,8 +87,8 @@ and preserves one server contract across local and remote deployments.
 - a pinned modern connection, tool listing, and tool call through the official
   TypeScript SDK v2 client;
 - bearer missing/invalid rejection and hostile-Origin rejection;
-- POST-only behavior, no session ID, modern-only legacy rejection, and bounded
-  subscription refusal;
+- POST-only behavior, no session ID, exact `2025-06-18` initialization, an
+  official 2025-era client tool call, and bounded subscription refusal;
 - exact file upload, a second complete multi-file site with a 1.1 MB asset,
   immutable commit, lost-response replay, manifest-resource read, version list,
   text and file comparison, tag and visibility changes, stale-write rejection,
@@ -105,17 +108,30 @@ The external-storage integration also starts two independent compiled processes 
 Postgres/S3 installation, publishes through one process, then discovers and
 lists the artifact through MCP on the other.
 
+## Hosted qualification status
+
+- Live WorkOS staging discovery, browser approval, exact resource-bound token
+  use, five-minute token refresh, per-user DCR and CIMD grant revocation, and
+  reauthorization pass on the isolated Cloudflare Worker.
+- Codex CLI `0.147.0` passes a real tool call through DCR and the stateless
+  `2025-06-18` compatibility path.
+- Claude Code `2.1.233` passes a real tool call through CIMD.
+- Cursor Agent `3.15.6` completes DCR and lists all 18 authenticated tools. A
+  model-driven tool call remains separate because Cursor Agent also requires a
+  Cursor product login.
+- Visual Studio Code and claude.ai remain client release gates. Two-human
+  ownership transfer also remains open.
+- Secret-free live evidence is recorded in
+  `evidence/workos-mcp-live-qualification.json`.
+
 ## Deliberately deferred
 
-- Hosted WorkOS MCP OAuth and RFC 9728 metadata remain a separate activation
-  phase because they require a real WorkOS environment and real-client proof.
-- Codex, Claude Code, claude.ai, and Cursor compatibility runs remain release
-  gates, including fresh and stale credential state.
 - The external-storage Postgres/S3 MCP matrix must run before claiming the MCP behavior on
   one-server or replicated deployments.
-- Legacy MCP compatibility is disabled until a named required client proves it
-  needs the isolated SDK compatibility path.
-- Stdio is not required for local use because every local client can connect to
-  loopback HTTP; add it only for a demonstrated client requirement.
+- Stateless 2025-era compatibility is enabled because Codex CLI `0.147.0`
+  requested revision `2025-06-18` in the August 16, 2026 hosted qualification.
+  It remains isolated inside the official SDK entry and does not add sessions.
+- Stdio is shipped for credential-free local onboarding and forwards to the one
+  managed loopback service; it is not a second application runtime.
 - Prompts, Tasks, MRTR, Roots, Sampling, Logging, change subscriptions, and
   progress streams are outside this phase.

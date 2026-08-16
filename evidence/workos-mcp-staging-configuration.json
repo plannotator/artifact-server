@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-08-16T15:44:57Z",
-  "scope": "Live WorkOS staging configuration only; this is not a hosted MCP client-flow conformance claim.",
+  "recordedAt": "2026-08-16T16:46:27Z",
+  "scope": "Live WorkOS staging configuration. Client-flow evidence is recorded separately in workos-mcp-live-qualification.json.",
   "workos": {
     "project": "Artifact Server",
     "environment": "Staging",
@@ -14,7 +14,9 @@
   "mcp": {
     "clientIdMetadataDocument": "enabled",
     "dynamicClientRegistration": "enabled_for_compatibility",
-    "defaultResourceIndicator": "https://staging.artifactserver.com/mcp"
+    "defaultResourceIndicator": "https://artifact-server-qual-cfp-816a1-worker.plannotator.workers.dev/mcp",
+    "retainedStagingResourceIndicator": "https://staging.artifactserver.com/mcp",
+    "temporaryQualificationResource": true
   },
   "redirects": {
     "default": "https://staging.artifactserver.com/auth/callback",
@@ -27,10 +29,8 @@
     "valueRecorded": false
   },
   "remainingReleaseGates": [
-    "deploy the exact staging MCP resource",
-    "complete browser approval and callback",
-    "verify token use, refresh, revocation, and reconnect",
-    "qualify Codex, Claude Code, claude.ai, Cursor, and VS Code",
-    "run the two-human ownership-transfer test"
+    "qualify claude.ai and VS Code",
+    "run the two-human ownership-transfer test",
+    "restore the staging Resource Indicator as default and remove the temporary Worker resource after client qualification"
   ]
 }

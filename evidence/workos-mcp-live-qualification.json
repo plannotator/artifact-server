@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-16T16:46:27Z",
+  "scope": "Live hosted MCP qualification against an isolated Cloudflare Worker and the dedicated Artifact Server WorkOS staging environment.",
+  "runtime": {
+    "deployment": "cloudflare",
+    "mcpUrl": "https://artifact-server-qual-cfp-816a1-worker.plannotator.workers.dev/mcp",
+    "worker": "artifact-server-qual-cfp-816a1-worker",
+    "database": "artifact-server-qual-cfp-816a1-db",
+    "objectStore": "artifact-server-qual-cfp-816a1-r2"
+  },
+  "workos": {
+    "project": "Artifact Server",
+    "environment": "Staging",
+    "environmentId": "environment_01KZX4K46TQD6VDGQSW0D8E5G9",
+    "issuer": "https://eloquent-cello-83-staging.authkit.app",
+    "clientIdMetadataDocument": "enabled",
+    "dynamicClientRegistration": "enabled_for_compatibility",
+    "temporaryDefaultResourceIndicator": "https://artifact-server-qual-cfp-816a1-worker.plannotator.workers.dev/mcp"
+  },
+  "observedTokenContract": {
+    "algorithm": "RS256",
+    "audience": "https://artifact-server-qual-cfp-816a1-worker.plannotator.workers.dev/mcp",
+    "accessTokenLifetimeSeconds": 300,
+    "scopes": ["email", "offline_access", "openid", "profile"],
+    "productAuthorization": "The exact resource-bound audience admits the MCP connection. Artifact Server membership and policy authorize each operation.",
+    "refreshRotation": "pass",
+    "standardRevocationEndpointAdvertised": false
+  },
+  "clients": [
+    {
+      "name": "Codex CLI",
+      "version": "0.147.0",
+      "registration": "DCR",
+      "protocol": "2025-06-18 through the stateless SDK v2 compatibility path",
+      "browserApproval": "pass",
+      "toolCall": "artifact_capabilities passed and reported remote deployment",
+      "refresh": "pass",
+      "serverSideRevoke": "Deleting the user's exact Authorized Application invalidated its refresh token with invalid_refresh_token while preserving the user and client",
+      "reconnect": "pass; a new dynamic application and browser approval produced a working tool call",
+      "sessionState": "no MCP session ID"
+    },
+    {
+      "name": "Claude Code",
+      "version": "2.1.233",
+      "registration": "CIMD",
+      "protocol": "HTTP MCP",
+      "browserApproval": "pass",
+      "toolCall": "artifact_capabilities passed and reported remote deployment",
+      "refresh": "pass before revocation",
+      "serverSideRevoke": "Deleting the user's exact Authorized Application removed the tools after the five-minute access token expired; the client reported that authentication was required",
+      "temporaryClientCleanup": "pass; the unused qualification Connect application and local client entry were removed"
+    },
+    {
+      "name": "Cursor Agent",
+      "version": "3.15.6",
+      "registration": "DCR",
+      "protocol": "HTTP MCP",
+      "browserApproval": "pass",
+      "toolDiscovery": "18 Artifact Server tools listed after authentication",
+      "modelToolCall": "not run because the Cursor Agent product login is separate from MCP OAuth"
+    },
+    {
+      "name": "Visual Studio Code",
+      "version": "1.132.1",
+      "status": "not yet run; the installed VS Code profile has no GitHub Copilot Chat extension, so it has no agent surface for an MCP tool call"
+    },
+    {
+      "name": "claude.ai",
+      "status": "not yet run"
+    }
+  ],
+  "security": {
+    "bearerValuesRecorded": false,
+    "refreshTokensRecorded": false,
+    "authorizationCodesRecorded": false,
+    "workerFetchCompatibilityRegression": "pass",
+    "wrongIssuerAudienceSignatureExpiryAndSubjectTests": "pass in the checked-in hosted authorization suite"
+  },
+  "remainingReleaseGates": [
+    "qualify Visual Studio Code",
+    "qualify claude.ai from public ingress",
+    "run ownership transfer with two authenticated humans",
+    "restore the staging MCP Resource Indicator as the WorkOS default and remove the temporary Worker resource after client qualification"
+  ]
+}
