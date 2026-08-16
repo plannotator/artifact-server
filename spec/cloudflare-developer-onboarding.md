@@ -155,7 +155,7 @@ isolation, and stable IDs through backup and restore.
 ### 5. Add identity, scheduled work, and telemetry
 
 Use Worker-compatible Web Crypto and fetch paths for WorkOS verification.
-Enforce exact issuer, audience, scope, expiry, subject, and installation
+Enforce exact issuer, resource-bound audience, expiry, subject, and installation
 membership. Scheduled cleanup and retry work must be safe under duplicate and
 concurrent Cron delivery. Logs, metrics, and traces must not contain tokens,
 cookies, file contents, raw artifact IDs, or raw unbounded paths.

@@ -29,7 +29,6 @@ import {
   type ArtifactMcpServerDependencies,
 } from "./artifact-mcp-server.js";
 
-const mcpScope = "mcp";
 const principalSchema = z.object({
   authorizedByPrincipalId: z.string().nullable(),
   capabilities: z.array(z.enum([
@@ -104,7 +103,6 @@ export function createMcpHttpAdapter(
       if (edgeRejection !== undefined) return edgeRejection;
       const requestId = requestIdFrom(request);
       let bearerOptions: Parameters<typeof requireBearerAuth>[0] = {
-        requiredScopes: [mcpScope],
         verifier: {
           verifyAccessToken: (token) =>
             authenticateToken(dependencies, token, requestId),

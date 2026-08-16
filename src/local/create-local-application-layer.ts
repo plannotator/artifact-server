@@ -48,7 +48,6 @@ import {
   ArtifactMutationConflict,
   ArtifactRepositoryFailure,
   AuthenticationRequired,
-  AuthorizationDenied,
   BlobStorageFailure,
   IdempotencyConflict,
   IdentityConflict,
@@ -655,11 +654,6 @@ export function createApplicationLayer(
           }));
         }
         const verified = yield* verifier.verify(credential);
-        if (!verified.scopes.includes("mcp")) {
-          return yield* Effect.fail(new AuthorizationDenied({
-            message: "The access token does not grant Artifact Server MCP access.",
-          }));
-        }
         let principal = yield* installationAccess.authenticateExternalSubject(
           verified.provider,
           verified.subject,
@@ -672,7 +666,9 @@ export function createApplicationLayer(
           clientId: verified.clientId ?? verified.subject,
           expiresAt: verified.expiresAt,
           principal,
-          scopes: verified.scopes,
+          // The exact resource-bound audience grants access to this MCP
+          // endpoint. WorkOS does not issue a separate product scope.
+          scopes: ["mcp"],
         };
       });
       return Effect.succeed(AuthenticationService.of({

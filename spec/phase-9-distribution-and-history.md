@@ -256,7 +256,7 @@ API-key, project-management, or MCP routes.
 | D1 repositories | Implement the same project, artifact, identity, session, upload, idempotency, action, and migration contracts as SQLite and Postgres. Use D1 transactions or transactional batches for state changes. |
 | R2 blob and staging stores | Stream verified bytes, enforce installation-scoped keys, reject replacement of immutable fingerprints, and avoid the AWS SDK in the Worker bundle. |
 | Worker runtime | Build one Effect runtime per isolate and reuse it across requests without storing caller identity in global state. |
-| WorkOS verifier | Use Worker-compatible fetch and Web Crypto paths. Enforce exact issuer, audience, scope, expiry, subject, and installation membership. |
+| WorkOS verifier | Use Worker-compatible fetch and Web Crypto paths. Enforce exact issuer, resource-bound audience, expiry, subject, and installation membership. |
 | Background work | Make cleanup and optional-history retries idempotent across Cron retries and concurrent Worker execution. |
 | Telemetry | Export bounded OTLP signals or documented Cloudflare-native signals without authorization values, content, or raw artifact identifiers. |
 

@@ -344,7 +344,6 @@ export function createHttpApp(
         dependencies.mcpOAuthResource.authorizationServerMetadata,
       resourceName: "Artifact Server MCP",
       resourceServerUrl,
-      scopesSupported: ["mcp"],
     };
     const protectedMetadata = {
       ...buildOAuthProtectedResourceMetadata(metadataOptions),
@@ -368,7 +367,6 @@ export function createHttpApp(
             dependencies.mcpOAuthResource.authorizationServerMetadata,
           resourceName: "Artifact Server MCP",
           resourceServerUrl: new URL(dependencies.mcpOAuthResource.resource),
-          scopesSupported: ["mcp"],
         },
       );
       if (response !== undefined) {

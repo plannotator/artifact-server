@@ -1589,7 +1589,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
       behavior: {id: MCP-010-B, description: Add only the hosted /mcp URL in supported clients and complete discovery, browser approval, callback, token use, refresh, revoke, and reconnect.}
-      failure: {id: MCP-010-F, description: Missing, wrong-issuer, wrong-audience, wrong-scope, expired, revoked, malformed, and web-session tokens are rejected with correct challenge behavior.}
+      failure: {id: MCP-010-F, description: Missing, wrong-issuer, wrong-audience, expired, revoked, malformed, and web-session tokens are rejected with correct challenge behavior.}
     deployments: *hosted
     status: implementing
     depends_on: [MCP-001, AUTH-017]
@@ -1597,12 +1597,12 @@ requirements:
 
   - id: MCP-011
     kind: security
-    behavior: Hosted MCP tokens are verified for signature, allowed algorithm, exact issuer, exact /mcp audience, expiry, subject, and required mcp scope using rotation-safe cached keys.
+    behavior: Hosted MCP tokens are verified for signature, allowed algorithm, exact issuer, exact /mcp audience, expiry, and subject using rotation-safe cached keys. The exact resource-bound audience grants MCP access; WorkOS does not issue a separate product scope.
     owner: mcp
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
       behavior: {id: MCP-011-B, description: Verify valid tokens before and after signing-key rotation and map them to an internal provider-neutral principal.}
-      failure: {id: MCP-011-F, description: Reject algorithm confusion, unknown keys, multiple-resource confusion, missing subject, invalid time, issuer, audience, or scope.}
+      failure: {id: MCP-011-F, description: Reject algorithm confusion, unknown keys, multiple-resource confusion, missing subject, invalid time, issuer, or audience.}
     deployments: *hosted
     status: implementing
     depends_on: [MCP-010]
@@ -1680,7 +1680,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
       behavior: {id: MCP-017-B, description: In every advertised remote client, add only the server address and pass discovery, browser approval, callback, tool use, renewal after access-token expiry, revoke, disconnect, and reconnect from fresh and stale client state.}
-      failure: {id: MCP-017-F, description: Wrong issuer, audience, scope, callback, network boundary, revoked grant, stale registration, and unadmitted user fail clearly without accepting a browser cookie or changing firewall or VPN access.}
+      failure: {id: MCP-017-F, description: Wrong issuer, audience, callback, network boundary, revoked grant, stale registration, and unadmitted user fail clearly without accepting a browser cookie or changing firewall or VPN access.}
     deployments: *hosted
     status: specified
     depends_on: [MCP-010, MCP-011, MCP-012]
@@ -2895,7 +2895,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: decisions}
     acceptance:
       behavior: {id: GATE-005-B, description: Run fresh and stale-state browser authorization, refresh, revoke, disconnect, and reconnect tests in Codex, Claude Code, claude.ai where reachable, and compatibility clients.}
-      failure: {id: GATE-005-F, description: Wrong issuer, audience, scope, callback, PKCE, registration, revoked grant, stale token, or cross-tenant object access cannot authorize an MCP tool.}
+      failure: {id: GATE-005-F, description: Wrong issuer, audience, callback, PKCE, registration, revoked grant, stale token, or cross-tenant object access cannot authorize an MCP tool.}
     deployments: *hosted
     status: implementing
     depends_on: [MCP-010, MCP-011, MCP-012]

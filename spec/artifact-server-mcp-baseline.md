@@ -137,7 +137,7 @@ The current revision does not define the same header requirements for notificati
 ### Canonical values
 
 - Protected resource and token audience: `https://artifactserver.com/mcp`
-- Product scope: `mcp`
+- Product authorization: exact resource-bound audience for the `/mcp` URL
 - WorkOS issuer: the exact AuthKit origin configured for the environment
 - Staging and production use different issuers, resources, grants, and tests
 
@@ -158,8 +158,7 @@ The document names:
 {
   "resource": "https://artifactserver.com/mcp",
   "authorization_servers": ["https://AUTHKIT_ORIGIN"],
-  "bearer_methods_supported": ["header"],
-  "scopes_supported": ["mcp"]
+  "bearer_methods_supported": ["header"]
 }
 ```
 
@@ -169,7 +168,10 @@ An unauthenticated or invalid request returns `401` with a challenge equivalent 
 WWW-Authenticate: Bearer resource_metadata="https://artifactserver.com/.well-known/oauth-protected-resource/mcp"
 ```
 
-A valid token that lacks the required scope returns `403` with `error="insufficient_scope"` and `scope="mcp"`.
+WorkOS identity scopes such as `openid`, `profile`, `email`, and
+`offline_access` do not grant product access. The exact resource-bound audience
+for the MCP URL does. Artifact Server applies operation permissions after it
+maps the token to an internal principal.
 
 Compatibility aliases for authorization-server metadata may proxy or cache WorkOS metadata. They must not rewrite its issuer or endpoint addresses.
 
@@ -194,8 +196,7 @@ Artifact Server verifies, at minimum:
 - exact issuer;
 - exact audience equal to the canonical MCP resource;
 - expiry and optional not-before time;
-- a nonempty subject;
-- the exact `mcp` scope.
+- a nonempty subject.
 
 The target access-token lifetime is no more than 60 minutes, subject to confirmation in a WorkOS staging environment. Refresh tokens should rotate and each client grant must be independently revocable.
 

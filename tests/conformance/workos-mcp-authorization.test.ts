@@ -121,7 +121,6 @@ describe("hosted WorkOS MCP authorization", () => {
       authorization_servers: [issuer],
       bearer_methods_supported: ["header"],
       resource,
-      scopes_supported: ["mcp"],
     });
 
     const authorizationMetadataResponse = await fetch(
@@ -138,9 +137,9 @@ describe("hosted WorkOS MCP authorization", () => {
         "/.well-known/oauth-protected-resource/mcp",
       )}"`,
     );
-    expect(missing.headers.get("www-authenticate")).toContain("scope=\"mcp\"");
+    expect(missing.headers.get("www-authenticate")).not.toContain("scope=");
 
-    const token = await issueToken({scope: "mcp"});
+    const token = await issueToken({});
     const first = await mcpDiscovery(token);
     expect(first.status).toBe(200);
     expect(provider.userRequests()).toBe(1);
@@ -153,34 +152,29 @@ describe("hosted WorkOS MCP authorization", () => {
     expect(apiKeyFallback.status).toBe(200);
   });
 
-  test("foundation: wrong token contracts fail closed, provider outages stay distinct, and scope denial remains distinguishable", async () => {
+  test("foundation: wrong token contracts fail closed and provider outages stay distinct", async () => {
     expect.hasAssertions();
     const wrongAudience = await mcpDiscovery(await issueToken({
       audience: "https://attacker.example/mcp",
-      scope: "mcp",
     }));
     expect(wrongAudience.status).toBe(401);
 
     const multipleAudiences = await mcpDiscovery(await issueToken({
       audience: [resource, "https://attacker.example/mcp"],
-      scope: "mcp",
     }));
     expect(multipleAudiences.status).toBe(401);
 
     const wrongIssuer = await mcpDiscovery(await issueToken({
       issuer: "https://attacker.example",
-      scope: "mcp",
     }));
     expect(wrongIssuer.status).toBe(401);
 
     const expired = await mcpDiscovery(await issueToken({
       expiresAt: Math.floor(Date.now() / 1_000) - 60,
-      scope: "mcp",
     }));
     expect(expired.status).toBe(401);
 
     const missingSubject = await mcpDiscovery(await issueToken({
-      scope: "mcp",
       subject: null,
     }));
     expect(missingSubject.status).toBe(401);
@@ -188,22 +182,13 @@ describe("hosted WorkOS MCP authorization", () => {
     const untrustedKeys = await generateKeyPair("RS256");
     const wrongSignature = await mcpDiscovery(await issueToken({
       signingKey: untrustedKeys.privateKey,
-      scope: "mcp",
     }));
     expect(wrongSignature.status).toBe(401);
 
     expect((await mcpDiscovery("not-a-jwt")).status).toBe(401);
 
-    const missingScope = await mcpDiscovery(await issueToken({scope: "openid"}));
-    expect(missingScope.status).toBe(403);
-    expect(missingScope.headers.get("www-authenticate")).toContain(
-      "insufficient_scope",
-    );
-    expect(missingScope.headers.get("www-authenticate")).toContain("scope=\"mcp\"");
-    expect(provider.userRequests()).toBe(0);
-
     provider.setUserResponseStatus(401);
-    expect((await mcpDiscovery(await issueToken({scope: "mcp"}))).status).toBe(500);
+    expect((await mcpDiscovery(await issueToken({}))).status).toBe(500);
     expect(provider.userRequests()).toBe(1);
   });
 
@@ -212,10 +197,12 @@ describe("hosted WorkOS MCP authorization", () => {
     readonly expiresAt?: number;
     readonly issuer?: string;
     readonly signingKey?: CryptoKey;
-    readonly scope: string;
+    readonly scope?: string;
     readonly subject?: string | null;
   }): Promise<string> {
-    const token = new SignJWT({client_id: "client_test", scope: options.scope})
+    const token = new SignJWT(options.scope === undefined
+      ? {client_id: "client_test"}
+      : {client_id: "client_test", scope: options.scope})
       .setProtectedHeader({alg: "RS256", kid: keyId})
       .setIssuer(options.issuer ?? issuer)
       .setAudience(options.audience ?? resource)
@@ -322,8 +309,7 @@ function authorizationMetadata(): OAuthMetadata {
     issuer,
     registration_endpoint: `${issuer}/oauth2/register`,
     response_types_supported: ["code"],
-    revocation_endpoint: `${issuer}/oauth2/revoke`,
-    scopes_supported: ["openid", "profile", "email", "offline_access", "mcp"],
+    scopes_supported: ["openid", "profile", "email", "offline_access"],
     token_endpoint: `${issuer}/oauth2/token`,
   };
 }
