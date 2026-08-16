@@ -22,6 +22,20 @@
       "specifier": "./tools/oxlint/anti-slop/index.ts"
     }
   ],
+  "overrides": [
+    {
+      "env": {
+        "browser": true
+      },
+      "files": [
+        "apps/web/src/**/*.ts",
+        "apps/web/src/**/*.tsx"
+      ],
+      "rules": {
+        "import/no-unassigned-import": "off"
+      }
+    }
+  ],
   "plugins": [
     "import",
     "node",

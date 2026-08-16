@@ -17,7 +17,7 @@
     ]
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "pnpm --filter @artifact-server/web build && tsc -p tsconfig.build.json",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm conformance:validate && pnpm conformance:tests && pnpm check:cloudflare",
     "check:cloudflare": "pnpm --filter @artifact-server/cloudflare-deployment check",
     "conformance:tests": "ruby scripts/check-conformance-test-ids.rb",
@@ -49,7 +49,7 @@
     "test:external-storage-runtime": "bash scripts/run-external-storage-runtime-integration.sh",
     "test:local-package": "vitest run --config vitest.release.config.ts --reporter=default --reporter=json --outputFile.json=evidence/local-package.json",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && pnpm --filter @artifact-server/web typecheck",
     "verify:iteration": "pnpm check && pnpm test:aws-pulumi && pnpm test:gcp-pulumi && pnpm verify:object-storage && pnpm test:external-storage-runtime && pnpm test:coverage && pnpm test:local-package && pnpm perf:baseline && pnpm perf:capacity && pnpm test:compact-compose && pnpm test:external-storage-compose && pnpm verify:helm",
     "verify:compact-compose": "pnpm test:compact-compose",
     "verify:cloudflare": "pnpm check:cloudflare",
