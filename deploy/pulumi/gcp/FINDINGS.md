@@ -53,7 +53,6 @@ qualification project, and its default network and default Compute Engine
 service account remain outside the stack; none is a running Artifact Server
 deployment.
 
-The public-ingress GCP package has now passed its minimum create-to-delete gate.
-The broader GCP target remains `implementing`, not fully supported, because the
-product specification also requires a qualified private-ingress option. The
-current package intentionally rejects private ingress.
+The supported public-ingress GCP package has passed its minimum create-to-delete
+gate. The direct installer intentionally rejects private ingress. Teams that
+require private GCP ingress use the qualified Helm chart on GKE.

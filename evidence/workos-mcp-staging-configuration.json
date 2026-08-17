@@ -28,8 +28,8 @@
     "storage": "macOS Keychain through the WorkOS CLI environment store",
     "valueRecorded": false
   },
-  "remainingReleaseGates": [
+  "deferredFollowUp": [
     "qualify claude.ai and VS Code",
-    "restore the staging Resource Indicator as default and remove the temporary Worker resource after client qualification"
+    "replace the temporary staging Resource Indicator when the permanent hosted MCP origin is deployed"
   ]
 }

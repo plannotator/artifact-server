@@ -455,13 +455,13 @@ Every applicable release must prove:
 
 These items can change implementation cost or hosting viability and must be resolved before their named release:
 
-1. **Private multi-file delivery:** prototype the bootstrap token and version-scoped content cookie in current browsers before the team release.
-2. **Wildcard content hosts:** document DNS, certificate, localhost, reverse-proxy, and private-network requirements. Decide whether path-based compatibility mode is worth its limitations.
+1. **Private multi-file delivery:** the bootstrap token and version-scoped content cookie pass the current local, Compose, Helm, and cloud delivery gates. Keep browser compatibility in the release matrix as clients evolve.
+2. **Wildcard content hosts:** local `*.localhost` and real Cloudflare wildcard DNS, certificates, static routing, SPA routing, and media ranges pass. Document the equivalent DNS and certificate setup for each supported deployment.
 3. **Hosted database growth:** load-test D1 and choose the control-plane and second-shard design before hosted scale requires it.
 4. **Cloudflare Artifacts:** confirm access, pricing, limits, failure behavior, and Git compatibility before making it a supported optional provider.
-5. **WorkOS MCP authorization:** complete live token, consent, refresh, revoke, CIMD, DCR, and stale-client tests before the hosted release.
+5. **WorkOS MCP authorization:** live browser approval, resource-bound tokens, refresh, revocation, reconnect, CIMD, and DCR pass for Codex and Claude Code. Visual Studio Code and claude.ai are deferred client qualifications, not first-release gates.
 6. **Embedded self-hosted OAuth:** ship Better Auth only after its beta MCP path passes the security, compatibility, migration, and recovery matrix.
-7. **Direct-cloud installers:** prove create, upgrade, rollback, state recovery, backup, and delete on AWS and GCP before calling those targets supported. Azure is supported only through the separately qualified Helm path on AKS; the Azure Blob adapter remains preview until it passes a real provider test.
+7. **Direct-cloud installers:** the default public AWS stack and supported public GCP stack pass create, upgrade, rollback, state recovery, backup, restore, and delete. AWS private ingress remains a separate advertised variant that requires a live qualification. Azure is supported only through the separately qualified Helm path on AKS; the Azure Blob adapter remains preview until it passes a real provider test.
 8. **Public hosting abuse:** define quotas, executable-file policy, malware response, phishing and copyright reporting, domain-reputation protection, suspension, and deletion before public artifactserver.com links launch.
 9. **Capacity and cost:** choose default and maximum file count, file size, artifact size, version count, text-diff size, retention, rate, and egress limits from measured tests.
 10. **Recovery promises:** choose support tiers, availability target, backup frequency, restore-time target, and acceptable data-loss window for hosted and self-hosted team deployments.

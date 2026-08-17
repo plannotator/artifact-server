@@ -56,8 +56,10 @@ The secret-free records are in `evidence/aws-deployment-product.json`,
 `evidence/aws-state-recovery.json`, `evidence/aws-coordinated-restore.json`,
 `evidence/aws-upgrade-rollback.json`, and `evidence/aws-secret-rotation.json`.
 
-`DEP-008` remains implementing, not verified. Private ingress, safe destroy,
-and separately confirmed permanent deletion still require evidence.
+The default public stack has passed its create-to-delete gate, including safe
+destroy. The separately advertised private-ingress variant still requires its
+own live qualification. Physical deletion of committed artifacts is not part
+of the initial product and is not an AWS release gate.
 
 The first upgrade attempt also proved why the release image must stay
 multi-architecture. An amd64-only candidate was rejected by the ARM64 Fargate

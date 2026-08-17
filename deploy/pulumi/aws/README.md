@@ -137,10 +137,11 @@ pnpm test:aws-pulumi
 
 That test proves configuration rejection, resource construction, workload
 identity, migration startup, and secret-free outputs. It is not real-cloud
-release evidence. AWS support remains unqualified until clean and repeated
-apply, runtime behavior, scaling, upgrade, rollback, outage, state recovery,
-backup, restore, private ingress, performance, safe destroy, and separately
-confirmed permanent deletion pass in an isolated AWS account.
+release evidence. The default public stack has separately passed clean and
+repeated apply, runtime behavior, scaling, upgrade, rollback, outage, state
+recovery, backup, restore, bounded performance, and safe destroy in an isolated
+AWS account. The private-ingress variant remains unqualified until it passes
+the same live lifecycle gate.
 
 The reusable live qualification scripts live at the repository root. Upgrade
 and rollback require a different immutable multi-architecture image digest;

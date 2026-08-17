@@ -33,10 +33,18 @@
     "idempotentReplay": 200,
     "list": 200
   },
-  "remainingReleaseGates": [
+  "remainingAtCheckpoint": [
     "public domain and TLS qualification",
     "WorkOS browser and MCP authorization",
     "backup and restore qualification",
+    "hosted load, quota, and abuse controls"
+  ],
+  "resolvedSinceCheckpoint": [
+    "public domain and TLS qualification",
+    "WorkOS browser and MCP authorization for Codex and Claude Code",
+    "backup and restore qualification"
+  ],
+  "remainingReleaseGates": [
     "hosted load, quota, and abuse controls"
   ]
 }

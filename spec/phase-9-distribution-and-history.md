@@ -379,8 +379,8 @@ Each provider passes independently:
 - private-network and public-ingress configurations;
 - workload-identity rotation and secret rotation;
 - database, object store, DNS, and application outage behavior;
-- safe destroy with data retained, followed by separately confirmed permanent
-  deletion;
+- safe destroy that removes the qualification installation without introducing
+  physical deletion of committed artifacts as an application feature;
 - bounded performance and cost evidence;
 - generated SBOM, provenance, signatures, pinned provider packages, and a
   complete support manifest.

@@ -93,23 +93,21 @@ The remaining product work is:
 
 1. Release validation for the implemented locality-aware `publish-artifact`
    Agent Skill in current supported clients.
-2. Complete hosted-product qualification for the implemented and provider-qualified one-installation Cloudflare target.
+2. Set hosted-product load, quota, abuse, and operating limits for the
+   implemented and provider-qualified one-installation Cloudflare target.
 3. Optional private Git history, including local and Cloudflare providers.
 4. The AWS and GCP Pulumi projects and native S3 and GCS adapters are
    implemented and provider-qualified. The Azure Blob adapter is preview-only
    until it passes a live Azure qualification.
 5. The optional `operate-artifact-server` skill after its deployment commands
    are stable.
-6. Complete the remaining cross-deployment recovery and live-cloud proof in
-   [`phase-11-content-and-lifecycle-closure.md`](./spec/phase-11-content-and-lifecycle-closure.md).
-   Its shared behavior, local/package gates, Compose gates, Kubernetes gate,
-   provider contract tests, and scheduled cleanup implementations are complete.
-   Live Cloudflare, AWS, and GCP provider qualification is complete. Hosted
-   Hosted identity, load, quota, and abuse gates remain.
-   Committed-blob garbage collection and permanent deletion are not part of
-   the initial product.
-7. Direct Plannotator project pairing and the review bridge after the separate
+6. Direct Plannotator project pairing and the review bridge after the separate
    integration contract passes.
+
+Phase 11 recovery and live-cloud qualification is complete for Cloudflare, the
+default public AWS deployment, and the supported public GCP deployment. The
+temporary qualification resources were removed after the tests. Committed-blob
+garbage collection and permanent deletion are not part of the initial product.
 
 The architecture, provider boundaries, implementation order, and release gates
 for the cloud, skill, and Git tracks are in
@@ -346,10 +344,10 @@ Follow its README for state, configuration, preview, deployment, verification,
 and safe deletion requirements. The resource graph and public stack have run in
 a real AWS account. Publication, MCP discovery, horizontal scaling, bounded
 1/10/25/50/100-user reads, S3 outage and recovery, Pulumi state recovery, and a
-coordinated clean database/object restore have passed. AWS remains
-release-unqualified until the remaining private-ingress, safe-destroy, and
-permanent-deletion gates pass. Real image upgrade/rollback, API credential
-rotation, ECS task replacement, and role-based publication have passed.
+coordinated clean database/object restore, and safe destroy have passed for the
+default public stack. Real image upgrade/rollback, API credential rotation,
+ECS task replacement, and role-based publication have passed. The separately
+advertised private-ingress variant still requires its own live qualification.
 
 ## Deploy the GCP stack
 
@@ -357,9 +355,10 @@ The direct project in [`deploy/pulumi/gcp`](./deploy/pulumi/gcp) creates the
 documented managed runtime, private PostgreSQL database, native object store,
 workload identity, secrets, network, DNS, TLS, logs, and support outputs. GCP's public path has
 passed live product, bounded concurrency, upgrade, rollback, credential
-rotation, checkpoint recovery, and minimum provider backup/restore checks in a
-disposable project. It remains release-unqualified until safe destroy and the
-specified private-ingress option pass. Follow the project README for prerequisites.
+rotation, checkpoint recovery, coordinated backup/restore, and safe destroy in
+a disposable project. The direct GCP installer intentionally supports public
+ingress only; private GCP teams use the qualified Helm chart on GKE. Follow the
+project README for prerequisites.
 
 Azure teams use the Helm chart on AKS. The native Azure Blob adapter is
 available as preview configuration for that path, but it is not a deployment

@@ -116,10 +116,13 @@ lists the artifact through MCP on the other.
 - Codex CLI `0.147.0` passes a real tool call through DCR and the stateless
   `2025-06-18` compatibility path.
 - Claude Code `2.1.233` passes a real tool call through CIMD.
-- Cursor Agent `3.15.6` completes DCR and lists all 18 authenticated tools. A
+- Cursor Agent `3.15.6` completed DCR and listed the authenticated tool surface
+  that existed during qualification. The current server exposes 17 tools after
+  the later removal of artifact ownership transfer. A
   model-driven tool call remains separate because Cursor Agent also requires a
   Cursor product login.
-- Visual Studio Code and claude.ai remain client release gates.
+- Visual Studio Code and claude.ai qualification is deferred and is not a
+  first-release gate. Codex and Claude Code are the qualified hosted clients.
 - Secret-free live evidence is recorded in
   `evidence/workos-mcp-live-qualification.json`.
 

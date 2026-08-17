@@ -57,7 +57,7 @@
       "registration": "DCR",
       "protocol": "HTTP MCP",
       "browserApproval": "pass",
-      "toolDiscovery": "18 Artifact Server tools listed after authentication",
+      "toolDiscovery": "18 Artifact Server tools were listed at the time of qualification; the current surface has 17 after artifact ownership transfer was removed",
       "modelToolCall": "not run because the Cursor Agent product login is separate from MCP OAuth"
     },
     {
@@ -77,9 +77,9 @@
     "workerFetchCompatibilityRegression": "pass",
     "wrongIssuerAudienceSignatureExpiryAndSubjectTests": "pass in the checked-in hosted authorization suite"
   },
-  "remainingReleaseGates": [
+  "deferredFollowUp": [
     "qualify Visual Studio Code",
     "qualify claude.ai from public ingress",
-    "restore the staging MCP Resource Indicator as the WorkOS default and remove the temporary Worker resource after client qualification"
+    "replace the temporary staging Worker resource when the permanent hosted MCP origin is deployed"
   ]
 }

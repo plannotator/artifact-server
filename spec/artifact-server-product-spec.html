@@ -3875,12 +3875,12 @@ artifact_delete</code></pre>
           <article class="open-decisions">
             <h3>Known unknowns and required failure probes</h3>
             <ol>
-              <li><strong>Private site delivery:</strong> prototype the bootstrap token and version-scoped cookie in major browsers, including relative assets, reloads, redirects, range requests, and expiration.</li>
-              <li><strong>Version origins:</strong> prove wildcard DNS, certificates, local <code>*.localhost</code>, service workers, root-relative paths, SPA fallback, and host-count limits.</li>
+              <li><strong>Private site delivery:</strong> the bootstrap token and version-scoped content cookie pass the current local, Compose, Helm, and cloud delivery gates. Keep browser compatibility in the release matrix as clients evolve.</li>
+              <li><strong>Version origins:</strong> local <code>*.localhost</code> and real Cloudflare wildcard DNS, certificates, static routing, SPA routing, and media ranges pass. Document the equivalent DNS and certificate setup for each supported deployment.</li>
               <li><strong>Cloudflare Artifacts:</strong> confirm closed-beta availability, repository limits, retry behavior, retention, regional behavior, and production support. The product must work when it is disabled.</li>
-              <li><strong>WorkOS MCP:</strong> complete staging probes for token lifetime, refresh rotation, revoke behavior, live claims, consent wording, DCR, CIMD, and stale client state.</li>
+              <li><strong>WorkOS MCP:</strong> browser approval, resource-bound tokens, refresh, revocation, reconnect, DCR, and CIMD pass for Codex and Claude Code. Visual Studio Code and claude.ai are deferred client qualifications, not first-release gates.</li>
               <li><strong>Embedded self-hosted OAuth:</strong> decide whether Better Auth's beta MCP path is mature enough; API keys and compatible external issuers remain the default until it passes the same hostile tests.</li>
-              <li><strong>Cross-cloud packages:</strong> prove pinned Alchemy and Pulumi versions, state storage, preview, rollback, provider drift, upgrades, and clean removal in CI.</li>
+              <li><strong>Cross-cloud packages:</strong> the default public AWS stack, supported public GCP stack, and Cloudflare deployment pass their live lifecycle gates. The separately advertised AWS private-ingress variant still needs a live qualification.</li>
               <li><strong>Hosted abuse:</strong> design quotas, egress limits, rate limits, phishing and malware response, reporting, suspension, and content-domain reputation protection before public hosting.</li>
               <li><strong>Capacity and cost:</strong> load-test manifests, large directories, concurrent uploads, text diffs, CDN behavior, database write limits, and worst-case egress. Set hard limits from measured results.</li>
               <li><strong>Recovery:</strong> define retention, tombstone duration, backup schedule, restore procedure, recovery-point and recovery-time promises, and an operator-visible integrity check.</li>

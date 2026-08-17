@@ -1,7 +1,7 @@
 # Phase 11: content and lifecycle closure
 
-Status: implemented in the shared application, local, Compose, Helm,
-Cloudflare, AWS, and GCP packages; final release qualification remains open
+Status: complete for the shared application, local, Compose, Helm, Cloudflare,
+the default public AWS stack, and the supported public GCP stack
 
 ## Outcome
 
@@ -398,7 +398,7 @@ this deployment record:
 | Target | Proved live | Still open |
 | --- | --- | --- |
 | AWS | Static and SPA routing, media ranges, populated migration, real EventBridge cleanup, committed-byte retention, redeployment, S3 outage and recovery, clean RDS and S3 restore with integrity, and safe Pulumi destroy. | Hosted load, quota, and abuse controls remain separate release gates. |
-| GCP | Static and SPA routing, populated migration, real Scheduler cleanup, committed-byte retention, redeployment, Cloud SQL failure and recovery, clean Cloud SQL and GCS restore with integrity, and media ranges after `Range` was configured to bypass Cloud CDN. | Google's provider-managed Direct VPC reservation must release before Pulumi can remove the final empty subnet and network. |
+| GCP | Static and SPA routing, populated migration, real Scheduler cleanup, committed-byte retention, redeployment, Cloud SQL failure and recovery, clean Cloud SQL and GCS restore with integrity, media ranges after `Range` was configured to bypass Cloud CDN, and safe Pulumi destroy after Google's delayed Direct VPC reservation released. | Hosted load, quota, and abuse controls remain separate release gates. |
 | Cloudflare | Fresh and populated D1 migration, real Cron cleanup, committed-byte retention, Worker replacement, R2 failure detection, coordinated D1 and R2 restore with exact bytes and metadata, exact resource destruction, valid TLS on separate application and content domains, static and SPA routing, and complete media-range behavior through a real wildcard content host. | Hosted load, quota, and abuse controls remain separate release gates. |
 
 The first populated D1 migration found a real foreign-key ordering defect. The
@@ -412,7 +412,7 @@ origin returned `416`. The GCP backend now bypasses Cloud CDN whenever `Range`
 is present. Repeated live requests proved exact `206` single ranges and `416`
 multiple ranges through the final public edge.
 
-The following claims remain deployment release gates:
+The following deployment claims have live evidence:
 
 - Live R2 passed the public content contract through a real wildcard content
   host. The run proved static routing, SPA navigation fallback, missing-asset

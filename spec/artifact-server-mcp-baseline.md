@@ -434,13 +434,14 @@ The August 16, 2026 WorkOS staging probe answered:
 - deleting an unused dynamic Connect application retires that whole client and
   invalidates its remaining grants.
 
-The remaining provider and client questions are:
+The remaining provider and later-client questions are:
 
 1. What are the DCR rate, duplicate-registration, cleanup, and retention rules?
 2. Does an omitted `resource` still produce the exact `/mcp` audience when the
    default Resource Indicator is set?
 3. Do fresh and stale cached connections work in claude.ai and Visual Studio
-   Code?
+   Code? These clients are deferred and are not first-release gates; Codex and
+   Claude Code are the qualified hosted clients.
 
 The Better Auth probe must additionally prove its beta CIMD profile, storage migrations, and Cloudflare compatibility before the embedded mode is supported.
 

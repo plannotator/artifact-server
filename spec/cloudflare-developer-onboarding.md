@@ -165,7 +165,8 @@ cookies, file contents, raw artifact IDs, or raw unbounded paths.
 Run the product and hostile suites against real D1 and R2. Prove installation,
 repeat installation, upgrade, compatible rollback, state recovery, coordinated
 backup and restore, provider outages, partial deployment failure, secret
-rotation, safe destroy, and permanent deletion as a separate operation.
+rotation, and safe destroy. Physical deletion of committed artifacts is not
+part of the initial product.
 
 Run the same bounded 1, 10, 25, 50, and 100-user workloads used by the server
 runtime. Record latency, throughput, memory, D1 contention and growth, Worker
