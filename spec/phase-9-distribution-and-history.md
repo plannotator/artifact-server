@@ -1,6 +1,6 @@
 # Phase 9: cloud distribution, Agent Skills, and optional Git history
 
-Status: scoped
+Status: partially implemented; client distribution, optional Git, operator skill, and full cloud release gates remain open
 
 This phase turns the working Artifact Server backend into a product that agents
 can use and teams can install in their chosen environment. It covers four

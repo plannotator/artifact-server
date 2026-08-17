@@ -1,6 +1,6 @@
 # Phase 5b: local MCP onboarding
 
-Status: implementation approved
+Status: implemented locally; current-client host qualification remains open
 
 ## Outcome
 

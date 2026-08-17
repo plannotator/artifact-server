@@ -1,7 +1,7 @@
 # Phase 11: content and lifecycle closure
 
-Status: complete for the shared application, local, Compose, Helm, Cloudflare,
-the default public AWS stack, and the supported public GCP stack
+Status: shared behavior implemented with selected local and live-cloud probes;
+complete acceptance and package-path proof remains open
 
 ## Outcome
 
@@ -13,10 +13,13 @@ new optional features are added. The implemented behavior is:
 - finished sites and ordinary files have the promised browser behavior,
   including safe byte-range delivery;
 - expired uploads that were never committed are removed safely;
-- backup and restore behavior is proved through the same integrity contract in
-  each supported deployment; and
-- the complete behavior is exercised through the direct local package,
-  Compact Compose, External-storage Compose, and Kubernetes.
+- backup and restore behavior is exercised through selected integrity and live
+  recovery probes; and
+- package-specific tests exercise direct local, Compact Compose,
+  External-storage Compose, and Kubernetes paths.
+
+Those implementation facts do not satisfy every acceptance sentence or every
+deployment named in the ledger.
 
 The phase changes the existing server. It does not add a management interface,
 a second product, or a new deployment abstraction.
@@ -391,15 +394,16 @@ recovery, not merely an error class.
 
 ## Remaining release-qualification risks
 
-The shared implementation and its local, Compose, Helm, lint, type, conformance,
-performance, and capacity gates pass. Live qualification on 2026-08-16 produced
-this deployment record:
+The shared implementation and package-specific local, Compose, Helm, lint,
+type, performance, and capacity gates have passing records. Live qualification
+on 2026-08-16 produced selected deployment evidence, not full ledger
+conformance:
 
 | Target | Proved live | Still open |
 | --- | --- | --- |
-| AWS | Static and SPA routing, media ranges, populated migration, real EventBridge cleanup, committed-byte retention, redeployment, S3 outage and recovery, clean RDS and S3 restore with integrity, and safe Pulumi destroy. | Hosted load, quota, and abuse controls remain separate release gates. |
-| GCP | Static and SPA routing, populated migration, real Scheduler cleanup, committed-byte retention, redeployment, Cloud SQL failure and recovery, clean Cloud SQL and GCS restore with integrity, media ranges after `Range` was configured to bypass Cloud CDN, and safe Pulumi destroy after Google's delayed Direct VPC reservation released. | Hosted load, quota, and abuse controls remain separate release gates. |
-| Cloudflare | Fresh and populated D1 migration, real Cron cleanup, committed-byte retention, Worker replacement, R2 failure detection, coordinated D1 and R2 restore with exact bytes and metadata, exact resource destruction, valid TLS on separate application and content domains, static and SPA routing, and complete media-range behavior through a real wildcard content host. | Hosted load, quota, and abuse controls remain separate release gates. |
+| AWS | Static/SPA route probes, selected media-range probes, populated migration, EventBridge cleanup, redeployment, outage/recovery, restore summary, and safe Pulumi destroy. | Complete `CNT-008`, `PUB-009-F`, `OPS-006-B`, signed direct-cloud, and full product-conformance proof. |
+| GCP | Static/SPA route probes, selected media-range probes after the CDN fix, populated migration, Scheduler cleanup, redeployment, outage/recovery, restore summary, and safe Pulumi destroy. | Detailed application-level restore evidence plus complete `CNT-008`, `PUB-009-F`, `OPS-006-B`, signed direct-cloud, and full product-conformance proof. |
+| Cloudflare | D1 migration, Cron cleanup, Worker replacement, R2 failure detection, coordinated restore, destruction, wildcard TLS, and selected routing/range probes. | Complete `CNT-008`, `PUB-009-F`, `OPS-006-B`, optional package release proof, and full product-conformance proof. Hosted-service operating policy is outside the core OSS gate. |
 
 The first populated D1 migration found a real foreign-key ordering defect. The
 migration now snapshots the old rows, gives the empty replacement the final
@@ -414,10 +418,10 @@ multiple ranges through the final public edge.
 
 The following deployment claims have live evidence:
 
-- Live R2 passed the public content contract through a real wildcard content
-  host. The run proved static routing, SPA navigation fallback, missing-asset
-  failure, conditional requests, ranged HEAD, exact single byte ranges, and
-  multiple-range rejection.
+- Live R2 passed selected routing and range probes through a real wildcard
+  content host: static routing, SPA navigation fallback, missing-asset failure,
+  conditional requests, ranged HEAD, exact single byte ranges, and
+  multiple-range rejection. This is narrower than the full `CNT-008` fixture.
 - The public Cloudflare run used `phase11.artifactserver.com` for the trusted
   application and `*.agentartifacts.org` for isolated version content.
   Cloudflare served valid certificates for both. The temporary resources are
@@ -500,3 +504,8 @@ and the phase's local, single-server, and Kubernetes paths pass. A requirement
 becomes `verified` only after every deployment named in the ledger, including
 the applicable Cloudflare, AWS, and GCP release qualification, has its own
 passing evidence.
+
+The audited evidence does not meet this completion gate. `CNT-008` and
+`OPS-006` remain `implementing`; `PUB-009` has behavior-only evidence; and the
+complete direct-package, Compact Compose, External-storage Compose, and
+Kubernetes acceptance matrix is not attached to these IDs.

@@ -1,6 +1,6 @@
 # Phase 6: local, container, Compose, and Kubernetes packaging
 
-Status: implementing
+Status: direct package, OCI, Compose, and Helm foundations implemented; transfer, signing, and public-release gates remain open
 
 This phase turns the working local and external-storage runtimes into installable,
 upgradable, recoverable release packages. It does not change artifact, version,

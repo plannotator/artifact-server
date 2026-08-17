@@ -2,7 +2,7 @@
 
 Artifact Server stores finished browser files as immutable versions and serves each version from its own hostname.
 
-This repository contains the local publication foundation and the first external-storage runtime. It is not the complete product yet. The current implementation proves:
+This repository contains the local publication foundation and the first external-storage runtime. It is not the complete product yet. Current tests exercise the following implementation; they do not, by themselves, prove every acceptance sentence or deployment in the conformance ledger:
 
 - a file-first CLI with exact-origin profiles, operating-system credential
   storage, a portable browser OAuth client flow, scoped-key fallback, and
@@ -66,7 +66,8 @@ This repository contains the local publication foundation and the first external
 
 The backend foundation, management application, direct local archive, lifecycle
 CLI, production OCI image, Compact Compose, External-storage Compose, and Helm
-chart exist and pass their current release gates.
+chart exist and pass package-specific gates. No deployment yet passes the full
+ledger release gate.
 
 Project-scoped artifacts are now implemented:
 
@@ -83,31 +84,37 @@ Artifact Store object. The accepted decision and migration constraints are in
 [`0015-project-scoped-artifacts.md`](./spec/decisions/0015-project-scoped-artifacts.md).
 The implementation contract and proof gates are in
 [`phase-8-project-scoped-artifacts.md`](./spec/phase-8-project-scoped-artifacts.md).
-The local SQLite and external Postgres/S3-compatible paths have explicit
-project behavior and populated-database migration tests. The complete local,
-package, Compose, external-storage, bounded-capacity, and live Kubernetes/Helm
-iteration gates pass. The conformance ledger still distinguishes this working
-implementation from deployment-specific release verification.
+The local SQLite and external Postgres/S3-compatible paths have project behavior
+and populated-database migration tests. Package, Compose, external-storage,
+bounded-capacity, and live Kubernetes/Helm iteration gates have passed. The
+`PRJ-001` through `PRJ-004` acceptance IDs remain `implementing`: the attached
+tests do not cover the full team-installation, HTTP/MCP, archive-invariant, and
+SQLite/Postgres interruption matrices named by those requirements.
 
 The remaining product work is:
 
 1. Release validation for the implemented locality-aware `publish-artifact`
    Agent Skill in current supported clients.
-2. Set hosted-product load, quota, abuse, and operating limits for the
-   implemented and provider-qualified one-installation Cloudflare target.
+2. Finish the technical release proof for the optional one-installation
+   Cloudflare package. Quotas, abuse operations, malware handling, and
+   regulated-enterprise controls belong to an optional artifactserver.com
+   service policy and are not core OSS first-release work.
 3. Optional private Git history, including local and Cloudflare providers.
 4. The AWS and GCP Pulumi projects and native S3 and GCS adapters are
-   implemented and provider-qualified. The Azure Blob adapter is preview-only
+   implemented and have selected live qualification evidence. Their complete
+   ledger lifecycle gates remain open. The Azure Blob adapter is preview-only
    until it passes a live Azure qualification.
 5. The optional `operate-artifact-server` skill after its deployment commands
    are stable.
 6. Direct Plannotator project pairing and the review bridge after the separate
    integration contract passes.
 
-Phase 11 recovery and live-cloud qualification is complete for Cloudflare, the
-default public AWS deployment, and the supported public GCP deployment. The
-temporary qualification resources were removed after the tests. Committed-blob
-garbage collection and permanent deletion are not part of the initial product.
+Phase 11 has selected recovery and live-cloud evidence for Cloudflare, AWS, and
+GCP, and the temporary qualification resources were removed after those runs.
+The phase is not complete by its own acceptance gate: `CNT-008` and `OPS-006`
+remain `implementing`, `PUB-009-F` is not proved, and the complete package-path
+matrix is absent. Committed-blob garbage collection and permanent deletion are
+not part of the initial product.
 
 The architecture, provider boundaries, implementation order, and release gates
 for the cloud, skill, and Git tracks are in
@@ -239,9 +246,9 @@ use the published image digest, never a floating tag.
 ## Run Compact Compose
 
 Compact Compose runs one Artifact Server container with SQLite and file storage
-in one persistent Docker volume. It is the shortest supported one-server team
-installation. It does not claim failover or support more than one application
-process.
+in one persistent Docker volume. It is the shortest one-server team candidate.
+Its package gate passes, but the complete one-server conformance ledger does
+not. It does not claim failover or support more than one application process.
 
 Copy [`packaging/compose`](./packaging/compose) to the server, copy
 `.env.example` to `.env`, and set the published immutable image digest. Then
@@ -342,23 +349,24 @@ DNS, TLS, CloudWatch logs, and autoscaling. It does not create EKS.
 
 Follow its README for state, configuration, preview, deployment, verification,
 and safe deletion requirements. The resource graph and public stack have run in
-a real AWS account. Publication, MCP discovery, horizontal scaling, bounded
-1/10/25/50/100-user reads, S3 outage and recovery, Pulumi state recovery, and a
-coordinated clean database/object restore, and safe destroy have passed for the
-default public stack. Real image upgrade/rollback, API credential rotation,
-ECS task replacement, and role-based publication have passed. The separately
-advertised private-ingress variant still requires its own live qualification.
+a real AWS account. Checked-in reports record publication, MCP discovery,
+horizontal scaling, bounded reads, S3 outage and recovery, state recovery, a
+clean database/object restore summary, destroy, image upgrade/rollback,
+credential rotation, task replacement, and role-based publication. They do not
+prove the complete `DEP-008`, `GATE-007`, or product-conformance matrix. The
+private-ingress variant also requires its own live qualification.
 
 ## Deploy the GCP stack
 
 The direct project in [`deploy/pulumi/gcp`](./deploy/pulumi/gcp) creates the
 documented managed runtime, private PostgreSQL database, native object store,
-workload identity, secrets, network, DNS, TLS, logs, and support outputs. GCP's public path has
-passed live product, bounded concurrency, upgrade, rollback, credential
-rotation, checkpoint recovery, coordinated backup/restore, and safe destroy in
-a disposable project. The direct GCP installer intentionally supports public
-ingress only; private GCP teams use the qualified Helm chart on GKE. Follow the
-project README for prerequisites.
+workload identity, secrets, network, DNS, TLS, logs, and support outputs.
+Checked-in reports record selected public-path product probes, bounded
+concurrency, upgrade, rollback, credential rotation, checkpoint recovery,
+backup/restore summary, and safe destroy in a disposable project. They do not
+prove the complete `DEP-009`, `GATE-007`, or product-conformance matrix. The
+direct GCP project advertises public ingress only; private GCP teams use the
+tested Helm path on GKE. Follow the project README for prerequisites.
 
 Azure teams use the Helm chart on AKS. The native Azure Blob adapter is
 available as preview configuration for that path, but it is not a deployment

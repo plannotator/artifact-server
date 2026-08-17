@@ -1,5 +1,7 @@
 # Phase 7: backend capacity closure
 
+Status: local capacity baseline implemented and evidenced; no provider-wide capacity claim
+
 ## Purpose
 
 Close the current backend phase with repeatable evidence about concurrent use.

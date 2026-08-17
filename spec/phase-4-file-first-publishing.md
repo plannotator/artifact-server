@@ -1,6 +1,6 @@
 # Phase 4: File-first publishing client
 
-Status: complete
+Status: local file-first client complete; deployment-wide conformance remains separate
 
 ## Outcome
 

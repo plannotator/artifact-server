@@ -3665,7 +3665,7 @@ artifact_delete</code></pre>
             <article class="feature-row">
               <h3>Server policy</h3>
               <div class="feature-copy">
-                <p>Administrators control login, whether public links are allowed, file limits, retention, network rules, and accepted file types. Hosted service policy also covers abuse reports, phishing and malware response, quotas, egress limits, and content-domain reputation.</p>
+                <p>Administrators control login, whether public links are allowed, file limits, retention, network rules, and accepted file types. A future hosted-service operator may separately define abuse reports, phishing and malware response, quotas, egress limits, and content-domain reputation; those policies are not core OSS release requirements.</p>
               </div>
             </article>
           </div>
@@ -3793,7 +3793,7 @@ artifact_delete</code></pre>
             <article class="roadmap-item">
               <span class="roadmap-stage">Then</span>
               <div class="roadmap-copy">
-                <h3>The Cloudflare deployment</h3>
+                <h3>The optional Cloudflare deployment</h3>
                 <p>
                   Add Cloudflare Workers, D1 records, R2 file storage, and the optional Cloudflare
                   Artifacts provider. Enforce tenant-scoped storage from trusted routing. Start the
@@ -3825,7 +3825,7 @@ artifact_delete</code></pre>
                 <ul>
                   <li><strong>Local:</strong> <code>artifactserver connect</code> works in every advertised local client without browser sign-in, Docker, a visible key, copied secret, or log inspection; one service then publishes one file and a complete static site, opens the unique version host, compares versions without Git, retries safely, and survives a restart.</li>
                   <li><strong>Private team:</strong> account-required subresources load, forbidden mutations fail, backup and restore preserve IDs, and cross-tenant and hostile-path tests pass on one server and Kubernetes.</li>
-                  <li><strong>Cloudflare:</strong> WorkOS MCP sign-in, R2 staged uploads, D1 transactions, public cache purge, private no-cache delivery, abuse controls, and a restore drill pass under measured cost and load.</li>
+                  <li><strong>Optional Cloudflare package:</strong> WorkOS MCP sign-in, R2 staged uploads, D1 transactions, public cache purge, private no-cache delivery, tenant isolation, and a restore drill pass. Service-operator policy is separate from core OSS conformance.</li>
                   <li><strong>Plannotator connection:</strong> one-click approval, cross-organization rejection, signed-request scope, one-use browser links, disconnect, key rotation, exact-version comments, hostile review-page tests, and private-route failure and recovery all pass.</li>
                   <li><strong>Major clouds:</strong> every provider package passes install, upgrade, rollback, backup, restore, private-network, and removal tests before support is advertised.</li>
                   <li><strong>All releases:</strong> browsers open native file types without a conversion service; arbitrary URL fetch is absent; optional Git failure never blocks or loses the primary saved version.</li>
@@ -3868,23 +3868,23 @@ artifact_delete</code></pre>
             <article class="decision-item"><p>Artifact Server ships a routine publishing skill and a separately installed operator skill. The publishing skill uses the command-line program for local files and MCP or the command-line program for information already on the server. Stored references include the server and artifact, so agents open local or team artifacts at the correct address.</p></article>
             <article class="decision-item"><p>The product core uses narrow database, file-storage, login, background-work, and optional Git interfaces. Operators use Compose for one server, Helm for Kubernetes, Alchemy directly for Cloudflare, and Pulumi directly for AWS and GCP. Artifact Server does not add an infrastructure wrapper.</p></article>
             <article class="decision-item"><p>Azure has no separate installer or release claim. Azure teams use Helm on AKS. The Azure Blob adapter remains preview until it passes a real Azure storage test.</p></article>
-            <article class="decision-item"><p>Support is phased: local, private team and Kubernetes, hosted Cloudflare, then AWS and GCP. A target is not supported until its install, upgrade, rollback, backup, restore, and isolation tests pass.</p></article>
+            <article class="decision-item"><p>Support is phased: the simple local OSS tool first, then private team and Kubernetes packages, optional Cloudflare, and direct AWS and GCP packages. A target is not supported until its install, upgrade, rollback, backup, restore, and isolation tests pass. Optional artifactserver.com operating policy is not a core OSS release gate.</p></article>
             <article class="decision-item"><p>Committed versions cannot be edited or deleted individually. Deleting an artifact creates a tombstone and stops access; physical reclamation waits for a proven retention and garbage-collection design.</p></article>
           </div>
 
           <article class="open-decisions">
             <h3>Known unknowns and required failure probes</h3>
             <ol>
-              <li><strong>Private site delivery:</strong> the bootstrap token and version-scoped content cookie pass the current local, Compose, Helm, and cloud delivery gates. Keep browser compatibility in the release matrix as clients evolve.</li>
-              <li><strong>Version origins:</strong> local <code>*.localhost</code> and real Cloudflare wildcard DNS, certificates, static routing, SPA routing, and media ranges pass. Document the equivalent DNS and certificate setup for each supported deployment.</li>
+              <li><strong>Private site delivery:</strong> current tests exercise the bootstrap token and version-scoped content cookie, but the complete supported-browser and per-deployment matrix remains open.</li>
+              <li><strong>Version origins:</strong> local <code>*.localhost</code> behavior and a real Cloudflare wildcard TLS probe have evidence. Equivalent DNS, certificate, proxy, and hostile-host proof remains open for each deployment before support is advertised.</li>
               <li><strong>Cloudflare Artifacts:</strong> confirm closed-beta availability, repository limits, retry behavior, retention, regional behavior, and production support. The product must work when it is disabled.</li>
               <li><strong>WorkOS MCP:</strong> browser approval, resource-bound tokens, refresh, revocation, reconnect, DCR, and CIMD pass for Codex and Claude Code. Visual Studio Code and claude.ai are deferred client qualifications, not first-release gates.</li>
               <li><strong>Embedded self-hosted OAuth:</strong> decide whether Better Auth's beta MCP path is mature enough; API keys and compatible external issuers remain the default until it passes the same hostile tests.</li>
-              <li><strong>Cross-cloud packages:</strong> the default public AWS stack, supported public GCP stack, and Cloudflare deployment pass their live lifecycle gates. The separately advertised AWS private-ingress variant still needs a live qualification.</li>
-              <li><strong>Hosted abuse:</strong> design quotas, egress limits, rate limits, phishing and malware response, reporting, suspension, and content-domain reputation protection before public hosting.</li>
-              <li><strong>Capacity and cost:</strong> load-test manifests, large directories, concurrent uploads, text diffs, CDN behavior, database write limits, and worst-case egress. Set hard limits from measured results.</li>
+              <li><strong>Cross-cloud packages:</strong> selected live AWS, GCP, and Cloudflare lifecycle probes have evidence, but no direct-cloud package has complete signed conformance proof. The AWS private-ingress variant remains unqualified.</li>
+              <li><strong>Optional hosted-service policy:</strong> quotas, egress limits, abuse response, phishing and malware handling, reporting, suspension, and domain reputation belong to a future artifactserver.com operator, not the core OSS first release.</li>
+              <li><strong>Capacity claims:</strong> the OSS release need not advertise universal capacity or cost envelopes. Any target-specific claim must be backed by measured evidence.</li>
               <li><strong>Recovery:</strong> define retention, tombstone duration, backup schedule, restore procedure, recovery-point and recovery-time promises, and an operator-visible integrity check.</li>
-              <li><strong>Enterprise data controls:</strong> decide who controls encryption keys, regional placement, audit export, legal hold, deletion proof, data residency, and regulated-content boundaries.</li>
+              <li><strong>Optional enterprise policy:</strong> encryption keys, regional placement, audit export, legal hold, deletion proof, data residency, and regulated-content boundaries are outside the simple first release.</li>
               <li><strong>Custom domains:</strong> decide whether customer domains are supported and, if so, how certificates, version isolation, cookies, cache purge, domain takeover, and service workers remain safe.</li>
               <li><strong>Plannotator review bridge:</strong> test the isolated review response against hostile artifact JavaScript, strict content policies, multi-page sites, single-page routes, service workers, anchor stability, session expiry, and browsers without third-party cookies. Use a browser extension if the bridge cannot pass without exposing a reusable credential.</li>
               <li><strong>Existing project binding:</strong> decide how an existing Artifact Server project pairs with a Plannotator project, including name conflicts, existing artifacts, unlinking, rollback, archival, and reconnect behavior. Pairing must not silently move artifacts or change IDs.</li>

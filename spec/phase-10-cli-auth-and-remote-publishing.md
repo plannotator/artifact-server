@@ -1,6 +1,6 @@
 # Phase 10: CLI authentication and remote publishing
 
-Status: implemented locally; hosted provider activation remains gated
+Status: implementation present locally; complete combined CLI proof and hosted activation remain gated
 
 ## Outcome
 
@@ -153,6 +153,11 @@ Provider-specific hosted WorkOS activation remains gated on the separate
 WorkOS staging and named-client matrix. Passing this phase proves the portable
 CLI contract; it does not claim that an unconfigured deployment advertises
 browser OAuth.
+
+The current `CLI-001` acceptance-ID test proves the remote PKCE, refresh,
+status, and revoke path. It does not attach the local automatic-authentication
+and CI credential paths, or every named credential-leak surface, to the same
+behavior and failure IDs. The ledger therefore remains `implementing`.
 
 ## Standards basis
 

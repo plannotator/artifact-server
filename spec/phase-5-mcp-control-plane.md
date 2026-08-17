@@ -1,6 +1,6 @@
 # Phase 5: MCP control plane
 
-Status: local behavior verified; hosted staging partially qualified
+Status: core local protocol behavior verified; complete cross-interface authorization proof and hosted release qualification remain open
 
 ## Outcome
 
@@ -107,6 +107,11 @@ mock the MCP SDK, application services, upload path, repository, or file store.
 The external-storage integration also starts two independent compiled processes over one
 Postgres/S3 installation, publishes through one process, then discovers and
 lists the artifact through MCP on the other.
+
+These results do not complete `MCP-009`. The acceptance sentence requires the
+complete HTTP and MCP authorization matrix and every named mutation denial;
+the current acceptance-ID test covers read-only listing, publication denial,
+and one foreign-installation listing denial.
 
 ## Hosted qualification status
 

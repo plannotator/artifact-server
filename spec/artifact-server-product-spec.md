@@ -413,11 +413,16 @@ A requirement is complete only when both tests pass on every applicable deployme
 
 The optional Plannotator connection builds on this release. Public or already reachable servers support browser approval, signed operation requests, and top-level private opening first. The review bridge and private outbound connector have their own security and compatibility gates.
 
-### Release 3: hosted Cloudflare
+### Optional Cloudflare deployment
 
 - Workers, D1, R2, WorkOS-hosted MCP authorization, public CDN delivery, and optional Cloudflare Artifacts.
 - A trusted installation directory maps each request to its installation and storage assignment. The request cannot supply an unverified installation ID.
-- Abuse controls, quotas, rate limits, audit logs, deletion, and support procedures.
+- Core technical safety: tenant isolation, authorization, audit records, recovery, and bounded uploads.
+
+Quotas, abuse operations, malware and copyright handling, reputation controls,
+support tiers, and regulated-enterprise promises are policy for a future
+artifactserver.com service operator. They are not core OSS first-release
+requirements and must not cause speculative product features.
 
 The hosted service starts with one D1 database only after load and failure tests show it is suitable. The architecture does not claim that adding more D1 bindings is an automatic sharding system. Before a second database is needed, choose and test either a D1 installation directory and binding rollout process or an external Postgres control plane.
 
@@ -455,17 +460,17 @@ Every applicable release must prove:
 
 These items can change implementation cost or hosting viability and must be resolved before their named release:
 
-1. **Private multi-file delivery:** the bootstrap token and version-scoped content cookie pass the current local, Compose, Helm, and cloud delivery gates. Keep browser compatibility in the release matrix as clients evolve.
-2. **Wildcard content hosts:** local `*.localhost` and real Cloudflare wildcard DNS, certificates, static routing, SPA routing, and media ranges pass. Document the equivalent DNS and certificate setup for each supported deployment.
+1. **Private multi-file delivery:** current tests exercise bootstrap tokens and version-scoped content cookies, but the complete supported-browser and per-deployment `GATE-001` matrix remains open.
+2. **Wildcard content hosts:** local `*.localhost` behavior and a real Cloudflare wildcard TLS probe have evidence. Equivalent DNS, certificate, proxy, and hostile-host proof remains open for each deployment before support is advertised.
 3. **Hosted database growth:** load-test D1 and choose the control-plane and second-shard design before hosted scale requires it.
 4. **Cloudflare Artifacts:** confirm access, pricing, limits, failure behavior, and Git compatibility before making it a supported optional provider.
 5. **WorkOS MCP authorization:** live browser approval, resource-bound tokens, refresh, revocation, reconnect, CIMD, and DCR pass for Codex and Claude Code. Visual Studio Code and claude.ai are deferred client qualifications, not first-release gates.
 6. **Embedded self-hosted OAuth:** ship Better Auth only after its beta MCP path passes the security, compatibility, migration, and recovery matrix.
-7. **Direct-cloud installers:** the default public AWS stack and supported public GCP stack pass create, upgrade, rollback, state recovery, backup, restore, and delete. AWS private ingress remains a separate advertised variant that requires a live qualification. Azure is supported only through the separately qualified Helm path on AKS; the Azure Blob adapter remains preview until it passes a real provider test.
-8. **Public hosting abuse:** define quotas, executable-file policy, malware response, phishing and copyright reporting, domain-reputation protection, suspension, and deletion before public artifactserver.com links launch.
-9. **Capacity and cost:** choose default and maximum file count, file size, artifact size, version count, text-diff size, retention, rate, and egress limits from measured tests.
+7. **Direct-cloud installers:** selected live AWS and GCP lifecycle probes have evidence, but the complete signed `GATE-007` and full product-conformance runs do not. Private AWS remains a separate unqualified variant. Azure has no direct target; the Azure Blob adapter remains preview until it passes a real provider test.
+8. **Optional hosted-service policy:** if artifactserver.com later offers public hosting, its operator must separately own quotas, abuse response, malware and copyright procedures, reputation, suspension, deletion, and appeals. This policy does not gate the core OSS release.
+9. **Capacity claims:** the OSS release need not advertise universal capacity or cost envelopes. Any target-specific claim must be backed by measured evidence; enforced input bounds remain part of core safety.
 10. **Recovery promises:** choose support tiers, availability target, backup frequency, restore-time target, and acceptable data-loss window for hosted and self-hosted team deployments.
-11. **Encryption and customer controls:** decide requirements for storage encryption keys, regional placement, audit export, legal hold, and permanent deletion before selling to regulated teams.
+11. **Optional enterprise policy:** encryption-key ownership, regional placement, audit export, legal hold, and contractual deletion are outside the simple first release and should be specified only if an enterprise offering is proposed.
 12. **Custom domains:** decide whether customer-owned content domains are supported and how certificates, cookies, abuse handling, and version origins work.
 13. **Plannotator review bridge:** test the isolated review response against hostile artifact JavaScript, strict content policies, multi-page sites, single-page routes, service workers, anchor stability, session expiry, and browsers without third-party cookies. Use a browser extension if the injected bridge cannot pass without exposing a reusable credential.
 14. **Existing project binding:** decide how an existing Artifact Server project pairs with a Plannotator project, including name conflicts, existing artifacts, unlinking, rollback, archival, and reconnect behavior. Pairing must not silently move artifacts or change IDs.

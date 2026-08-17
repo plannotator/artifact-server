@@ -1,5 +1,7 @@
 # Phase 3B: external-storage runtime acceptance plan
 
+Status: phase-specific runtime acceptance complete; deployment-wide conformance remains separate
+
 This file is the implementation checklist for Decision 0006. The conformance ledger remains authoritative for product requirements.
 
 ## Persistence

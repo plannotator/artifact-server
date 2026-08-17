@@ -1,6 +1,6 @@
 # Phase 8: project-scoped artifacts
 
-Status: implemented; local and external-storage behavior verified
+Status: implementation present; executable acceptance proof remains incomplete
 
 ## Purpose
 
@@ -167,10 +167,10 @@ The controlling requirements are `PRJ-001` through `PRJ-004` in
 ## Implementation result
 
 The application, SQLite, Postgres, HTTP, MCP, CLI, file-first client, integrity,
-backup, restore, and migration paths now use the project model. Populated
-SQLite and Postgres upgrades, hostile project isolation, archive and unarchive,
-local packaging, both Compose profiles, external-storage performance, bounded
-capacity, and live Kubernetes/Helm gates passed on August 14, 2026.
+backup, restore, and migration paths use the project model. Focused tests and
+package gates exercise populated upgrades, isolation, archive lifecycle, and
+deployment paths, but those facts are narrower than the executable acceptance
+sentences in `PRJ-001` through `PRJ-004`.
 
 The final gap audit also proves that an exact idempotent publish retry survives
 project archive, unscoped service keys cannot enumerate projects, Postgres
@@ -179,7 +179,8 @@ checks cover project-owned action, retry, upload, and content-session records,
 the real CLI selects an explicit project, and an external-storage backup keeps
 the stable ID and archive state of a named project.
 
-The conformance ledger deliberately records `PRJ-001` through `PRJ-004` as
-`behavior_verified`, not `verified`. The implementation is complete, but the
-ledger will not claim every deployment as release-verified until each required
-project acceptance test has deployment-specific evidence.
+The audited ledger records `PRJ-001` through `PRJ-004` as `implementing`. The
+missing proof is explicit: a team-installation and forbidden-object surface;
+the complete HTTP/MCP and named isolation matrix; membership, ACL, comparison,
+and immutable archive invariants; and one combined SQLite/Postgres migration
+matrix covering interruption, partial application, repetition, and rollback.
