@@ -10,13 +10,17 @@ import {
   IdentityConflict,
   IdentityNotFound,
 } from "../core/errors.js";
-import type { IdentityRepositoryFailure } from "../core/errors.js";
+import type {
+  IdentityRepositoryFailure,
+  LoginAttemptRejected,
+} from "../core/errors.js";
 import {
   type ApplicationSession,
   type ExternalIdentity,
   type InstallationMember,
   type IssuedApplicationSession,
   type IssuedManagedApiKey,
+  type LoginAttempt,
   type ManagedApiKey,
   memberStatuses,
   type StoredManagedApiKey,
@@ -34,6 +38,7 @@ import {
 const managedApiKeyPattern =
   /^as_key_(key_[0-9a-f-]+)_([A-Za-z0-9_-]{32,})$/u;
 const allCapabilities = Object.values(principalCapabilities);
+const localBrowserLoginProvider = "artifact-server-local";
 
 export interface InstallationIdentityRepository {
   readonly admitMember: (
@@ -69,6 +74,17 @@ export interface InstallationIdentityRepository {
       readonly tokenDigest: string;
     },
   ) => Effect.Effect<ApplicationSession, IdentityRepositoryFailure>;
+  readonly consumeLoginAttempt: (
+    stateDigest: string,
+    provider: string,
+    consumedAt: string,
+  ) => Effect.Effect<
+    LoginAttempt,
+    LoginAttemptRejected | IdentityRepositoryFailure
+  >;
+  readonly createLoginAttempt: (
+    attempt: LoginAttempt,
+  ) => Effect.Effect<void, IdentityRepositoryFailure>;
   readonly deactivateMember: (
     installationId: string,
     memberId: string,
@@ -146,6 +162,7 @@ export interface InstallationAccessDependencies {
   readonly ids: IdentityIdProvider;
   readonly installationId: string;
   readonly localBootstrapCredential: Redacted.Redacted | null;
+  readonly localLoginAttemptLifetimeMilliseconds: number;
   readonly repository: InstallationIdentityRepository;
   readonly secrets: IdentitySecretProvider;
   readonly sessionLifetimeMilliseconds: number;
@@ -164,6 +181,12 @@ export interface IssueApiKeyCommand {
   readonly memberId?: string;
   readonly name: string;
   readonly principal: Principal;
+}
+
+/** One short-lived credential intended for a single local browser navigation. */
+export interface IssuedLocalBrowserLogin {
+  readonly expiresAt: string;
+  readonly token: Redacted.Redacted;
 }
 
 export interface InstallationAccessOperations {
@@ -225,11 +248,17 @@ export interface InstallationAccessOperations {
     readonly InstallationMember[],
     AuthorizationDenied | IdentityRepositoryFailure
   >;
-  readonly loginWithLocalBootstrap: (
+  readonly issueLocalBrowserLogin: (
     credential: Redacted.Redacted,
   ) => Effect.Effect<
+    IssuedLocalBrowserLogin,
+    AuthenticationRequired | IdentityRepositoryFailure
+  >;
+  readonly loginWithLocalBrowserToken: (
+    token: Redacted.Redacted,
+  ) => Effect.Effect<
     IssuedApplicationSession,
-    AuthenticationRequired | IdentityConflict | IdentityRepositoryFailure
+    IdentityConflict | IdentityRepositoryFailure | LoginAttemptRejected
   >;
   readonly revokeApiKey: (
     principal: Principal,
@@ -287,8 +316,8 @@ function makeInstallationAccessService(
     return {csrfToken, session, token};
   });
 
-  const loginWithLocalBootstrap = Effect.fn(
-    "InstallationAccessService.loginWithLocalBootstrap",
+  const requireLocalBootstrap = Effect.fn(
+    "InstallationAccessService.requireLocalBootstrap",
   )(function*(credential: Redacted.Redacted) {
     const configuredCredential = dependencies.localBootstrapCredential;
     if (
@@ -302,6 +331,40 @@ function makeInstallationAccessService(
         message: "The local browser-login credential is invalid.",
       }));
     }
+    return yield* Effect.void;
+  });
+
+  const issueLocalBrowserLogin = Effect.fn(
+    "InstallationAccessService.issueLocalBrowserLogin",
+  )(function*(credential: Redacted.Redacted) {
+    yield* requireLocalBootstrap(credential);
+    const now = dependencies.clock.now();
+    const expiresAt = new Date(
+      now.getTime() + dependencies.localLoginAttemptLifetimeMilliseconds,
+    ).toISOString();
+    const token = dependencies.secrets.issue();
+    yield* dependencies.repository.createLoginAttempt({
+      codeVerifier: "not-applicable",
+      createdAt: now.toISOString(),
+      expiresAt,
+      provider: localBrowserLoginProvider,
+      returnTo: "/",
+      stateDigest: dependencies.secrets.digest(token),
+    });
+    return {
+      expiresAt,
+      token: Redacted.make(token, {label: "local-browser-login"}),
+    };
+  });
+
+  const loginWithLocalBrowserToken = Effect.fn(
+    "InstallationAccessService.loginWithLocalBrowserToken",
+  )(function*(token: Redacted.Redacted) {
+    yield* dependencies.repository.consumeLoginAttempt(
+      dependencies.secrets.digest(Redacted.value(token)),
+      localBrowserLoginProvider,
+      dependencies.clock.now().toISOString(),
+    );
     const email = yield* normalizeEmail(dependencies.bootstrapAdministratorEmail);
     let member = yield* dependencies.repository.findActiveMemberByEmail(
       dependencies.installationId,
@@ -610,9 +673,10 @@ function makeInstallationAccessService(
     completeExternalIdentity,
     deactivateMember,
     issueApiKey,
+    issueLocalBrowserLogin,
     listApiKeys,
     listMembers,
-    loginWithLocalBootstrap,
+    loginWithLocalBrowserToken,
     revokeApiKey,
     revokeSession,
     rotateApiKey,

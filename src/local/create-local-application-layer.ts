@@ -493,6 +493,7 @@ export function createApplicationLayer(
     },
     installationId: adapters.installationId,
     localBootstrapCredential: adapters.localBootstrapCredential,
+    localLoginAttemptLifetimeMilliseconds: 60 * 1_000,
     repository: {
       admitMember: (command) => identityEffectWithConflict(
         "admitMember",
@@ -509,6 +510,19 @@ export function createApplicationLayer(
       createApplicationSession: (command) => identityEffect(
         "createApplicationSession",
         () => identityRepository.createApplicationSession(command),
+      ),
+      consumeLoginAttempt: (stateDigest, provider, consumedAt) =>
+        loginAttemptEffect(
+          "consumeLoginAttempt",
+          () => identityRepository.consumeLoginAttempt(
+            stateDigest,
+            provider,
+            consumedAt,
+          ),
+        ),
+      createLoginAttempt: (attempt) => identityEffect(
+        "createLoginAttempt",
+        () => identityRepository.createLoginAttempt(attempt),
       ),
       deactivateMember: (installationId, memberId, updatedAt) =>
         identityEffectWithConflictOrNotFound(

@@ -17,6 +17,7 @@ import type {Clock} from "../../src/core/ports.js";
 import {
   createTestInstallation,
   fetchVersion,
+  issueLocalBrowserLogin,
   type RunningTestServer,
   type TestInstallation,
   removeTestInstallation,
@@ -65,14 +66,16 @@ describe("installation identity and access", () => {
   });
 
   test("bootstrap membership and managed keys fail closed", async () => {
-    const rejected = await fetch(
-      `${server.baseUrl}/auth/local?token=${"x".repeat(43)}`,
-      {redirect: "manual"},
-    );
+    const rejected = await fetch(`${server.baseUrl}/auth/local`, {
+      headers: {Authorization: `Bearer ${"x".repeat(43)}`},
+      method: "POST",
+    });
     expect(rejected.status).toBe(401);
 
+    const localBrowserToken = await issueLocalBrowserLogin(server, installation);
+    expect(localBrowserToken).not.toBe(installation.browserBootstrapToken);
     const login = await fetch(
-      `${server.baseUrl}/auth/local?token=${installation.browserBootstrapToken}`,
+      `${server.baseUrl}/auth/local?token=${localBrowserToken}`,
       {redirect: "manual"},
     );
     expect(login.status).toBe(303);
@@ -80,6 +83,14 @@ describe("installation identity and access", () => {
     const cookies = applicationCookies(login.headers.getSetCookie());
     expect(cookies.sessionAttributes).toContain("HttpOnly");
     expect(cookies.sessionAttributes).toContain("SameSite=Lax");
+    expect((await fetch(
+      `${server.baseUrl}/auth/local?token=${localBrowserToken}`,
+      {redirect: "manual"},
+    )).status).toBe(401);
+    expect((await fetch(
+      `${server.baseUrl}/auth/local?token=${installation.browserBootstrapToken}`,
+      {redirect: "manual"},
+    )).status).toBe(401);
 
     const session = await fetch(`${server.baseUrl}/api/v1/session`, {
       headers: {Cookie: cookies.header},
@@ -239,8 +250,9 @@ describe("installation identity and access", () => {
   });
 
   test("AUTH-010-B AUTH-010-F AUTH-011-B AUTH-011-F AUTH-012-B AUTH-012-F AUTH-013-F: browser credentials stay on the application host and mutations require same-origin proof", async () => {
+    const localBrowserToken = await issueLocalBrowserLogin(server, installation);
     const login = await fetch(
-      `${server.baseUrl}/auth/local?token=${installation.browserBootstrapToken}`,
+      `${server.baseUrl}/auth/local?token=${localBrowserToken}`,
       {redirect: "manual"},
     );
     const cookies = applicationCookies(login.headers.getSetCookie());
@@ -309,7 +321,7 @@ describe("installation identity and access", () => {
 
     const contentHostLogin = await fetchVersion(
       server,
-      `http://${"c".repeat(32)}.localhost:${server.port}/auth/local?token=${installation.browserBootstrapToken}`,
+      `http://${"c".repeat(32)}.localhost:${server.port}/auth/local?token=${localBrowserToken}`,
     );
     expect(contentHostLogin.status).toBe(404);
     expect(contentHostLogin.headers.getSetCookie()).toEqual([]);

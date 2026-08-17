@@ -5,6 +5,7 @@ import {z} from "zod";
 import {
   apiHeaders,
   createTestInstallation,
+  issueLocalBrowserLogin,
   removeTestInstallation,
   startTestServer,
   type RunningTestServer,
@@ -103,17 +104,22 @@ test.describe("Artifact Server frontend MVP", () => {
     try {
       const first = await publishNew(fixture.server, fixture.installation, {
         accessSetting: "account_required",
-        content: "before\n",
+        content: `before\n${"x".repeat(270_000)}`,
         idempotencyKey: "frontend-workflow-first",
+        mediaType: "text/plain; charset=utf-8",
         name: "Workflow fixture",
+        path: "payload.txt",
         tags: ["draft"],
       });
       const second = await publishVersion(fixture.server, fixture.installation, {
         artifactId: first.body.artifact.id,
-        content: "after\n",
+        content: `after\n${"y".repeat(270_000)}`,
         expectedCurrentVersionId: first.body.version.id,
         idempotencyKey: "frontend-workflow-second",
+        mediaType: "text/plain; charset=utf-8",
+        path: "payload.txt",
       });
+      await createActionHistory(fixture, first.body.artifact.id, second.body.version.id);
 
       await localLogin(fixture);
       await fixture.page.getByRole("link", {name: "Workflow fixture"}).click();
@@ -139,8 +145,29 @@ test.describe("Artifact Server frontend MVP", () => {
       await fixture.page.getByRole("tab", {name: "Compare"}).click();
       await fixture.page.getByRole("button", {name: "Compare"}).click();
       await expect(fixture.page.getByRole("heading", {name: "Changed"})).toBeVisible();
-      await expect(fixture.page.getByText("before")).toBeVisible();
-      await expect(fixture.page.getByText("after")).toBeVisible();
+      await expect(fixture.page.getByText(/Binary metadata only/u)).toBeVisible();
+      await expect(fixture.page.getByRole("link", {name: "Open before"})).toHaveCount(0);
+      const [beforePage, beforeSessionRequest] = await Promise.all([
+        fixture.context.waitForEvent("page"),
+        fixture.page.waitForRequest((request) =>
+          request.method() === "POST"
+          && request.url().includes(
+            `/versions/${first.body.version.id}/content-sessions`,
+          )
+        ),
+        fixture.page.getByRole("button", {name: "Open before"}).click(),
+      ]);
+      expect(new URL(beforeSessionRequest.url()).searchParams.get("path")).toBe(
+        "payload.txt",
+      );
+      await expect(beforePage.locator("body")).toContainText("before");
+      await beforePage.close();
+      const [afterPage] = await Promise.all([
+        fixture.context.waitForEvent("page"),
+        fixture.page.getByRole("button", {name: "Open after"}).click(),
+      ]);
+      await expect(afterPage.locator("body")).toContainText("after");
+      await afterPage.close();
 
       await fixture.page.getByRole("tab", {name: "Versions"}).click();
       const earlierVersion = fixture.page.getByRole("article").filter({hasText: "Version 1"});
@@ -151,7 +178,11 @@ test.describe("Artifact Server frontend MVP", () => {
 
       await fixture.page.getByRole("tab", {name: "Action history"}).click();
       await expect(fixture.page.getByText("Restored version")).toBeVisible();
-      await expect(fixture.page.getByText("Replaced tags")).toBeVisible();
+      await expect(fixture.page.getByText("Replaced tags").first()).toBeVisible();
+      await expect(fixture.page.getByRole("button", {name: "Load more"})).toBeVisible();
+      expect(await fixture.page.locator("ol > li").count()).toBe(50);
+      await fixture.page.getByRole("button", {name: "Load more"}).click();
+      await expect(fixture.page.locator("ol > li")).toHaveCount(57);
 
       await fixture.page.getByRole("link", {name: "Members"}).click();
       await fixture.page.getByRole("button", {name: "Admit member"}).click();
@@ -261,12 +292,54 @@ test.describe("Artifact Server frontend MVP", () => {
       await stopBrowserFixture(fixture);
     }
   });
+
+  test("project bootstrap failures remain visible and local expiration bounds use wall-clock time", async ({browser}) => {
+    const fixture = await startBrowserFixture(browser, {
+      timezoneId: "America/Los_Angeles",
+    });
+    try {
+      await fixture.page.clock.install({
+        time: new Date("2026-08-16T12:34:00.000Z"),
+      });
+      await fixture.page.route("**/api/v1/projects", async (route) => {
+        await route.fulfill({
+          body: JSON.stringify({
+            error: {
+              code: "INTERNAL_ERROR",
+              message: "Project storage is temporarily unavailable.",
+            },
+          }),
+          contentType: "application/json",
+          status: 500,
+        });
+      });
+      await localLogin(fixture, false);
+      await expect(fixture.page.getByRole("heading", {name: "Request failed"})).toBeVisible();
+      await expect(fixture.page.getByRole("heading", {name: "No projects"})).toHaveCount(0);
+
+      await fixture.page.unroute("**/api/v1/projects");
+      await fixture.page.getByRole("button", {name: "Try again"}).click();
+      await expect(fixture.page.getByRole("heading", {name: "Default"})).toBeVisible();
+
+      await fixture.page.getByRole("link", {name: "API keys"}).click();
+      await fixture.page.getByRole("button", {name: "Issue API key"}).click();
+      await expect(fixture.page.getByLabel("Expires at", {exact: true})).toHaveAttribute(
+        "min",
+        "2026-08-16T05:34",
+      );
+    } finally {
+      await stopBrowserFixture(fixture);
+    }
+  });
 });
 
-async function startBrowserFixture(browser: Browser): Promise<BrowserFixture> {
+async function startBrowserFixture(
+  browser: Browser,
+  options: {readonly timezoneId?: string} = {},
+): Promise<BrowserFixture> {
   const installation = await createTestInstallation();
   const server = await startTestServer(installation);
-  const context = await browser.newContext();
+  const context = await browser.newContext(options);
   const page = await context.newPage();
   return {context, installation, page, server};
 }
@@ -277,11 +350,20 @@ async function stopBrowserFixture(fixture: BrowserFixture): Promise<void> {
   await removeTestInstallation(fixture.installation);
 }
 
-async function localLogin(fixture: BrowserFixture): Promise<void> {
+async function localLogin(
+  fixture: BrowserFixture,
+  waitForApplication = true,
+): Promise<void> {
+  const token = await issueLocalBrowserLogin(
+    fixture.server,
+    fixture.installation,
+  );
   const login = new URL("/auth/local", fixture.server.baseUrl);
-  login.searchParams.set("token", fixture.installation.browserBootstrapToken);
+  login.searchParams.set("token", token);
   await fixture.page.goto(login.toString());
-  await expect(fixture.page.getByRole("link", {name: "Artifact Server"})).toBeVisible();
+  if (waitForApplication) {
+    await expect(fixture.page.getByRole("link", {name: "Artifact Server"})).toBeVisible();
+  }
 }
 
 async function closeTopDialog(page: Page): Promise<void> {
@@ -315,4 +397,28 @@ async function createProject(
   return z.object({
     project: z.object({id: z.string()}),
   }).parse(await response.json()).project;
+}
+
+async function createActionHistory(
+  fixture: BrowserFixture,
+  artifactId: string,
+  expectedCurrentVersionId: string,
+): Promise<void> {
+  const responses = await Promise.all(Array.from({length: 52}, (_, index) =>
+    fetch(
+      `${fixture.server.baseUrl}/api/v1/artifacts/${artifactId}/tags?projectId=prj_default`,
+      {
+        body: JSON.stringify({
+          expectedCurrentVersionId,
+          tags: [`history-${index}`],
+        }),
+        headers: apiHeaders(
+          fixture.installation,
+          `frontend-history-${String(index).padStart(3, "0")}`,
+        ),
+        method: "PATCH",
+      },
+    )
+  ));
+  expect(responses.every((response) => response.status === 200)).toBe(true);
 }

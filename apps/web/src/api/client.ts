@@ -544,17 +544,24 @@ export const api = {
       method: "DELETE",
     },
   ),
-  contentSession: (projectId: string, artifactId: string, versionId?: string) => {
+  contentSession: (
+    projectId: string,
+    artifactId: string,
+    versionId?: string,
+    path?: string,
+  ) => {
     const versionPath = versionId === undefined
       ? ""
       : `/versions/${encodeURIComponent(versionId)}`;
+    const query = new URLSearchParams({ projectId });
+    if (path !== undefined) query.set("path", path);
     return request(
       z.object({
         bootstrapUrl: z.url(),
         expiresAt: z.string(),
         versionId: z.string(),
       }),
-      `/api/v1/artifacts/${encodeURIComponent(artifactId)}${versionPath}/content-sessions?${projectQuery(projectId)}`,
+      `/api/v1/artifacts/${encodeURIComponent(artifactId)}${versionPath}/content-sessions?${query}`,
       { headers: mutationHeaders(), method: "POST" },
     );
   },

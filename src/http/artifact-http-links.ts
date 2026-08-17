@@ -40,10 +40,13 @@ export function contentBootstrapBrowserUrl(
   contentDomain: string,
   contentToken: string,
   bootstrapToken: string,
+  destinationPath?: string,
 ): string {
   const bootstrapUrl = new URL(applicationUrl);
   bootstrapUrl.hostname = `${contentToken}.${contentDomain}`;
-  bootstrapUrl.pathname = "/";
+  bootstrapUrl.pathname = destinationPath === undefined
+    ? "/"
+    : `/${destinationPath.split("/").map(encodeURIComponent).join("/")}`;
   bootstrapUrl.search = new URLSearchParams({
     __artifact_bootstrap: bootstrapToken,
   }).toString();

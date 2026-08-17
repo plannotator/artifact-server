@@ -25,4 +25,5 @@ jobs:
         with:
           ruby-version: "3.3"
       - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm verify:iteration

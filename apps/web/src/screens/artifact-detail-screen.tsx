@@ -54,8 +54,10 @@ export function ArtifactDetailScreen({
   const [details, setDetails] = useState<ArtifactDetails | null>(null);
   const [versions, setVersions] = useState<readonly VersionListItem[]>([]);
   const [actions, setActions] = useState<readonly ArtifactAction[]>([]);
+  const [actionsNextCursor, setActionsNextCursor] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMoreActions, setLoadingMoreActions] = useState(false);
   const [opening, setOpening] = useState(false);
 
   const load = async () => {
@@ -70,6 +72,7 @@ export function ArtifactDetailScreen({
       setDetails(loadedDetails);
       setVersions(loadedVersions);
       setActions(loadedActions.actions);
+      setActionsNextCursor(loadedActions.nextCursor);
     } catch (caught) {
       setError(caught instanceof Error ? caught : new Error("Artifact loading failed."));
     } finally {
@@ -81,12 +84,39 @@ export function ArtifactDetailScreen({
     void load();
   }, [artifactId, project.id]);
 
-  const openPrivateVersion = async (versionId?: string) => {
+  const loadMoreActions = async () => {
+    if (actionsNextCursor === null) return;
+    setLoadingMoreActions(true);
+    setError(null);
+    try {
+      const loaded = await api.actions(
+        project.id,
+        artifactId,
+        actionsNextCursor,
+      );
+      setActions((current) => [...current, ...loaded.actions]);
+      setActionsNextCursor(loaded.nextCursor);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught : new Error("Action history loading failed."));
+    } finally {
+      setLoadingMoreActions(false);
+    }
+  };
+
+  const openPrivateVersion = async (
+    versionId?: string,
+    destinationPath?: string,
+  ) => {
     const popup = window.open("about:blank", "_blank");
     setOpening(true);
     setError(null);
     try {
-      const issued = await api.contentSession(project.id, artifactId, versionId);
+      const issued = await api.contentSession(
+        project.id,
+        artifactId,
+        versionId,
+        destinationPath,
+      );
       if (popup === null) {
         window.location.assign(issued.bootstrapUrl);
       } else {
@@ -195,13 +225,20 @@ export function ArtifactDetailScreen({
         <TabsContent className="pt-6" value="compare">
           <ComparisonPanel
             artifactId={artifactId}
+            opening={opening}
             onError={setError}
+            onOpenVersion={openPrivateVersion}
             projectId={project.id}
             versions={versions}
           />
         </TabsContent>
         <TabsContent className="pt-6" value="actions">
-          <ActionHistory actions={actions} />
+          <ActionHistory
+            actions={actions}
+            loadingMore={loadingMoreActions}
+            nextCursor={actionsNextCursor}
+            onLoadMore={loadMoreActions}
+          />
         </TabsContent>
       </Tabs>
     </div>
@@ -707,12 +744,19 @@ function ManifestDetails({ saved }: { readonly saved: ArtifactVersion }) {
 
 function ComparisonPanel({
   artifactId,
+  opening,
   onError,
+  onOpenVersion,
   projectId,
   versions,
 }: {
   readonly artifactId: string;
+  readonly opening: boolean;
   readonly onError: (error: Error) => void;
+  readonly onOpenVersion: (
+    versionId: string,
+    destinationPath: string,
+  ) => Promise<void>;
   readonly projectId: string;
   readonly versions: readonly VersionListItem[];
 }) {
@@ -773,7 +817,15 @@ function ComparisonPanel({
           {pending ? "Comparing…" : "Compare"}
         </Button>
       </div>
-      {comparison === null ? null : <ComparisonResult comparison={comparison} />}
+      {comparison === null
+        ? null
+        : (
+          <ComparisonResult
+            comparison={comparison}
+            opening={opening}
+            onOpenVersion={onOpenVersion}
+          />
+        )}
     </div>
   );
 }
@@ -810,7 +862,18 @@ function VersionSelect({
   );
 }
 
-function ComparisonResult({ comparison }: { readonly comparison: ArtifactComparison }) {
+function ComparisonResult({
+  comparison,
+  opening,
+  onOpenVersion,
+}: {
+  readonly comparison: ArtifactComparison;
+  readonly opening: boolean;
+  readonly onOpenVersion: (
+    versionId: string,
+    destinationPath: string,
+  ) => Promise<void>;
+}) {
   const noChanges = comparison.added.length === 0
     && comparison.removed.length === 0
     && comparison.renamed.length === 0
@@ -861,12 +924,30 @@ function ComparisonResult({ comparison }: { readonly comparison: ArtifactCompari
                         {formatBytes(change.after.size)}
                       </p>
                       <div className="mt-2 flex gap-3">
-                        <a className="underline underline-offset-4" href={change.links.before} rel="noreferrer" target="_blank">
+                        <Button
+                          disabled={opening}
+                          onClick={() => void onOpenVersion(
+                            comparison.from.id,
+                            change.before.path,
+                          )}
+                          size="xs"
+                          type="button"
+                          variant="link"
+                        >
                           Open before
-                        </a>
-                        <a className="underline underline-offset-4" href={change.links.after} rel="noreferrer" target="_blank">
+                        </Button>
+                        <Button
+                          disabled={opening}
+                          onClick={() => void onOpenVersion(
+                            comparison.to.id,
+                            change.after.path,
+                          )}
+                          size="xs"
+                          type="button"
+                          variant="link"
+                        >
                           Open after
-                        </a>
+                        </Button>
                       </div>
                     </div>
                   )
@@ -910,7 +991,17 @@ function ChangeGroup({
   );
 }
 
-function ActionHistory({ actions }: { readonly actions: readonly ArtifactAction[] }) {
+function ActionHistory({
+  actions,
+  loadingMore,
+  nextCursor,
+  onLoadMore,
+}: {
+  readonly actions: readonly ArtifactAction[];
+  readonly loadingMore: boolean;
+  readonly nextCursor: string | null;
+  readonly onLoadMore: () => Promise<void>;
+}) {
   if (actions.length === 0) {
     return (
       <StatePanel
@@ -920,21 +1011,37 @@ function ActionHistory({ actions }: { readonly actions: readonly ArtifactAction[
     );
   }
   return (
-    <ol className="border">
-      {actions.map((action) => (
-        <li className="grid gap-2 border-b p-4 last:border-b-0 sm:grid-cols-[12rem_1fr_auto]" key={action.id}>
-          <span className="font-heading text-sm font-semibold">{actionLabel(action.action)}</span>
-          <span className="font-mono text-xs break-all text-muted-foreground">
-            {action.principalId}
-            {action.authorizedByPrincipalId === null
-              ? null
-              : `, authorized by ${action.authorizedByPrincipalId}`}
-          </span>
-          <time className="text-xs whitespace-nowrap text-muted-foreground">
-            {formatTimestamp(action.createdAt)}
-          </time>
-        </li>
-      ))}
-    </ol>
+    <div className="flex flex-col gap-4">
+      <ol className="border">
+        {actions.map((action) => (
+          <li className="grid gap-2 border-b p-4 last:border-b-0 sm:grid-cols-[12rem_1fr_auto]" key={action.id}>
+            <span className="font-heading text-sm font-semibold">{actionLabel(action.action)}</span>
+            <span className="font-mono text-xs break-all text-muted-foreground">
+              {action.principalId}
+              {action.authorizedByPrincipalId === null
+                ? null
+                : `, authorized by ${action.authorizedByPrincipalId}`}
+            </span>
+            <time className="text-xs whitespace-nowrap text-muted-foreground">
+              {formatTimestamp(action.createdAt)}
+            </time>
+          </li>
+        ))}
+      </ol>
+      {nextCursor === null
+        ? null
+        : (
+          <div>
+            <Button
+              disabled={loadingMore}
+              onClick={() => void onLoadMore()}
+              type="button"
+              variant="outline"
+            >
+              {loadingMore ? "Loading…" : "Load more"}
+            </Button>
+          </div>
+        )}
+    </div>
   );
 }

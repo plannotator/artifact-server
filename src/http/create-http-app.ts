@@ -70,7 +70,10 @@ import {
   maximumDeclaredFiles,
   maximumUploadPlanRequestBytes,
 } from "../core/publishing-limits.js";
-import { manifestPathFromUrl } from "../manifest/create-manifest.js";
+import {
+  manifestPathFromUrl,
+  parseManifestPath,
+} from "../manifest/create-manifest.js";
 import {createMcpHttpAdapter} from "../mcp/create-mcp-http-adapter.js";
 import {
   artifactBrowserUrl,
@@ -195,7 +198,7 @@ const issueApiKeySchema = z.object({
   memberId: z.string().trim().min(1).max(200).optional(),
   name: z.string().trim().min(1).max(200),
 });
-const localBootstrapSchema = z.object({
+const localLoginQuerySchema = z.object({
   token: z.string().min(32).max(200),
 });
 const interactiveLoginQuerySchema = z.object({
@@ -556,6 +559,40 @@ export function createHttpApp(
     );
   });
 
+  app.post("/auth/local", async (context) => {
+    const requestUrl = new URL(context.req.url);
+    if (!isLoopbackHostname(requestUrl.hostname)) {
+      throw new AuthenticationRequired({
+        message: "Local browser login is available only on loopback.",
+      });
+    }
+    const authorization = bearerSchema.safeParse(
+      context.req.header("authorization"),
+    );
+    if (!authorization.success) {
+      throw new AuthenticationRequired({
+        message: "The local browser-login credential is invalid.",
+      });
+    }
+    const issued = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      InstallationAccessService.use((access) =>
+        access.issueLocalBrowserLogin(
+          Redacted.make(authorization.data, {
+            label: "local-browser-bootstrap",
+          }),
+        )
+      ),
+    );
+    context.header("Cache-Control", "private, no-store");
+    context.header("Referrer-Policy", "no-referrer");
+    return context.json({
+      expiresAt: issued.expiresAt,
+      token: Redacted.value(issued.token),
+    }, 201);
+  });
+
   app.get("/auth/local", async (context) => {
     const requestUrl = new URL(context.req.url);
     if (!isLoopbackHostname(requestUrl.hostname)) {
@@ -563,13 +600,13 @@ export function createHttpApp(
         message: "Local browser login is available only on loopback.",
       });
     }
-    const query = localBootstrapSchema.parse(context.req.query());
+    const query = localLoginQuerySchema.parse(context.req.query());
     const issued = await runHttpApplicationEffect(
       context,
       dependencies,
       InstallationAccessService.use((access) =>
-        access.loginWithLocalBootstrap(
-          Redacted.make(query.token, {label: "local-browser-bootstrap"}),
+        access.loginWithLocalBrowserToken(
+          Redacted.make(query.token, {label: "local-browser-login"}),
         )
       ),
     );
@@ -1181,6 +1218,7 @@ export function createHttpApp(
   );
 
   app.post("/api/v1/artifacts/:artifactId/content-sessions", async (context) => {
+    const destinationPath = requestedContentPath(context);
     const issued = await runHttpApplicationEffect(
       context,
       dependencies,
@@ -1199,6 +1237,7 @@ export function createHttpApp(
         dependencies.contentDomain,
         issued.contentToken,
         Redacted.value(issued.token),
+        destinationPath,
       ),
       expiresAt: issued.expiresAt,
       versionId: issued.versionId,
@@ -1208,6 +1247,7 @@ export function createHttpApp(
   app.post(
     "/api/v1/artifacts/:artifactId/versions/:versionId/content-sessions",
     async (context) => {
+      const destinationPath = requestedContentPath(context);
       const issued = await runHttpApplicationEffect(
         context,
         dependencies,
@@ -1229,6 +1269,7 @@ export function createHttpApp(
           dependencies.contentDomain,
           issued.contentToken,
           Redacted.value(issued.token),
+          destinationPath,
         ),
         expiresAt: issued.expiresAt,
         versionId: issued.versionId,
@@ -1453,6 +1494,15 @@ function isUnsafeMethod(method: string): boolean {
 function requestedProjectId(context: Context<HttpEnvironment>): string | null {
   const projectId = context.req.query("projectId");
   return projectId === undefined ? null : projectIdSchema.parse(projectId);
+}
+
+function requestedContentPath(
+  context: Context<HttpEnvironment>,
+): string | undefined {
+  const requested = context.req.query("path");
+  return requested === undefined
+    ? undefined
+    : parseManifestPath(z.string().min(1).max(1_024).parse(requested));
 }
 
 function isLoopbackHostname(hostname: string): boolean {
@@ -1904,6 +1954,12 @@ async function exchangeContentBootstrap(
       {status: 405, headers: {Allow: "GET"}},
     );
   }
+  const destinationPath = contentBootstrapDestination(requestUrl.pathname);
+  if (destinationPath === null) {
+    throw new ContentBootstrapRejected({
+      message: "The private-content bootstrap destination is invalid.",
+    });
+  }
   const parsed = contentSessionTokenSchema.safeParse(
     requestUrl.searchParams.get(contentBootstrapQueryParameter),
   );
@@ -1922,7 +1978,7 @@ async function exchangeContentBootstrap(
       })
     ),
   );
-  return new Response(contentSessionExchangeHtml, {
+  return new Response(contentSessionExchangeHtml(destinationPath), {
     headers: {
       "Cache-Control": "private, no-store",
       "Content-Security-Policy":
@@ -1939,15 +1995,25 @@ async function exchangeContentBootstrap(
   });
 }
 
-const contentSessionExchangeHtml = [
-  "<!doctype html>",
-  '<html lang="en">',
-  '<meta charset="utf-8">',
-  '<meta http-equiv="refresh" content="0;url=/">',
-  "<title>Opening artifact</title>",
-  '<p><a href="/">Continue to artifact</a></p>',
-  "</html>",
-].join("");
+function contentSessionExchangeHtml(destinationPath: string): string {
+  return [
+    "<!doctype html>",
+    '<html lang="en">',
+    '<meta charset="utf-8">',
+    `<meta http-equiv="refresh" content="0;url=${destinationPath}">`,
+    "<title>Opening artifact</title>",
+    `<p><a href="${destinationPath}">Continue to artifact</a></p>`,
+    "</html>",
+  ].join("");
+}
+
+function contentBootstrapDestination(pathname: string): string | null {
+  const manifestPath = manifestPathFromUrl(pathname);
+  if (manifestPath === null) return null;
+  return manifestPath === ""
+    ? "/"
+    : `/${manifestPath.split("/").map(encodeURIComponent).join("/")}`;
+}
 
 function contentSessionCookie(
   token: string,
@@ -2014,8 +2080,7 @@ function tokenFromContentHost(
 }
 
 function isContentBootstrapRequest(requestUrl: URL): boolean {
-  return requestUrl.pathname === "/" &&
-    requestUrl.searchParams.has(contentBootstrapQueryParameter);
+  return requestUrl.searchParams.has(contentBootstrapQueryParameter);
 }
 
 async function serveWebAsset(

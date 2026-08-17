@@ -5,6 +5,7 @@ import {chromium, type Page} from "@playwright/test";
 
 import {
   createTestInstallation,
+  issueLocalBrowserLogin,
   removeTestInstallation,
   startTestServer,
 } from "../support/runtime-harness.js";
@@ -22,8 +23,9 @@ const page = await context.newPage();
 
 try {
   await mkdir(outputDirectory, {recursive: true});
+  const token = await issueLocalBrowserLogin(server, installation);
   const login = new URL("/auth/local", server.baseUrl);
-  login.searchParams.set("token", installation.browserBootstrapToken);
+  login.searchParams.set("token", token);
   await page.goto(login.toString());
   await page.getByRole("link", {name: "Artifact Server"}).waitFor();
 

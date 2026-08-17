@@ -714,9 +714,9 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       startInProcessExternalStorageServer(environment, externalStorageIdentity),
     ]);
 
-    const login = await fetch(
-      `${first.baseUrl}/auth/local?token=${browserBootstrapToken}`,
-      {redirect: "manual"},
+    const login = await localBrowserLogin(
+      first.baseUrl,
+      browserBootstrapToken,
     );
     expect(login.status).toBe(303);
     const cookies = applicationCookies(login.headers.getSetCookie());
@@ -1177,9 +1177,9 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       projectId: backupProject.id,
     });
     expect(published.response.status).toBe(201);
-    const login = await fetch(
-      `${source.baseUrl}/auth/local?token=${browserBootstrapToken}`,
-      {redirect: "manual"},
+    const login = await localBrowserLogin(
+      source.baseUrl,
+      browserBootstrapToken,
     );
     expect(login.status).toBe(303);
     const cookies = applicationCookies(login.headers.getSetCookie());
@@ -1802,6 +1802,28 @@ function mutateArtifact(
 interface ApplicationCookies {
   readonly csrf: string;
   readonly header: string;
+}
+
+async function localBrowserLogin(
+  baseUrl: string,
+  bootstrapToken: string,
+): Promise<Response> {
+  const issuedResponse = await fetch(`${baseUrl}/auth/local`, {
+    headers: {Authorization: `Bearer ${bootstrapToken}`},
+    method: "POST",
+  });
+  if (issuedResponse.status !== 201) {
+    throw new Error(
+      `Local browser login issuance failed with ${issuedResponse.status}.`,
+    );
+  }
+  const issued = z.object({
+    expiresAt: z.iso.datetime(),
+    token: z.string().min(32).max(200),
+  }).strict().parse(await issuedResponse.json());
+  return fetch(`${baseUrl}/auth/local?token=${issued.token}`, {
+    redirect: "manual",
+  });
 }
 
 function applicationCookies(

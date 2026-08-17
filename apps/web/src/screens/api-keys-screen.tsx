@@ -36,6 +36,12 @@ const capabilities: readonly {
   { description: "Create, rename, archive, and unarchive projects.", label: "Manage projects", value: "project:manage" },
 ];
 
+/** Format one instant as the browser's local wall-clock minute value. */
+export function formatDatetimeLocalMinimum(now: Date): string {
+  const localMilliseconds = now.getTime() - now.getTimezoneOffset() * 60_000;
+  return new Date(localMilliseconds).toISOString().slice(0, 16);
+}
+
 /** Administrator-only managed API key issuance and lifecycle surface. */
 export function ApiKeysScreen() {
   const [apiKeys, setApiKeys] = useState<readonly ManagedApiKey[]>([]);
@@ -158,7 +164,7 @@ export function ApiKeysScreen() {
                   <Label htmlFor="api-key-expiration">Expires at</Label>
                   <Input
                     id="api-key-expiration"
-                    min={new Date().toISOString().slice(0, 16)}
+                    min={formatDatetimeLocalMinimum(new Date())}
                     onChange={(event) => setExpiration(event.currentTarget.value)}
                     type="datetime-local"
                     value={expiration}

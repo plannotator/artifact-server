@@ -80,12 +80,17 @@ describe("local Artifact Server CLI", () => {
       expect(result.output).not.toContain(browserCredential);
       const loginUrl = new URL(await waitForFile(capturedUrl));
       expect(loginUrl.pathname).toBe("/auth/local");
-      expect(loginUrl.searchParams.get("token")).toBe(browserCredential);
       const serviceRecord = managedServiceRecordSchema.parse(JSON.parse(
         await readFile(path.join(dataDirectory, "local-service.json"), "utf8"),
       ));
       servicePid = serviceRecord.pid;
       expect((await fetch(new URL("/health", serviceRecord.origin))).status).toBe(200);
+      const oneTimeToken = loginUrl.searchParams.get("token");
+      expect(oneTimeToken).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+      expect(oneTimeToken).not.toBe(browserCredential);
+      const login = await fetch(loginUrl, {redirect: "manual"});
+      expect(login.status).toBe(303);
+      expect((await fetch(loginUrl, {redirect: "manual"})).status).toBe(401);
     } finally {
       if (servicePid !== undefined) {
         try {

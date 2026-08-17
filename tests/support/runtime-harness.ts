@@ -3,6 +3,8 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import {z} from "zod";
+
 import {
   type LocalServerConfig,
   startLocalServer,
@@ -125,6 +127,26 @@ export async function startTestServer(
     port: server.port,
     stop: () => server.close(),
   };
+}
+
+/** Exchange the stable test-only credential for one browser login token. */
+export async function issueLocalBrowserLogin(
+  server: RunningTestServer,
+  installation: TestInstallation,
+): Promise<string> {
+  const response = await fetch(new URL("/auth/local", server.baseUrl), {
+    headers: {
+      Authorization: `Bearer ${installation.browserBootstrapToken}`,
+    },
+    method: "POST",
+  });
+  if (response.status !== 201) {
+    throw new Error(`Local browser login issuance failed with ${response.status}.`);
+  }
+  return z.object({
+    expiresAt: z.iso.datetime(),
+    token: z.string().min(32).max(200),
+  }).strict().parse(await response.json()).token;
 }
 
 export async function fetchVersion(

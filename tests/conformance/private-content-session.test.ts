@@ -137,6 +137,37 @@ describe("private content sessions", () => {
     );
     expect(stylesheet.status).toBe(200);
     expect(await stylesheet.text()).toContain("rebeccapurple");
+
+    const fileIssueResponse = await fetch(
+      `${server.baseUrl}/api/v1/artifacts/${published.body.artifact.id}/versions/${published.body.version.id}/content-sessions?path=${encodeURIComponent("styles/site.css")}`,
+      {
+        headers: {Authorization: `Bearer ${installation.apiToken}`},
+        method: "POST",
+      },
+    );
+    expect(fileIssueResponse.status).toBe(201);
+    const fileIssued = bootstrapResponseSchema.parse(
+      await fileIssueResponse.json(),
+    );
+    expect(new URL(fileIssued.bootstrapUrl).pathname).toBe("/styles/site.css");
+    const fileExchange = await fetchVersion(server, fileIssued.bootstrapUrl);
+    expect(fileExchange.status).toBe(200);
+    expect(await fileExchange.clone().text()).toContain(
+      'content="0;url=/styles/site.css"',
+    );
+    const fileCookie = requiredHeader(
+      fileExchange.headers,
+      "set-cookie",
+    ).split(";", 1)[0];
+    if (fileCookie === undefined) throw new Error("The file content cookie is empty.");
+    const directedFile = await fetchVersion(
+      server,
+      new URL("/styles/site.css", fileIssued.bootstrapUrl).toString(),
+      "GET",
+      {Cookie: fileCookie},
+    );
+    expect(directedFile.status).toBe(200);
+    expect(await directedFile.text()).toContain("rebeccapurple");
   });
 
   test("AUTH-015-F: content sessions cannot cross version hosts or authorize writes", async () => {

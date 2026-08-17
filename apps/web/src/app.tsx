@@ -118,7 +118,7 @@ export function App() {
       </main>
     );
   }
-  if (error !== null && session === null) {
+  if (error !== null) {
     return (
       <main className="grid min-h-svh place-items-center bg-background p-5 text-foreground">
         <ErrorPanel error={error} onRetry={() => void bootstrap()} />
