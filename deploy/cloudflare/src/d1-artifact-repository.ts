@@ -1,5 +1,9 @@
 import {z} from "zod";
 
+import type {
+  ListPublicLinks,
+  PublicLinkInventoryPage,
+} from "../../../src/application/public-link-administration.js";
 import {
   ArtifactMutationConflict,
   ArtifactNotFound,
@@ -61,6 +65,10 @@ import type {
   StagedUploadRepository,
 } from "../../../src/core/ports.js";
 import {createManifest} from "../../../src/manifest/create-manifest.js";
+import {
+  publicLinkInventoryRowSchema,
+  publicLinkPageFromRows,
+} from "../../../src/storage/public-link-inventory-row.js";
 
 const accessSettingSchema = z.enum([
   accessSettings.accountRequired,
@@ -228,7 +236,11 @@ interface PageResult<Item> {
 }
 
 export type D1ArtifactRepository = ArtifactRepository &
-  ContentSessionRepository & ProjectRepository & StagedUploadRepository;
+  ContentSessionRepository & ProjectRepository & StagedUploadRepository & {
+    readonly listPublicLinks: (
+      command: ListPublicLinks,
+    ) => Promise<PublicLinkInventoryPage>;
+  };
 
 /** Build Artifact Server persistence ports over one installation-scoped D1 binding. */
 export function createD1ArtifactRepository(
@@ -1015,6 +1027,64 @@ export function createD1ArtifactRepository(
           Object.assign({}, artifact, {tags: await readTags(artifact.id)})),
       );
       return pageResult(items, parsed, command.limit);
+    },
+    listPublicLinks: async (
+      command: ListPublicLinks,
+    ): Promise<PublicLinkInventoryPage> => {
+      const result = await database.prepare(`
+        SELECT
+          artifact.id AS artifactId,
+          artifact.project_id AS projectId,
+          artifact.name AS artifactName,
+          artifact.access_setting AS accessSetting,
+          artifact.current_version_id AS currentVersionId,
+          artifact.created_at AS artifactCreatedAt,
+          artifact.deleted_at AS artifactDeletedAt,
+          project.installation_id AS installationId,
+          project.name AS projectName,
+          project.created_at AS projectCreatedAt,
+          project.archived_at AS projectArchivedAt,
+          version.id AS versionId,
+          version.number AS versionNumber,
+          version.manifest_digest AS manifestDigest,
+          version.entry_path AS entryPath,
+          version.routing_mode AS routingMode,
+          version.content_token AS contentToken,
+          version.publisher_principal_id AS publisherPrincipalId,
+          version.created_at AS versionCreatedAt
+        FROM artifacts artifact
+        INNER JOIN projects project ON project.id = artifact.project_id
+        INNER JOIN versions version
+          ON version.project_id = artifact.project_id
+          AND version.artifact_id = artifact.id
+          AND version.id = artifact.current_version_id
+        WHERE artifact.deleted_at IS NULL
+          AND artifact.access_setting = 'public_link'
+          AND (? IS NULL OR artifact.created_at < ?
+            OR (artifact.created_at = ? AND artifact.id < ?))
+        ORDER BY artifact.created_at DESC, artifact.id DESC
+        LIMIT ?
+      `).bind(
+        command.cursor?.createdAt ?? null,
+        command.cursor?.createdAt ?? null,
+        command.cursor?.createdAt ?? null,
+        command.cursor?.id ?? null,
+        command.limit + 1,
+      ).all<z.output<typeof publicLinkInventoryRowSchema>>();
+      const parsedRows = result.results.map((row) =>
+        publicLinkInventoryRowSchema.parse(row)
+      );
+      const artifacts = await Promise.all(parsedRows.map(async (row) => ({
+        accessSetting: row.accessSetting,
+        createdAt: row.artifactCreatedAt,
+        currentVersionId: row.currentVersionId,
+        deletedAt: row.artifactDeletedAt,
+        id: row.artifactId,
+        name: row.artifactName,
+        projectId: row.projectId,
+        tags: await readTags(row.artifactId),
+      })));
+      return publicLinkPageFromRows(parsedRows, artifacts, command.limit);
     },
     listArtifactActions: async (command: ListArtifactActions): Promise<ArtifactActionPage> => {
       const result = await database.prepare(`

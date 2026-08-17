@@ -28,7 +28,8 @@ This repository contains the local publication foundation and the first external
 - opaque browser sessions with host-only cookies and same-origin mutation checks;
 - managed human and service API keys with capabilities, expiry, rotation, and revocation;
 - a responsive management application for projects, artifacts, immutable
-  versions, comparisons, restores, action history, members, and API keys;
+  versions, comparisons, restores, action history, administrator public-link
+  inventory and shutdown, members, and API keys;
 - replaceable interactive login with a WorkOS AuthKit adapter;
 - authenticated artifact metadata, saved-version history, and canonical manifests;
 - manifest-based file comparisons with unambiguous rename detection;
@@ -542,6 +543,18 @@ an artifact's attributed action history, and tombstones an artifact without
 removing its committed versions. Restore, access changes, and deletion require
 an idempotency key and the current version ID observed by the caller; tag
 replacement follows the same rule.
+
+Installation administrators also have a **Public links** screen at
+`/administration/public-links`. Its specialized
+`GET /api/v1/administration/public-links` route lists active public-link
+artifacts across every project with bounded cursors and includes project,
+current-version, save-time, and public-URL context. The bounded
+`POST /api/v1/administration/public-links/make-private` route accepts at most
+100 exact artifact/project/current-version commands. It delegates every item
+to the normal visibility operation, so optimistic protection, idempotency, and
+`change_access` action records remain unchanged. Partial failures are returned
+per item for explicit retry. Successful items reject new unauthenticated origin
+requests; downloaded or externally cached copies cannot be recalled.
 
 ## File-upload protocol
 

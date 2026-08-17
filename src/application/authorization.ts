@@ -17,6 +17,9 @@ export interface AuthorizationDependencies {
 
 /** Authorization decisions shared by every application operation. */
 export interface AuthorizationOperations {
+  readonly requireInstallationAdministration: (
+    principal: Principal,
+  ) => Effect.Effect<void, AuthorizationDenied>;
   readonly requireArtifactListing: (
     principal: Principal,
   ) => Effect.Effect<void, AuthorizationDenied>;
@@ -82,6 +85,14 @@ function makeAuthorizationService(
     ) {
       return;
     }
+    yield* denied();
+  });
+
+  const requireInstallationAdministration = Effect.fn(
+    "AuthorizationService.requireInstallationAdministration",
+  )(function*(principal: Principal) {
+    yield* requireInstallation(principal);
+    if (isHumanAdministrator(principal)) return;
     yield* denied();
   });
 
@@ -198,6 +209,7 @@ function makeAuthorizationService(
   });
 
   return AuthorizationService.of({
+    requireInstallationAdministration,
     requireArtifactListing,
     requireArtifactCreation,
     requireArtifactManagement,

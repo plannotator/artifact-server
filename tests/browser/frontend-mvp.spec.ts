@@ -5,6 +5,7 @@ import {z} from "zod";
 import {
   apiHeaders,
   createTestInstallation,
+  fetchVersion,
   issueLocalBrowserLogin,
   removeTestInstallation,
   startTestServer,
@@ -235,6 +236,82 @@ test.describe("Artifact Server frontend MVP", () => {
       await fixture.page.getByRole("button", {name: "Tombstone artifact", exact: true}).last().click();
       await expect(fixture.page.getByRole("heading", {name: "Default"})).toBeVisible();
       await expect(fixture.page.getByText("Workflow fixture")).toHaveCount(0);
+    } finally {
+      await stopBrowserFixture(fixture);
+    }
+  });
+
+  test("administrators inventory public links across projects and retry stale bulk changes accessibly", async ({browser}) => {
+    const fixture = await startBrowserFixture(browser);
+    try {
+      const first = await publishNew(fixture.server, fixture.installation, {
+        accessSetting: "public_link",
+        content: "first public-link administration bytes",
+        idempotencyKey: "frontend-public-links-first",
+        name: "First public link",
+      });
+      const stale = await publishNew(fixture.server, fixture.installation, {
+        accessSetting: "public_link",
+        content: "stale public-link administration bytes",
+        idempotencyKey: "frontend-public-links-stale",
+        name: "Stale public link",
+      });
+      const otherProject = await createProject(fixture, "Public links project");
+      const other = await publishNew(fixture.server, fixture.installation, {
+        accessSetting: "public_link",
+        content: "cross-project public-link administration bytes",
+        idempotencyKey: "frontend-public-links-cross-project",
+        name: "Cross-project public link",
+        projectId: otherProject.id,
+      });
+
+      await localLogin(fixture);
+      await fixture.page.getByRole("link", {name: "Public links"}).click();
+      await expect(fixture.page.getByRole("heading", {name: "Public links"})).toBeVisible();
+      const firstRow = fixture.page.getByRole("row").filter({hasText: "First public link"});
+      await expect(firstRow.getByText("Default", {exact: true})).toBeVisible();
+      const crossProjectRow = fixture.page.getByRole("row").filter({
+        hasText: "Cross-project public link",
+      });
+      await expect(
+        crossProjectRow.getByText("Public links project", {exact: true}),
+      ).toBeVisible();
+      await expect(fixture.page.getByRole("button", {name: "Select all (3)"})).toBeVisible();
+      await expect(fixture.page.getByText("Version 1", {exact: true})).toHaveCount(3);
+      const accessibility = await new AxeBuilder({page: fixture.page})
+        .withTags(["wcag2a", "wcag2aa"])
+        .analyze();
+      expect(accessibility.violations).toEqual([]);
+
+      const otherRow = fixture.page.getByRole("row").filter({
+        hasText: "Cross-project public link",
+      });
+      await otherRow.getByRole("button", {name: "Make private"}).click();
+      await fixture.page.getByRole("button", {name: "Make private", exact: true}).last().click();
+      await expect(otherRow).toHaveCount(0);
+
+      await fixture.page.getByRole("checkbox", {name: "Select First public link"}).click();
+      await fixture.page.getByRole("checkbox", {name: "Select Stale public link"}).click();
+      await fixture.page.getByRole("button", {name: "Make 2 private"}).click();
+      const staleUpdate = await publishVersion(fixture.server, fixture.installation, {
+        artifactId: stale.body.artifact.id,
+        content: "updated after the administrator selected the row",
+        expectedCurrentVersionId: stale.body.version.id,
+        idempotencyKey: "frontend-public-links-stale-update",
+        projectId: "prj_default",
+      });
+      await fixture.page.getByRole("button", {name: "Make private", exact: true}).last().click();
+
+      await expect(fixture.page.getByText("1 link was not changed")).toBeVisible();
+      await expect(fixture.page.getByText(/1 public link is now private/u)).toBeVisible();
+      await expect(fixture.page.getByText("First public link")).toHaveCount(0);
+      await expect(fixture.page.getByRole("link", {name: "Stale public link"})).toBeVisible();
+      await fixture.page.getByRole("button", {name: "Retry failed"}).click();
+      await expect(fixture.page.getByRole("heading", {name: "No public links"})).toBeVisible();
+
+      expect((await fetch(first.body.links.artifact, {redirect: "manual"})).status).toBe(401);
+      expect((await fetch(other.body.links.artifact, {redirect: "manual"})).status).toBe(401);
+      expect((await fetchVersion(fixture.server, staleUpdate.body.links.version)).status).toBe(401);
     } finally {
       await stopBrowserFixture(fixture);
     }

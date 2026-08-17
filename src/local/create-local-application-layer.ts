@@ -44,6 +44,12 @@ import {
   ProjectManagementService,
 } from "../application/project-management.js";
 import {
+  type ListPublicLinks,
+  type PublicLinkAdministrationRepository,
+  PublicLinkAdministrationService,
+  type PublicLinkInventoryPage,
+} from "../application/public-link-administration.js";
+import {
   ArtifactNotFound,
   ArtifactMutationConflict,
   ArtifactRepositoryFailure,
@@ -107,12 +113,19 @@ export interface ApplicationAdapters {
   readonly repository: ArtifactRepository &
     ContentSessionRepository &
     ProjectRepository &
+    PublicLinkInventoryStore &
     StagedUploadRepository;
   readonly staging: StagingStore;
   readonly stagingCleanupPolicy?: {
     readonly concurrency: number;
     readonly settleDelayMilliseconds: number;
   };
+}
+
+interface PublicLinkInventoryStore {
+  readonly listPublicLinks: (
+    command: ListPublicLinks,
+  ) => Promise<PublicLinkInventoryPage>;
 }
 
 /** Build Node application services over the selected persistence adapters. */
@@ -129,6 +142,7 @@ export function createApplicationLayer(
   | InteractiveLoginService
   | PublishArtifactService
   | ProjectManagementService
+  | PublicLinkAdministrationService
   | StagedUploadService
 > {
   const clock = {
@@ -389,6 +403,13 @@ export function createApplicationLayer(
           catch: classifyRestoreFailure,
         }),
     },
+  };
+  const publicLinkAdministrationRepository: PublicLinkAdministrationRepository = {
+    listPublicLinks: (command) =>
+      Effect.tryPromise({
+        try: () => adapters.repository.listPublicLinks(command),
+        catch: (cause) => repositoryFailure("listPublicLinks", cause),
+      }),
   };
   const comparisonDependencies: CompareArtifactDependencies = {
     blobs: {
@@ -740,6 +761,11 @@ export function createApplicationLayer(
       Layer.mergeAll(authorizationLayer, identityLayer, projectLayer),
     ),
   );
+  const publicLinkAdministrationLayer = PublicLinkAdministrationService.layer(
+    publicLinkAdministrationRepository,
+  ).pipe(
+    Layer.provideMerge(Layer.mergeAll(authorizationLayer, managementLayer)),
+  );
   const comparisonLayer = CompareArtifactService.layer(
     comparisonDependencies,
   ).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)));
@@ -751,6 +777,7 @@ export function createApplicationLayer(
     contentLayer,
     cleanupLayer,
     managementLayer,
+    publicLinkAdministrationLayer,
     comparisonLayer,
     projectLayer,
   );

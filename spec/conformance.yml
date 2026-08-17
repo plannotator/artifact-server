@@ -81,7 +81,7 @@ required_source_sections:
   product: [PRD-003]
   artifact: [PRJ-001, PRJ-002, PRJ-003, PRJ-004, ART-001, ART-002, ART-003, ART-004, ART-005, ART-008]
   experience: [CNT-001, CNT-002, VER-001, DIF-001, GIT-001]
-  sharing: [AUTH-001, AUTH-002, AUTH-003, AUTH-004]
+  sharing: [AUTH-001, AUTH-002, AUTH-003, AUTH-004, AUTH-018]
   plannotator: [PLN-001, PLN-002, PLN-003, PLN-004, PLN-005, PLN-017]
   architecture: [ARC-001, ARC-002, ARC-006, PUB-001, CNT-003]
   mcp: [MCP-001, MCP-002, CLI-001, SKL-001]
@@ -1318,6 +1318,24 @@ requirements:
     status: specified
     depends_on: []
     evidence: []
+
+  - id: AUTH-018
+    kind: security
+    behavior: Installation administrators can page through every active public-link artifact across all projects and make one bounded selection account-required through the normal optimistic, idempotent, audited visibility operation with explicit partial-failure retry.
+    owner: web-application
+    source: {file: artifact-server-product-spec.html, anchor: sharing}
+    acceptance:
+      behavior: {id: AUTH-018-B, description: Page across projects, inspect project, artifact, current-version and public-URL context, make one or up to 100 selected links private, retry stale items, and observe one normal visibility action per successful item plus denial of new public origin bytes.}
+      failure: {id: AUTH-018-F, description: Deny non-administrators and oversized or duplicate bulk requests, preserve per-item stale-version protection, report partial failures without rolling back successful items, and never promise recall of downloaded or external cached copies.}
+    deployments: *all
+    status: behavior_verified
+    depends_on: [AUTH-007, AUTH-008, AUD-001]
+    evidence:
+      - deployment: local
+        tests: [AUTH-018-B, AUTH-018-F]
+        result: pass
+        run: evidence/local-foundation.json
+        recorded_at: "2026-08-17T03:20:00Z"
 
   - id: SEC-001
     kind: security

@@ -164,6 +164,8 @@ Public links use unpredictable identifiers and send `X-Robots-Tag: noindex, nofo
 
 The public link opens only the artifact's current version. Version lists, comparisons, and earlier saved versions remain account-required. When a new version becomes current, the old public version is removed from supported CDN caches and stops serving to new unauthenticated origin requests. Copies already downloaded or retained elsewhere cannot be recalled.
 
+An installation administrator has one **Public links** screen that lists every active public-link artifact across all projects with bounded cursor pagination. Each row identifies the project, artifact, current version and save time, and public URL. The administrator can make one row or a selection of at most 100 rows account-required. Selection controls distinguish the visible page from all pages loaded so far and claim installation-wide selection only after the final page is loaded. Each item uses the ordinary visibility operation with the current version observed by the administrator, its own idempotency key, and the normal action record. A stale or failed item does not prevent other items from succeeding; the interface reports each failure and can retry it with the required current-version refresh. Successful items stop authorizing new public origin requests, while the interface continues to state that downloaded or externally cached copies cannot be recalled.
+
 The mutation policy is separate from the two read settings:
 
 | Action | Admitted human member | Scoped service principal |

@@ -67,6 +67,14 @@ import type {
 } from "../core/ports.js";
 import { createManifest } from "../manifest/create-manifest.js";
 import {requiredSqliteSchemaVersion} from "./sqlite-schema.js";
+import type {
+  ListPublicLinks,
+  PublicLinkInventoryPage,
+} from "../application/public-link-administration.js";
+import {
+  publicLinkInventoryRowSchema,
+  publicLinkPageFromRows,
+} from "./public-link-inventory-row.js";
 
 const accessSettingSchema = z.enum([
   accessSettings.accountRequired,
@@ -803,6 +811,70 @@ export class SqliteArtifactRepository implements
         this.#withTagsForArtifacts(z.array(artifactRowSchema).parse(rows)),
         command.limit,
       );
+    });
+  }
+
+  /** List one bounded installation-wide page of active public-link artifacts. */
+  listPublicLinks(command: ListPublicLinks): Promise<PublicLinkInventoryPage> {
+    return Promise.resolve().then(() => {
+      const cursorCreatedAt = command.cursor?.createdAt ?? null;
+      const cursorId = command.cursor?.id ?? null;
+      const rows = this.#database
+        .prepare(
+          `SELECT
+            artifact.id AS artifactId,
+            artifact.project_id AS projectId,
+            artifact.name AS artifactName,
+            artifact.access_setting AS accessSetting,
+            artifact.current_version_id AS currentVersionId,
+            artifact.created_at AS artifactCreatedAt,
+            artifact.deleted_at AS artifactDeletedAt,
+            project.installation_id AS installationId,
+            project.name AS projectName,
+            project.created_at AS projectCreatedAt,
+            project.archived_at AS projectArchivedAt,
+            version.id AS versionId,
+            version.number AS versionNumber,
+            version.manifest_digest AS manifestDigest,
+            version.entry_path AS entryPath,
+            version.routing_mode AS routingMode,
+            version.content_token AS contentToken,
+            version.publisher_principal_id AS publisherPrincipalId,
+            version.created_at AS versionCreatedAt
+           FROM artifacts artifact
+           INNER JOIN projects project ON project.id = artifact.project_id
+           INNER JOIN versions version
+             ON version.project_id = artifact.project_id
+             AND version.artifact_id = artifact.id
+             AND version.id = artifact.current_version_id
+           WHERE artifact.deleted_at IS NULL
+             AND artifact.access_setting = 'public_link'
+             AND (
+               ? IS NULL
+               OR artifact.created_at < ?
+               OR (artifact.created_at = ? AND artifact.id < ?)
+             )
+           ORDER BY artifact.created_at DESC, artifact.id DESC
+           LIMIT ?`,
+        )
+        .all(
+          cursorCreatedAt,
+          cursorCreatedAt,
+          cursorCreatedAt,
+          cursorId,
+          command.limit + 1,
+        );
+      const parsedRows = z.array(publicLinkInventoryRowSchema).parse(rows);
+      const artifacts = this.#withTagsForArtifacts(parsedRows.map((row) => ({
+        accessSetting: row.accessSetting,
+        createdAt: row.artifactCreatedAt,
+        currentVersionId: row.currentVersionId,
+        deletedAt: row.artifactDeletedAt,
+        id: row.artifactId,
+        name: row.artifactName,
+        projectId: row.projectId,
+      })));
+      return publicLinkPageFromRows(parsedRows, artifacts, command.limit);
     });
   }
 

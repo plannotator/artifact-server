@@ -8,6 +8,7 @@ import { ArtifactDetailScreen } from "@/screens/artifact-detail-screen";
 import { ArtifactsScreen } from "@/screens/artifacts-screen";
 import { MembersScreen } from "@/screens/members-screen";
 import { ProjectsScreen } from "@/screens/projects-screen";
+import { PublicLinksScreen } from "@/screens/public-links-screen";
 
 type Route =
   | { readonly kind: "projects" }
@@ -19,6 +20,7 @@ type Route =
   }
   | { readonly kind: "members" }
   | { readonly kind: "apiKeys" }
+  | { readonly kind: "publicLinks" }
   | { readonly kind: "home" }
   | { readonly kind: "notFound" };
 
@@ -226,6 +228,13 @@ function ApplicationShell({
                 ? (
                   <>
                     <Button
+                      render={<a href="/administration/public-links" />}
+                      size="xs"
+                      variant={route.kind === "publicLinks" ? "secondary" : "ghost"}
+                    >
+                      Public links
+                    </Button>
+                    <Button
                       render={<a href="/administration/members" />}
                       size="xs"
                       variant={route.kind === "members" ? "secondary" : "ghost"}
@@ -337,6 +346,8 @@ function RouteContent({
       return administrator ? <MembersScreen /> : <ForbiddenAdministration />;
     case "apiKeys":
       return administrator ? <ApiKeysScreen /> : <ForbiddenAdministration />;
+    case "publicLinks":
+      return administrator ? <PublicLinksScreen /> : <ForbiddenAdministration />;
     case "notFound":
       return (
         <StatePanel
@@ -364,7 +375,7 @@ function MissingProject() {
 function ForbiddenAdministration() {
   return (
     <StatePanel
-      description="Only an installation administrator can manage members and API keys."
+      description="Only an installation administrator can manage public links, members, and API keys."
       title="Administrator permission required"
     />
   );
@@ -383,6 +394,7 @@ function parseRoute(pathname: string): Route {
   if (pathname === "/projects") return { kind: "projects" };
   if (pathname === "/administration/members") return { kind: "members" };
   if (pathname === "/administration/api-keys") return { kind: "apiKeys" };
+  if (pathname === "/administration/public-links") return { kind: "publicLinks" };
   const segments = pathname.split("/").filter((segment) => segment !== "");
   try {
     if (

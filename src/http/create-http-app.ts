@@ -29,6 +29,11 @@ import {
   ArtifactManagementService,
 } from "../application/artifact-management.js";
 import {
+  type MakePublicLinkPrivateResult,
+  PublicLinkAdministrationService,
+  type PublicLinkInventoryPage,
+} from "../application/public-link-administration.js";
+import {
   type ArtifactComparison,
   CompareArtifactService,
 } from "../application/compare-artifact.js";
@@ -166,6 +171,30 @@ const pageQuerySchema = z.object({
   cursor: z.string().max(1_024).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   tag: z.string().max(200).optional(),
+});
+const publicLinksPageQuerySchema = pageQuerySchema.omit({tag: true});
+const makePublicLinkPrivateItemSchema = z.object({
+  artifactId: z.string().min(1).max(200),
+  expectedCurrentVersionId: z.string().min(1).max(200),
+  idempotencyKey: z.string().min(16).max(200),
+  projectId: projectIdSchema,
+}).strict();
+const makePublicLinksPrivateSchema = z.object({
+  items: z.array(makePublicLinkPrivateItemSchema).min(1).max(100),
+}).strict().superRefine(({items}, context) => {
+  const seen = new Set<string>();
+  for (const item of items) {
+    const identity = `${item.projectId}\0${item.artifactId}`;
+    if (seen.has(identity)) {
+      context.addIssue({
+        code: "custom",
+        message: "A public-link bulk request cannot repeat an artifact.",
+        path: ["items"],
+      });
+      return;
+    }
+    seen.add(identity);
+  }
 });
 const pageCursorSchema = z.object({
   createdAt: z.string().min(1).max(100),
@@ -470,6 +499,7 @@ export function createHttpApp(
       "/projects/:projectId/artifacts/:artifactId",
       "/administration/members",
       "/administration/api-keys",
+      "/administration/public-links",
     ],
     (context) => serveWebAsset(context, dependencies, "/index.html", true),
   );
@@ -769,6 +799,44 @@ export function createHttpApp(
     );
     return context.json(issued, 201);
   });
+
+  app.get("/api/v1/administration/public-links", async (context) => {
+    const query = publicLinksPageQuerySchema.parse(context.req.query());
+    const page = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      PublicLinkAdministrationService.use((administration) =>
+        administration.listPublicLinks({
+          cursor: decodePageCursor(query.cursor),
+          limit: query.limit,
+          principal: context.get("principal"),
+        })
+      ),
+    );
+    return context.json(publicLinkInventoryPageResponse(
+      responseApplicationUrl(context, dependencies),
+      page,
+    ));
+  });
+
+  app.post(
+    "/api/v1/administration/public-links/make-private",
+    boundedJsonBody,
+    async (context) => {
+      const body = makePublicLinksPrivateSchema.parse(await context.req.json());
+      const results = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        PublicLinkAdministrationService.use((administration) =>
+          administration.makePrivate({
+            items: body.items,
+            principal: context.get("principal"),
+          })
+        ),
+      );
+      return context.json(publicLinkMutationResponse(results));
+    },
+  );
 
   app.get("/api/v1/projects", async (context) => {
     const projects = await runHttpApplicationEffect(
@@ -1645,6 +1713,64 @@ function artifactPageResponse(
       },
     })),
     nextCursor: encodePageCursor(page.nextCursor),
+  };
+}
+
+function publicLinkInventoryPageResponse(
+  requestUrl: URL,
+  page: PublicLinkInventoryPage,
+) {
+  return {
+    nextCursor: encodePageCursor(page.nextCursor),
+    publicLinks: page.items.map((item) => ({
+      artifact: item.artifact,
+      currentVersion: item.currentVersion,
+      links: {
+        public: artifactBrowserUrl(requestUrl, item.artifact.id),
+      },
+      project: item.project,
+    })),
+  };
+}
+
+function publicLinkMutationResponse(
+  results: readonly MakePublicLinkPrivateResult[],
+) {
+  const projected = results.map((result) => {
+    if (result.status === "made_private") {
+      return {
+        artifactId: result.item.artifactId,
+        currentVersionId: result.state.artifact.currentVersionId,
+        projectId: result.item.projectId,
+        replayed: result.replayed,
+        status: result.status,
+      };
+    }
+    const error = artifactServerFailureResponse(result.failure);
+    return {
+      artifactId: result.item.artifactId,
+      error: {code: error.code, message: error.message},
+      expectedCurrentVersionId: result.item.expectedCurrentVersionId,
+      projectId: result.item.projectId,
+      retry: result.failure._tag === "ArtifactMutationConflict"
+        ? "refresh_current_version" as const
+        : error.status >= 500
+        ? "same_command" as const
+        : "not_retryable" as const,
+      status: result.status,
+    };
+  });
+  const succeeded = projected.filter((result) =>
+    result.status === "made_private"
+  ).length;
+  return {
+    results: projected,
+    summary: {
+      failed: projected.length - succeeded,
+      requested: projected.length,
+      succeeded,
+    },
+    warning: "New public requests are blocked for successful items. Copies already downloaded or cached outside Artifact Server cannot be recalled.",
   };
 }
 

@@ -107,6 +107,65 @@ export type Manifest = z.infer<typeof manifestSchema>;
 export type ArtifactVersion = z.infer<typeof artifactVersionSchema>;
 export type ArtifactState = z.infer<typeof artifactStateSchema>;
 
+const publicLinkItemSchema = z.object({
+  artifact: artifactSchema,
+  currentVersion: versionSchema,
+  links: z.object({ public: z.url() }),
+  project: projectSchema,
+});
+
+const publicLinkPageSchema = z.object({
+  nextCursor: z.string().nullable(),
+  publicLinks: z.array(publicLinkItemSchema),
+});
+
+const makePublicLinkPrivateItemSchema = z.object({
+  artifactId: z.string(),
+  expectedCurrentVersionId: z.string(),
+  idempotencyKey: z.string(),
+  projectId: z.string(),
+});
+
+const publicLinkMutationResultSchema = z.discriminatedUnion("status", [
+  z.object({
+    artifactId: z.string(),
+    currentVersionId: z.string(),
+    projectId: z.string(),
+    replayed: z.boolean(),
+    status: z.literal("made_private"),
+  }),
+  z.object({
+    artifactId: z.string(),
+    error: z.object({code: z.string(), message: z.string()}),
+    expectedCurrentVersionId: z.string(),
+    projectId: z.string(),
+    retry: z.enum(["not_retryable", "refresh_current_version", "same_command"]),
+    status: z.literal("failed"),
+  }),
+]);
+
+const publicLinkMutationResponseSchema = z.object({
+  results: z.array(publicLinkMutationResultSchema),
+  summary: z.object({
+    failed: z.number().int().nonnegative(),
+    requested: z.number().int().positive(),
+    succeeded: z.number().int().nonnegative(),
+  }),
+  warning: z.string(),
+});
+
+export type PublicLinkItem = z.infer<typeof publicLinkItemSchema>;
+export type PublicLinkPage = z.infer<typeof publicLinkPageSchema>;
+export type MakePublicLinkPrivateItem = z.infer<
+  typeof makePublicLinkPrivateItemSchema
+>;
+export type PublicLinkMutationResult = z.infer<
+  typeof publicLinkMutationResultSchema
+>;
+export type PublicLinkMutationResponse = z.infer<
+  typeof publicLinkMutationResponseSchema
+>;
+
 export interface ArtifactPage {
   readonly artifacts: readonly {
     readonly artifact: Artifact;
@@ -401,6 +460,25 @@ export const api = {
     headers: mutationHeaders(),
     method: "POST",
   }),
+  publicLinks: (cursor: string | null) => {
+    const query = new URLSearchParams({ limit: "25" });
+    if (cursor !== null) query.set("cursor", cursor);
+    return request(
+      publicLinkPageSchema,
+      `/api/v1/administration/public-links?${query}`,
+    );
+  },
+  makePublicLinksPrivate: (
+    items: readonly MakePublicLinkPrivateItem[],
+  ) => request(
+    publicLinkMutationResponseSchema,
+    "/api/v1/administration/public-links/make-private",
+    {
+      body: JSON.stringify({ items }),
+      headers: mutationHeaders(),
+      method: "POST",
+    },
+  ),
   projects: () => request(
     z.object({ projects: z.array(projectSchema) }),
     "/api/v1/projects",

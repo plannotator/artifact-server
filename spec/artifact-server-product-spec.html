@@ -1984,6 +1984,20 @@
           </aside>
 
           <aside class="network-note">
+            <strong>Administrators can see and shut off active public links across the installation.</strong>
+            <p>
+              The administrator-only <strong>Public links</strong> screen uses bounded cursor pages
+              and shows each artifact's project, current version and save time, and public URL.
+              One row or a selection of at most 100 rows can be made account-required through the
+              ordinary visibility operation, with the observed current version, one idempotency key
+              and one action record per item. Selection copy distinguishes the visible page, loaded
+              pages, and the complete inventory. Stale or failed items are reported separately and
+              can be retried after refreshing their current version. Successful items stop new
+              public origin requests; downloaded or externally cached copies cannot be recalled.
+            </p>
+          </aside>
+
+          <aside class="network-note">
             <strong>Deployed processes expose one operational contract.</strong>
             <p>
               Every HTTP and MCP response receives a server-generated request ID. Artifact Server

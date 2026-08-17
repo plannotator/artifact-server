@@ -271,6 +271,7 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
       "listArtifactActions",
       "listArtifacts",
       "listArtifactVersions",
+      "listPublicLinks",
       "listExpiredStagedUploads",
       "markStagedFileUploaded",
       "removeExpiredStagedUpload",
