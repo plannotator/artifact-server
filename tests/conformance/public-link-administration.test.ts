@@ -163,7 +163,7 @@ describe("public-link administration", () => {
     }));
   });
 
-  test("AUTH-018-F: inventory and bulk shutdown reject non-administrators and oversized requests", async () => {
+  test("AUTH-018-F: bulk shutdown rejects invalid requests and preserves partial-failure retry semantics", async () => {
     const published = await publicArtifact(
       "Authorization fixture",
       "public-admin-authorization-fixture",
@@ -203,9 +203,18 @@ describe("public-link administration", () => {
     });
     expect((await fetch(published.links.artifact, {redirect: "manual"})).status)
       .toBe(302);
-  });
 
-  test("bounded bulk reports stale partial failure and retries with refreshed protection", async () => {
+    const duplicate = await makePrivate([
+      privateCommand(published, "public-admin-duplicate-first"),
+      privateCommand(published, "public-admin-duplicate-second"),
+    ]);
+    expect(duplicate.status).toBe(422);
+    await expect(duplicate.json()).resolves.toMatchObject({
+      error: {code: "INVALID_INPUT"},
+    });
+    expect((await fetch(published.links.artifact, {redirect: "manual"})).status)
+      .toBe(302);
+
     const first = await publicArtifact(
       "Bulk first",
       "public-admin-bulk-first",
@@ -242,6 +251,11 @@ describe("public-link administration", () => {
         status: "failed",
       }),
     ]));
+    expect(partial.warning).toContain("cannot be recalled");
+    await Promise.all([
+      expectNoPublicBytes(first),
+      expectNoPublicBytes(third),
+    ]);
     expect((await fetch(stale.links.artifact, {redirect: "manual"})).status).toBe(302);
 
     const retryCommand = privateCommand(
@@ -258,11 +272,7 @@ describe("public-link administration", () => {
     ])).json());
     expect(replay.results[0]).toMatchObject({replayed: true, status: "made_private"});
 
-    await Promise.all([
-      expectNoPublicBytes(first),
-      expectNoPublicBytes(staleUpdate.body),
-      expectNoPublicBytes(third),
-    ]);
+    await expectNoPublicBytes(staleUpdate.body);
   });
 
   async function publicArtifact(

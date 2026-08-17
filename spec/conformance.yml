@@ -1325,8 +1325,8 @@ requirements:
     owner: web-application
     source: {file: artifact-server-product-spec.html, anchor: sharing}
     acceptance:
-      behavior: {id: AUTH-018-B, description: Page across projects, inspect project, artifact, current-version and public-URL context, make one or up to 100 selected links private, retry stale items, and observe one normal visibility action per successful item plus denial of new public origin bytes.}
-      failure: {id: AUTH-018-F, description: Deny non-administrators and oversized or duplicate bulk requests, preserve per-item stale-version protection, report partial failures without rolling back successful items, and never promise recall of downloaded or external cached copies.}
+      behavior: {id: AUTH-018-B, description: "Page across projects, inspect project, artifact, current-version and public-URL context, make one or up to 100 selected links private, retry stale items, and observe one normal visibility action per successful item plus denial of new public origin bytes."}
+      failure: {id: AUTH-018-F, description: "Deny non-administrators and oversized or duplicate bulk requests, preserve per-item stale-version protection, report partial failures without rolling back successful items, and never promise recall of downloaded or external cached copies."}
     deployments: *all
     status: behavior_verified
     depends_on: [AUTH-007, AUTH-008, AUD-001]
