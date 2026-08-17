@@ -118,7 +118,7 @@ describe("local storage migration", () => {
     });
   });
 
-  test("PRJ-004-B PRJ-004-F: a populated pre-project database migrates once without changing identity or bytes", async () => {
+  test("a populated pre-project database migrates once without changing identity or bytes", async () => {
     const artifactId = "art_legacy_project_migration";
     const versionId = "ver_legacy_project_migration";
     const actionId = "act_legacy_project_migration";

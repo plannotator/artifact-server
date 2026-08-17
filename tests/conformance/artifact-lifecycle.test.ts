@@ -156,7 +156,7 @@ describe("artifact lifecycle", () => {
       .toBe(true);
   });
 
-  test("ART-006-B ART-006-F ART-007-B ART-007-F: deletion tombstones the artifact, blocks every read path, and retains committed versions", async () => {
+  test("ART-006-B ART-006-F ART-007-B: deletion tombstones the artifact, blocks every read path, and retains committed versions", async () => {
     const first = await publishNew(server, installation, {
       accessSetting: "public_link",
       content: "<!doctype html><title>Retained first version</title>",

@@ -78,7 +78,7 @@ describe("artifact comparisons", () => {
     await removeTestInstallation(installation);
   });
 
-  test("AUTH-004-B DIF-001-B DIF-001-F DIF-002-B DIF-002-F DIF-003-B DIF-003-F DIF-004-B DIF-004-F DIF-005-B DIF-005-F: public content exposes no history while authenticated comparisons work without Git", async () => {
+  test("AUTH-004-B DIF-001-B DIF-002-B DIF-002-F DIF-003-B DIF-003-F DIF-004-B DIF-004-F DIF-005-B DIF-005-F: public content exposes no history while authenticated comparisons work without Git", async () => {
     const ambiguousBytes = textBytes("ambiguous rename bytes");
     const beforeFiles: readonly TestSiteFile[] = [
       file("index.html", "text/html; charset=utf-8", "same\nbefore\nend\n"),

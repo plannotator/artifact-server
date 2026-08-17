@@ -249,7 +249,7 @@ describe("installation identity and access", () => {
     expect(await bearerStatus(server, humanKey.token)).toBe(401);
   });
 
-  test("AUTH-010-B AUTH-010-F AUTH-011-B AUTH-011-F AUTH-012-B AUTH-012-F AUTH-013-F: browser credentials stay on the application host and mutations require same-origin proof", async () => {
+  test("AUTH-010-B AUTH-010-F AUTH-011-B AUTH-011-F AUTH-012-B AUTH-012-F: browser credentials stay on the application host and mutations require same-origin proof", async () => {
     const localBrowserToken = await issueLocalBrowserLogin(server, installation);
     const login = await fetch(
       `${server.baseUrl}/auth/local?token=${localBrowserToken}`,

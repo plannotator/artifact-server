@@ -120,6 +120,14 @@ requirements.each_with_index do |requirement, index|
     {"behavior" => "#{id}-B", "failure" => "#{id}-F"}.each do |test_kind, expected_id|
       test = acceptance[test_kind]
       if test.is_a?(Hash)
+        unexpected_keys = test.keys - %w[id description]
+        unless unexpected_keys.empty?
+          add_error(
+            errors,
+            id,
+            "acceptance.#{test_kind} contains unexpected keys: #{unexpected_keys.map(&:inspect).join(", ")}",
+          )
+        end
         test_id = test["id"]
         add_error(errors, id, "#{test_kind} test ID must be #{expected_id}") unless test_id == expected_id
         add_error(errors, id, "#{test_kind} test needs a non-empty description") unless present_string?(test["description"])
@@ -192,6 +200,15 @@ requirements.each_with_index do |requirement, index|
       elsif evidence_path.extname == ".json" && record["result"] == "pass" && tests.is_a?(Array)
         begin
           report = JSON.parse(evidence_path.read)
+          if report.key?("success") && report["success"] != true
+            add_error(errors, evidence_location, "passing evidence report has success=#{report["success"].inspect}")
+          end
+          if report["numFailedTests"].is_a?(Integer) && report["numFailedTests"].positive?
+            add_error(errors, evidence_location, "passing evidence report records #{report["numFailedTests"]} failed test(s)")
+          end
+          if present_string?(report["target"]) && report["target"] != record["deployment"]
+            add_error(errors, evidence_location, "evidence target #{report["target"].inspect} does not match deployment #{record["deployment"].inspect}")
+          end
           passed_ids = Array(report["testResults"]).flat_map do |test_file|
             Array(test_file["assertionResults"]).select do |assertion|
               assertion["status"] == "passed"
@@ -209,14 +226,22 @@ requirements.each_with_index do |requirement, index|
   end
 
   status = requirement["status"]
+  behavior_id = "#{id}-B"
+  has_passing_proof = evidence.any? { |record| record.is_a?(Hash) && record["result"] == "pass" && !Array(record["tests"]).empty? }
+  has_behavior_proof = evidence.any? { |record| record.is_a?(Hash) && record["result"] == "pass" && Array(record["tests"]).include?(behavior_id) }
   if status == "behavior_verified"
-    behavior_id = "#{id}-B"
-    has_behavior_proof = evidence.any? { |record| record.is_a?(Hash) && record["result"] == "pass" && Array(record["tests"]).include?(behavior_id) }
     add_error(errors, id, "behavior_verified requires passing behavior-test evidence") unless has_behavior_proof
+  elsif status == "specified" && has_passing_proof
+    add_error(errors, id, "specified cannot retain passing implementation evidence; use implementing or remove unsupported evidence")
+  elsif status == "implementing" && has_behavior_proof
+    add_error(errors, id, "implementing has passing behavior-test evidence; use behavior_verified or remove unsupported evidence")
   elsif status == "blocked"
     add_error(errors, id, "blocked requires a non-empty blocker") unless present_string?(requirement["blocker"])
   elsif status == "not_applicable"
     add_error(errors, id, "not_applicable requires a non-empty rationale") unless present_string?(requirement["rationale"])
+  end
+  if status == "implementing" && !present_string?(requirement["proof_gap"])
+    add_error(errors, id, "implementing requires a non-empty proof_gap")
   end
 end
 

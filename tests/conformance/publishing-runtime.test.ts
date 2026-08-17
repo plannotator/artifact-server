@@ -41,7 +41,7 @@ describe("local publishing runtime", () => {
     await removeTestInstallation(installation);
   });
 
-  test("ART-001-B AUTH-004-F: versions keep identity while public access follows only the current version", async () => {
+  test("ART-001-B: versions keep identity while public access follows only the current version", async () => {
     const firstHtml = "<!doctype html><title>Version one</title><h1>One</h1>";
     const secondHtml = "<!doctype html><title>Version two</title><h1>Two</h1>";
     const first = await publishNew(server, installation, {

@@ -24,7 +24,7 @@ beforeAll(async () => {
 });
 
 describe("GCP Pulumi deployment", () => {
-  test("DEP-009-B: derives supported Cloud Run and Cloud SQL capacity", () => {
+  test("derives the configured Cloud Run and Cloud SQL capacity plan", () => {
     const configuration = parseGcpPulumiConfiguration(
       gcpInput(),
       "production",
@@ -51,7 +51,7 @@ describe("GCP Pulumi deployment", () => {
     )).toThrow("active Pulumi stack");
   });
 
-  test("DEP-009-B: defines a private-data GCP graph behind managed HTTPS", async () => {
+  test("defines a private-data GCP graph behind managed HTTPS", async () => {
     resources.length = 0;
     const configuration = parseGcpPulumiConfiguration(
       gcpInput(),
@@ -145,7 +145,7 @@ describe("GCP Pulumi deployment", () => {
     expect(JSON.stringify(deployment)).not.toContain("generated-database-password");
   });
 
-  test("DEP-009-F: adopts an existing GCP network without creating one", async () => {
+  test("adopts an existing GCP network without creating one", async () => {
     resources.length = 0;
     const configuration = parseGcpPulumiConfiguration(gcpInput({
       existingNetwork: {

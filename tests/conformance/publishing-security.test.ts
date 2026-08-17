@@ -99,7 +99,7 @@ describe("local publishing security boundaries", () => {
     expect(response.status).toBe(404);
   });
 
-  test("ART-002-F: API publication requires a trusted principal and creates nothing on rejection", async () => {
+  test("API publication requires a trusted principal and creates nothing on rejection", async () => {
     const requestBody = JSON.stringify({
       entryPath: "index.html",
       files: [{

@@ -41,7 +41,7 @@ describe("complete-site publishing", () => {
     await removeTestInstallation(installation);
   });
 
-  test("MAN-001-B MAN-002-B MAN-006-B CNT-005-B: a canonical complete site serves every declared file from one exact version origin", async () => {
+  test("MAN-006-B CNT-005-B: a canonical complete site serves every declared file from one exact version origin", async () => {
     const files = siteFixture();
     const firstPlan = await createStagedUpload(
       server,
@@ -268,7 +268,7 @@ describe("complete-site publishing", () => {
     expect(replay.body.version.id).toBe(committed.body.version.id);
   });
 
-  test("MAN-001-F MAN-005-F: absent entries, duplicate paths, and portable-name collisions are rejected before upload creation", async () => {
+  test("MAN-005-F: absent entries, duplicate paths, and portable-name collisions are rejected before upload creation", async () => {
     const bytes = utf8("content");
     const fingerprint = createHash("sha256").update(bytes).digest("hex");
     const invalidManifests = [
@@ -339,7 +339,7 @@ describe("complete-site publishing", () => {
     }
   });
 
-  test("CNT-001-B CNT-007-B CNT-007-F: SPA fallback is explicit, navigation-only, and never replaces an exact file", async () => {
+  test("CNT-007-B CNT-007-F: SPA fallback is explicit, navigation-only, and never replaces an exact file", async () => {
     const files: readonly TestSiteFile[] = [
       {
         bytes: utf8("console.log('exact asset');"),
@@ -429,7 +429,7 @@ describe("complete-site publishing", () => {
     expect(staticMissing.status).toBe(404);
   });
 
-  test("CNT-008-B CNT-008-F: immutable files support one bounded byte range without buffering the full object", async () => {
+  test("immutable files support one bounded byte range without buffering the full object", async () => {
     const bytes = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     const file = {bytes, mediaType: "video/mp4", path: "clip.mp4"};
     const planned = await createStagedUpload(

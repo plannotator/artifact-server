@@ -47,7 +47,7 @@ describe("project-scoped artifacts", () => {
     await removeTestInstallation(installation);
   });
 
-  test("PRJ-001-B PRJ-001-F PRJ-002-B PRJ-002-F: default use stays simple while project boundaries stay isolated", async () => {
+  test("default use stays simple while project boundaries stay isolated", async () => {
     const initialProjects = projectListSchema.parse(await (await apiFetch(
       "/api/v1/projects",
     )).json());
@@ -204,7 +204,7 @@ describe("project-scoped artifacts", () => {
     });
   });
 
-  test("PRJ-003-B PRJ-003-F: archive blocks writes but preserves exact history", async () => {
+  test("archive blocks writes but preserves exact history", async () => {
     const created = projectResponseSchema.parse(await (await apiFetch(
       "/api/v1/projects",
       {

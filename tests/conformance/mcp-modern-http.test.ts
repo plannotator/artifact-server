@@ -663,7 +663,7 @@ describe("modern MCP HTTP", () => {
     });
   });
 
-  test("MCP-009-B MCP-009-F: external credentials use the same installation and capability policy as HTTP", async () => {
+  test("external credentials use the same installation and capability policy as HTTP", async () => {
     expect.hasAssertions();
     const readToken = "mcp-read-only-external-token";
     const foreignToken = "mcp-foreign-installation-token";

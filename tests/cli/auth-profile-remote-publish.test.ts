@@ -331,7 +331,7 @@ describe("authenticated CLI profiles and remote publication", () => {
     }
   }, 30_000);
 
-  test("CLI-001-B CLI-001-F: completes browser PKCE, refresh, status, and revocation against real HTTP boundaries", async () => {
+  test("completes browser PKCE, refresh, status, and revocation against real HTTP boundaries", async () => {
     const temporaryDirectory = await mkdtemp(
       path.join(tmpdir(), "artifact-server-cli-oauth-"),
     );

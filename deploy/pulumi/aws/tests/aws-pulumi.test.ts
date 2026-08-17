@@ -56,7 +56,7 @@ beforeAll(async () => {
 });
 
 describe("AWS Pulumi deployment", () => {
-  test("DEP-008-B: derives supported capacity and rejects unsafe provider plans", () => {
+  test("derives the configured capacity plan and rejects unsafe combinations", () => {
     const configuration = parseAwsPulumiConfiguration(awsInput(), "production");
 
     expect(configuration.plan).toMatchObject({
@@ -97,7 +97,7 @@ describe("AWS Pulumi deployment", () => {
     }), "production")).toThrow("Fargate and RDS plans");
   });
 
-  test("DEP-008-F: rejects stack drift, incomplete network adoption, and private TLS ambiguity", () => {
+  test("rejects stack drift, incomplete network adoption, and private TLS ambiguity", () => {
     expect(() => parseAwsPulumiConfiguration(awsInput(), "staging"))
       .toThrow("active Pulumi stack");
     expect(() => parseAwsPulumiConfiguration(awsInput({
@@ -120,7 +120,7 @@ describe("AWS Pulumi deployment", () => {
     }), "production")).toThrow("shared cloud contract");
   });
 
-  test("DEP-008-B: defines the secure AWS resource graph and exact shared outputs", async () => {
+  test("defines the secure AWS resource graph and exact shared outputs", async () => {
     resources.length = 0;
     const configuration = parseAwsPulumiConfiguration(awsInput(), "production");
     const stackOutputs = await pulumi.runtime.runInPulumiStack(async () => {
@@ -245,7 +245,7 @@ describe("AWS Pulumi deployment", () => {
     expect(JSON.stringify(deployment)).not.toContain("generated-database-password");
   });
 
-  test("DEP-008-B DEP-008-F: adopts a private two-zone VPC without creating public infrastructure", async () => {
+  test("adopts a private two-zone VPC without creating public infrastructure", async () => {
     resources.length = 0;
     const configuration = parseAwsPulumiConfiguration(awsInput({
       dnsZoneIds: null,

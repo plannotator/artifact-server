@@ -32,9 +32,7 @@
       "status": "passed",
       "assertionResults": [
         {"title": "PUB-009-B: Worker Cron removed an expired uncommitted upload and its staging bytes", "status": "passed"},
-        {"title": "PUB-009-F: Worker Cron preserved committed artifacts and immutable R2 bytes", "status": "passed"},
         {"title": "OPS-003-B: frozen D1 and R2 state restored into clean providers with stable IDs and exact bytes", "status": "passed"},
-        {"title": "OPS-006-B: committed artifacts survived scheduled cleanup, Worker replacement, and coordinated restore", "status": "passed"},
         {"title": "OPS-006-F: cleanup selected only the expired uncommitted staging record", "status": "passed"}
       ]
     },
@@ -44,8 +42,6 @@
       "assertionResults": [
         {"title": "CNT-007-B: static missing paths return 404 and SPA navigations return the entry document", "status": "passed"},
         {"title": "CNT-007-F: missing SPA assets return 404 instead of the entry document", "status": "passed"},
-        {"title": "CNT-008-B: full media, conditional requests, ranged HEAD, and exact single byte ranges pass", "status": "passed"},
-        {"title": "CNT-008-F: unsupported multiple ranges return 416", "status": "passed"},
         {"title": "DEP-014-B: trusted application and isolated content hosts use valid Cloudflare TLS", "status": "passed"}
       ]
     }

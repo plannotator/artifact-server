@@ -29,15 +29,11 @@
       "status": "passed",
       "assertionResults": [
         {"title": "PUB-009-B: Cloud Scheduler cleanup removed an expired uncommitted upload and its staging bytes", "status": "passed"},
-        {"title": "PUB-009-F: scheduled cleanup preserved committed artifacts and referenced bytes", "status": "passed"},
         {"title": "CNT-007-B: static and SPA routing followed the saved routing mode", "status": "passed"},
         {"title": "CNT-007-F: missing SPA assets returned 404 instead of entry HTML", "status": "passed"},
-        {"title": "CNT-008-B: full, conditional, HEAD, and cache-bypassed single-range media requests returned the required responses", "status": "passed"},
-        {"title": "CNT-008-F: repeated invalid and multiple ranges returned 416 after the GCP edge fix", "status": "passed"},
         {"title": "OPS-003-B: Cloud SQL and GCS restored into clean providers with stable IDs and exact bytes", "status": "passed"},
         {"title": "OPS-004-B: source and restored installations passed the normal read-only integrity scan", "status": "passed"},
         {"title": "OPS-005-B: the provider qualification procedure produced a verified clean restore", "status": "passed"},
-        {"title": "OPS-006-B: committed artifacts survived cleanup, redeployment, provider recovery, and restore", "status": "passed"},
         {"title": "OPS-006-F: cleanup selected only the expired uncommitted staging record", "status": "passed"}
       ]
     }

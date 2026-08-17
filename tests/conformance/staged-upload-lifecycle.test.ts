@@ -173,7 +173,7 @@ describe("staged upload lifecycle", () => {
     }
   });
 
-  test("OPS-006-B: expiry closes only uncommitted staging while committed retries remain stable", async () => {
+  test("expiry closes only uncommitted staging while committed retries remain stable", async () => {
     expect.hasAssertions();
     const bytes = new TextEncoder().encode("staged lifecycle proof");
     const file = {
@@ -266,7 +266,7 @@ describe("staged upload lifecycle", () => {
     );
   });
 
-  test("PUB-009-B PUB-009-F OPS-006-F: cleanup is bounded, waits for settle, tolerates concurrent passes, and preserves committed work", async () => {
+  test("PUB-009-B OPS-006-F: cleanup is bounded, waits for settle, tolerates concurrent passes, and preserves committed work", async () => {
     const bytes = new TextEncoder().encode("cleanup lifecycle proof");
     const file = {
       mediaType: "text/plain",

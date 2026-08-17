@@ -115,7 +115,7 @@ describe("content access lifecycle", () => {
       ));
   });
 
-  test("AUTH-014-F: bootstrap replay, tampering, and host substitution do not grant a session", async () => {
+  test("bootstrap replay, tampering, and host substitution do not grant a session", async () => {
     expect.hasAssertions();
     const published = await publishPrivateArtifact(runtime);
     const issued = await runtime.runPromise(

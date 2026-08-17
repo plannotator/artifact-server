@@ -47,14 +47,6 @@
           "status": "passed"
         },
         {
-          "title": "CNT-008-B: conditional requests, HEAD, and exact media ranges pass",
-          "status": "passed"
-        },
-        {
-          "title": "CNT-008-F: unsupported multiple ranges return 416",
-          "status": "passed"
-        },
-        {
           "title": "DEP-014-B: application and version hosts resolve through separate domains with valid TLS",
           "status": "passed"
         }
