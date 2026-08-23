@@ -5,9 +5,14 @@ import type {
   PublicLinkInventoryPage,
 } from "../../../src/application/public-link-administration.js";
 import {
+  AgentDispatchNotFound,
   ArtifactMutationConflict,
   ArtifactNotFound,
+  CommentNotFound,
+  CommentResolved,
+  DispatchStateConflict,
   IdempotencyConflict,
+  InvalidDispatch,
   ProjectArchived,
   ProjectConflict,
   ProjectNotFound,
@@ -19,12 +24,25 @@ import {
   UploadNotFound,
   VersionNotFound,
 } from "../../../src/core/errors.js";
+import {principalKinds} from "../../../src/core/identity.js";
+import type {
+  ProjectGitHistoryStore,
+  StoreProjectGitHistorySetting,
+} from "../../../src/application/project-git-history.js";
 import {
   accessSettings,
+  agentDispatchStates,
   artifactActionKinds,
+  commentThreadStates,
+  dispatchedThreadFilters,
   fileDispositions,
+  registeredAgentKinds,
   routingModes,
   uploadStatuses,
+  type AgentDispatchCreation,
+  type AgentDispatchPage,
+  type AgentDispatchRecord,
+  type AgentDispatchState,
   type ArtifactActionPage,
   type ArtifactActionRecord,
   type ArtifactDeletion,
@@ -32,38 +50,66 @@ import {
   type ArtifactRecord,
   type ArtifactState,
   type ArtifactTombstone,
+  type CommentAuthor,
+  type CommentReplyCreation,
+  type CommentReplyRecord,
+  type CommentThreadCreation,
+  type CommentThreadDeletion,
+  type CommentThreadPage,
+  type CommentThreadRecord,
   type ContentSessionRecord,
   type ManifestEntry,
   type PageCursor,
   type PublishedVersion,
   type ProjectRecord,
+  type RegisteredAgentRecord,
   type StagedUpload,
   type StagedUploadFile,
   type VersionContent,
   type VersionRecord,
 } from "../../../src/core/model.js";
 import type {
+  AgentDispatchRepository,
   ArtifactRepository,
+  CancelAgentDispatch,
   ChangeArtifactAccessSetting,
   ChangeArtifactTags,
+  CommentRepository,
   CommitArtifactVersion,
   CommitNewArtifact,
   ContentSessionRepository,
+  CreateAgentDispatch,
+  CreateCommentReply,
+  CreateCommentThread,
   CreateContentBootstrap,
   CreateProject,
   CreateStagedUpload,
   DeleteArtifact,
+  DeleteCommentReply,
+  DeleteCommentThread,
   ExchangeContentBootstrap,
   ExpiredStagedUpload,
+  ListAgentDispatches,
   ListArtifactActions,
   ListArtifacts,
+  ListCommentThreads,
+  MarkDispatchDelivered,
+  MarkDispatchFailed,
   PublicationSource,
   ProjectRepository,
+  RegisterAgent,
   RenameProject,
   RestoreArtifactVersion,
   SetProjectArchive,
   StagedUploadRepository,
+  UpdateCommentReply,
+  UpdateCommentThread,
 } from "../../../src/core/ports.js";
+import {
+  agentDispatchLeaseMilliseconds,
+  agentUnavailableStalenessMilliseconds,
+  registeredAgentRetentionMilliseconds,
+} from "../../../src/core/publishing-limits.js";
 import {createManifest} from "../../../src/manifest/create-manifest.js";
 import {
   publicLinkInventoryRowSchema,
@@ -86,6 +132,12 @@ const uploadStatusSchema = z.enum([
 const actionSchema = z.enum([
   artifactActionKinds.changeAccess,
   artifactActionKinds.changeTags,
+  artifactActionKinds.commentCreate,
+  artifactActionKinds.commentDelete,
+  artifactActionKinds.commentReopen,
+  artifactActionKinds.commentReply,
+  artifactActionKinds.commentResolve,
+  artifactActionKinds.commentUpdate,
   artifactActionKinds.delete,
   artifactActionKinds.publish,
   artifactActionKinds.restore,
@@ -96,6 +148,18 @@ const projectRowSchema = z.object({
   id: z.string(),
   installationId: z.string(),
   name: z.string(),
+});
+const projectGitHistorySettingRowSchema = z.object({
+  enabled: z.union([z.literal(0), z.literal(1)]).transform((value) => value === 1),
+  projectId: z.string(),
+  updatedAt: z.string(),
+  updatedByPrincipalId: z.string(),
+});
+const projectGitHistoryEstimateRowSchema = z.object({
+  estimatedCopiedBytes: z.number().int().nonnegative(),
+  estimatedPointerBytes: z.number().int().nonnegative(),
+  repositories: z.number().int().nonnegative(),
+  versions: z.number().int().nonnegative(),
 });
 const artifactRowSchema = z.object({
   accessSetting: accessSettingSchema,
@@ -195,6 +259,103 @@ const contentRecordSchema = z.object({
   tokenDigest: z.string(),
   versionId: z.string(),
 });
+const commentPrincipalKindSchema = z.enum([
+  principalKinds.human,
+  principalKinds.service,
+]);
+const commentThreadStateSchema = z.enum([
+  commentThreadStates.open,
+  commentThreadStates.resolved,
+]);
+const commentThreadRowSchema = z.object({
+  anchorJson: z.string().nullable(),
+  artifactId: z.string(),
+  authorAuthorizedByPrincipalId: z.string().nullable(),
+  authorDisplayName: z.string(),
+  authorPrincipalId: z.string(),
+  authorPrincipalKind: commentPrincipalKindSchema,
+  body: z.string(),
+  createdAt: z.string(),
+  id: z.string(),
+  installationId: z.string(),
+  path: z.string().nullable(),
+  projectId: z.string(),
+  replyCount: z.number().int().nonnegative(),
+  resolvedAt: z.string().nullable(),
+  resolvedByAuthorizedByPrincipalId: z.string().nullable(),
+  resolvedByDisplayName: z.string().nullable(),
+  resolvedByPrincipalId: z.string().nullable(),
+  resolvedByPrincipalKind: commentPrincipalKindSchema.nullable(),
+  state: commentThreadStateSchema,
+  updatedAt: z.string(),
+  versionId: z.string(),
+});
+const commentReplyRowSchema = z.object({
+  authorAuthorizedByPrincipalId: z.string().nullable(),
+  authorDisplayName: z.string(),
+  authorPrincipalId: z.string(),
+  authorPrincipalKind: commentPrincipalKindSchema,
+  body: z.string(),
+  createdAt: z.string(),
+  id: z.string(),
+  projectId: z.string(),
+  threadId: z.string(),
+  updatedAt: z.string(),
+});
+const registeredAgentRowSchema = z.object({
+  agentSessionId: z.string().nullable(),
+  connectionKey: z.string(),
+  createdAt: z.string(),
+  displayName: z.string(),
+  id: z.string(),
+  installationId: z.string(),
+  kind: z.enum([registeredAgentKinds.pi]),
+  lastSeenAt: z.string(),
+  principalId: z.string(),
+  workingDirectory: z.string(),
+});
+const agentDispatchStateSchema = z.enum([
+  agentDispatchStates.addressed,
+  agentDispatchStates.canceled,
+  agentDispatchStates.claimed,
+  agentDispatchStates.delivered,
+  agentDispatchStates.failed,
+  agentDispatchStates.queued,
+]);
+const agentDispatchRowSchema = z.object({
+  addressedAt: z.string().nullable(),
+  agentDisplayName: z.string(),
+  agentId: z.string(),
+  canceledAt: z.string().nullable(),
+  claimedAt: z.string().nullable(),
+  createdAt: z.string(),
+  deliveredAt: z.string().nullable(),
+  failedAt: z.string().nullable(),
+  failureReason: z.string().nullable(),
+  id: z.string(),
+  idempotencyKey: z.string(),
+  installationId: z.string(),
+  leaseExpiresAt: z.string().nullable(),
+  note: z.string().nullable(),
+  projectId: z.string(),
+  senderAuthorizedByPrincipalId: z.string().nullable(),
+  senderDisplayName: z.string(),
+  senderPrincipalId: z.string(),
+  senderPrincipalKind: commentPrincipalKindSchema,
+  state: agentDispatchStateSchema,
+  threadIdsJson: z.string(),
+  updatedAt: z.string(),
+});
+const dispatchThreadCheckRowSchema = z.object({
+  dispatchId: z.string().nullable(),
+  id: z.string(),
+  state: commentThreadStateSchema,
+});
+const dispatchCandidateRowSchema = z.object({
+  id: z.string(),
+  installationId: z.string(),
+});
+const threadIdsSchema = z.array(z.string());
 const versionContentRowSchema = z.object({
   accessSetting: accessSettingSchema,
   artifactId: z.string(),
@@ -223,6 +384,62 @@ const versionSelect = `
     publisher_principal_id AS publisherPrincipalId, created_at AS createdAt
   FROM versions
 `;
+const commentThreadSelect = `
+  SELECT t.id, t.installation_id AS installationId,
+    t.project_id AS projectId, t.artifact_id AS artifactId,
+    t.version_id AS versionId, t.path, t.anchor_json AS anchorJson,
+    t.body, t.state,
+    t.author_principal_id AS authorPrincipalId,
+    t.author_principal_kind AS authorPrincipalKind,
+    t.author_display_name AS authorDisplayName,
+    t.author_authorized_by_principal_id AS authorAuthorizedByPrincipalId,
+    t.resolved_at AS resolvedAt,
+    t.resolved_by_principal_id AS resolvedByPrincipalId,
+    t.resolved_by_principal_kind AS resolvedByPrincipalKind,
+    t.resolved_by_display_name AS resolvedByDisplayName,
+    t.resolved_by_authorized_by_principal_id AS resolvedByAuthorizedByPrincipalId,
+    t.created_at AS createdAt, t.updated_at AS updatedAt,
+    (SELECT COUNT(*) FROM comment_replies r WHERE r.thread_id = t.id) AS replyCount
+  FROM comment_threads t
+`;
+const registeredAgentSelect = `
+  SELECT id, installation_id AS installationId,
+    connection_key AS connectionKey, display_name AS displayName, kind,
+    working_directory AS workingDirectory,
+    agent_session_id AS agentSessionId, principal_id AS principalId,
+    created_at AS createdAt, last_seen_at AS lastSeenAt
+  FROM registered_agents
+`;
+const agentDispatchSelect = `
+  SELECT d.id, d.installation_id AS installationId,
+    d.project_id AS projectId, d.agent_id AS agentId,
+    d.agent_display_name AS agentDisplayName,
+    d.thread_ids_json AS threadIdsJson, d.note, d.state,
+    d.sender_principal_id AS senderPrincipalId,
+    d.sender_principal_kind AS senderPrincipalKind,
+    d.sender_display_name AS senderDisplayName,
+    d.sender_authorized_by_principal_id AS senderAuthorizedByPrincipalId,
+    d.idempotency_key AS idempotencyKey, d.claimed_at AS claimedAt,
+    d.lease_expires_at AS leaseExpiresAt, d.delivered_at AS deliveredAt,
+    d.addressed_at AS addressedAt, d.failed_at AS failedAt,
+    d.failure_reason AS failureReason, d.canceled_at AS canceledAt,
+    d.created_at AS createdAt, d.updated_at AS updatedAt
+  FROM agent_dispatches d
+`;
+const commentReplySelect = `
+  SELECT r.id, r.thread_id AS threadId, r.project_id AS projectId, r.body,
+    r.author_principal_id AS authorPrincipalId,
+    r.author_principal_kind AS authorPrincipalKind,
+    r.author_display_name AS authorDisplayName,
+    r.author_authorized_by_principal_id AS authorAuthorizedByPrincipalId,
+    r.created_at AS createdAt, r.updated_at AS updatedAt
+  FROM comment_replies r
+`;
+const commentThreadScope =
+  "FROM comment_threads t WHERE t.id = ? AND t.project_id = ? AND t.artifact_id = ?";
+const commentReplyScope = `FROM comment_threads t
+  JOIN comment_replies r ON r.thread_id = t.id AND r.id = ?
+  WHERE t.id = ? AND t.project_id = ? AND t.artifact_id = ?`;
 const idempotencySelect = `
   SELECT access_setting AS accessSetting, artifact_id AS artifactId,
     input_digest AS inputDigest, operation, tags_json AS tagsJson,
@@ -235,12 +452,68 @@ interface PageResult<Item> {
   readonly nextCursor: PageCursor | null;
 }
 
-export type D1ArtifactRepository = ArtifactRepository &
-  ContentSessionRepository & ProjectRepository & StagedUploadRepository & {
+export type D1ArtifactRepository = AgentDispatchRepository & ArtifactRepository &
+  CommentRepository & ContentSessionRepository & ProjectRepository &
+  ProjectGitHistoryStore & StagedUploadRepository & {
     readonly listPublicLinks: (
       command: ListPublicLinks,
     ) => Promise<PublicLinkInventoryPage>;
   };
+
+/**
+ * D1 binds at most 100 parameters per statement, and a batch is the only
+ * atomicity D1 offers, so every row of one publication has to reach the
+ * database inside a single batch. Multi-row INSERT statements carry the same
+ * rows in far fewer statements: each statement takes the parameter budget
+ * divided by the columns one row binds.
+ * https://developers.cloudflare.com/d1/platform/limits/
+ */
+const maximumBoundParametersPerStatement = 100;
+const manifestEntryColumns = [
+  "version_id",
+  "path",
+  "size",
+  "media_type",
+  "sha256",
+  "disposition",
+];
+const stagedUploadFileColumns = [
+  "upload_id",
+  "storage_token",
+  "path",
+  "size",
+  "media_type",
+  "sha256",
+  "disposition",
+];
+
+const buildManifest = (
+  version: VersionRecord,
+  stored: readonly z.output<typeof entryRowSchema>[],
+) => {
+  const manifest = createManifest({
+    entryPath: version.entryPath,
+    files: stored.map(({mediaType, path, sha256, size}) => ({
+      mediaType,
+      path,
+      sha256,
+      size,
+    })),
+    routingMode: version.routingMode,
+  });
+  if (manifest.digest !== version.manifestDigest) {
+    throw new Error(`Saved version ${version.id} has an invalid manifest digest.`);
+  }
+  const canonicalByPath = new Map(
+    manifest.entries.map((entry) => [entry.path, entry] as const),
+  );
+  for (const storedEntry of stored) {
+    if (canonicalByPath.get(storedEntry.path)?.disposition !== storedEntry.disposition) {
+      throw new Error(`Saved version ${version.id} has invalid serving metadata.`);
+    }
+  }
+  return manifest;
+};
 
 /** Build Artifact Server persistence ports over one installation-scoped D1 binding. */
 export function createD1ArtifactRepository(
@@ -280,12 +553,21 @@ export function createD1ArtifactRepository(
     artifactId: string,
     includeDeleted = false,
   ): Promise<ArtifactRecord | null> => {
-    const row = await database.prepare(`${artifactSelect}
-      WHERE project_id = ? AND id = ? ${includeDeleted ? "" : "AND deleted_at IS NULL"}
-    `).bind(projectId, artifactId).first<z.input<typeof artifactRowSchema>>();
+    const [artifactResult, tagsResult] = await database.batch([
+      database.prepare(`${artifactSelect}
+        WHERE project_id = ? AND id = ? ${includeDeleted ? "" : "AND deleted_at IS NULL"}
+      `).bind(projectId, artifactId),
+      database.prepare(`
+        SELECT artifact_id AS artifactId, tag FROM artifact_tags
+        WHERE artifact_id = ? ORDER BY tag
+      `).bind(artifactId),
+    ]);
+    const row = artifactResult?.results[0] ?? null;
     if (row === null) return null;
     const artifact = artifactRowSchema.parse(row);
-    return {...artifact, tags: await readTags(artifact.id)};
+    const tags = (tagsResult?.results ?? [])
+      .map((tagRow) => tagRowSchema.parse(tagRow).tag);
+    return {...artifact, tags};
   };
   const readArtifact = async (
     projectId: string,
@@ -305,35 +587,6 @@ export function createD1ArtifactRepository(
     `).bind(projectId, versionId, artifactId)
       .first<z.input<typeof versionRowSchema>>();
     return row === null ? null : versionRowSchema.parse(row);
-  };
-  const readManifest = async (version: VersionRecord) => {
-    const result = await database.prepare(`
-      SELECT path, size, media_type AS mediaType, sha256, disposition
-      FROM manifest_entries WHERE version_id = ? ORDER BY path
-    `).bind(version.id).all<z.input<typeof entryRowSchema>>();
-    const stored = result.results.map((row) => entryRowSchema.parse(row));
-    const manifest = createManifest({
-      entryPath: version.entryPath,
-      files: stored.map(({mediaType, path, sha256, size}) => ({
-        mediaType,
-        path,
-        sha256,
-        size,
-      })),
-      routingMode: version.routingMode,
-    });
-    if (manifest.digest !== version.manifestDigest) {
-      throw new Error(`Saved version ${version.id} has an invalid manifest digest.`);
-    }
-    const canonicalByPath = new Map(
-      manifest.entries.map((entry) => [entry.path, entry] as const),
-    );
-    for (const storedEntry of stored) {
-      if (canonicalByPath.get(storedEntry.path)?.disposition !== storedEntry.disposition) {
-        throw new Error(`Saved version ${version.id} has invalid serving metadata.`);
-      }
-    }
-    return manifest;
   };
   const readPublishedVersion = async (
     projectId: string,
@@ -475,6 +728,30 @@ export function createD1ArtifactRepository(
       replayed,
       version,
     };
+  };
+  /**
+   * Build the fewest INSERT statements that carry every row while each one
+   * stays inside D1's per-statement parameter budget, so a publication of any
+   * declared size still commits as one atomic batch.
+   */
+  const insertRowsStatements = (
+    table: string,
+    columns: readonly string[],
+    rows: readonly (readonly (number | string | null)[])[],
+  ): readonly D1PreparedStatement[] => {
+    const rowsPerStatement = Math.floor(
+      maximumBoundParametersPerStatement / columns.length,
+    );
+    const rowPlaceholders = `(${columns.map(() => "?").join(", ")})`;
+    const statements: D1PreparedStatement[] = [];
+    for (let start = 0; start < rows.length; start += rowsPerStatement) {
+      const chunk = rows.slice(start, start + rowsPerStatement);
+      statements.push(database.prepare(
+        `INSERT INTO ${table} (${columns.join(", ")})
+          VALUES ${chunk.map(() => rowPlaceholders).join(", ")}`,
+      ).bind(...chunk.flat()));
+    }
+    return statements;
   };
   const actionStatement = (
     command: {
@@ -619,18 +896,18 @@ export function createD1ArtifactRepository(
       command.principalId,
       command.createdAt,
     ),
-    ...command.manifest.entries.map((entry) => database.prepare(`
-      INSERT INTO manifest_entries (
-        version_id, path, size, media_type, sha256, disposition
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `).bind(
-      command.versionId,
-      entry.path,
-      entry.size,
-      entry.mediaType,
-      entry.sha256,
-      entry.disposition,
-    )),
+    ...insertRowsStatements(
+      "manifest_entries",
+      manifestEntryColumns,
+      command.manifest.entries.map((entry) => [
+        command.versionId,
+        entry.path,
+        entry.size,
+        entry.mediaType,
+        entry.sha256,
+        entry.disposition,
+      ]),
+    ),
   ];
   const managementReplay = async (
     command: {readonly idempotencyKey: string; readonly inputDigest: string; readonly projectId: string},
@@ -680,6 +957,327 @@ export function createD1ArtifactRepository(
     }
   };
 
+  const readThreadRowOrNull = async (
+    projectId: string,
+    artifactId: string,
+    threadId: string,
+  ): Promise<z.infer<typeof commentThreadRowSchema> | null> => {
+    const row = await database.prepare(`${commentThreadSelect}
+      WHERE t.id = ? AND t.project_id = ? AND t.artifact_id = ?
+    `).bind(threadId, projectId, artifactId)
+      .first<z.input<typeof commentThreadRowSchema>>();
+    return row === null ? null : commentThreadRowSchema.parse(row);
+  };
+  const readThreadRow = async (
+    projectId: string,
+    artifactId: string,
+    threadId: string,
+  ): Promise<z.infer<typeof commentThreadRowSchema>> => {
+    const row = await readThreadRowOrNull(projectId, artifactId, threadId);
+    if (row === null) {
+      throw new Error(
+        `Comment thread ${threadId} was not found after a successful write.`,
+      );
+    }
+    return row;
+  };
+  const readIdempotentThreadRowOrNull = async (
+    projectId: string,
+    idempotencyKey: string,
+  ): Promise<z.infer<typeof commentThreadRowSchema> | null> => {
+    const row = await database.prepare(`${commentThreadSelect}
+      WHERE t.project_id = ? AND t.idempotency_key = ?
+    `).bind(projectId, idempotencyKey)
+      .first<z.input<typeof commentThreadRowSchema>>();
+    return row === null ? null : commentThreadRowSchema.parse(row);
+  };
+  const readReplyRowOrNull = async (
+    replyId: string,
+  ): Promise<z.infer<typeof commentReplyRowSchema> | null> => {
+    const row = await database.prepare(`${commentReplySelect} WHERE r.id = ?`)
+      .bind(replyId).first<z.input<typeof commentReplyRowSchema>>();
+    return row === null ? null : commentReplyRowSchema.parse(row);
+  };
+  const readReplyRow = async (
+    replyId: string,
+  ): Promise<z.infer<typeof commentReplyRowSchema>> => {
+    const row = await readReplyRowOrNull(replyId);
+    if (row === null) {
+      throw new Error(
+        `Comment reply ${replyId} was not found after a successful write.`,
+      );
+    }
+    return row;
+  };
+  const readIdempotentReplyRowOrNull = async (
+    projectId: string,
+    idempotencyKey: string,
+  ): Promise<z.infer<typeof commentReplyRowSchema> | null> => {
+    const row = await database.prepare(`${commentReplySelect}
+      WHERE r.project_id = ? AND r.idempotency_key = ?
+    `).bind(projectId, idempotencyKey)
+      .first<z.input<typeof commentReplyRowSchema>>();
+    return row === null ? null : commentReplyRowSchema.parse(row);
+  };
+  const commentActionStatement = (
+    entry: {
+      readonly action: ArtifactActionRecord["action"];
+      readonly actionId: string | null;
+      readonly authorizedByPrincipalId: string | null;
+      readonly changedAt: string;
+      readonly idempotencyKey: string;
+      readonly principalId: string;
+    },
+    source: string,
+    sourceBindings: readonly string[],
+  ): D1PreparedStatement => database.prepare(`
+    INSERT INTO actions (
+      id, project_id, artifact_id, version_id, action, principal_id,
+      authorized_by_principal_id, idempotency_key, created_at
+    )
+    SELECT COALESCE(?, lower(hex(randomblob(16)))), t.project_id, t.artifact_id,
+      t.version_id, ?, ?, ?, ?, ?
+    ${source}
+  `).bind(
+    entry.actionId,
+    entry.action,
+    entry.principalId,
+    entry.authorizedByPrincipalId,
+    entry.idempotencyKey,
+    entry.changedAt,
+    ...sourceBindings,
+  );
+
+  const readAgentRowOrNull = async (
+    scopeInstallationId: string,
+    agentId: string,
+  ): Promise<RegisteredAgentRecord | null> => {
+    const row = await database.prepare(`${registeredAgentSelect}
+      WHERE installation_id = ? AND id = ?
+    `).bind(scopeInstallationId, agentId)
+      .first<z.input<typeof registeredAgentRowSchema>>();
+    return row === null ? null : registeredAgentRowSchema.parse(row);
+  };
+  const readAgentRowByConnectionKey = async (
+    scopeInstallationId: string,
+    principalId: string,
+    connectionKey: string,
+  ): Promise<RegisteredAgentRecord> => {
+    const row = await database.prepare(`${registeredAgentSelect}
+      WHERE installation_id = ? AND principal_id = ? AND connection_key = ?
+    `).bind(scopeInstallationId, principalId, connectionKey)
+      .first<z.input<typeof registeredAgentRowSchema>>();
+    if (row === null) {
+      throw new Error(
+        `Registered agent ${connectionKey} was not found after a successful write.`,
+      );
+    }
+    return registeredAgentRowSchema.parse(row);
+  };
+  const readDispatchRowOrNull = async (
+    scopeInstallationId: string,
+    dispatchId: string,
+  ): Promise<z.infer<typeof agentDispatchRowSchema> | null> => {
+    const row = await database.prepare(`${agentDispatchSelect}
+      WHERE d.installation_id = ? AND d.id = ?
+    `).bind(scopeInstallationId, dispatchId)
+      .first<z.input<typeof agentDispatchRowSchema>>();
+    return row === null ? null : agentDispatchRowSchema.parse(row);
+  };
+  const readDispatchRow = async (
+    scopeInstallationId: string,
+    dispatchId: string,
+  ): Promise<z.infer<typeof agentDispatchRowSchema>> => {
+    const row = await readDispatchRowOrNull(scopeInstallationId, dispatchId);
+    if (row === null) {
+      throw new Error(
+        `Agent dispatch ${dispatchId} was not found after a successful write.`,
+      );
+    }
+    return row;
+  };
+  const readIdempotentDispatchRowOrNull = async (
+    scopeInstallationId: string,
+    projectId: string,
+    idempotencyKey: string,
+  ): Promise<z.infer<typeof agentDispatchRowSchema> | null> => {
+    const row = await database.prepare(`${agentDispatchSelect}
+      WHERE d.installation_id = ? AND d.project_id = ? AND d.idempotency_key = ?
+    `).bind(scopeInstallationId, projectId, idempotencyKey)
+      .first<z.input<typeof agentDispatchRowSchema>>();
+    return row === null ? null : agentDispatchRowSchema.parse(row);
+  };
+  const failedDispatchStatements = (
+    dispatchId: string,
+    reason: string,
+    failedAt: string,
+  ): readonly D1PreparedStatement[] => [
+    database.prepare(`
+      UPDATE agent_dispatches
+      SET state = 'failed', failed_at = ?, failure_reason = ?, updated_at = ?,
+        claimed_at = NULL, lease_expires_at = NULL
+      WHERE id = ?
+    `).bind(failedAt, reason, failedAt, dispatchId),
+    // A permanent failure returns the annotations to the artifact surfaces,
+    // which is a thread edit: a `since` poller must see them come back.
+    database.prepare(`
+      UPDATE comment_threads SET dispatch_id = NULL, updated_at = ?
+      WHERE dispatch_id = ?
+    `).bind(failedAt, dispatchId),
+  ];
+  /**
+   * Stamp addressed when every bundle thread is resolved, exactly once. Thread
+   * resolution is the ground truth; the markers stay in place because the
+   * threads are resolved and already invisible.
+   */
+  const addressedStatement = (
+    scope: string,
+    scopeBindings: readonly string[],
+    now: string,
+  ): D1PreparedStatement => database.prepare(`
+    UPDATE agent_dispatches
+    SET state = 'addressed', addressed_at = ?, updated_at = ?
+    WHERE ${scope} AND state = 'delivered'
+      AND json_array_length(thread_ids_json) > 0
+      AND (
+        SELECT COUNT(*) FROM json_each(thread_ids_json) member
+        JOIN comment_threads t ON t.id = member.value AND t.state = 'resolved'
+      ) = json_array_length(thread_ids_json)
+  `).bind(now, now, ...scopeBindings);
+  /**
+   * The lazy transition set applied on the read path, in machine order: an
+   * expired claim lease returns to queued, a queued dispatch whose agent
+   * stopped polling fails as agent_unavailable and releases its threads, and a
+   * delivered dispatch whose every bundle thread is resolved is stamped
+   * addressed once. Each statement carries its own precondition, so the batch
+   * is one atomic pass whichever transitions apply.
+   */
+  const transitionStatements = (
+    scope: string,
+    scopeBindings: readonly string[],
+    now: string,
+  ): readonly D1PreparedStatement[] => [
+    database.prepare(`
+      UPDATE agent_dispatches
+      SET state = 'queued', claimed_at = NULL, lease_expires_at = NULL,
+        updated_at = ?
+      WHERE ${scope} AND state = 'claimed' AND lease_expires_at < ?
+    `).bind(now, ...scopeBindings, now),
+    database.prepare(`
+      UPDATE agent_dispatches
+      SET state = 'failed', failed_at = ?, failure_reason = 'agent_unavailable',
+        updated_at = ?, claimed_at = NULL, lease_expires_at = NULL
+      WHERE ${scope} AND state = 'queued' AND NOT EXISTS (
+        SELECT 1 FROM registered_agents a
+        WHERE a.id = agent_dispatches.agent_id AND a.last_seen_at >= ?
+      )
+    `).bind(
+      now,
+      now,
+      ...scopeBindings,
+      isoBefore(now, agentUnavailableStalenessMilliseconds),
+    ),
+    database.prepare(`
+      UPDATE comment_threads SET dispatch_id = NULL, updated_at = ?
+      WHERE dispatch_id IN (
+        SELECT id FROM agent_dispatches
+        WHERE ${scope} AND state IN ('failed', 'canceled')
+      )
+    `).bind(now, ...scopeBindings),
+    addressedStatement(scope, scopeBindings, now),
+  ];
+  const applyDispatchTransitions = async (
+    dispatchId: string,
+    now: string,
+  ): Promise<void> => {
+    await database.batch([...transitionStatements("id = ?", [dispatchId], now)]);
+  };
+  const applyProjectTransitions = async (
+    scopeInstallationId: string,
+    projectId: string,
+    now: string,
+  ): Promise<void> => {
+    await database.batch([...transitionStatements(
+      "installation_id = ? AND project_id = ?",
+      [scopeInstallationId, projectId],
+      now,
+    )]);
+  };
+  const assertSendableThreads = async (
+    command: CreateAgentDispatch,
+  ): Promise<void> => {
+    if (command.threadIds.length === 0) return;
+    const placeholders = command.threadIds.map(() => "?").join(", ");
+    const result = await database.prepare(`
+      SELECT id, state, dispatch_id AS dispatchId FROM comment_threads
+      WHERE installation_id = ? AND project_id = ? AND id IN (${placeholders})
+    `).bind(command.installationId, command.projectId, ...command.threadIds)
+      .all<z.input<typeof dispatchThreadCheckRowSchema>>();
+    const found = new Map<string, z.infer<typeof dispatchThreadCheckRowSchema>>();
+    for (const row of result.results) {
+      const parsed = dispatchThreadCheckRowSchema.parse(row);
+      found.set(parsed.id, parsed);
+    }
+    for (const threadId of command.threadIds) {
+      const row = found.get(threadId);
+      if (row === undefined) {
+        throw new InvalidDispatch({
+          message:
+            "The bundle references a comment thread that does not exist in this project.",
+        });
+      }
+      if (row.state !== commentThreadStates.open) {
+        throw new InvalidDispatch({
+          message: "The bundle references a comment thread that is not open.",
+        });
+      }
+      if (row.dispatchId !== null) {
+        throw new InvalidDispatch({
+          message:
+            "The bundle references a comment thread that is already dispatched.",
+        });
+      }
+    }
+  };
+  /**
+   * Apply one dispatch transition together with the thread markers it moves.
+   * The guard reads the pre-state inside the batch, so a dispatch that left
+   * the allowed set concurrently aborts every statement in the transition.
+   */
+  const applyGuardedTransition = async (
+    guardKey: string,
+    scopeInstallationId: string,
+    dispatchId: string,
+    allowedStates: readonly AgentDispatchState[],
+    statements: readonly D1PreparedStatement[],
+    refusal: string,
+  ): Promise<void> => {
+    const placeholders = allowedStates.map(() => "?").join(", ");
+    try {
+      await database.batch([
+        ...mutationGuardStatements(
+          `${guardKey}:${dispatchId}`,
+          `SELECT 1 FROM agent_dispatches
+            WHERE id = ? AND state IN (${placeholders})`,
+          [dispatchId, ...allowedStates],
+        ),
+        ...statements,
+      ]);
+    } catch (cause) {
+      const current = await readDispatchRowOrNull(
+        scopeInstallationId,
+        dispatchId,
+      );
+      if (current === null) throw missingDispatch();
+      if (!allowedStates.includes(current.state)) {
+        throw new DispatchStateConflict({
+          message: `A ${current.state} dispatch cannot be ${refusal}.`,
+        });
+      }
+      throw cause;
+    }
+  };
+
   return {
     assertPublicationSourceReady: assertSourceReady,
     close: () => undefined,
@@ -716,6 +1314,88 @@ export function createD1ArtifactRepository(
       `).bind(installationId).all<z.input<typeof projectRowSchema>>();
       return result.results.map((row) => projectRowSchema.parse(row));
     },
+    readProjectGitHistorySetting: async (projectId: string) => {
+      const row = await database.prepare(`
+        SELECT project_id AS projectId, enabled,
+          updated_by_principal_id AS updatedByPrincipalId,
+          updated_at AS updatedAt
+        FROM git_history_project_settings
+        WHERE installation_id = ? AND project_id = ?
+      `).bind(installationId, projectId).first();
+      return projectGitHistorySettingRowSchema.nullable().parse(row);
+    },
+    estimateProjectGitHistory: async (
+      projectId: string,
+      limits: {readonly fileCopyBytes: number; readonly versionCopyBytes: number},
+    ) => {
+      const row = await database.prepare(`
+        WITH active_versions AS (
+          SELECT version.id
+          FROM versions version
+          JOIN artifacts artifact ON artifact.id = version.artifact_id
+          WHERE version.project_id = ?
+            AND artifact.project_id = ?
+            AND artifact.deleted_at IS NULL
+        ), version_totals AS (
+          SELECT active.id,
+            COALESCE(SUM(entry.size), 0) AS totalBytes,
+            COALESCE(SUM(CASE
+              WHEN entry.size <= ? THEN entry.size ELSE 0
+            END), 0) AS eligibleBytes
+          FROM active_versions active
+          LEFT JOIN manifest_entries entry ON entry.version_id = active.id
+          GROUP BY active.id
+        )
+        SELECT
+          (SELECT COUNT(*) FROM artifacts
+            WHERE project_id = ? AND deleted_at IS NULL) AS repositories,
+          (SELECT COUNT(*) FROM active_versions) AS versions,
+          COALESCE(SUM(CASE
+            WHEN eligibleBytes > ? THEN ? ELSE eligibleBytes
+          END), 0) AS estimatedCopiedBytes,
+          COALESCE(SUM(totalBytes - CASE
+            WHEN eligibleBytes > ? THEN ? ELSE eligibleBytes
+          END), 0) AS estimatedPointerBytes
+        FROM version_totals
+      `).bind(
+        projectId,
+        projectId,
+        limits.fileCopyBytes,
+        projectId,
+        limits.versionCopyBytes,
+        limits.versionCopyBytes,
+        limits.versionCopyBytes,
+        limits.versionCopyBytes,
+      ).first();
+      return projectGitHistoryEstimateRowSchema.parse(row);
+    },
+    storeProjectGitHistorySetting: async (setting: StoreProjectGitHistorySetting) => {
+      await database.prepare(`
+        INSERT INTO git_history_project_settings (
+          project_id, installation_id, enabled,
+          updated_by_principal_id, updated_at
+        ) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(project_id) DO UPDATE SET
+          enabled = excluded.enabled,
+          updated_by_principal_id = excluded.updated_by_principal_id,
+          updated_at = excluded.updated_at
+        WHERE installation_id = excluded.installation_id
+      `).bind(
+        setting.projectId,
+        installationId,
+        setting.enabled ? 1 : 0,
+        setting.updatedByPrincipalId,
+        setting.updatedAt,
+      ).run();
+      const row = await database.prepare(`
+        SELECT project_id AS projectId, enabled,
+          updated_by_principal_id AS updatedByPrincipalId,
+          updated_at AS updatedAt
+        FROM git_history_project_settings
+        WHERE installation_id = ? AND project_id = ?
+      `).bind(installationId, setting.projectId).first();
+      return projectGitHistorySettingRowSchema.parse(row);
+    },
     renameProject: async (command: RenameProject) => {
       const result = await database.prepare(`
         UPDATE projects SET name = ? WHERE installation_id = ? AND id = ?
@@ -749,20 +1429,21 @@ export function createD1ArtifactRepository(
           command.createdAt,
           command.expiresAt,
         ),
-        ...command.files.map((file) => database.prepare(`
-          INSERT INTO staged_upload_files (
-            upload_id, storage_token, path, size, media_type,
-            sha256, disposition, uploaded_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
-        `).bind(
-          command.id,
-          file.storageToken,
-          file.entry.path,
-          file.entry.size,
-          file.entry.mediaType,
-          file.entry.sha256,
-          file.entry.disposition,
-        )),
+        // `uploaded_at` stays out of the column list so it defaults to NULL:
+        // every bound column costs part of the per-statement budget.
+        ...insertRowsStatements(
+          "staged_upload_files",
+          stagedUploadFileColumns,
+          command.files.map((file) => [
+            command.id,
+            file.storageToken,
+            file.entry.path,
+            file.entry.size,
+            file.entry.mediaType,
+            file.entry.sha256,
+            file.entry.disposition,
+          ]),
+        ),
       ]);
       const upload = await readStagedUploadOrNull(
         command.projectId,
@@ -944,10 +1625,22 @@ export function createD1ArtifactRepository(
         ? null
         : readPublishedVersion(row.projectId, row.currentVersionId, false);
     },
-    findArtifactVersion: async (projectId, artifactId, versionId) => {
-      if (await readArtifactOrNull(projectId, artifactId) === null) return null;
-      const version = await readVersionOrNull(projectId, versionId, artifactId);
-      return version === null ? null : {manifest: await readManifest(version), version};
+    findVersionRecord: async (projectId, artifactId, versionId) => {
+      const [versionResult, entriesResult] = await database.batch([
+        database.prepare(`${versionSelect}
+          WHERE project_id = ? AND id = ? AND artifact_id = ?
+        `).bind(projectId, versionId, artifactId),
+        database.prepare(`
+          SELECT path, size, media_type AS mediaType, sha256, disposition
+          FROM manifest_entries WHERE version_id = ? ORDER BY path
+        `).bind(versionId),
+      ]);
+      const versionRow = versionResult?.results[0] ?? null;
+      if (versionRow === null) return null;
+      const version = versionRowSchema.parse(versionRow);
+      const stored = (entriesResult?.results ?? [])
+        .map((row) => entryRowSchema.parse(row));
+      return {manifest: buildManifest(version, stored), version};
     },
     listArtifactVersions: async (projectId, artifactId) => {
       if (await readArtifactOrNull(projectId, artifactId) === null) return [];
@@ -1443,6 +2136,900 @@ export function createD1ArtifactRepository(
         .first<z.input<typeof contentRecordSchema>>();
       return row === null ? null : contentRecordSchema.parse(row);
     },
+    createThread: async (
+      command: CreateCommentThread,
+    ): Promise<CommentThreadCreation> => {
+      const anchorJson = serializeCommentAnchor(command);
+      const replayed = await readIdempotentThreadRowOrNull(
+        command.projectId,
+        command.idempotencyKey,
+      );
+      if (replayed !== null) return replayedThread(replayed, command, anchorJson);
+      try {
+        await database.batch([
+          database.prepare(`
+            INSERT INTO comment_threads (
+              id, installation_id, project_id, artifact_id, version_id, path,
+              anchor_json, body, state, author_principal_id,
+              author_principal_kind, author_display_name,
+              author_authorized_by_principal_id, resolved_at,
+              resolved_by_principal_id, resolved_by_principal_kind,
+              resolved_by_display_name, resolved_by_authorized_by_principal_id,
+              idempotency_key, created_at, updated_at
+            ) VALUES (
+              ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?,
+              NULL, NULL, NULL, NULL, NULL, ?, ?, ?
+            )
+          `).bind(
+            command.id,
+            command.installationId,
+            command.projectId,
+            command.artifactId,
+            command.versionId,
+            command.path,
+            anchorJson,
+            command.body,
+            command.author.principalId,
+            command.author.principalKind,
+            command.author.displayName,
+            command.author.authorizedByPrincipalId,
+            command.idempotencyKey,
+            command.createdAt,
+            command.createdAt,
+          ),
+          actionStatement(
+            {
+              artifactId: command.artifactId,
+              authorizedByPrincipalId: command.author.authorizedByPrincipalId,
+              createdAt: command.createdAt,
+              idempotencyKey: commentActionIdentity(command.id).idempotencyKey,
+              principalId: command.author.principalId,
+              projectId: command.projectId,
+            },
+            command.versionId,
+            artifactActionKinds.commentCreate,
+          ),
+        ]);
+      } catch (cause) {
+        const raced = await readIdempotentThreadRowOrNull(
+          command.projectId,
+          command.idempotencyKey,
+        );
+        if (raced !== null) return replayedThread(raced, command, anchorJson);
+        throw cause;
+      }
+      return {
+        replayed: false,
+        thread: commentThreadFromRow(
+          await readThreadRow(command.projectId, command.artifactId, command.id),
+        ),
+      };
+    },
+    findThread: async (projectId, artifactId, threadId) => {
+      const row = await readThreadRowOrNull(projectId, artifactId, threadId);
+      return row === null ? null : commentThreadFromRow(row);
+    },
+    findIdempotentThread: async (projectId, idempotencyKey) => {
+      const row = await readIdempotentThreadRowOrNull(projectId, idempotencyKey);
+      return row === null ? null : commentThreadFromRow(row);
+    },
+    listThreads: async (
+      command: ListCommentThreads,
+    ): Promise<CommentThreadPage> => {
+      // Excluding actively dispatched threads by default is what makes a send
+      // consumptive on every existing surface without a client change.
+      const dispatchedPredicate =
+        command.dispatched === dispatchedThreadFilters.include
+          ? "1 = 1"
+          : command.dispatched === dispatchedThreadFilters.only
+          ? "t.dispatch_id IS NOT NULL"
+          : "t.dispatch_id IS NULL";
+      const result = await database.prepare(`${commentThreadSelect}
+        WHERE t.project_id = ? AND t.artifact_id = ?
+          AND ${dispatchedPredicate}
+          AND (? IS NULL OR t.version_id = ?)
+          AND (? IS NULL OR t.state = ?)
+          AND (? IS NULL OR t.updated_at >= ?)
+          AND (? IS NULL OR t.created_at < ? OR (t.created_at = ? AND t.id < ?))
+        ORDER BY t.created_at DESC, t.id DESC LIMIT ?
+      `).bind(
+        command.projectId,
+        command.artifactId,
+        command.versionId,
+        command.versionId,
+        command.state,
+        command.state,
+        command.since,
+        command.since,
+        command.cursor?.createdAt ?? null,
+        command.cursor?.createdAt ?? null,
+        command.cursor?.createdAt ?? null,
+        command.cursor?.id ?? null,
+        command.limit + 1,
+      ).all<z.input<typeof commentThreadRowSchema>>();
+      const parsed = result.results.map((row) => commentThreadRowSchema.parse(row));
+      return pageResult(
+        parsed.slice(0, command.limit).map(commentThreadFromRow),
+        parsed,
+        command.limit,
+      );
+    },
+    updateThread: async (
+      command: UpdateCommentThread,
+    ): Promise<CommentThreadRecord> => {
+      const resolution = command.state?.resolvedBy ?? null;
+      const stateChanged = command.state === null ? 0 : 1;
+      const commentAction = commentActionIdentity(command.threadId);
+      try {
+        await database.batch([
+          database.prepare(`
+            UPDATE comment_threads SET
+              body = COALESCE(?, body),
+              anchor_json = CASE WHEN ? = 1 THEN ? ELSE anchor_json END,
+              state = COALESCE(?, state),
+              resolved_at = CASE WHEN ? = 1 THEN ? ELSE resolved_at END,
+              resolved_by_principal_id =
+                CASE WHEN ? = 1 THEN ? ELSE resolved_by_principal_id END,
+              resolved_by_principal_kind =
+                CASE WHEN ? = 1 THEN ? ELSE resolved_by_principal_kind END,
+              resolved_by_display_name =
+                CASE WHEN ? = 1 THEN ? ELSE resolved_by_display_name END,
+              resolved_by_authorized_by_principal_id =
+                CASE WHEN ? = 1 THEN ?
+                ELSE resolved_by_authorized_by_principal_id END,
+              updated_at = ?
+            WHERE id = ? AND project_id = ? AND artifact_id = ?
+          `).bind(
+            command.body,
+            command.anchor === null ? 0 : 1,
+            command.anchor === null ? null : serializeCommentAnchor(command.anchor),
+            command.state?.state ?? null,
+            stateChanged,
+            command.state?.resolvedAt ?? null,
+            stateChanged,
+            resolution?.principalId ?? null,
+            stateChanged,
+            resolution?.principalKind ?? null,
+            stateChanged,
+            resolution?.displayName ?? null,
+            stateChanged,
+            resolution?.authorizedByPrincipalId ?? null,
+            command.updatedAt,
+            command.threadId,
+            command.projectId,
+            command.artifactId,
+          ),
+          // Reopening a thread returns it to the artifact surfaces. A marker
+          // whose bundle already reached the agent has nothing left to hold:
+          // keeping it would strand the reopened thread off every default
+          // listing and refuse every later send, with no route that clears it.
+          database.prepare(`
+            UPDATE comment_threads SET dispatch_id = NULL
+            WHERE ? = 1 AND id = ? AND state = ? AND dispatch_id IN (
+              SELECT id FROM agent_dispatches
+              WHERE state IN ('delivered', 'addressed', 'failed', 'canceled')
+            )
+          `).bind(
+            command.state?.state === commentThreadStates.open ? 1 : 0,
+            command.threadId,
+            commentThreadStates.open,
+          ),
+          commentActionStatement(
+            {
+              action: commentUpdateActionKind(command),
+              actionId: commentAction.actionId,
+              authorizedByPrincipalId: command.authorizedByPrincipalId,
+              changedAt: command.updatedAt,
+              idempotencyKey: commentAction.idempotencyKey,
+              principalId: command.principalId,
+            },
+            `${commentThreadScope} AND t.updated_at = ?`,
+            [
+              command.threadId,
+              command.projectId,
+              command.artifactId,
+              command.updatedAt,
+            ],
+          ),
+          ...mutationGuardStatements(
+            `comment-update:${command.projectId}:${command.threadId}`,
+            `SELECT 1 FROM comment_threads
+              WHERE id = ? AND project_id = ? AND artifact_id = ? AND updated_at = ?`,
+            [
+              command.threadId,
+              command.projectId,
+              command.artifactId,
+              command.updatedAt,
+            ],
+          ),
+        ]);
+      } catch (cause) {
+        const existing = await readThreadRowOrNull(
+          command.projectId,
+          command.artifactId,
+          command.threadId,
+        );
+        if (existing === null) throw missingComment();
+        throw cause;
+      }
+      return commentThreadFromRow(await readThreadRow(
+        command.projectId,
+        command.artifactId,
+        command.threadId,
+      ));
+    },
+    deleteThread: async (
+      command: DeleteCommentThread,
+    ): Promise<CommentThreadDeletion> => {
+      const row = await readThreadRowOrNull(
+        command.projectId,
+        command.artifactId,
+        command.threadId,
+      );
+      if (row === null) throw missingComment();
+      const commentAction = commentActionIdentity(command.threadId);
+      try {
+        const results = await database.batch([
+          commentActionStatement(
+            {
+              action: artifactActionKinds.commentDelete,
+              actionId: commentAction.actionId,
+              authorizedByPrincipalId: command.authorizedByPrincipalId,
+              changedAt: command.deletedAt,
+              idempotencyKey: commentAction.idempotencyKey,
+              principalId: command.principalId,
+            },
+            commentThreadScope,
+            [command.threadId, command.projectId, command.artifactId],
+          ),
+          database.prepare("DELETE FROM comment_replies WHERE thread_id = ?")
+            .bind(command.threadId),
+          database.prepare(`
+            DELETE FROM comment_threads
+            WHERE id = ? AND project_id = ? AND artifact_id = ?
+          `).bind(command.threadId, command.projectId, command.artifactId),
+          ...mutationGuardStatements(
+            `comment-delete:${command.projectId}:${command.threadId}`,
+            `SELECT 1 FROM actions
+              WHERE project_id = ? AND artifact_id = ? AND idempotency_key = ?
+                AND action = ?`,
+            [
+              command.projectId,
+              command.artifactId,
+              commentAction.idempotencyKey,
+              artifactActionKinds.commentDelete,
+            ],
+          ),
+        ]);
+        return {
+          deletedReplyCount: results[1]?.meta.changes ?? 0,
+          thread: commentThreadFromRow(row),
+        };
+      } catch (cause) {
+        const existing = await readThreadRowOrNull(
+          command.projectId,
+          command.artifactId,
+          command.threadId,
+        );
+        if (existing === null) throw missingComment();
+        throw cause;
+      }
+    },
+    createReply: async (
+      command: CreateCommentReply,
+    ): Promise<CommentReplyCreation> => {
+      const replayed = await readIdempotentReplyRowOrNull(
+        command.projectId,
+        command.idempotencyKey,
+      );
+      if (replayed !== null) return replayedReply(replayed, command);
+      try {
+        await database.batch([
+          database.prepare(`
+            INSERT INTO comment_replies (
+              id, thread_id, project_id, body, author_principal_id,
+              author_principal_kind, author_display_name,
+              author_authorized_by_principal_id, idempotency_key,
+              created_at, updated_at
+            )
+            SELECT ?, t.id, t.project_id, ?, ?, ?, ?, ?, ?, ?, ?
+            FROM comment_threads t
+            WHERE t.id = ? AND t.project_id = ? AND t.artifact_id = ?
+              AND t.state = 'open'
+          `).bind(
+            command.id,
+            command.body,
+            command.author.principalId,
+            command.author.principalKind,
+            command.author.displayName,
+            command.author.authorizedByPrincipalId,
+            command.idempotencyKey,
+            command.createdAt,
+            command.createdAt,
+            command.threadId,
+            command.projectId,
+            command.artifactId,
+          ),
+          database.prepare(
+            "UPDATE comment_threads SET updated_at = ? WHERE id = ?",
+          ).bind(command.createdAt, command.threadId),
+          commentActionStatement(
+            {
+              action: artifactActionKinds.commentReply,
+              actionId: null,
+              authorizedByPrincipalId: command.author.authorizedByPrincipalId,
+              changedAt: command.createdAt,
+              idempotencyKey:
+                commentActionIdentity(command.threadId).idempotencyKey,
+              principalId: command.author.principalId,
+            },
+            commentReplyScope,
+            [
+              command.id,
+              command.threadId,
+              command.projectId,
+              command.artifactId,
+            ],
+          ),
+          ...mutationGuardStatements(
+            `comment-reply:${command.projectId}:${command.idempotencyKey}`,
+            "SELECT 1 FROM comment_replies WHERE id = ?",
+            [command.id],
+          ),
+        ]);
+      } catch (cause) {
+        const raced = await readIdempotentReplyRowOrNull(
+          command.projectId,
+          command.idempotencyKey,
+        );
+        if (raced !== null) return replayedReply(raced, command);
+        const thread = await readThreadRowOrNull(
+          command.projectId,
+          command.artifactId,
+          command.threadId,
+        );
+        if (thread === null) throw missingComment();
+        if (thread.state === commentThreadStates.resolved) throw resolvedComment();
+        throw cause;
+      }
+      return {replayed: false, reply: commentReplyFromRow(await readReplyRow(command.id))};
+    },
+    findIdempotentReply: async (projectId, idempotencyKey) => {
+      const row = await readIdempotentReplyRowOrNull(projectId, idempotencyKey);
+      return row === null ? null : commentReplyFromRow(row);
+    },
+    listReplies: async (
+      threadId: string,
+    ): Promise<readonly CommentReplyRecord[]> => {
+      const result = await database.prepare(`${commentReplySelect}
+        WHERE r.thread_id = ? ORDER BY r.created_at ASC, r.id ASC
+      `).bind(threadId).all<z.input<typeof commentReplyRowSchema>>();
+      return result.results.map((row) =>
+        commentReplyFromRow(commentReplyRowSchema.parse(row)));
+    },
+    updateReply: async (
+      command: UpdateCommentReply,
+    ): Promise<CommentReplyRecord> => {
+      const commentAction = commentActionIdentity(command.threadId);
+      try {
+        await database.batch([
+          database.prepare(`
+            UPDATE comment_replies SET body = ?, updated_at = ?
+            WHERE id = ? AND thread_id = ? AND EXISTS (
+              SELECT 1 FROM comment_threads t
+              WHERE t.id = comment_replies.thread_id AND t.project_id = ?
+                AND t.artifact_id = ?
+            )
+          `).bind(
+            command.body,
+            command.updatedAt,
+            command.replyId,
+            command.threadId,
+            command.projectId,
+            command.artifactId,
+          ),
+          database.prepare(
+            "UPDATE comment_threads SET updated_at = ? WHERE id = ?",
+          ).bind(command.updatedAt, command.threadId),
+          commentActionStatement(
+            {
+              action: artifactActionKinds.commentUpdate,
+              actionId: commentAction.actionId,
+              authorizedByPrincipalId: command.authorizedByPrincipalId,
+              changedAt: command.updatedAt,
+              idempotencyKey: commentAction.idempotencyKey,
+              principalId: command.principalId,
+            },
+            `${commentReplyScope} AND r.updated_at = ?`,
+            [
+              command.replyId,
+              command.threadId,
+              command.projectId,
+              command.artifactId,
+              command.updatedAt,
+            ],
+          ),
+          ...mutationGuardStatements(
+            `comment-reply-update:${command.projectId}:${command.replyId}`,
+            `SELECT 1 FROM comment_replies
+              WHERE id = ? AND thread_id = ? AND updated_at = ?`,
+            [command.replyId, command.threadId, command.updatedAt],
+          ),
+        ]);
+      } catch (cause) {
+        const existing = await readReplyRowOrNull(command.replyId);
+        if (existing === null) throw missingComment();
+        throw cause;
+      }
+      return commentReplyFromRow(await readReplyRow(command.replyId));
+    },
+    deleteReply: async (command: DeleteCommentReply): Promise<void> => {
+      const commentAction = commentActionIdentity(command.threadId);
+      try {
+        await database.batch([
+          commentActionStatement(
+            {
+              action: artifactActionKinds.commentDelete,
+              actionId: commentAction.actionId,
+              authorizedByPrincipalId: command.authorizedByPrincipalId,
+              changedAt: command.deletedAt,
+              idempotencyKey: commentAction.idempotencyKey,
+              principalId: command.principalId,
+            },
+            commentReplyScope,
+            [
+              command.replyId,
+              command.threadId,
+              command.projectId,
+              command.artifactId,
+            ],
+          ),
+          database.prepare(`
+            UPDATE comment_threads SET updated_at = ?
+            WHERE id = ? AND EXISTS (
+              SELECT 1 FROM comment_replies r
+              WHERE r.id = ? AND r.thread_id = comment_threads.id
+            )
+          `).bind(command.deletedAt, command.threadId, command.replyId),
+          database.prepare(
+            "DELETE FROM comment_replies WHERE id = ? AND thread_id = ?",
+          ).bind(command.replyId, command.threadId),
+          ...mutationGuardStatements(
+            `comment-reply-delete:${command.projectId}:${command.replyId}`,
+            `SELECT 1 FROM actions
+              WHERE project_id = ? AND artifact_id = ? AND idempotency_key = ?
+                AND action = ?`,
+            [
+              command.projectId,
+              command.artifactId,
+              commentAction.idempotencyKey,
+              artifactActionKinds.commentDelete,
+            ],
+          ),
+        ]);
+      } catch (cause) {
+        const existing = await readReplyRowOrNull(command.replyId);
+        if (existing === null) throw missingComment();
+        throw cause;
+      }
+    },
+    registerAgent: async (
+      command: RegisterAgent,
+    ): Promise<RegisteredAgentRecord> => {
+      // The id survives re-registration, so pending dispatches stay queued for
+      // the same agent across restarts and session replacements. The key is
+      // scoped to the registering principal, so one principal never reclaims
+      // another's row, and with it another's queued dispatches.
+      await database.prepare(`
+        INSERT INTO registered_agents (
+          id, installation_id, connection_key, display_name, kind,
+          working_directory, agent_session_id, principal_id, created_at,
+          last_seen_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (installation_id, principal_id, connection_key)
+        DO UPDATE SET
+          display_name = excluded.display_name,
+          kind = excluded.kind,
+          working_directory = excluded.working_directory,
+          agent_session_id = excluded.agent_session_id,
+          last_seen_at = excluded.last_seen_at
+      `).bind(
+        command.id,
+        command.installationId,
+        command.connectionKey,
+        command.displayName,
+        command.kind,
+        command.workingDirectory,
+        command.agentSessionId,
+        command.principalId,
+        command.registeredAt,
+        command.registeredAt,
+      ).run();
+      return readAgentRowByConnectionKey(
+        command.installationId,
+        command.principalId,
+        command.connectionKey,
+      );
+    },
+    disconnectAgent: async (
+      installationScope: string,
+      agentId: string,
+    ): Promise<void> => {
+      await database.prepare(
+        "DELETE FROM registered_agents WHERE installation_id = ? AND id = ?",
+      ).bind(installationScope, agentId).run();
+    },
+    listAgents: async (
+      installationScope: string,
+      now: string,
+    ): Promise<readonly RegisteredAgentRecord[]> => {
+      // Rows are disposable liveness records: reap what stopped polling in the
+      // same batch that reads the survivors.
+      const results = await database.batch<
+        z.input<typeof registeredAgentRowSchema>
+      >([
+        database.prepare(`
+          DELETE FROM registered_agents
+          WHERE installation_id = ? AND last_seen_at < ?
+        `).bind(
+          installationScope,
+          isoBefore(now, registeredAgentRetentionMilliseconds),
+        ),
+        database.prepare(`${registeredAgentSelect}
+          WHERE installation_id = ? ORDER BY created_at ASC, id ASC
+        `).bind(installationScope),
+      ]);
+      const listed = results[1];
+      if (listed === undefined) {
+        throw new Error("D1 did not return the registered-agent listing.");
+      }
+      return listed.results.map((row) => registeredAgentRowSchema.parse(row));
+    },
+    findAgent: (installationScope: string, agentId: string) =>
+      readAgentRowOrNull(installationScope, agentId),
+    createDispatch: async (
+      command: CreateAgentDispatch,
+    ): Promise<AgentDispatchCreation> => {
+      const threadIdsJson = JSON.stringify(command.threadIds);
+      const replayed = await readIdempotentDispatchRowOrNull(
+        command.installationId,
+        command.projectId,
+        command.idempotencyKey,
+      );
+      if (replayed !== null) {
+        return replayedDispatch(replayed, command, threadIdsJson);
+      }
+      await assertSendableThreads(command);
+      try {
+        await database.batch([
+          database.prepare(`
+            INSERT INTO agent_dispatches (
+              id, installation_id, project_id, agent_id, agent_display_name,
+              thread_ids_json, note, state, sender_principal_id,
+              sender_principal_kind, sender_display_name,
+              sender_authorized_by_principal_id, idempotency_key, claimed_at,
+              lease_expires_at, delivered_at, addressed_at, failed_at,
+              failure_reason, canceled_at, created_at, updated_at
+            ) VALUES (
+              ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?,
+              NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?
+            )
+          `).bind(
+            command.id,
+            command.installationId,
+            command.projectId,
+            command.agentId,
+            command.agentDisplayName,
+            threadIdsJson,
+            command.note,
+            command.sender.principalId,
+            command.sender.principalKind,
+            command.sender.displayName,
+            command.sender.authorizedByPrincipalId,
+            command.idempotencyKey,
+            command.createdAt,
+            command.createdAt,
+          ),
+          // The marker moves the thread off the default listings, so it
+          // counts as a thread edit: a `since` poller must see it leave.
+          ...command.threadIds.map((threadId) => database.prepare(`
+            UPDATE comment_threads SET dispatch_id = ?, updated_at = ?
+            WHERE id = ? AND project_id = ? AND state = 'open'
+              AND dispatch_id IS NULL
+          `).bind(command.id, command.createdAt, threadId, command.projectId)),
+          // The guard fails the whole batch unless every bundle thread now
+          // carries this dispatch marker, so two concurrent sends can never
+          // double-book a thread and a rejected bundle leaves no partial
+          // markers behind.
+          ...(command.threadIds.length === 0 ? [] : mutationGuardStatements(
+            `dispatch-create:${command.projectId}:${command.idempotencyKey}`,
+            `SELECT 1 FROM comment_threads WHERE dispatch_id = ?
+              GROUP BY dispatch_id HAVING COUNT(*) = ?`,
+            [command.id, command.threadIds.length],
+          )),
+        ]);
+      } catch (cause) {
+        const raced = await readIdempotentDispatchRowOrNull(
+          command.installationId,
+          command.projectId,
+          command.idempotencyKey,
+        );
+        if (raced !== null) {
+          return replayedDispatch(raced, command, threadIdsJson);
+        }
+        await assertSendableThreads(command);
+        throw cause;
+      }
+      return {
+        dispatch: agentDispatchFromRow(
+          await readDispatchRow(command.installationId, command.id),
+        ),
+        replayed: false,
+      };
+    },
+    claimNextDispatch: async (
+      agentId: string,
+      now: string,
+      bumpHeartbeat: boolean,
+    ): Promise<AgentDispatchRecord | null> => {
+      // A re-check inside one held poll is a pure read while nothing is
+      // claimable: the request's first attempt already stamped the heartbeat,
+      // so an empty mailbox must not run a write batch every second. An
+      // expired lease or a queued dispatch falls through to the write path.
+      if (!bumpHeartbeat) {
+        const expired = await database.prepare(`
+          SELECT id FROM agent_dispatches
+          WHERE agent_id = ? AND state = 'claimed' AND lease_expires_at < ?
+          LIMIT 1
+        `).bind(agentId, now).first<string>("id");
+        if (expired === null) {
+          const held = await database.prepare(`
+            SELECT id FROM agent_dispatches
+            WHERE agent_id = ? AND state = 'claimed' LIMIT 1
+          `).bind(agentId).first<string>("id");
+          if (held !== null) return null;
+          const queued = await database.prepare(`
+            SELECT id FROM agent_dispatches
+            WHERE agent_id = ? AND state = 'queued' LIMIT 1
+          `).bind(agentId).first<string>("id");
+          if (queued === null) return null;
+        }
+      }
+      // The poll request is the heartbeat — refreshed by every attempt that
+      // reaches this write path — and an expired lease returns its dispatch
+      // to the queue before the oldest-queued selection, so a dead claimer
+      // never wedges the FIFO.
+      await database.batch([
+        database.prepare(
+          "UPDATE registered_agents SET last_seen_at = ? WHERE id = ?",
+        ).bind(now, agentId),
+        database.prepare(`
+          UPDATE agent_dispatches
+          SET state = 'queued', claimed_at = NULL, lease_expires_at = NULL,
+            updated_at = ?
+          WHERE agent_id = ? AND state = 'claimed' AND lease_expires_at < ?
+        `).bind(now, agentId, now),
+      ]);
+      // One-active-claim: while a claim is held, the next claim waits.
+      const active = await database.prepare(`
+        SELECT id FROM agent_dispatches
+        WHERE agent_id = ? AND state = 'claimed' LIMIT 1
+      `).bind(agentId).first<string>("id");
+      if (active !== null) return null;
+      const candidate = await database.prepare(`
+        SELECT id, installation_id AS installationId FROM agent_dispatches
+        WHERE agent_id = ? AND state = 'queued'
+        ORDER BY created_at ASC, id ASC LIMIT 1
+      `).bind(agentId).first<z.input<typeof dispatchCandidateRowSchema>>();
+      if (candidate === null) return null;
+      const oldest = dispatchCandidateRowSchema.parse(candidate);
+      try {
+        await database.batch([
+          // The guard reads the pre-state, so a dispatch that stopped being
+          // queued between the selection and the claim aborts the batch.
+          ...mutationGuardStatements(
+            `dispatch-claim:${oldest.id}`,
+            `SELECT 1 FROM agent_dispatches
+              WHERE id = ? AND agent_id = ? AND state = 'queued'`,
+            [oldest.id, agentId],
+          ),
+          database.prepare(`
+            UPDATE agent_dispatches
+            SET state = 'claimed', claimed_at = ?, lease_expires_at = ?,
+              updated_at = ?
+            WHERE id = ? AND state = 'queued'
+          `).bind(
+            now,
+            isoAfter(now, agentDispatchLeaseMilliseconds),
+            now,
+            oldest.id,
+          ),
+        ]);
+      } catch (cause) {
+        const contested = await readDispatchRowOrNull(
+          oldest.installationId,
+          oldest.id,
+        );
+        if (contested === null || contested.state !== agentDispatchStates.queued) {
+          return null;
+        }
+        throw cause;
+      }
+      return agentDispatchFromRow(
+        await readDispatchRow(oldest.installationId, oldest.id),
+      );
+    },
+    markDelivered: async (
+      command: MarkDispatchDelivered,
+    ): Promise<AgentDispatchRecord> => {
+      const row = await readDispatchRowOrNull(
+        command.installationId,
+        command.dispatchId,
+      );
+      if (row === null) throw missingDispatch();
+      requireClaimHolder(row, command.agentId);
+      if (row.state !== agentDispatchStates.claimed) {
+        throw new DispatchStateConflict({
+          message: `A ${row.state} dispatch cannot be reported delivered.`,
+        });
+      }
+      await applyGuardedTransition(
+        "dispatch-delivered",
+        command.installationId,
+        row.id,
+        [agentDispatchStates.claimed],
+        [database.prepare(`
+          UPDATE agent_dispatches
+          SET state = 'delivered', delivered_at = ?, updated_at = ?
+          WHERE id = ? AND state = 'claimed'
+        `).bind(command.deliveredAt, command.deliveredAt, row.id)],
+        "reported delivered",
+      );
+      return agentDispatchFromRow(
+        await readDispatchRow(command.installationId, row.id),
+      );
+    },
+    markFailed: async (
+      command: MarkDispatchFailed,
+    ): Promise<AgentDispatchRecord> => {
+      const row = await readDispatchRowOrNull(
+        command.installationId,
+        command.dispatchId,
+      );
+      if (row === null) throw missingDispatch();
+      requireClaimHolder(row, command.agentId);
+      if (
+        row.state !== agentDispatchStates.claimed &&
+        row.state !== agentDispatchStates.delivered
+      ) {
+        throw new DispatchStateConflict({
+          message: `A ${row.state} dispatch cannot be reported failed.`,
+        });
+      }
+      await applyGuardedTransition(
+        "dispatch-failed",
+        command.installationId,
+        row.id,
+        [agentDispatchStates.claimed, agentDispatchStates.delivered],
+        failedDispatchStatements(row.id, command.reason, command.failedAt),
+        "reported failed",
+      );
+      return agentDispatchFromRow(
+        await readDispatchRow(command.installationId, row.id),
+      );
+    },
+    cancelDispatch: async (
+      command: CancelAgentDispatch,
+    ): Promise<AgentDispatchRecord> => {
+      const row = await readDispatchRowOrNull(
+        command.installationId,
+        command.dispatchId,
+      );
+      if (row === null || row.projectId !== command.projectId) {
+        throw missingDispatch();
+      }
+      if (
+        row.state !== agentDispatchStates.queued &&
+        row.state !== agentDispatchStates.claimed
+      ) {
+        throw new DispatchStateConflict({
+          message: `A ${row.state} dispatch cannot be canceled.`,
+        });
+      }
+      await applyGuardedTransition(
+        "dispatch-cancel",
+        command.installationId,
+        row.id,
+        [agentDispatchStates.queued, agentDispatchStates.claimed],
+        [
+          database.prepare(`
+            UPDATE agent_dispatches
+            SET state = 'canceled', canceled_at = ?, updated_at = ?,
+              claimed_at = NULL, lease_expires_at = NULL
+            WHERE id = ?
+          `).bind(command.canceledAt, command.canceledAt, row.id),
+          // Cancellation clears the markers so the threads reappear in the
+          // default listings: work is never silently lost.
+          database.prepare(`
+            UPDATE comment_threads SET dispatch_id = NULL, updated_at = ?
+            WHERE dispatch_id = ?
+          `).bind(command.canceledAt, row.id),
+        ],
+        "canceled",
+      );
+      return agentDispatchFromRow(
+        await readDispatchRow(command.installationId, row.id),
+      );
+    },
+    listDispatches: async (
+      command: ListAgentDispatches,
+    ): Promise<AgentDispatchPage> => {
+      await applyProjectTransitions(
+        command.installationId,
+        command.projectId,
+        command.now,
+      );
+      const result = await database.prepare(`${agentDispatchSelect}
+        WHERE d.installation_id = ? AND d.project_id = ?
+          AND (? IS NULL OR d.state = ?)
+          AND (? IS NULL OR d.agent_id = ?)
+          AND (? IS NULL OR d.created_at < ? OR (d.created_at = ? AND d.id < ?))
+        ORDER BY d.created_at DESC, d.id DESC LIMIT ?
+      `).bind(
+        command.installationId,
+        command.projectId,
+        command.state,
+        command.state,
+        command.agentId,
+        command.agentId,
+        command.cursor?.createdAt ?? null,
+        command.cursor?.createdAt ?? null,
+        command.cursor?.createdAt ?? null,
+        command.cursor?.id ?? null,
+        command.limit + 1,
+      ).all<z.input<typeof agentDispatchRowSchema>>();
+      const parsed = result.results
+        .map((row) => agentDispatchRowSchema.parse(row));
+      return pageResult(
+        parsed.slice(0, command.limit).map(agentDispatchFromRow),
+        parsed,
+        command.limit,
+      );
+    },
+    findDispatch: async (
+      installationScope: string,
+      dispatchId: string,
+      now: string,
+    ): Promise<AgentDispatchRecord | null> => {
+      const row = await readDispatchRowOrNull(installationScope, dispatchId);
+      if (row === null) return null;
+      await applyDispatchTransitions(dispatchId, now);
+      return agentDispatchFromRow(
+        await readDispatchRow(installationScope, dispatchId),
+      );
+    },
+    observeAddressed: async (
+      dispatchId: string,
+      now: string,
+    ): Promise<AgentDispatchRecord | null> => {
+      const row = await database.prepare(`${agentDispatchSelect}
+        WHERE d.id = ?
+      `).bind(dispatchId).first<z.input<typeof agentDispatchRowSchema>>();
+      if (row === null) return null;
+      const found = agentDispatchRowSchema.parse(row);
+      await addressedStatement("id = ?", [dispatchId], now).run();
+      return agentDispatchFromRow(
+        await readDispatchRow(found.installationId, dispatchId),
+      );
+    },
+    versionContainsPath: async (projectId, versionId, path) => {
+      const found = await database.prepare(`
+        SELECT 1 AS found FROM manifest_entries entry
+        INNER JOIN versions version ON version.id = entry.version_id
+        WHERE version.project_id = ? AND entry.version_id = ? AND entry.path = ?
+      `).bind(projectId, versionId, path).first<number>("found");
+      return found !== null;
+    },
   };
 
   async function readDeletion(
@@ -1462,6 +3049,203 @@ export function createD1ArtifactRepository(
     if (retainedVersionCount === null) throw new Error("D1 did not count retained versions.");
     return {artifact: tombstone, replayed, retainedVersionCount};
   }
+}
+
+function serializeCommentAnchor(carrier: {readonly anchor: unknown}): string | null {
+  return carrier.anchor === null || carrier.anchor === undefined
+    ? null
+    : JSON.stringify(carrier.anchor);
+}
+
+// A comment action never carries the caller's idempotency key: that key already
+// belongs to a publish, a restore, or another comment write in the same project.
+// Two mutations on one thread can also share a millisecond, so the derived key
+// carries the action row id instead of the changed-at timestamp. Postgres
+// enforces uniqueness on (installation_id, project_id, idempotency_key) and D1
+// keeps the same shape so the ledger reads identically on every backend.
+function commentActionIdentity(threadId: string) {
+  const actionId = crypto.randomUUID();
+  return {actionId, idempotencyKey: `comment:${threadId}:${actionId}`};
+}
+
+function commentUpdateActionKind(
+  command: UpdateCommentThread,
+): ArtifactActionRecord["action"] {
+  if (command.state === null) return artifactActionKinds.commentUpdate;
+  return command.state.state === commentThreadStates.resolved
+    ? artifactActionKinds.commentResolve
+    : artifactActionKinds.commentReopen;
+}
+
+function commentAuthorFromRow(
+  row: z.infer<typeof commentThreadRowSchema> | z.infer<typeof commentReplyRowSchema>,
+): CommentAuthor {
+  return {
+    authorizedByPrincipalId: row.authorAuthorizedByPrincipalId,
+    displayName: row.authorDisplayName,
+    principalId: row.authorPrincipalId,
+    principalKind: row.authorPrincipalKind,
+  };
+}
+
+function commentThreadFromRow(
+  row: z.infer<typeof commentThreadRowSchema>,
+): CommentThreadRecord {
+  return {
+    anchor: row.anchorJson === null ? null : JSON.parse(row.anchorJson),
+    artifactId: row.artifactId,
+    author: commentAuthorFromRow(row),
+    body: row.body,
+    createdAt: row.createdAt,
+    id: row.id,
+    installationId: row.installationId,
+    path: row.path,
+    projectId: row.projectId,
+    replyCount: row.replyCount,
+    resolvedAt: row.resolvedAt,
+    resolvedBy: row.resolvedByPrincipalId === null ||
+        row.resolvedByPrincipalKind === null ||
+        row.resolvedByDisplayName === null
+      ? null
+      : {
+        authorizedByPrincipalId: row.resolvedByAuthorizedByPrincipalId,
+        displayName: row.resolvedByDisplayName,
+        principalId: row.resolvedByPrincipalId,
+        principalKind: row.resolvedByPrincipalKind,
+      },
+    state: row.state,
+    updatedAt: row.updatedAt,
+    versionId: row.versionId,
+  };
+}
+
+function commentReplyFromRow(
+  row: z.infer<typeof commentReplyRowSchema>,
+): CommentReplyRecord {
+  return {
+    author: commentAuthorFromRow(row),
+    body: row.body,
+    createdAt: row.createdAt,
+    id: row.id,
+    projectId: row.projectId,
+    threadId: row.threadId,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function replayedThread(
+  row: z.infer<typeof commentThreadRowSchema>,
+  command: CreateCommentThread,
+  anchorJson: string | null,
+): CommentThreadCreation {
+  if (
+    row.artifactId !== command.artifactId ||
+    row.versionId !== command.versionId ||
+    row.path !== command.path ||
+    row.body !== command.body ||
+    row.anchorJson !== anchorJson
+  ) {
+    throw new IdempotencyConflict({
+      message: "The idempotency key was already used with different input.",
+    });
+  }
+  return {replayed: true, thread: commentThreadFromRow(row)};
+}
+
+function replayedReply(
+  row: z.infer<typeof commentReplyRowSchema>,
+  command: CreateCommentReply,
+): CommentReplyCreation {
+  if (row.threadId !== command.threadId || row.body !== command.body) {
+    throw new IdempotencyConflict({
+      message: "The idempotency key was already used with different input.",
+    });
+  }
+  return {replayed: true, reply: commentReplyFromRow(row)};
+}
+
+function missingDispatch(): AgentDispatchNotFound {
+  return new AgentDispatchNotFound({message: "The dispatch does not exist."});
+}
+
+function requireClaimHolder(
+  row: z.infer<typeof agentDispatchRowSchema>,
+  agentId: string,
+): void {
+  if (row.agentId === agentId) return;
+  throw new DispatchStateConflict({
+    message: "The reporting agent does not hold this dispatch.",
+  });
+}
+
+function agentDispatchFromRow(
+  row: z.infer<typeof agentDispatchRowSchema>,
+): AgentDispatchRecord {
+  return {
+    addressedAt: row.addressedAt,
+    agentDisplayName: row.agentDisplayName,
+    agentId: row.agentId,
+    canceledAt: row.canceledAt,
+    claimedAt: row.claimedAt,
+    createdAt: row.createdAt,
+    deliveredAt: row.deliveredAt,
+    failedAt: row.failedAt,
+    failureReason: row.failureReason,
+    id: row.id,
+    idempotencyKey: row.idempotencyKey,
+    installationId: row.installationId,
+    leaseExpiresAt: row.leaseExpiresAt,
+    note: row.note,
+    projectId: row.projectId,
+    sender: {
+      authorizedByPrincipalId: row.senderAuthorizedByPrincipalId,
+      displayName: row.senderDisplayName,
+      principalId: row.senderPrincipalId,
+      principalKind: row.senderPrincipalKind,
+    },
+    state: row.state,
+    threadIds: threadIdsSchema.parse(JSON.parse(row.threadIdsJson)),
+    updatedAt: row.updatedAt,
+  };
+}
+
+function replayedDispatch(
+  row: z.infer<typeof agentDispatchRowSchema>,
+  command: CreateAgentDispatch,
+  threadIdsJson: string,
+): AgentDispatchCreation {
+  if (
+    row.agentId !== command.agentId ||
+    row.threadIdsJson !== threadIdsJson ||
+    row.note !== command.note
+  ) {
+    throw new IdempotencyConflict({
+      message: "The idempotency key was already used with different input.",
+    });
+  }
+  return {dispatch: agentDispatchFromRow(row), replayed: true};
+}
+
+// Stored timestamps are canonical millisecond ISO text, so offsets computed
+// through Date round-trip into the same lexicographically comparable format.
+function isoAfter(instant: string, milliseconds: number): string {
+  return new Date(Date.parse(instant) + milliseconds).toISOString();
+}
+
+function isoBefore(instant: string, milliseconds: number): string {
+  return new Date(Date.parse(instant) - milliseconds).toISOString();
+}
+
+function missingComment(): CommentNotFound {
+  return new CommentNotFound({
+    message: "The comment thread or reply does not exist.",
+  });
+}
+
+function resolvedComment(): CommentResolved {
+  return new CommentResolved({
+    message: "The comment thread is resolved and cannot accept replies.",
+  });
 }
 
 function changedDuringManagement(): ArtifactMutationConflict {

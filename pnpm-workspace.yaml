@@ -3,3 +3,4 @@ packages:
   - apps/*
   - deploy/cloudflare
   - deploy/pulumi/*
+  - integrations/pi

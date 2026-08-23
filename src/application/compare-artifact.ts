@@ -83,7 +83,7 @@ export interface CompareArtifactRepository {
     projectId: string,
     artifactId: string,
   ) => Effect.Effect<ArtifactRecord | null, ArtifactRepositoryFailure>;
-  readonly findArtifactVersion: (
+  readonly findVersionRecord: (
     projectId: string,
     artifactId: string,
     versionId: string,
@@ -148,7 +148,7 @@ function makeCompareArtifactService(
 ): CompareArtifactOperations {
   const requireVersion = Effect.fn("CompareArtifactService.requireVersion")(
     function*(projectId: string, artifactId: string, versionId: string) {
-      const version = yield* dependencies.repository.findArtifactVersion(
+      const version = yield* dependencies.repository.findVersionRecord(
         projectId,
         artifactId,
         versionId,

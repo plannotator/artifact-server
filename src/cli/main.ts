@@ -7,8 +7,6 @@ import path from "node:path";
 import {Command, Option} from "commander";
 import {z} from "zod";
 
-import {createWorkOsHostedAuthentication} from
-  "../identity/workos-hosted-authentication.js";
 import {
   loadOrCreateLocalCredential,
   localCredentialFiles,
@@ -18,15 +16,25 @@ import {
   writeLocalServiceRecord,
 } from "../local/local-service-record.js";
 import {startLocalServer} from "../local/start-local-server.js";
+import {
+  parseLinkRoots,
+  parseLinkedFilesMode,
+} from "../lifecycle/runtime-configuration.js";
+import {loadNodeGitHistoryConfiguration} from
+  "../git-history/node-git-history-configuration.js";
 import {defaultCompletedRequestLogSampleRate} from
   "../observability/application-observability.js";
+import {runCliEffect} from "./run-cli-effect.js";
+import {localOwnerBrowserAccess} from "../core/browser-access.js";
 import {configureLifecycleCommands} from "./lifecycle-commands.js";
 import {configureCliAuthCommands} from "./cli-auth-commands.js";
+import {configureLinkCommand} from "./link-command.js";
 import {configureMcpOnboardingCommands} from "./mcp-onboarding-commands.js";
 import {configurePublishCommand} from "./publish-command.js";
 import {waitForProcessSignal} from "./wait-for-process-signal.js";
-import {loadWorkOsConfiguration} from "./workos-configuration.js";
 import {configureOpenManagementCommand} from "./open-management-command.js";
+import {writeGitHistoryConfigurationWarnings} from
+  "./git-history-configuration-warnings.js";
 
 interface StartOptions {
   readonly data: string;
@@ -61,6 +69,9 @@ configureCliAuthCommands(program, {
   defaultProfileDirectory: defaultUserDataDirectory,
 });
 configurePublishCommand(program, {
+  defaultProfileDirectory: defaultUserDataDirectory,
+});
+configureLinkCommand(program, {
   defaultProfileDirectory: defaultUserDataDirectory,
 });
 configureOpenManagementCommand(program, defaultUserDataDirectory);
@@ -103,31 +114,37 @@ function configureDirectLocalStart(programToConfigure: Command): void {
         dataDirectory,
         localCredentialFiles.browser,
       );
-      const workOs = await loadWorkOsConfiguration(process.env);
-      const hostedAuthentication = workOs === null
-        ? null
-        : await createWorkOsHostedAuthentication(workOs);
+      requireLocalOwnerEnvironment(process.env);
       const observability = observabilityEnvironmentSchema.parse(process.env);
-      const server = await startLocalServer({
+      const gitHistory = await runCliEffect(
+        loadNodeGitHistoryConfiguration(process.env),
+      );
+      writeGitHistoryConfigurationWarnings(gitHistory);
+      const linkedFiles = await runCliEffect(parseLinkedFilesMode(process.env));
+      const linkRoots = await runCliEffect(parseLinkRoots(process.env));
+      const developmentProxyCredential =
+        process.env["ARTIFACT_SERVER_DEVELOPMENT_PROXY_CREDENTIAL"];
+      const localServerConfig = {
         apiToken,
-        ...(workOs === null || hostedAuthentication === null
-          ? {
-            bootstrapAdministratorEmail:
-              "local-administrator@artifactserver.invalid",
-          }
-          : {
-            applicationOrigin: workOs.applicationOrigin,
-            bootstrapAdministratorEmail: workOs.bootstrapAdministratorEmail,
-            ...hostedAuthentication,
-          }),
+        bootstrapAdministratorEmail:
+          "local-administrator@artifactserver.invalid",
+        browserAccess: localOwnerBrowserAccess,
         contentDomain: "localhost",
         completedRequestLogSampleRate:
           observability.ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE,
         dataDirectory,
+        gitHistory,
+        linkedFiles,
+        linkRoots,
         localBootstrapToken: browserBootstrapToken,
         port,
         serviceVersion: packageMetadata.version,
-      });
+      };
+      const server = await startLocalServer(
+        developmentProxyCredential === undefined
+          ? localServerConfig
+          : {...localServerConfig, developmentProxyCredential},
+      );
 
       const origin = `http://localhost:${server.port}`;
       const serviceOrigin = `http://${server.hostname}:${server.port}`;
@@ -162,6 +179,20 @@ function configureDirectLocalStart(programToConfigure: Command): void {
         throw error;
       }
     });
+}
+
+function requireLocalOwnerEnvironment(environment: NodeJS.ProcessEnv): void {
+  const remoteIdentityConfigured = Object.entries(environment).some(
+    ([name, value]) => (
+      name.startsWith("ARTIFACT_SERVER_OIDC_")
+      || name.startsWith("ARTIFACT_SERVER_WORKOS_")
+    ) && value !== undefined && value.trim() !== "",
+  );
+  if (remoteIdentityConfigured) {
+    throw new Error(
+      "artifactserver start is local-owner only; use a private-team deployment entrypoint for OIDC or WorkOS.",
+    );
+  }
 }
 
 function parsePort(value: string, allowAutomatic: boolean): number {

@@ -1,5 +1,6 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { request } from "node:http";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -14,13 +15,21 @@ import type {
   ExternalMcpBearerVerifier,
 } from "../../src/application/authentication.js";
 import type {InteractiveIdentityProvider} from "../../src/application/interactive-login.js";
+import type {NodeGitHistoryConfiguration} from
+  "../../src/git-history/node-git-history-configuration.js";
+import type {GitHistoryProviderHealthProbe} from
+  "../../src/git-history/git-history-provider-health.js";
 import type {
   ApiOAuthResourceConfiguration,
   McpOAuthResourceConfiguration,
 } from "../../src/http/create-http-app.js";
 import type {Clock} from "../../src/core/ports.js";
+import {localOwnerBrowserAccess} from "../../src/core/browser-access.js";
+import type {BrowserAccess} from "../../src/core/browser-access.js";
 import {defaultCompletedRequestLogSampleRate} from
   "../../src/observability/application-observability.js";
+
+const assignedAddressSchema = z.object({port: z.number().int().positive()});
 
 export interface TestInstallation {
   readonly apiToken: string;
@@ -35,12 +44,28 @@ export interface RunningTestServer {
   stop(): Promise<void>;
 }
 
+/** Reserve one free loopback port so a caller can bind it deliberately. */
+export function reserveLoopbackPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = assignedAddressSchema.parse(server.address());
+      server.close((error) => {
+        if (error === undefined) resolve(address.port);
+        else reject(error);
+      });
+    });
+  });
+}
+
 export async function createTestInstallation(): Promise<TestInstallation> {
   const dataDirectory = await mkdtemp(
     path.join(tmpdir(), "artifact-server-test-"),
   );
   return {
-    apiToken: "test-local-api-token-with-sufficient-entropy",
+    apiToken:
+      "as_key_key_00000000-0000-4000-8000-000000000001_testLocalApiTokenWithSufficientEntropy123",
     browserBootstrapToken: "test-local-browser-token-with-sufficient-entropy",
     dataDirectory,
   };
@@ -57,20 +82,30 @@ export async function startTestServer(
   options: {
     readonly applicationOrigin?: string;
     readonly bootstrapAdministratorEmail?: string;
+    readonly browserAccess?: BrowserAccess;
     readonly contentDomain?: string;
     readonly apiOAuthResource?: ApiOAuthResourceConfiguration;
     readonly clock?: Clock;
     readonly completedRequestLogSampleRate?: number;
+    readonly developmentProxyCredential?: string;
     readonly externalApiBearerVerifier?: BearerCredentialVerifier;
     readonly externalMcpBearerVerifier?: BearerCredentialVerifier;
     readonly externalMcpOAuthVerifier?: ExternalMcpBearerVerifier;
+    readonly gitHistory?: NodeGitHistoryConfiguration;
+    readonly gitHistoryHealthProbe?: GitHistoryProviderHealthProbe;
+    readonly hostname?: string;
     readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
+    readonly linkedFiles?: "off" | "on";
+    readonly linkRoots?: readonly string[];
     readonly mcpOAuthResource?: McpOAuthResourceConfiguration;
     readonly observability?: boolean;
+    readonly port?: number;
+    readonly webAssetsRoot?: string;
   } = {},
 ): Promise<RunningTestServer> {
   const baseConfig: LocalServerConfig = {
     apiToken: installation.apiToken,
+    browserAccess: options.browserAccess ?? localOwnerBrowserAccess,
     bootstrapAdministratorEmail: options.bootstrapAdministratorEmail ??
       "administrator@example.test",
     contentDomain: options.contentDomain ?? "localhost",
@@ -80,7 +115,7 @@ export async function startTestServer(
     dataDirectory: installation.dataDirectory,
     localBootstrapToken: installation.browserBootstrapToken,
     observability: options.observability ?? false,
-    port: 0,
+    port: options.port ?? 0,
   };
   let config: LocalServerConfig = baseConfig;
   if (options.applicationOrigin !== undefined) {
@@ -96,6 +131,12 @@ export async function startTestServer(
     config = {
       ...config,
       externalApiBearerVerifier: options.externalApiBearerVerifier,
+    };
+  }
+  if (options.developmentProxyCredential !== undefined) {
+    config = {
+      ...config,
+      developmentProxyCredential: options.developmentProxyCredential,
     };
   }
   if (options.externalMcpBearerVerifier !== undefined) {
@@ -116,8 +157,29 @@ export async function startTestServer(
       interactiveIdentityProvider: options.interactiveIdentityProvider,
     };
   }
+  if (options.gitHistory !== undefined) {
+    config = {...config, gitHistory: options.gitHistory};
+  }
+  if (options.gitHistoryHealthProbe !== undefined) {
+    config = {
+      ...config,
+      gitHistoryHealthProbe: options.gitHistoryHealthProbe,
+    };
+  }
+  if (options.hostname !== undefined) {
+    config = {...config, hostname: options.hostname};
+  }
+  if (options.linkedFiles !== undefined) {
+    config = {...config, linkedFiles: options.linkedFiles};
+  }
+  if (options.linkRoots !== undefined) {
+    config = {...config, linkRoots: options.linkRoots};
+  }
   if (options.mcpOAuthResource !== undefined) {
     config = {...config, mcpOAuthResource: options.mcpOAuthResource};
+  }
+  if (options.webAssetsRoot !== undefined) {
+    config = {...config, webAssetsRoot: options.webAssetsRoot};
   }
   const server = await startLocalServer(config);
 
@@ -199,6 +261,20 @@ export async function fetchVersion(
     outgoing.on("error", reject);
     outgoing.end();
   });
+}
+
+/**
+ * Extract the login handshake cookie a browser replays at `/auth/callback`.
+ */
+export function loginHandshakeCookie(loginResponse: Response): string {
+  const cookie = loginResponse.headers.getSetCookie().find((value) =>
+    value.startsWith("artifact_login=") ||
+    value.startsWith("__Host-artifact_login=")
+  );
+  if (cookie === undefined) {
+    throw new Error("/auth/login did not set a login handshake cookie.");
+  }
+  return cookie.split(";")[0] ?? "";
 }
 
 export function apiHeaders(

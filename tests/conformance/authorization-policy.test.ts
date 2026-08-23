@@ -199,6 +199,7 @@ function humanPrincipal(
   return {
     authorizedByPrincipalId: null,
     capabilities: [],
+    displayName: "Policy human",
     id,
     installationId: "installation-a",
     kind: principalKinds.human,
@@ -213,6 +214,7 @@ function servicePrincipal(
   return {
     authorizedByPrincipalId: null,
     capabilities,
+    displayName: "Policy service",
     id,
     installationId: "installation-a",
     kind: principalKinds.service,

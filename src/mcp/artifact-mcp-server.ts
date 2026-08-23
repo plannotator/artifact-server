@@ -1,3 +1,5 @@
+import {createHash} from "node:crypto";
+
 import {
   McpServer,
   ResourceTemplate,
@@ -11,25 +13,56 @@ import {
   type ApplicationRuntime,
   runApplicationEffect,
 } from "../application/application-runtime.js";
+import {
+  ArtifactCommentService,
+  type CommentAnchorInput,
+  type ReadCommentThreadCommand,
+  type UpdateCommentThreadCommand,
+} from "../application/artifact-comments.js";
 import {ArtifactManagementService} from "../application/artifact-management.js";
 import {CompareArtifactService} from "../application/compare-artifact.js";
 import {ContentAccessService} from "../application/content-access.js";
+import {
+  LinkedArtifactService,
+  liveContentToken,
+  type LinkArtifactCommand,
+  type LinkedPublication,
+} from "../application/linked-artifacts.js";
 import {ProjectManagementService} from "../application/project-management.js";
+import {ProjectGitHistoryService} from
+  "../application/project-git-history.js";
 import {StagedUploadService} from "../application/staged-upload.js";
 import {
   accessSettings,
+  commentThreadStates,
+  dispatchedThreadFilters,
   type ArtifactVersion,
+  type CommentThreadRecord,
   type ProjectRecord,
+  type SourceBindingRecord,
   type StagedUpload,
 } from "../core/model.js";
-import type {Principal} from "../core/identity.js";
+import {principalKinds, type Principal} from "../core/identity.js";
 import {
+  gitHistoryProviders,
+  gitHistoryProviderStates,
+  type GitHistoryCapability,
+} from "../git-history/git-history-capability.js";
+import {
+  maximumCommentAnchorBytes,
+  maximumCommentBodyCharacters,
+  maximumCommentPageSize,
   maximumDeclaredFiles,
+  maximumDispatchBundleSize,
+  maximumDispatchNoteCharacters,
   maximumUploadPlanRequestBytes,
 } from "../core/publishing-limits.js";
 import {
+  InvalidComment,
   InvalidPagination,
   isArtifactServerFailure,
+  PublishConflict,
+  SourceDrifted,
 } from "../core/errors.js";
 import {
   artifactBrowserUrl,
@@ -87,6 +120,19 @@ const projectProjectionSchema = z.object({
   id: z.string(),
   name: z.string(),
 }).strict();
+const projectGitHistorySettingSchema = z.object({
+  enabled: z.boolean(),
+  projectId: z.string(),
+}).strict();
+const projectGitHistoryEstimateSchema = z.object({
+  estimatedCopiedBytes: z.number().int().nonnegative(),
+  estimatedPointerBytes: z.number().int().nonnegative(),
+  notice: z.string(),
+  operations: z.number().int().nonnegative(),
+  projectId: z.string(),
+  repositories: z.number().int().nonnegative(),
+  versions: z.number().int().nonnegative(),
+}).strict();
 const manifestEntrySchema = z.object({
   disposition: z.enum(["attachment", "inline"]),
   mediaType: z.string(),
@@ -108,6 +154,67 @@ const artifactStateSchema = z.object({
 const publishedVersionSchema = artifactStateSchema.extend({
   links: z.object({artifact: z.url(), version: z.url()}).strict(),
 }).strict();
+const linkPathSchema = z.string().min(1).max(4_096);
+const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
+const sourceBindingSchema = z.object({
+  lastVerifiedAt: z.string(),
+  path: z.string(),
+  status: z.enum(["in-sync", "modified", "missing", "unreadable"]),
+}).strict();
+const linkedPublicationSchema = artifactStateSchema.extend({
+  links: z.object({
+    artifact: z.url(),
+    live: z.url().nullable(),
+    version: z.url(),
+  }).strict(),
+  sourceBinding: sourceBindingSchema,
+}).strict();
+const commentThreadIdSchema = z.string().min(1).max(200);
+const commentReplyIdSchema = z.string().min(1).max(200);
+// The comment service is the single body authority: it measures the trimmed
+// body and answers with INVALID_COMMENT, so the wire schema only fixes the type.
+const commentBodySchema = z.string();
+const commentPathSchema = z.string().min(1).max(1_024);
+const commentStateSchema = z.enum([
+  commentThreadStates.open,
+  commentThreadStates.resolved,
+]);
+const dispatchedThreadFilterSchema = z.enum([
+  dispatchedThreadFilters.exclude,
+  dispatchedThreadFilters.include,
+  dispatchedThreadFilters.only,
+]);
+const commentAuthorSchema = z.object({
+  authorizedByPrincipalId: z.string().nullable(),
+  displayName: z.string(),
+  principalId: z.string(),
+  principalKind: z.enum([principalKinds.human, principalKinds.service]),
+}).strict();
+const commentThreadSchema = z.object({
+  anchor: z.unknown(),
+  artifactId: z.string(),
+  author: commentAuthorSchema,
+  body: z.string(),
+  createdAt: z.string(),
+  id: z.string(),
+  path: z.string().nullable(),
+  projectId: z.string(),
+  replyCount: z.number().int().nonnegative(),
+  resolvedAt: z.string().nullable(),
+  resolvedBy: commentAuthorSchema.nullable(),
+  state: commentStateSchema,
+  updatedAt: z.string(),
+  versionId: z.string(),
+}).strict();
+const commentReplySchema = z.object({
+  author: commentAuthorSchema,
+  body: z.string(),
+  createdAt: z.string(),
+  id: z.string(),
+  projectId: z.string(),
+  threadId: z.string(),
+  updatedAt: z.string(),
+}).strict();
 const manifestResource = new ResourceTemplate(
   "artifact://projects/{projectId}/artifacts/{artifactId}/versions/{versionId}/manifest",
   {list: undefined},
@@ -118,6 +225,10 @@ export interface ArtifactMcpServerDependencies {
   readonly applicationOrigin: string;
   readonly applicationRuntime: ApplicationRuntime;
   readonly contentDomain: string;
+  /** Secret-free optional Git state exposed by capability discovery. */
+  readonly gitHistory: GitHistoryCapability;
+  /** Advertises the local linked-artifact capability in discovery. */
+  readonly linkedArtifacts?: boolean;
   readonly mode: "local" | "remote";
   readonly requestId: string;
 }
@@ -169,8 +280,29 @@ export function createArtifactMcpServer(
         "Read this installation's publishing workflow, limits, sharing modes, and optional local capabilities before choosing another tool.",
       inputSchema: z.object({}).strict(),
       outputSchema: z.object({
+        agentDispatch: z.object({
+          bundleThreadRule: z.string(),
+          maximumBundleThreads: z.number(),
+          maximumNoteCharacters: z.number(),
+        }),
+        comments: z.object({
+          anchorRule: z.string(),
+          maximumAnchorBytes: z.number(),
+          maximumBodyCharacters: z.number(),
+        }),
         comparison: z.object({maximumTextFileBytes: z.number()}),
         deployment: z.object({mode: z.enum(["local", "remote"])}),
+        gitHistory: z.object({
+          limits: z.object({
+            fileCopyBytes: z.number().int().nonnegative(),
+            logicalCopiedBytes: z.number().int().nonnegative(),
+            logicalReservedBytes: z.number().int().nonnegative(),
+            storageBudgetBytes: z.number().int().nonnegative().nullable(),
+            versionCopyBytes: z.number().int().nonnegative(),
+          }).strict(),
+          provider: z.enum(gitHistoryProviders).nullable(),
+          providerState: z.enum(gitHistoryProviderStates),
+        }).strict(),
         publishing: z.object({
           acceptsInlineContent: z.literal(false),
           localPathTool: z.literal(false),
@@ -178,6 +310,7 @@ export function createArtifactMcpServer(
           maximumUploadPlanRequestBytes: z.number(),
           workflow: z.array(z.string()),
         }),
+        linkedArtifacts: z.object({available: z.boolean()}),
         projects: z.object({
           omittedProjectRule: z.string(),
           scope: z.literal("project"),
@@ -186,7 +319,12 @@ export function createArtifactMcpServer(
       }),
       annotations: readOnlyAnnotations,
     },
-    () => successResult(capabilities(dependencies.mode),
+    () => successResult(
+      capabilities(
+        dependencies.mode,
+        dependencies.linkedArtifacts === true,
+        dependencies.gitHistory,
+      ),
       "Artifact Server publishes actual files through an upload plan. It does not accept inline HTML, CSS, JavaScript, or base64 content."),
   );
 
@@ -297,6 +435,90 @@ export function createArtifactMcpServer(
       })),
     );
   }
+
+  server.registerTool(
+    "project_git_history_status",
+    {
+      title: "Read project Git history status",
+      description: "Read the off-by-default Git history setting for one project.",
+      inputSchema: z.object({projectId: projectIdSchema}).strict(),
+      outputSchema: z.object({
+        gitHistory: projectGitHistorySettingSchema,
+      }).strict(),
+      annotations: readOnlyAnnotations,
+    },
+    ({projectId}) => toolResult(async () => ({
+      gitHistory: await runMcpApplicationEffect(
+        dependencies,
+        ProjectGitHistoryService.use((service) => service.read({
+          principal: identity.principal,
+          projectId,
+        })),
+      ),
+    })),
+  );
+
+  server.registerTool(
+    "project_git_history_estimate",
+    {
+      title: "Estimate project Git history",
+      description:
+        "Estimate current repositories, versions, and copied bytes before enabling one project.",
+      inputSchema: z.object({projectId: projectIdSchema}).strict(),
+      outputSchema: z.object({estimate: projectGitHistoryEstimateSchema}).strict(),
+      annotations: readOnlyAnnotations,
+    },
+    ({projectId}) => toolResult(async () => ({
+      estimate: await runMcpApplicationEffect(
+        dependencies,
+        ProjectGitHistoryService.use((service) => service.estimate({
+          principal: identity.principal,
+          projectId,
+        })),
+      ),
+    })),
+  );
+
+  server.registerTool(
+    "project_set_git_history",
+    {
+      title: "Set project Git history",
+      description:
+        "Enable or disable Git history for one project. Enablement requires estimate confirmation.",
+      inputSchema: z.discriminatedUnion("enabled", [
+        z.object({enabled: z.literal(false), projectId: projectIdSchema}).strict(),
+        z.object({
+          confirmEstimate: z.literal(true),
+          enabled: z.literal(true),
+          projectId: projectIdSchema,
+        }).strict(),
+      ]),
+      outputSchema: z.object({
+        gitHistory: projectGitHistorySettingSchema,
+      }).strict(),
+      annotations: idempotentWriteAnnotations,
+    },
+    (input) => toolResult(async () => {
+      const command = input.enabled
+        ? {
+          confirmEstimate: true as const,
+          enabled: true as const,
+          principal: identity.principal,
+          projectId: input.projectId,
+        }
+        : {
+          enabled: false as const,
+          principal: identity.principal,
+          projectId: input.projectId,
+        };
+      return {
+        gitHistory: await runMcpApplicationEffect(
+          dependencies,
+          ProjectGitHistoryService.use((service) => service.set(command)),
+        ),
+      };
+    }),
+  );
 
   server.registerTool(
     "artifact_list",
@@ -858,6 +1080,434 @@ export function createArtifactMcpServer(
     }),
   );
 
+  server.registerTool(
+    "artifact_link",
+    {
+      title: "Link a file on this machine",
+      description:
+        "Link one file that already exists on this server's machine as an artifact, capturing its current bytes as the first immutable version. Available only on a local installation with linked files enabled; check artifact_capabilities first. Pass the absolute path only: MCP never carries file bytes, and the server reads the file itself. Omitting idempotencyKey derives a stable key from these arguments, so an identical retry replays instead of linking the file twice.",
+      inputSchema: z.object({
+        idempotencyKey: idempotencyKeySchema.nullable().default(null),
+        name: z.string().min(1).max(200).nullable().default(null),
+        path: linkPathSchema,
+        projectId: optionalProjectIdSchema,
+      }).strict(),
+      outputSchema: linkedPublicationSchema,
+      annotations: idempotentWriteAnnotations,
+    },
+    async ({idempotencyKey, name, path, projectId}) => linkedToolResult(async () => {
+      const command: LinkArtifactCommand = {
+        idempotencyKey: idempotencyKey ?? derivedIdempotencyKey([
+          "link",
+          projectId ?? "",
+          path,
+          name ?? "",
+        ]),
+        path,
+        principal: identity.principal,
+        projectId,
+      };
+      return linkedPublicationProjection(
+        applicationUrl,
+        dependencies.contentDomain,
+        await runMcpApplicationEffect(
+          dependencies,
+          LinkedArtifactService.use((linked) =>
+            linked.linkArtifact(name === null ? command : {...command, name})
+          ),
+        ),
+      );
+    }),
+  );
+
+  server.registerTool(
+    "artifact_capture",
+    {
+      title: "Capture a linked file's current bytes",
+      description:
+        "Save the current bytes of a linked artifact's source file as a new immutable version. Read the artifact first and pass its current version ID as expectedCurrentVersionId; capturing an unchanged source returns the current version unchanged. Omitting idempotencyKey derives a stable key from these arguments, so an identical retry replays instead of saving a second version.",
+      inputSchema: z.object({
+        artifactId: artifactIdSchema,
+        expectedCurrentVersionId: expectedVersionSchema,
+        idempotencyKey: idempotencyKeySchema.nullable().default(null),
+        projectId: optionalProjectIdSchema,
+      }).strict(),
+      outputSchema: linkedPublicationSchema,
+      annotations: idempotentWriteAnnotations,
+    },
+    async ({artifactId, expectedCurrentVersionId, idempotencyKey, projectId}) =>
+      linkedToolResult(async () =>
+        linkedPublicationProjection(
+          applicationUrl,
+          dependencies.contentDomain,
+          await runMcpApplicationEffect(
+            dependencies,
+            LinkedArtifactService.use((linked) =>
+              linked.captureArtifact({
+                artifactId,
+                expectedCurrentVersionId,
+                idempotencyKey: idempotencyKey ?? derivedIdempotencyKey([
+                  "capture",
+                  artifactId,
+                  expectedCurrentVersionId,
+                ]),
+                principal: identity.principal,
+                projectId,
+              })
+            ),
+          ),
+        )
+      ),
+  );
+
+  server.registerTool(
+    "artifact_relink",
+    {
+      title: "Point a linked artifact at a moved file",
+      description:
+        "Re-point one linked artifact at the same file in its new location on this server's machine. The move is accepted only when the file at the new path hashes to expectedSha256, normally the current version's entry file SHA-256. Versions, comments, and the artifact ID are untouched.",
+      inputSchema: z.object({
+        artifactId: artifactIdSchema,
+        expectedSha256: sha256Schema,
+        path: linkPathSchema,
+        projectId: optionalProjectIdSchema,
+      }).strict(),
+      outputSchema: z.object({
+        artifactId: z.string(),
+        sourceBinding: sourceBindingSchema,
+      }).strict(),
+      annotations: idempotentWriteAnnotations,
+    },
+    async ({artifactId, expectedSha256, path, projectId}) =>
+      linkedToolResult(async () => ({
+        artifactId,
+        sourceBinding: sourceBindingProjection(
+          await runMcpApplicationEffect(
+            dependencies,
+            LinkedArtifactService.use((linked) =>
+              linked.relinkArtifact({
+                artifactId,
+                expectedSha256,
+                idempotencyKey: derivedIdempotencyKey([
+                  "relink",
+                  artifactId,
+                  expectedSha256,
+                  path,
+                ]),
+                path,
+                principal: identity.principal,
+                projectId,
+              })
+            ),
+          ),
+        ),
+      })),
+  );
+
+  server.registerTool(
+    "comment_list",
+    {
+      title: "List comment threads",
+      description:
+        "List one artifact's comment threads across its saved versions, newest activity first. Filter by exact version or state, pass since to poll for new, edited, and resolved threads, continue a large result set with nextCursor, and pass dispatched to include or show only threads an agent dispatch currently holds (default excludes them, since a sent bundle disappears from ordinary listings until it is addressed, fails, or is canceled).",
+      inputSchema: z.object({
+        artifactId: artifactIdSchema,
+        cursor: z.string().max(1_024).nullable().default(null),
+        dispatched: dispatchedThreadFilterSchema.nullable().default(null),
+        limit: z.number().int().min(1).max(maximumCommentPageSize).default(50),
+        projectId: optionalProjectIdSchema,
+        since: z.iso.datetime().nullable().default(null),
+        state: commentStateSchema.nullable().default(null),
+        versionId: versionIdSchema.nullable().default(null),
+      }).strict(),
+      outputSchema: z.object({
+        items: z.array(commentThreadSchema),
+        nextCursor: z.string().nullable(),
+      }).strict(),
+      annotations: readOnlyAnnotations,
+    },
+    async (
+      {artifactId, cursor, dispatched, limit, projectId, since, state, versionId},
+    ) =>
+      toolResult(async () => {
+        const page = await runMcpApplicationEffect(
+          dependencies,
+          ArtifactCommentService.use((comments) =>
+            comments.listThreads({
+              artifactId,
+              cursor: decodePageCursor(cursor),
+              dispatched: dispatched ?? dispatchedThreadFilters.exclude,
+              limit,
+              principal: identity.principal,
+              projectId,
+              since,
+              state,
+              versionId,
+            })
+          ),
+        );
+        return {
+          items: page.items.map(commentThreadProjection),
+          nextCursor: encodePageCursor(page.nextCursor),
+        };
+      }),
+  );
+
+  server.registerTool(
+    "comment_get",
+    {
+      title: "Get a comment thread",
+      description:
+        "Read one comment thread with every reply, in the order the replies were written.",
+      inputSchema: z.object({
+        artifactId: artifactIdSchema,
+        projectId: optionalProjectIdSchema,
+        threadId: commentThreadIdSchema,
+      }).strict(),
+      outputSchema: z.object({
+        replies: z.array(commentReplySchema),
+        thread: commentThreadSchema,
+      }).strict(),
+      annotations: readOnlyAnnotations,
+    },
+    async ({artifactId, projectId, threadId}) => toolResult(async () => {
+      const details = await runMcpApplicationEffect(
+        dependencies,
+        ArtifactCommentService.use((comments) =>
+          comments.getThread({
+            artifactId,
+            principal: identity.principal,
+            projectId,
+            threadId,
+          })
+        ),
+      );
+      return {
+        replies: [...details.replies],
+        thread: commentThreadProjection(details.thread),
+      };
+    }),
+  );
+
+  server.registerTool(
+    "comment_create",
+    {
+      title: "Open a comment thread",
+      description:
+        "Open one comment thread on one exact saved version, optionally on one manifest path inside it. The anchor is opaque client JSON; the server checks only its size and, when present, that a top-level point has x and y between 0 and 1.",
+      inputSchema: z.object({
+        anchor: z.unknown().nullable().default(null),
+        artifactId: artifactIdSchema,
+        body: commentBodySchema,
+        idempotencyKey: idempotencyKeySchema,
+        path: commentPathSchema.nullable().default(null),
+        projectId: optionalProjectIdSchema,
+        versionId: versionIdSchema,
+      }).strict(),
+      outputSchema: z.object({
+        replayed: z.boolean(),
+        thread: commentThreadSchema,
+      }).strict(),
+      annotations: idempotentWriteAnnotations,
+    },
+    async ({
+      anchor,
+      artifactId,
+      body,
+      idempotencyKey,
+      path,
+      projectId,
+      versionId,
+    }) => toolResult(async () => {
+      const creation = await runMcpApplicationEffect(
+        dependencies,
+        ArtifactCommentService.use((comments) =>
+          comments.createThread({
+            anchor,
+            artifactId,
+            body,
+            idempotencyKey,
+            path,
+            principal: identity.principal,
+            projectId,
+            versionId,
+          })
+        ),
+      );
+      return {
+        replayed: creation.replayed,
+        thread: commentThreadProjection(creation.thread),
+      };
+    }),
+  );
+
+  server.registerTool(
+    "comment_reply",
+    {
+      title: "Reply to a comment thread",
+      description:
+        "Add one reply to an open comment thread. A resolved thread rejects replies until it is reopened; replies carry no anchor and cannot be replied to.",
+      inputSchema: z.object({
+        artifactId: artifactIdSchema,
+        body: commentBodySchema,
+        idempotencyKey: idempotencyKeySchema,
+        projectId: optionalProjectIdSchema,
+        threadId: commentThreadIdSchema,
+      }).strict(),
+      outputSchema: z.object({
+        replayed: z.boolean(),
+        reply: commentReplySchema,
+      }).strict(),
+      annotations: idempotentWriteAnnotations,
+    },
+    async ({artifactId, body, idempotencyKey, projectId, threadId}) =>
+      toolResult(async () => {
+        const creation = await runMcpApplicationEffect(
+          dependencies,
+          ArtifactCommentService.use((comments) =>
+            comments.createReply({
+              artifactId,
+              body,
+              idempotencyKey,
+              principal: identity.principal,
+              projectId,
+              threadId,
+            })
+          ),
+        );
+        return {replayed: creation.replayed, reply: creation.reply};
+      }),
+  );
+
+  server.registerTool(
+    "comment_resolve",
+    {
+      title: "Resolve or reopen a comment thread",
+      description:
+        "Close one comment thread as resolved, or reopen it by passing resolved false. Resolving records who resolved it and when.",
+      inputSchema: z.object({
+        artifactId: artifactIdSchema,
+        projectId: optionalProjectIdSchema,
+        resolved: z.boolean(),
+        threadId: commentThreadIdSchema,
+      }).strict(),
+      outputSchema: z.object({thread: commentThreadSchema}).strict(),
+      annotations: idempotentWriteAnnotations,
+    },
+    async ({artifactId, projectId, resolved, threadId}) => toolResult(async () => ({
+      thread: commentThreadProjection(await runMcpApplicationEffect(
+        dependencies,
+        ArtifactCommentService.use((comments) =>
+          comments.updateThread({
+            artifactId,
+            principal: identity.principal,
+            projectId,
+            state: resolved
+              ? commentThreadStates.resolved
+              : commentThreadStates.open,
+            threadId,
+          })
+        ),
+      )),
+    })),
+  );
+
+  server.registerTool(
+    "comment_update",
+    {
+      title: "Edit a comment",
+      description:
+        "Change the words of one comment thread, or of one of its replies when replyId is given. Only the author may edit. An anchor belongs to a thread, so omit replyId when moving one.",
+      inputSchema: z.object({
+        anchor: z.unknown().optional(),
+        artifactId: artifactIdSchema,
+        body: commentBodySchema.optional(),
+        projectId: optionalProjectIdSchema,
+        replyId: commentReplyIdSchema.nullable().default(null),
+        threadId: commentThreadIdSchema,
+      }).strict(),
+      outputSchema: z.object({
+        reply: commentReplySchema.nullable(),
+        thread: commentThreadSchema.nullable(),
+      }).strict(),
+      annotations: idempotentWriteAnnotations,
+    },
+    async ({anchor, artifactId, body, projectId, replyId, threadId}) =>
+      toolResult(async () => {
+        const target: ReadCommentThreadCommand = {
+          artifactId,
+          principal: identity.principal,
+          projectId,
+          threadId,
+        };
+        if (replyId !== null) {
+          if (anchor !== undefined) {
+            throw new InvalidComment({
+              message:
+                "A reply carries no anchor. Omit replyId to move a comment thread's anchor.",
+            });
+          }
+          if (body === undefined) {
+            throw new InvalidComment({
+              message: "A reply edit must carry the replacement body.",
+            });
+          }
+          const reply = await runMcpApplicationEffect(
+            dependencies,
+            ArtifactCommentService.use((comments) =>
+              comments.updateReply({...target, body, replyId})
+            ),
+          );
+          return {reply, thread: null};
+        }
+        const thread = await runMcpApplicationEffect(
+          dependencies,
+          ArtifactCommentService.use((comments) =>
+            comments.updateThread(commentThreadEdit(
+              target,
+              anchor === undefined ? null : {anchor},
+              body ?? null,
+            ))
+          ),
+        );
+        return {reply: null, thread: commentThreadProjection(thread)};
+      }),
+  );
+
+  server.registerTool(
+    "comment_delete",
+    {
+      title: "Delete a comment",
+      description:
+        "Delete one comment thread with every reply it carries, or delete one reply when replyId is given. The author, a human administrator, or a principal with artifact:manage:any may delete.",
+      inputSchema: z.object({
+        artifactId: artifactIdSchema,
+        projectId: optionalProjectIdSchema,
+        replyId: commentReplyIdSchema.nullable().default(null),
+        threadId: commentThreadIdSchema,
+      }).strict(),
+      outputSchema: z.object({deleted: z.literal(true)}).strict(),
+      annotations: destructiveWriteAnnotations,
+    },
+    async ({artifactId, projectId, replyId, threadId}) => toolResult(async () => {
+      const target: ReadCommentThreadCommand = {
+        artifactId,
+        principal: identity.principal,
+        projectId,
+        threadId,
+      };
+      await runMcpApplicationEffect(
+        dependencies,
+        ArtifactCommentService.use((comments) =>
+          replyId === null
+            ? comments.deleteThread(target)
+            : comments.deleteReply({...target, replyId})
+        ),
+      );
+      return {deleted: true as const};
+    }),
+  );
+
   server.registerResource(
     "artifact-version-manifest",
     manifestResource,
@@ -942,6 +1592,8 @@ function agentInstructions(mode: "local" | "remote"): string {
     "For publishing, inspect the selected file or finished directory on the client, compute each relative path, byte length, media type, and SHA-256 fingerprint, call artifact_create_upload, PUT the exact bytes to every returned uploadUrl using the same bearer credential, then call artifact_commit_upload.",
     "When publishing a new version, first call artifact_get and pass its current version ID as expectedCurrentVersionId. On conflict, inspect the new current version before retrying.",
     "Use a stable application idempotency key when retrying the same mutation. Use a new key only for an intentional new operation.",
+    "Reviewers leave comment threads on an artifact version. Use comment_list and comment_get to read them, comment_create, comment_reply, and comment_update to write, comment_resolve to close or reopen a thread, and comment_delete to remove one you own; deleting a thread also deletes its replies.",
+    "comment_list hides threads an agent dispatch currently holds unless you pass dispatched: \"include\" or \"only\"; comment_get still reads a dispatched thread directly by id.",
     "artifact_get returns the current complete manifest and browser link in one call. artifact_open returns a client-openable URL; a remote server never opens a browser on the server machine.",
     mode === "local"
       ? "This is a local MCP connection, but the MCP protocol still carries metadata rather than file bytes. Use the bundled Artifact Server publishing skill or CLI to upload a local path."
@@ -949,8 +1601,25 @@ function agentInstructions(mode: "local" | "remote"): string {
   ].join("\n");
 }
 
-function capabilities(mode: "local" | "remote") {
+function capabilities(
+  mode: "local" | "remote",
+  linkedArtifacts: boolean,
+  gitHistory: GitHistoryCapability,
+) {
   return {
+    gitHistory,
+    linkedArtifacts: {available: linkedArtifacts},
+    agentDispatch: {
+      bundleThreadRule:
+        "1..100 open, undispatched comment threads from one project per bundle",
+      maximumBundleThreads: maximumDispatchBundleSize,
+      maximumNoteCharacters: maximumDispatchNoteCharacters,
+    },
+    comments: {
+      anchorRule: "opaque; top-level point.x and point.y must be 0..1",
+      maximumAnchorBytes: maximumCommentAnchorBytes,
+      maximumBodyCharacters: maximumCommentBodyCharacters,
+    },
     comparison: {maximumTextFileBytes: maximumTextDiffBytes},
     deployment: {mode},
     publishing: {
@@ -1042,6 +1711,48 @@ function publishedVersionProjection(
   };
 }
 
+function sourceBindingProjection(binding: SourceBindingRecord) {
+  return {
+    lastVerifiedAt: binding.lastVerifiedAt,
+    path: binding.path,
+    status: binding.freshness,
+  };
+}
+
+function linkedPublicationProjection(
+  applicationUrl: URL,
+  contentDomain: string,
+  linked: LinkedPublication,
+) {
+  const published = publishedVersionProjection(
+    applicationUrl,
+    contentDomain,
+    linked.published,
+  );
+  const liveToken = liveContentToken(linked.published.artifact.id);
+  return {
+    ...published,
+    links: {
+      ...published.links,
+      live: liveToken === null
+        ? null
+        : versionBrowserUrl(applicationUrl, contentDomain, liveToken),
+    },
+    sourceBinding: sourceBindingProjection(linked.binding),
+  };
+}
+
+/**
+ * Derive one stable idempotency key from the operation's own inputs so an
+ * agent that retries the identical call replays instead of linking twice.
+ */
+function derivedIdempotencyKey(parts: readonly string[]): string {
+  const digest = createHash("sha256")
+    .update(parts.join("\n"))
+    .digest("hex");
+  return `mcp-${digest.slice(0, 48)}`;
+}
+
 function versionProjection(
   applicationUrl: URL,
   contentDomain: string,
@@ -1063,6 +1774,38 @@ function versionProjection(
     },
     version: saved.version,
   };
+}
+
+function commentThreadProjection(thread: CommentThreadRecord) {
+  return {
+    anchor: thread.anchor ?? null,
+    artifactId: thread.artifactId,
+    author: thread.author,
+    body: thread.body,
+    createdAt: thread.createdAt,
+    id: thread.id,
+    path: thread.path,
+    projectId: thread.projectId,
+    replyCount: thread.replyCount,
+    resolvedAt: thread.resolvedAt,
+    resolvedBy: thread.resolvedBy,
+    state: thread.state,
+    updatedAt: thread.updatedAt,
+    versionId: thread.versionId,
+  };
+}
+
+function commentThreadEdit(
+  target: ReadCommentThreadCommand,
+  anchor: CommentAnchorInput | null,
+  body: string | null,
+): UpdateCommentThreadCommand {
+  if (anchor === null) {
+    return body === null ? target : {...target, body};
+  }
+  return body === null
+    ? {...target, anchor: anchor.anchor}
+    : {...target, anchor: anchor.anchor, body};
 }
 
 async function authorizedBrowserUrl(
@@ -1114,6 +1857,35 @@ async function toolResult<Value extends object>(operation: () => Promise<Value>)
   try {
     return successResult(await operation());
   } catch (cause) {
+    return failureResult(cause);
+  }
+}
+
+/**
+ * Run one linked-source tool. Its retryable failures are restated as the
+ * action the agent should take next: a capture conflict already names the
+ * artifact's current version, and a drift abort saved nothing at all.
+ */
+async function linkedToolResult<Value extends object>(
+  operation: () => Promise<Value>,
+) {
+  try {
+    return successResult(await operation());
+  } catch (cause) {
+    if (cause instanceof Error && isArtifactServerFailure(cause)) {
+      if (cause._tag === "PublishConflict") {
+        return failureResult(new PublishConflict({
+          message:
+            `${cause.message} Read the artifact's current version ID and retry artifact_capture with it as expectedCurrentVersionId.`,
+        }));
+      }
+      if (cause._tag === "SourceDrifted") {
+        return failureResult(new SourceDrifted({
+          message:
+            `${cause.message} The source changed mid-read, so no version was saved; retry the same call.`,
+        }));
+      }
+    }
     return failureResult(cause);
   }
 }

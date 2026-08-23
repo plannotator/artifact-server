@@ -5,6 +5,10 @@ import {ExpiredStagingCleanupService} from
   "../../../src/application/expired-staging-cleanup.js";
 import {SystemClock, SystemIdGenerator} from "../../../src/core/system.js";
 import {
+  browserLoginKinds,
+  privateTeamBrowserAccess,
+} from "../../../src/core/browser-access.js";
+import {
   createHttpApp,
   type ReadinessComponent,
   type ReadinessReport,
@@ -18,16 +22,26 @@ import {createD1ArtifactRepository} from "./d1-artifact-repository.js";
 import {createD1IdentityRepository} from "./d1-identity-repository.js";
 import {migrateD1, requiredD1SchemaVersion} from "./d1-migrations.js";
 import {createR2ObjectStorageAdapters} from "./r2-object-storage.js";
+import {
+  createOidcIdentityProvider,
+  defaultOidcScopes,
+  type OidcIdentityProvider,
+} from "../../../src/identity/oidc-identity-provider.js";
 import {createWorkOsHostedAuthentication} from
   "../../../src/identity/workos-hosted-authentication.js";
 
-interface WorkerEnvironment {
+/** Bindings and variables the deployed Artifact Server worker reads. */
+export interface WorkerEnvironment {
   readonly ASSETS: Fetcher;
   readonly ARTIFACT_SERVER_API_TOKEN: string;
   readonly ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL: string;
   readonly ARTIFACT_SERVER_CONTENT_DOMAIN: string;
   readonly ARTIFACT_SERVER_D1_DATABASE: D1Database;
   readonly ARTIFACT_SERVER_INSTALLATION_ID: string;
+  readonly ARTIFACT_SERVER_OIDC_CLIENT_ID?: string;
+  readonly ARTIFACT_SERVER_OIDC_CLIENT_SECRET?: string;
+  readonly ARTIFACT_SERVER_OIDC_ISSUER?: string;
+  readonly ARTIFACT_SERVER_OIDC_SCOPES?: string;
   readonly ARTIFACT_SERVER_ORIGIN: string;
   readonly ARTIFACT_SERVER_QUALIFICATION_MODE?: "enabled";
   readonly ARTIFACT_SERVER_R2_BUCKET: R2Bucket;
@@ -120,7 +134,13 @@ async function createCloudflareRuntime(
     environment.ARTIFACT_SERVER_R2_BUCKET,
     environment.ARTIFACT_SERVER_INSTALLATION_ID,
   );
+  const oidcIdentityProvider = oidcAuthentication(environment);
   const hostedAuthentication = await workOsAuthentication(environment);
+  const browserAccess = hostedAuthentication !== null
+    ? privateTeamBrowserAccess(browserLoginKinds.workOs)
+    : oidcIdentityProvider !== null
+    ? privateTeamBrowserAccess(browserLoginKinds.oidc)
+    : missingIdentityProvider();
   const applicationLayer = createApplicationLayer({
     apiToken: Redacted.make(environment.ARTIFACT_SERVER_API_TOKEN, {
       label: "cloudflare-api-token",
@@ -129,6 +149,7 @@ async function createCloudflareRuntime(
     bootstrapAdministratorEmail:
       environment.ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL,
     clock: new SystemClock(),
+    dispatches: repository,
     externalApiBearerVerifier: null,
     externalMcpBearerVerifier: null,
     externalMcpOAuthVerifier:
@@ -136,9 +157,10 @@ async function createCloudflareRuntime(
     ids: new SystemIdGenerator(),
     identityRepository,
     installationId: environment.ARTIFACT_SERVER_INSTALLATION_ID,
-    interactiveIdentityProvider:
+    interactiveIdentityProvider: oidcIdentityProvider ??
       hostedAuthentication?.interactiveIdentityProvider ?? null,
     localBootstrapCredential: null,
+    protectBootstrapAdministrator: false,
     repository,
     staging,
   });
@@ -150,6 +172,7 @@ async function createCloudflareRuntime(
   const appDependencies = {
     applicationRuntime,
     blobs,
+    browserAccess,
     completedRequestLogSampleRate: requestLogSampleRate(environment),
     contentDomain: environment.ARTIFACT_SERVER_CONTENT_DOMAIN,
     readiness: () => readiness(environment),
@@ -187,14 +210,31 @@ async function createCloudflareRuntime(
   };
 }
 
-async function workOsAuthentication(
+function workOsValues(
   environment: WorkerEnvironment,
-) {
-  const values = [
+): readonly (string | undefined)[] {
+  return [
     environment.ARTIFACT_SERVER_WORKOS_API_KEY,
     environment.ARTIFACT_SERVER_WORKOS_CLIENT_ID,
     environment.ARTIFACT_SERVER_WORKOS_ISSUER,
   ];
+}
+
+function oidcValues(
+  environment: WorkerEnvironment,
+): readonly (string | undefined)[] {
+  return [
+    environment.ARTIFACT_SERVER_OIDC_CLIENT_ID,
+    environment.ARTIFACT_SERVER_OIDC_CLIENT_SECRET,
+    environment.ARTIFACT_SERVER_OIDC_ISSUER,
+    environment.ARTIFACT_SERVER_OIDC_SCOPES,
+  ];
+}
+
+async function workOsAuthentication(
+  environment: WorkerEnvironment,
+) {
+  const values = workOsValues(environment);
   const configured = values.filter((value) => value !== undefined).length;
   if (configured === 0) return null;
   if (configured !== values.length) {
@@ -216,11 +256,42 @@ async function workOsAuthentication(
   });
 }
 
+function oidcAuthentication(
+  environment: WorkerEnvironment,
+): OidcIdentityProvider | null {
+  if (oidcValues(environment).every((value) => value === undefined)) return null;
+  const required = [
+    environment.ARTIFACT_SERVER_OIDC_CLIENT_ID,
+    environment.ARTIFACT_SERVER_OIDC_ISSUER,
+  ];
+  if (required.some((value) => value === undefined)) {
+    throw new Error(
+      "Generic OIDC authentication requires an issuer and client ID.",
+    );
+  }
+  const secret = environment.ARTIFACT_SERVER_OIDC_CLIENT_SECRET;
+  return createOidcIdentityProvider({
+    applicationOrigin: environment.ARTIFACT_SERVER_ORIGIN,
+    clientId: requireEnvironmentValue(
+      environment.ARTIFACT_SERVER_OIDC_CLIENT_ID,
+    ),
+    clientSecret: secret === undefined ? null : Redacted.make(secret),
+    issuer: requireEnvironmentValue(environment.ARTIFACT_SERVER_OIDC_ISSUER),
+    scopes: environment.ARTIFACT_SERVER_OIDC_SCOPES ?? defaultOidcScopes,
+  });
+}
+
 function requireEnvironmentValue(value: string | undefined): string {
   if (value === undefined) {
     throw new Error("A required hosted authentication value is missing.");
   }
   return value;
+}
+
+function missingIdentityProvider(): never {
+  throw new Error(
+    "A private-team server requires exactly one OIDC or WorkOS browser-login provider.",
+  );
 }
 
 function prepareRequest(
@@ -259,6 +330,14 @@ function validateEnvironment(environment: WorkerEnvironment): void {
   }
   if (environment.ARTIFACT_SERVER_CONTENT_DOMAIN.trim() === "") {
     throw new Error("ARTIFACT_SERVER_CONTENT_DOMAIN is required.");
+  }
+  if (
+    workOsValues(environment).some((value) => value !== undefined) &&
+    oidcValues(environment).some((value) => value !== undefined)
+  ) {
+    throw new Error(
+      "One installation has one browser-login provider: configure ARTIFACT_SERVER_WORKOS_* or ARTIFACT_SERVER_OIDC_*, not both.",
+    );
   }
 }
 

@@ -14,6 +14,7 @@ import {
   checkIntegrityCatalog,
 } from "../../../src/lifecycle/integrity-check.js";
 import {createR2ObjectStorageAdapters} from "./r2-object-storage.js";
+import {requiredD1SchemaVersion} from "./d1-migrations.js";
 
 interface RecoveryEnvironment {
   readonly ARTIFACT_SERVER_INSTALLATION_ID: string;
@@ -70,6 +71,8 @@ const stateQueries: readonly NamedQuery[] = [
   {name: "installation_members", sql: "SELECT * FROM installation_members ORDER BY id"},
   {name: "external_identities", sql: "SELECT * FROM external_identities ORDER BY provider, subject"},
   {name: "application_sessions", sql: "SELECT * FROM application_sessions ORDER BY id"},
+  {name: "git_history_provider_identity", sql: "SELECT * FROM git_history_provider_identity ORDER BY installation_id"},
+  {name: "git_history_project_settings", sql: "SELECT * FROM git_history_project_settings ORDER BY project_id"},
   {name: "managed_api_keys", sql: "SELECT * FROM managed_api_keys ORDER BY id"},
   {name: "login_attempts", sql: "SELECT * FROM login_attempts ORDER BY state_digest"},
   {name: "mutation_checks", sql: "SELECT * FROM mutation_checks ORDER BY id"},
@@ -132,7 +135,9 @@ async function inspectInstallation(environment: RecoveryEnvironment) {
   const schemaVersion = await database.prepare(`
     SELECT version FROM artifact_server_schema WHERE component = 'runtime'
   `).first<number>("version");
-  if (schemaVersion !== 2) throw new Error("Unexpected D1 schema revision.");
+  if (schemaVersion !== requiredD1SchemaVersion) {
+    throw new Error("Unexpected D1 schema revision.");
+  }
   const installationRows = await database.prepare(`
     SELECT DISTINCT installation_id AS installationId
     FROM projects

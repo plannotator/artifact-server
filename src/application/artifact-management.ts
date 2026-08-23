@@ -143,7 +143,7 @@ export interface ArtifactManagementRepository {
     projectId: string,
     artifactId: string,
   ) => Effect.Effect<ArtifactRecord | null, ArtifactRepositoryFailure>;
-  readonly findArtifactVersion: (
+  readonly findVersionRecord: (
     projectId: string,
     artifactId: string,
     versionId: string,
@@ -302,7 +302,7 @@ function makeArtifactManagementService(
       artifactId: string,
       versionId: string,
     ): Effect.fn.Return<ArtifactVersion, VersionNotFound | ArtifactRepositoryFailure> {
-      const version = yield* dependencies.repository.findArtifactVersion(
+      const version = yield* dependencies.repository.findVersionRecord(
         projectId,
         artifactId,
         versionId,
@@ -337,9 +337,27 @@ function makeArtifactManagementService(
         command.principal,
         command.projectId,
       );
-      const artifact = yield* requireArtifact(project.id, command.artifactId);
+      // The artifact and version reads are independent, so they run in one
+      // round of concurrent queries; existence and authorization checks keep
+      // their original order below.
+      const [artifact, version] = yield* Effect.all([
+        dependencies.repository.findArtifact(project.id, command.artifactId),
+        dependencies.repository.findVersionRecord(
+          project.id,
+          command.artifactId,
+          command.versionId,
+        ),
+      ], {concurrency: 2});
+      if (artifact === null) {
+        return yield* new ArtifactNotFound({message: "The artifact does not exist."});
+      }
       yield* authorization.requireArtifactRead(command.principal);
-      return yield* requireVersion(project.id, artifact.id, command.versionId);
+      if (version === null) {
+        return yield* new VersionNotFound({
+          message: "The saved version does not exist on this artifact.",
+        });
+      }
+      return version;
     },
   );
 
@@ -349,12 +367,21 @@ function makeArtifactManagementService(
         command.principal,
         command.projectId,
       );
-      const artifact = yield* requireArtifact(project.id, command.artifactId);
+      // The artifact read and the version listing are independent, so they
+      // run concurrently; existence and authorization checks keep their
+      // original order below.
+      const [artifact, versions] = yield* Effect.all([
+        dependencies.repository.findArtifact(project.id, command.artifactId),
+        dependencies.repository.listArtifactVersions(
+          project.id,
+          command.artifactId,
+        ),
+      ], {concurrency: 2});
+      if (artifact === null) {
+        return yield* new ArtifactNotFound({message: "The artifact does not exist."});
+      }
       yield* authorization.requireArtifactRead(command.principal);
-      return yield* dependencies.repository.listArtifactVersions(
-        project.id,
-        artifact.id,
-      );
+      return versions;
     },
   );
 

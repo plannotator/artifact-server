@@ -11,6 +11,8 @@ import {
 import {createGracefulHttpShutdown} from
   "../lifecycle/graceful-http-shutdown.js";
 import {createRuntimeLifecycle} from "../lifecycle/runtime-readiness.js";
+import {withNodeResponseCompression} from
+  "../http/node-response-compression.js";
 
 const serverAddressSchema = z.object({
   address: z.string().min(1),
@@ -36,13 +38,20 @@ export interface RunningExternalStorageServer {
 export async function startExternalStorageServer(
   config: ExternalStorageServerConfig,
 ): Promise<RunningExternalStorageServer> {
+  if (config.interactiveIdentityProvider === undefined) {
+    throw new Error(
+      "A private-team server requires exactly one OIDC or WorkOS browser-login provider.",
+    );
+  }
   const lifecycle = config.runtimeLifecycle ?? createRuntimeLifecycle();
   const runtime = await createExternalStorageRuntime({
     ...config,
     runtimeLifecycle: lifecycle,
   });
   const server = createServer(
-    getRequestListener(runtime.app.fetch, {hostname: config.hostname}),
+    getRequestListener(withNodeResponseCompression(runtime.app.fetch), {
+      hostname: config.hostname,
+    }),
   );
   const listening = once(server, "listening");
   try {

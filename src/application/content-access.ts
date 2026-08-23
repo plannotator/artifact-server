@@ -69,7 +69,7 @@ export interface ContentAccessRepository {
     projectId: string | null,
     artifactId: string,
   ) => Effect.Effect<PublishedVersion | null, ArtifactRepositoryFailure>;
-  readonly findArtifactVersion: (
+  readonly findVersionRecord: (
     projectId: string,
     artifactId: string,
     versionId: string,
@@ -209,7 +209,7 @@ function makeContentAccessService(
     );
     const target = command.target.kind === "current"
       ? current.version
-      : (yield* dependencies.repository.findArtifactVersion(
+      : (yield* dependencies.repository.findVersionRecord(
         project.id,
         current.artifact.id,
         command.target.versionId,

@@ -4,7 +4,22 @@ import {
 } from "../../../src/core/model.js";
 
 /** D1 schema revision required by the Cloudflare runtime. */
-export const requiredD1SchemaVersion = 2;
+export const requiredD1SchemaVersion = 7;
+
+/** SQL literal list of every action kind the ledger accepts. */
+const actionKindList = [
+  "'publish'",
+  "'restore'",
+  "'change_access'",
+  "'change_tags'",
+  "'delete'",
+  "'comment_create'",
+  "'comment_reply'",
+  "'comment_update'",
+  "'comment_resolve'",
+  "'comment_reopen'",
+  "'comment_delete'",
+].join(", ");
 
 const schemaSql = `
   CREATE TABLE IF NOT EXISTS artifact_server_schema (
@@ -78,7 +93,7 @@ const schemaSql = `
     project_id TEXT NOT NULL REFERENCES projects(id),
     artifact_id TEXT NOT NULL REFERENCES artifacts(id),
     version_id TEXT NOT NULL REFERENCES versions(id),
-    action TEXT NOT NULL CHECK (action IN ('publish', 'restore', 'change_access', 'change_tags', 'delete')),
+    action TEXT NOT NULL CHECK (action IN (${actionKindList})),
     principal_id TEXT NOT NULL,
     authorized_by_principal_id TEXT,
     idempotency_key TEXT NOT NULL,
@@ -168,6 +183,23 @@ const schemaSql = `
     revoked_at TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS git_history_provider_identity (
+    installation_id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL CHECK (provider = 'cloudflare-artifacts'),
+    account_id TEXT NOT NULL,
+    namespace TEXT NOT NULL,
+    activated_at TEXT NOT NULL,
+    UNIQUE (provider, account_id, namespace)
+  );
+
+  CREATE TABLE IF NOT EXISTS git_history_project_settings (
+    project_id TEXT PRIMARY KEY REFERENCES projects(id),
+    installation_id TEXT NOT NULL,
+    enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+    updated_by_principal_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS managed_api_keys (
     id TEXT PRIMARY KEY,
     installation_id TEXT NOT NULL,
@@ -189,6 +221,7 @@ const schemaSql = `
     state_digest TEXT PRIMARY KEY,
     provider TEXT NOT NULL,
     code_verifier TEXT NOT NULL,
+    nonce TEXT,
     return_to TEXT NOT NULL,
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
@@ -198,6 +231,89 @@ const schemaSql = `
   CREATE TABLE IF NOT EXISTS mutation_checks (
     id TEXT PRIMARY KEY,
     succeeded INTEGER NOT NULL CHECK (succeeded = 1)
+  );
+
+  CREATE TABLE IF NOT EXISTS registered_agents (
+    id TEXT PRIMARY KEY,
+    installation_id TEXT NOT NULL,
+    connection_key TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('pi')),
+    working_directory TEXT NOT NULL,
+    agent_session_id TEXT,
+    principal_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    UNIQUE (installation_id, principal_id, connection_key)
+  );
+
+  CREATE TABLE IF NOT EXISTS agent_dispatches (
+    id TEXT PRIMARY KEY,
+    installation_id TEXT NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    agent_id TEXT NOT NULL,
+    agent_display_name TEXT NOT NULL,
+    thread_ids_json TEXT NOT NULL,
+    note TEXT,
+    state TEXT NOT NULL CHECK (
+      state IN ('queued', 'claimed', 'delivered', 'addressed', 'failed', 'canceled')
+    ),
+    sender_principal_id TEXT NOT NULL,
+    sender_principal_kind TEXT NOT NULL CHECK (sender_principal_kind IN ('human', 'service')),
+    sender_display_name TEXT NOT NULL,
+    sender_authorized_by_principal_id TEXT,
+    idempotency_key TEXT NOT NULL,
+    claimed_at TEXT,
+    lease_expires_at TEXT,
+    delivered_at TEXT,
+    addressed_at TEXT,
+    failed_at TEXT,
+    failure_reason TEXT,
+    canceled_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (installation_id, project_id, idempotency_key)
+  );
+
+  CREATE TABLE IF NOT EXISTS comment_threads (
+    id TEXT PRIMARY KEY,
+    installation_id TEXT NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+    version_id TEXT NOT NULL REFERENCES versions(id),
+    path TEXT,
+    anchor_json TEXT,
+    body TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('open', 'resolved')),
+    author_principal_id TEXT NOT NULL,
+    author_principal_kind TEXT NOT NULL CHECK (author_principal_kind IN ('human', 'service')),
+    author_display_name TEXT NOT NULL,
+    author_authorized_by_principal_id TEXT,
+    resolved_at TEXT,
+    resolved_by_principal_id TEXT,
+    resolved_by_principal_kind TEXT CHECK (resolved_by_principal_kind IS NULL OR resolved_by_principal_kind IN ('human', 'service')),
+    resolved_by_display_name TEXT,
+    resolved_by_authorized_by_principal_id TEXT,
+    idempotency_key TEXT NOT NULL,
+    dispatch_id TEXT REFERENCES agent_dispatches(id),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (project_id, idempotency_key)
+  );
+
+  CREATE TABLE IF NOT EXISTS comment_replies (
+    id TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL REFERENCES comment_threads(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    body TEXT NOT NULL,
+    author_principal_id TEXT NOT NULL,
+    author_principal_kind TEXT NOT NULL CHECK (author_principal_kind IN ('human', 'service')),
+    author_display_name TEXT NOT NULL,
+    author_authorized_by_principal_id TEXT,
+    idempotency_key TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (project_id, idempotency_key)
   );
 
   CREATE INDEX IF NOT EXISTS versions_artifact_id
@@ -218,6 +334,18 @@ const schemaSql = `
     ON content_sessions(expires_at);
   CREATE INDEX IF NOT EXISTS application_sessions_member_idx
     ON application_sessions(installation_id, member_id);
+  CREATE INDEX IF NOT EXISTS comment_threads_artifact_created
+    ON comment_threads(artifact_id, created_at DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS comment_threads_version_created
+    ON comment_threads(version_id, created_at DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS comment_threads_updated
+    ON comment_threads(artifact_id, updated_at);
+  CREATE INDEX IF NOT EXISTS comment_replies_thread_created
+    ON comment_replies(thread_id, created_at, id);
+  CREATE INDEX IF NOT EXISTS agent_dispatches_claim
+    ON agent_dispatches(agent_id, state, created_at, id);
+  CREATE INDEX IF NOT EXISTS agent_dispatches_project_created
+    ON agent_dispatches(project_id, created_at DESC, id DESC);
 `;
 
 const upgradeFromVersion1Statements = [
@@ -330,6 +458,44 @@ const upgradeFromVersion1Statements = [
     ON staged_uploads(status, expires_at)`,
 ] as const;
 
+const upgradeFromVersion2Statements = [
+  "PRAGMA defer_foreign_keys = ON",
+  `CREATE TABLE actions_upgrade_snapshot AS SELECT
+    id, project_id, artifact_id, version_id, action, principal_id,
+    authorized_by_principal_id, idempotency_key, created_at
+    FROM actions`,
+  `CREATE TABLE actions_next (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+    version_id TEXT NOT NULL REFERENCES versions(id),
+    action TEXT NOT NULL CHECK (action IN (${actionKindList})),
+    principal_id TEXT NOT NULL,
+    authorized_by_principal_id TEXT,
+    idempotency_key TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  "DROP TABLE actions",
+  "ALTER TABLE actions_next RENAME TO actions",
+  `INSERT INTO actions (
+    id, project_id, artifact_id, version_id, action, principal_id,
+    authorized_by_principal_id, idempotency_key, created_at
+  ) SELECT id, project_id, artifact_id, version_id, action, principal_id,
+    authorized_by_principal_id, idempotency_key, created_at
+    FROM actions_upgrade_snapshot`,
+  "DROP TABLE actions_upgrade_snapshot",
+  `CREATE INDEX actions_artifact_created
+    ON actions(project_id, artifact_id, created_at DESC, id DESC)`,
+] as const;
+
+const upgradeFromVersion3Statements = [
+  "ALTER TABLE login_attempts ADD COLUMN nonce TEXT",
+] as const;
+
+const upgradeFromVersion4Statements = [
+  "ALTER TABLE comment_threads ADD COLUMN dispatch_id TEXT REFERENCES agent_dispatches(id)",
+] as const;
+
 /** Create or verify the Cloudflare D1 schema and installation default project. */
 export async function migrateD1(
   database: D1Database,
@@ -354,6 +520,18 @@ export async function migrateD1(
         database.prepare(statement)),
     );
   }
+  if (current === 1 || current === 2) {
+    await database.batch(
+      upgradeFromVersion2Statements.map((statement) =>
+        database.prepare(statement)),
+    );
+  }
+  if (current === 1 || current === 2 || current === 3) {
+    await addLoginAttemptNonceIfMissing(database);
+  }
+  if (current === null || current < requiredD1SchemaVersion) {
+    await addCommentThreadDispatchMarkerIfMissing(database);
+  }
   await database.batch([
     database.prepare(`
       INSERT INTO artifact_server_schema (component, version)
@@ -372,4 +550,39 @@ export async function migrateD1(
       new Date(0).toISOString(),
     ),
   ]);
+}
+
+/**
+ * Add the dispatch back-marker to `comment_threads`. The column and its index
+ * cannot live in the shared schema statements: a database created before this
+ * revision already holds the table, so `CREATE TABLE IF NOT EXISTS` leaves the
+ * column absent and an index over it would fail the whole schema batch.
+ */
+async function addCommentThreadDispatchMarkerIfMissing(
+  database: D1Database,
+): Promise<void> {
+  const columns = await database.prepare("PRAGMA table_info(comment_threads)")
+    .all<{name: string}>();
+  if (!columns.results.some((column) => column.name === "dispatch_id")) {
+    await database.batch(
+      upgradeFromVersion4Statements.map((statement) =>
+        database.prepare(statement)),
+    );
+  }
+  await database.prepare(`
+    CREATE INDEX IF NOT EXISTS comment_threads_dispatch
+      ON comment_threads(dispatch_id)
+  `).run();
+}
+
+async function addLoginAttemptNonceIfMissing(
+  database: D1Database,
+): Promise<void> {
+  const columns = await database.prepare("PRAGMA table_info(login_attempts)")
+    .all<{name: string}>();
+  if (columns.results.some((column) => column.name === "nonce")) return;
+  await database.batch(
+    upgradeFromVersion3Statements.map((statement) =>
+      database.prepare(statement)),
+  );
 }

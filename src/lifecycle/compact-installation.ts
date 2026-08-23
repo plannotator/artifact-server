@@ -38,7 +38,7 @@ export type CompactInstallationMetadata =
 export interface CompactInstallationLayout {
   /** Generated API credential file. */
   readonly apiTokenPath: string;
-  /** Generated one-time browser bootstrap credential file. */
+  /** Legacy browser bootstrap path retained only for restore compatibility. */
   readonly browserBootstrapTokenPath: string;
   /** Persistent database, blobs, staging, and installation metadata root. */
   readonly dataDirectory: string;
@@ -52,8 +52,6 @@ export interface CompactInstallationLayout {
 
 /** Result printed exactly once after compact initialization succeeds. */
 export interface InitializedCompactInstallation {
-  /** One-time browser bootstrap credential. The server never logs it later. */
-  readonly bootstrapCredential: string;
   /** Stable installation identity. */
   readonly installationId: string;
 }
@@ -116,8 +114,8 @@ export const initializeCompactInstallation = Effect.fn(
   const temporaryLayout = compactInstallationLayout(temporaryDirectory);
   const initializedAt = new Date().toISOString();
   const installationId = `inst_${randomUUID()}`;
-  const apiToken = randomBytes(32).toString("base64url");
-  const bootstrapCredential = randomBytes(32).toString("base64url");
+  const apiToken =
+    `as_key_key_${randomUUID()}_${randomBytes(32).toString("base64url")}`;
   const bootstrapAdministratorEmail = yield* Schema.decodeUnknownEffect(
     installationMetadataSchema.fields.bootstrapAdministratorEmail,
   )(input.bootstrapAdministratorEmail).pipe(
@@ -162,18 +160,12 @@ export const initializeCompactInstallation = Effect.fn(
           `${apiToken}\n`,
           {encoding: "utf8", flag: "wx", mode: 0o600},
         ),
-        writeFile(
-          temporaryLayout.browserBootstrapTokenPath,
-          `${bootstrapCredential}\n`,
-          {encoding: "utf8", flag: "wx", mode: 0o600},
-        ),
       ]);
       await Promise.all([
         chmod(temporaryDirectory, 0o700),
         chmod(temporaryLayout.secretsDirectory, 0o700),
         chmod(temporaryLayout.metadataPath, 0o600),
         chmod(temporaryLayout.apiTokenPath, 0o600),
-        chmod(temporaryLayout.browserBootstrapTokenPath, 0o600),
       ]);
       await rename(temporaryDirectory, layout.dataDirectory);
     },
@@ -183,7 +175,7 @@ export const initializeCompactInstallation = Effect.fn(
     )),
   );
 
-  return {bootstrapCredential, installationId};
+  return {installationId};
 });
 
 /** Read and parse the stable identity of an initialized compact installation. */

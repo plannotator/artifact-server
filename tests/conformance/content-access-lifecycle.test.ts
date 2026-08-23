@@ -41,6 +41,7 @@ describe("content access lifecycle", () => {
       blobs: new LocalBlobStore(path.join(dataDirectory, "blobs")),
       bootstrapAdministratorEmail: "admin@example.test",
       clock,
+      dispatches: repository,
       externalApiBearerVerifier: null,
       externalMcpBearerVerifier: null,
       externalMcpOAuthVerifier: null,
@@ -49,6 +50,7 @@ describe("content access lifecycle", () => {
       installationId: "test-installation",
       interactiveIdentityProvider: null,
       localBootstrapCredential: null,
+      protectBootstrapAdministrator: false,
       repository,
       staging: new LocalStagingStore(path.join(dataDirectory, "staging")),
     }));
@@ -192,6 +194,7 @@ const testPrincipal: Principal = {
     principalCapabilities.issueContentSession,
     principalCapabilities.publishAnyArtifact,
   ],
+  displayName: "Content access fixture",
   id: "test-service-principal",
   installationId: "test-installation",
   kind: principalKinds.service,

@@ -29,7 +29,8 @@
     "tools/**/*.ts",
     "vitest.config.ts",
     "vitest.release.config.ts",
-    "vitest.integration.config.ts"
+    "vitest.integration.config.ts",
+    "vitest.pi-live.config.ts"
   ],
   "exclude": ["deploy/cloudflare/**"]
 }

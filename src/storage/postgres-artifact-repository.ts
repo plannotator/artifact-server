@@ -3,9 +3,14 @@ import {SqlClient} from "effect/unstable/sql/SqlClient";
 import {z} from "zod";
 
 import {
+  AgentDispatchNotFound,
   ArtifactMutationConflict,
   ArtifactNotFound,
+  CommentNotFound,
+  CommentResolved,
+  DispatchStateConflict,
   IdempotencyConflict,
+  InvalidDispatch,
   ProjectConflict,
   ProjectArchived,
   ProjectNotFound,
@@ -19,10 +24,17 @@ import {
 } from "../core/errors.js";
 import {
   accessSettings,
+  agentDispatchStates,
   artifactActionKinds,
+  commentThreadStates,
+  dispatchedThreadFilters,
   fileDispositions,
+  registeredAgentKinds,
   routingModes,
   uploadStatuses,
+  type AgentDispatchCreation,
+  type AgentDispatchPage,
+  type AgentDispatchRecord,
   type ArtifactActionPage,
   type ArtifactActionRecord,
   type ArtifactDeletion,
@@ -31,6 +43,14 @@ import {
   type ArtifactState,
   type ArtifactTombstone,
   type ArtifactVersion,
+  type CommentAuthor,
+  type CommentReplyCreation,
+  type CommentReplyRecord,
+  type CommentThreadCreation,
+  type CommentThreadDeletion,
+  type CommentThreadPage,
+  type CommentThreadRecord,
+  type CommentThreadState,
   type ContentBootstrapRecord,
   type ContentSessionRecord,
   type PageCursor,
@@ -38,33 +58,59 @@ import {
   defaultProjectName,
   type PublishedVersion,
   type ProjectRecord,
+  type RegisteredAgentRecord,
   type StagedUpload,
   type StagedUploadFile,
   type VersionContent,
   type VersionRecord,
 } from "../core/model.js";
 import type {
+  AgentDispatchRepository,
   ArtifactRepository,
+  CancelAgentDispatch,
   ChangeArtifactAccessSetting,
   ChangeArtifactTags,
+  CommentRepository,
   CommitArtifactVersion,
   CommitNewArtifact,
   ContentSessionRepository,
+  CreateAgentDispatch,
+  CreateCommentReply,
+  CreateCommentThread,
   CreateContentBootstrap,
   CreateProject,
   CreateStagedUpload,
   DeleteArtifact,
+  DeleteCommentReply,
+  DeleteCommentThread,
   ExchangeContentBootstrap,
   ExpiredStagedUpload,
+  ListAgentDispatches,
   ListArtifactActions,
   ListArtifacts,
+  ListCommentThreads,
+  MarkDispatchDelivered,
+  MarkDispatchFailed,
   PublicationSource,
   ProjectRepository,
+  RegisterAgent,
   RenameProject,
   RestoreArtifactVersion,
   SetProjectArchive,
   StagedUploadRepository,
+  UpdateCommentReply,
+  UpdateCommentThread,
 } from "../core/ports.js";
+import {principalKinds, type PrincipalKind} from "../core/identity.js";
+import type {
+  StoredProjectGitHistorySetting,
+  StoreProjectGitHistorySetting,
+} from "../application/project-git-history.js";
+import {
+  agentDispatchLeaseMilliseconds,
+  agentUnavailableStalenessMilliseconds,
+  registeredAgentRetentionMilliseconds,
+} from "../core/publishing-limits.js";
 import {createManifest} from "../manifest/create-manifest.js";
 import type {PostgresDatabase} from "./postgres-database.js";
 import type {
@@ -92,6 +138,12 @@ const uploadStatusSchema = z.enum([
 const artifactActionKindSchema = z.enum([
   artifactActionKinds.changeAccess,
   artifactActionKinds.changeTags,
+  artifactActionKinds.commentCreate,
+  artifactActionKinds.commentDelete,
+  artifactActionKinds.commentReopen,
+  artifactActionKinds.commentReply,
+  artifactActionKinds.commentResolve,
+  artifactActionKinds.commentUpdate,
   artifactActionKinds.delete,
   artifactActionKinds.publish,
   artifactActionKinds.restore,
@@ -231,15 +283,138 @@ const projectRowSchema = z.object({
   installationId: z.string(),
   name: z.string(),
 });
+const projectGitHistorySettingRowSchema = z.object({
+  enabled: z.boolean(),
+  projectId: z.string(),
+  updatedAt: z.string(),
+  updatedByPrincipalId: z.string(),
+});
+const projectGitHistoryEstimateRowSchema = z.object({
+  estimatedCopiedBytes: nonnegativeIntegerSchema,
+  estimatedPointerBytes: nonnegativeIntegerSchema,
+  repositories: nonnegativeIntegerSchema,
+  versions: nonnegativeIntegerSchema,
+});
+const commentPrincipalKindSchema = z.enum([
+  principalKinds.human,
+  principalKinds.service,
+]);
+const commentThreadStateSchema = z.enum([
+  commentThreadStates.open,
+  commentThreadStates.resolved,
+]);
+const commentThreadRowSchema = z.object({
+  anchorJson: z.string().nullable(),
+  artifactId: z.string(),
+  authorAuthorizedByPrincipalId: z.string().nullable(),
+  authorDisplayName: z.string(),
+  authorPrincipalId: z.string(),
+  authorPrincipalKind: commentPrincipalKindSchema,
+  body: z.string(),
+  createdAt: z.string(),
+  id: z.string(),
+  installationId: z.string(),
+  path: z.string().nullable(),
+  projectId: z.string(),
+  replyCount: nonnegativeIntegerSchema,
+  resolvedAt: z.string().nullable(),
+  resolvedByAuthorizedByPrincipalId: z.string().nullable(),
+  resolvedByDisplayName: z.string().nullable(),
+  resolvedByPrincipalId: z.string().nullable(),
+  resolvedByPrincipalKind: commentPrincipalKindSchema.nullable(),
+  state: commentThreadStateSchema,
+  updatedAt: z.string(),
+  versionId: z.string(),
+});
+const commentReplyRowSchema = z.object({
+  authorAuthorizedByPrincipalId: z.string().nullable(),
+  authorDisplayName: z.string(),
+  authorPrincipalId: z.string(),
+  authorPrincipalKind: commentPrincipalKindSchema,
+  body: z.string(),
+  createdAt: z.string(),
+  id: z.string(),
+  projectId: z.string(),
+  threadId: z.string(),
+  updatedAt: z.string(),
+});
+const registeredAgentRowSchema = z.object({
+  agentSessionId: z.string().nullable(),
+  connectionKey: z.string(),
+  createdAt: z.string(),
+  displayName: z.string(),
+  id: z.string(),
+  installationId: z.string(),
+  kind: z.enum([registeredAgentKinds.pi]),
+  lastSeenAt: z.string(),
+  principalId: z.string(),
+  workingDirectory: z.string(),
+});
+const agentDispatchStateSchema = z.enum([
+  agentDispatchStates.addressed,
+  agentDispatchStates.canceled,
+  agentDispatchStates.claimed,
+  agentDispatchStates.delivered,
+  agentDispatchStates.failed,
+  agentDispatchStates.queued,
+]);
+const agentDispatchRowSchema = z.object({
+  addressedAt: z.string().nullable(),
+  agentDisplayName: z.string(),
+  agentId: z.string(),
+  canceledAt: z.string().nullable(),
+  claimedAt: z.string().nullable(),
+  createdAt: z.string(),
+  deliveredAt: z.string().nullable(),
+  failedAt: z.string().nullable(),
+  failureReason: z.string().nullable(),
+  id: z.string(),
+  idempotencyKey: z.string(),
+  installationId: z.string(),
+  leaseExpiresAt: z.string().nullable(),
+  note: z.string().nullable(),
+  projectId: z.string(),
+  senderAuthorizedByPrincipalId: z.string().nullable(),
+  senderDisplayName: z.string(),
+  senderPrincipalId: z.string(),
+  senderPrincipalKind: commentPrincipalKindSchema,
+  state: agentDispatchStateSchema,
+  threadIdsJson: z.string(),
+  updatedAt: z.string(),
+});
+const dispatchThreadCheckRowSchema = z.object({
+  dispatchId: z.string().nullable(),
+  id: z.string(),
+  state: commentThreadStateSchema,
+});
+const dispatchIdentityRowSchema = z.object({id: z.string()});
+const threadIdsSchema = z.array(z.string());
+const resolvedCountRowSchema = z.object({
+  resolvedCount: nonnegativeIntegerSchema,
+});
 
 interface PageResult<Item> {
   readonly items: readonly Item[];
   readonly nextCursor: PageCursor | null;
 }
 
+/** The comment thread column values one update command leaves behind. */
+interface ChangedCommentThreadValues {
+  readonly anchorJson: string | null;
+  readonly body: string;
+  readonly resolvedAt: string | null;
+  readonly resolvedByAuthorizedByPrincipalId: string | null;
+  readonly resolvedByDisplayName: string | null;
+  readonly resolvedByPrincipalId: string | null;
+  readonly resolvedByPrincipalKind: PrincipalKind | null;
+  readonly state: CommentThreadState;
+}
+
 /** Installation-scoped Postgres persistence for artifacts and browser content sessions. */
 export class PostgresArtifactRepository implements
+  AgentDispatchRepository,
   ArtifactRepository,
+  CommentRepository,
   ContentSessionRepository,
   ProjectRepository,
   StagedUploadRepository
@@ -309,6 +484,108 @@ export class PostgresArtifactRepository implements
         [installationId],
       );
       return projectRowSchema.array().parse(rows);
+    }));
+  }
+
+  async readProjectGitHistorySetting(
+    projectId: string,
+  ): Promise<StoredProjectGitHistorySetting | null> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(`
+        SELECT project_id AS "projectId", enabled,
+          updated_by_principal_id AS "updatedByPrincipalId",
+          updated_at AS "updatedAt"
+        FROM git_history_project_settings
+        WHERE installation_id = $1 AND project_id = $2
+      `, [installationId, projectId]);
+      return projectGitHistorySettingRowSchema.nullable().parse(rows[0] ?? null);
+    }));
+  }
+
+  async estimateProjectGitHistory(
+    projectId: string,
+    limits: {readonly fileCopyBytes: number; readonly versionCopyBytes: number},
+  ): Promise<{
+    readonly estimatedCopiedBytes: number;
+    readonly estimatedPointerBytes: number;
+    readonly repositories: number;
+    readonly versions: number;
+  }> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(`
+        WITH active_versions AS (
+          SELECT version.id
+          FROM versions version
+          JOIN artifacts artifact
+            ON artifact.installation_id = version.installation_id
+            AND artifact.project_id = version.project_id
+            AND artifact.id = version.artifact_id
+          WHERE version.installation_id = $1
+            AND version.project_id = $2
+            AND artifact.deleted_at IS NULL
+        ), version_totals AS (
+          SELECT active.id,
+            COALESCE(SUM(entry.size), 0) AS total_bytes,
+            COALESCE(SUM(CASE
+              WHEN entry.size <= $3 THEN entry.size ELSE 0
+            END), 0) AS eligible_bytes
+          FROM active_versions active
+          LEFT JOIN manifest_entries entry
+            ON entry.installation_id = $1 AND entry.version_id = active.id
+          GROUP BY active.id
+        )
+        SELECT
+          (SELECT COUNT(*) FROM artifacts
+            WHERE installation_id = $1 AND project_id = $2
+              AND deleted_at IS NULL) AS repositories,
+          (SELECT COUNT(*) FROM active_versions) AS versions,
+          COALESCE(SUM(CASE
+            WHEN eligible_bytes > $4 THEN $4 ELSE eligible_bytes
+          END), 0) AS "estimatedCopiedBytes",
+          COALESCE(SUM(total_bytes - CASE
+            WHEN eligible_bytes > $4 THEN $4 ELSE eligible_bytes
+          END), 0) AS "estimatedPointerBytes"
+        FROM version_totals
+      `, [
+        installationId,
+        projectId,
+        limits.fileCopyBytes,
+        limits.versionCopyBytes,
+      ]);
+      return projectGitHistoryEstimateRowSchema.parse(rows[0]);
+    }));
+  }
+
+  async storeProjectGitHistorySetting(
+    setting: StoreProjectGitHistorySetting,
+  ): Promise<StoredProjectGitHistorySetting> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(`
+        INSERT INTO git_history_project_settings (
+          installation_id, project_id, enabled,
+          updated_by_principal_id, updated_at
+        ) VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (installation_id, project_id) DO UPDATE SET
+          enabled = EXCLUDED.enabled,
+          updated_by_principal_id = EXCLUDED.updated_by_principal_id,
+          updated_at = EXCLUDED.updated_at
+        RETURNING project_id AS "projectId", enabled,
+          updated_by_principal_id AS "updatedByPrincipalId",
+          updated_at AS "updatedAt"
+      `, [
+        installationId,
+        setting.projectId,
+        setting.enabled,
+        setting.updatedByPrincipalId,
+        setting.updatedAt,
+      ]);
+      return projectGitHistorySettingRowSchema.parse(rows[0]);
     }));
   }
 
@@ -671,18 +948,12 @@ export class PostgresArtifactRepository implements
     ));
   }
 
-  async findArtifactVersion(
+  async findVersionRecord(
     projectId: string,
     artifactId: string,
     versionId: string,
   ): Promise<ArtifactVersion | null> {
     return this.#database.run(Effect.gen({self: this}, function*() {
-      const artifact = yield* this.#readArtifactOrNull(
-        projectId,
-        artifactId,
-        false,
-      );
-      if (artifact === null) return null;
       const version = yield* this.#readVersionOrNull(
         projectId,
         versionId,
@@ -1277,6 +1548,859 @@ export class PostgresArtifactRepository implements
     }));
   }
 
+  async createThread(command: CreateCommentThread): Promise<CommentThreadCreation> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        yield* lockIdempotency(
+          sql,
+          installationId,
+          command.projectId,
+          command.idempotencyKey,
+        );
+        const anchorJson = serializeCommentAnchor(command);
+        const replayed = yield* this.#readIdempotentThreadRowOrNull(
+          command.projectId,
+          command.idempotencyKey,
+        );
+        if (replayed !== null) {
+          if (
+            replayed.artifactId !== command.artifactId ||
+            replayed.versionId !== command.versionId ||
+            replayed.path !== command.path ||
+            replayed.body !== command.body ||
+            replayed.anchorJson !== anchorJson
+          ) {
+            return yield* new IdempotencyConflict({
+              message: "The idempotency key was already used with different input.",
+            });
+          }
+          return {replayed: true, thread: commentThreadFromRow(replayed)};
+        }
+        yield* sql`INSERT INTO comment_threads (
+          installation_id, project_id, id, artifact_id, version_id, path,
+          anchor_json, body, state, author_principal_id,
+          author_principal_kind, author_display_name,
+          author_authorized_by_principal_id, resolved_at,
+          resolved_by_principal_id, resolved_by_principal_kind,
+          resolved_by_display_name, resolved_by_authorized_by_principal_id,
+          idempotency_key, created_at, updated_at
+        ) VALUES (
+          ${installationId}, ${command.projectId}, ${command.id},
+          ${command.artifactId}, ${command.versionId}, ${command.path},
+          ${anchorJson}, ${command.body}, ${commentThreadStates.open},
+          ${command.author.principalId}, ${command.author.principalKind},
+          ${command.author.displayName},
+          ${command.author.authorizedByPrincipalId},
+          NULL, NULL, NULL, NULL, NULL,
+          ${command.idempotencyKey}, ${command.createdAt}, ${command.createdAt}
+        )`;
+        const createAction = commentActionIdentity(command.id);
+        yield* this.#insertAction(
+          {
+            actionId: createAction.actionId,
+            artifactId: command.artifactId,
+            authorizedByPrincipalId: command.author.authorizedByPrincipalId,
+            createdAt: command.createdAt,
+            idempotencyKey: createAction.idempotencyKey,
+            principalId: command.author.principalId,
+            projectId: command.projectId,
+          },
+          artifactActionKinds.commentCreate,
+          command.versionId,
+        );
+        return {
+          replayed: false,
+          thread: commentThreadFromRow(yield* this.#readThreadRow(
+            command.projectId,
+            command.artifactId,
+            command.id,
+          )),
+        };
+      }));
+    }));
+  }
+
+  async findThread(
+    projectId: string,
+    artifactId: string,
+    threadId: string,
+  ): Promise<CommentThreadRecord | null> {
+    const row = await this.#database.run(
+      this.#readThreadRowOrNull(projectId, artifactId, threadId),
+    );
+    return row === null ? null : commentThreadFromRow(row);
+  }
+
+  async findIdempotentThread(
+    projectId: string,
+    idempotencyKey: string,
+  ): Promise<CommentThreadRecord | null> {
+    const row = await this.#database.run(
+      this.#readIdempotentThreadRowOrNull(projectId, idempotencyKey),
+    );
+    return row === null ? null : commentThreadFromRow(row);
+  }
+
+  async listThreads(command: ListCommentThreads): Promise<CommentThreadPage> {
+    const installationId = this.#installationId;
+    // Excluding actively dispatched threads by default is what makes a send
+    // consumptive: the annotations leave every existing listing surface.
+    const dispatchedPredicate =
+      command.dispatched === dispatchedThreadFilters.include
+        ? "TRUE"
+        : command.dispatched === dispatchedThreadFilters.only
+        ? "thread.dispatch_id IS NOT NULL"
+        : "thread.dispatch_id IS NULL";
+    return this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(
+        `${commentThreadColumns}
+         WHERE thread.installation_id = $1 AND thread.project_id = $2
+           AND thread.artifact_id = $3
+           AND ${dispatchedPredicate}
+           AND ($4::text IS NULL OR thread.version_id = $4)
+           AND ($5::text IS NULL OR thread.state = $5)
+           AND ($6::text IS NULL OR thread.updated_at >= $6)
+           AND ($7::text IS NULL OR thread.created_at < $7
+             OR (thread.created_at = $7 AND thread.id < $8))
+         ORDER BY thread.created_at DESC, thread.id DESC
+         LIMIT $9`,
+        [
+          installationId,
+          command.projectId,
+          command.artifactId,
+          command.versionId,
+          command.state,
+          command.since,
+          command.cursor?.createdAt ?? null,
+          command.cursor?.id ?? null,
+          command.limit + 1,
+        ],
+      );
+      return pageFromRows(
+        z.array(commentThreadRowSchema).parse(rows).map(commentThreadFromRow),
+        command.limit,
+      );
+    }));
+  }
+
+  async updateThread(command: UpdateCommentThread): Promise<CommentThreadRecord> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        const row = yield* this.#readThreadRowOrNull(
+          command.projectId,
+          command.artifactId,
+          command.threadId,
+        );
+        if (row === null) return yield* missingComment();
+        const next = changedThreadValues(command, row);
+        yield* sql`UPDATE comment_threads
+          SET body = ${next.body},
+            anchor_json = ${next.anchorJson},
+            state = ${next.state},
+            resolved_at = ${next.resolvedAt},
+            resolved_by_principal_id = ${next.resolvedByPrincipalId},
+            resolved_by_principal_kind = ${next.resolvedByPrincipalKind},
+            resolved_by_display_name = ${next.resolvedByDisplayName},
+            resolved_by_authorized_by_principal_id = ${
+          next.resolvedByAuthorizedByPrincipalId
+        },
+            updated_at = ${command.updatedAt}
+          WHERE installation_id = ${installationId} AND id = ${command.threadId}
+            AND project_id = ${command.projectId}
+            AND artifact_id = ${command.artifactId}`;
+        // Reopening a thread returns it to the artifact surfaces. A marker
+        // whose bundle already reached the agent has nothing left to hold:
+        // keeping it would strand the reopened thread off every default
+        // listing and refuse every later send, with no route that clears it.
+        if (command.state?.state === commentThreadStates.open) {
+          yield* sql`UPDATE comment_threads SET dispatch_id = NULL
+            WHERE installation_id = ${installationId}
+              AND id = ${command.threadId}
+              AND project_id = ${command.projectId}
+              AND state = ${commentThreadStates.open}
+              AND dispatch_id IN (
+                SELECT id FROM agent_dispatches
+                WHERE installation_id = ${installationId}
+                  AND state IN ('delivered', 'addressed', 'failed', 'canceled')
+              )`;
+        }
+        const commentAction = commentActionIdentity(command.threadId);
+        yield* this.#insertAction(
+          {
+            actionId: commentAction.actionId,
+            artifactId: command.artifactId,
+            authorizedByPrincipalId: command.authorizedByPrincipalId,
+            createdAt: command.updatedAt,
+            idempotencyKey: commentAction.idempotencyKey,
+            principalId: command.principalId,
+            projectId: command.projectId,
+          },
+          commentUpdateActionKind(command),
+          row.versionId,
+        );
+        return commentThreadFromRow(yield* this.#readThreadRow(
+          command.projectId,
+          command.artifactId,
+          command.threadId,
+        ));
+      }));
+    }));
+  }
+
+  async deleteThread(command: DeleteCommentThread): Promise<CommentThreadDeletion> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        const row = yield* this.#readThreadRowOrNull(
+          command.projectId,
+          command.artifactId,
+          command.threadId,
+        );
+        if (row === null) return yield* missingComment();
+        const removedReplies = yield* sql`DELETE FROM comment_replies
+          WHERE installation_id = ${installationId}
+            AND thread_id = ${command.threadId}
+          RETURNING id`;
+        yield* sql`DELETE FROM comment_threads
+          WHERE installation_id = ${installationId} AND id = ${command.threadId}
+            AND project_id = ${command.projectId}
+            AND artifact_id = ${command.artifactId}`;
+        const commentAction = commentActionIdentity(command.threadId);
+        yield* this.#insertAction(
+          {
+            actionId: commentAction.actionId,
+            artifactId: command.artifactId,
+            authorizedByPrincipalId: command.authorizedByPrincipalId,
+            createdAt: command.deletedAt,
+            idempotencyKey: commentAction.idempotencyKey,
+            principalId: command.principalId,
+            projectId: command.projectId,
+          },
+          artifactActionKinds.commentDelete,
+          row.versionId,
+        );
+        return {
+          deletedReplyCount: removedReplies.length,
+          thread: commentThreadFromRow(row),
+        };
+      }));
+    }));
+  }
+
+  async createReply(command: CreateCommentReply): Promise<CommentReplyCreation> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        yield* lockIdempotency(
+          sql,
+          installationId,
+          command.projectId,
+          command.idempotencyKey,
+        );
+        const replayed = yield* this.#readIdempotentReplyRowOrNull(
+          command.projectId,
+          command.idempotencyKey,
+        );
+        if (replayed !== null) {
+          if (
+            replayed.threadId !== command.threadId ||
+            replayed.body !== command.body
+          ) {
+            return yield* new IdempotencyConflict({
+              message: "The idempotency key was already used with different input.",
+            });
+          }
+          return {replayed: true, reply: commentReplyFromRow(replayed)};
+        }
+        const inserted = yield* sql.unsafe<object>(
+          `INSERT INTO comment_replies (
+            installation_id, project_id, id, thread_id, body,
+            author_principal_id, author_principal_kind, author_display_name,
+            author_authorized_by_principal_id, idempotency_key,
+            created_at, updated_at
+          )
+          SELECT thread.installation_id, thread.project_id, $2::text, thread.id,
+            $3::text, $4::text, $5::text, $6::text, $7::text, $8::text,
+            $9::text, $9::text
+          FROM comment_threads thread
+          WHERE thread.installation_id = $1 AND thread.id = $10
+            AND thread.project_id = $11 AND thread.artifact_id = $12
+            AND thread.state = 'open'
+          RETURNING id`,
+          [
+            installationId,
+            command.id,
+            command.body,
+            command.author.principalId,
+            command.author.principalKind,
+            command.author.displayName,
+            command.author.authorizedByPrincipalId,
+            command.idempotencyKey,
+            command.createdAt,
+            command.threadId,
+            command.projectId,
+            command.artifactId,
+          ],
+        );
+        const thread = yield* this.#readThreadRowOrNull(
+          command.projectId,
+          command.artifactId,
+          command.threadId,
+        );
+        if (thread === null) return yield* missingComment();
+        if (inserted.length !== 1) {
+          return yield* new CommentResolved({
+            message: "The comment thread is resolved and cannot accept replies.",
+          });
+        }
+        yield* this.#touchThread(command.threadId, command.createdAt);
+        const replyAction = commentActionIdentity(command.threadId);
+        yield* this.#insertAction(
+          {
+            actionId: replyAction.actionId,
+            artifactId: command.artifactId,
+            authorizedByPrincipalId: command.author.authorizedByPrincipalId,
+            createdAt: command.createdAt,
+            idempotencyKey: replyAction.idempotencyKey,
+            principalId: command.author.principalId,
+            projectId: command.projectId,
+          },
+          artifactActionKinds.commentReply,
+          thread.versionId,
+        );
+        return {
+          replayed: false,
+          reply: commentReplyFromRow(yield* this.#readReplyRow(command.id)),
+        };
+      }));
+    }));
+  }
+
+  async findIdempotentReply(
+    projectId: string,
+    idempotencyKey: string,
+  ): Promise<CommentReplyRecord | null> {
+    const row = await this.#database.run(
+      this.#readIdempotentReplyRowOrNull(projectId, idempotencyKey),
+    );
+    return row === null ? null : commentReplyFromRow(row);
+  }
+
+  async listReplies(threadId: string): Promise<readonly CommentReplyRecord[]> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(
+        `${commentReplyColumns}
+         WHERE reply.installation_id = $1 AND reply.thread_id = $2
+         ORDER BY reply.created_at ASC, reply.id ASC`,
+        [installationId, threadId],
+      );
+      return z.array(commentReplyRowSchema).parse(rows).map(commentReplyFromRow);
+    }));
+  }
+
+  async updateReply(command: UpdateCommentReply): Promise<CommentReplyRecord> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        const thread = yield* this.#requireReplyThread(command);
+        yield* sql`UPDATE comment_replies
+          SET body = ${command.body}, updated_at = ${command.updatedAt}
+          WHERE installation_id = ${installationId} AND id = ${command.replyId}
+            AND thread_id = ${command.threadId}`;
+        yield* this.#touchThread(command.threadId, command.updatedAt);
+        const commentAction = commentActionIdentity(command.threadId);
+        yield* this.#insertAction(
+          {
+            actionId: commentAction.actionId,
+            artifactId: command.artifactId,
+            authorizedByPrincipalId: command.authorizedByPrincipalId,
+            createdAt: command.updatedAt,
+            idempotencyKey: commentAction.idempotencyKey,
+            principalId: command.principalId,
+            projectId: command.projectId,
+          },
+          artifactActionKinds.commentUpdate,
+          thread.versionId,
+        );
+        return commentReplyFromRow(yield* this.#readReplyRow(command.replyId));
+      }));
+    }));
+  }
+
+  async deleteReply(command: DeleteCommentReply): Promise<void> {
+    const installationId = this.#installationId;
+    await this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        const thread = yield* this.#requireReplyThread(command);
+        yield* sql`DELETE FROM comment_replies
+          WHERE installation_id = ${installationId} AND id = ${command.replyId}
+            AND thread_id = ${command.threadId}`;
+        yield* this.#touchThread(command.threadId, command.deletedAt);
+        const commentAction = commentActionIdentity(command.threadId);
+        yield* this.#insertAction(
+          {
+            actionId: commentAction.actionId,
+            artifactId: command.artifactId,
+            authorizedByPrincipalId: command.authorizedByPrincipalId,
+            createdAt: command.deletedAt,
+            idempotencyKey: commentAction.idempotencyKey,
+            principalId: command.principalId,
+            projectId: command.projectId,
+          },
+          artifactActionKinds.commentDelete,
+          thread.versionId,
+        );
+      }));
+    }));
+  }
+
+  async versionContainsPath(
+    projectId: string,
+    versionId: string,
+    path: string,
+  ): Promise<boolean> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql`SELECT 1 AS found
+        FROM manifest_entries entry
+        INNER JOIN versions version
+          ON version.installation_id = entry.installation_id
+          AND version.id = entry.version_id
+        WHERE version.installation_id = ${installationId}
+          AND version.project_id = ${projectId}
+          AND entry.version_id = ${versionId}
+          AND entry.path = ${path}`;
+      return rows.length > 0;
+    }));
+  }
+
+
+  registerAgent(command: RegisterAgent): Promise<RegisteredAgentRecord> {
+    this.#assertInstallationScope(command.installationId);
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        // The connection key upserts back into the same id, so a restarted
+        // agent keeps every dispatch already queued for it. The key is scoped
+        // to the registering principal, so one principal never reclaims
+        // another's row, and with it another's queued dispatches.
+        const upserted = yield* sql`INSERT INTO registered_agents (
+            installation_id, id, connection_key, display_name, kind,
+            working_directory, agent_session_id, principal_id,
+            created_at, last_seen_at
+          ) VALUES (
+            ${installationId}, ${command.id}, ${command.connectionKey},
+            ${command.displayName}, ${command.kind},
+            ${command.workingDirectory}, ${command.agentSessionId},
+            ${command.principalId}, ${command.registeredAt},
+            ${command.registeredAt}
+          )
+          ON CONFLICT (installation_id, principal_id, connection_key)
+          DO UPDATE SET
+            display_name = EXCLUDED.display_name,
+            kind = EXCLUDED.kind,
+            working_directory = EXCLUDED.working_directory,
+            agent_session_id = EXCLUDED.agent_session_id,
+            last_seen_at = EXCLUDED.last_seen_at
+          RETURNING id`;
+        const registered = dispatchIdentityRowSchema.nullable().parse(
+          upserted[0] ?? null,
+        );
+        if (registered === null) {
+          throw new Error("The agent registration upsert returned no row.");
+        }
+        return yield* this.#readRegisteredAgentRow(registered.id);
+      }));
+    }));
+  }
+
+  async disconnectAgent(installationId: string, agentId: string): Promise<void> {
+    this.#assertInstallationScope(installationId);
+    await this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      yield* sql`DELETE FROM registered_agents
+        WHERE installation_id = ${installationId} AND id = ${agentId}`;
+    }));
+  }
+
+  async listAgents(
+    installationId: string,
+    now: string,
+  ): Promise<readonly RegisteredAgentRecord[]> {
+    this.#assertInstallationScope(installationId);
+    const reapBefore = isoBefore(now, registeredAgentRetentionMilliseconds);
+    return this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen(function*() {
+        // Rows are disposable liveness records: reap what stopped polling.
+        yield* sql`DELETE FROM registered_agents
+          WHERE installation_id = ${installationId}
+            AND last_seen_at < ${reapBefore}`;
+        const rows = yield* sql.unsafe<object>(
+          `${registeredAgentColumns}
+           WHERE agent.installation_id = $1
+           ORDER BY agent.created_at ASC, agent.id ASC`,
+          [installationId],
+        );
+        return z.array(registeredAgentRowSchema).parse(rows);
+      }));
+    }));
+  }
+
+  async findAgent(
+    installationId: string,
+    agentId: string,
+  ): Promise<RegisteredAgentRecord | null> {
+    this.#assertInstallationScope(installationId);
+    return this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(
+        `${registeredAgentColumns}
+         WHERE agent.installation_id = $1 AND agent.id = $2`,
+        [installationId, agentId],
+      );
+      return registeredAgentRowSchema.nullable().parse(rows[0] ?? null);
+    }));
+  }
+
+  createDispatch(command: CreateAgentDispatch): Promise<AgentDispatchCreation> {
+    this.#assertInstallationScope(command.installationId);
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        // The idempotency lock serializes replicas racing one send key, so a
+        // replayed create reads the original row instead of colliding on it.
+        yield* lockIdempotency(
+          sql,
+          installationId,
+          command.projectId,
+          command.idempotencyKey,
+        );
+        const threadIdsJson = JSON.stringify(command.threadIds);
+        const replayed = yield* this.#readIdempotentDispatchRowOrNull(
+          command.projectId,
+          command.idempotencyKey,
+        );
+        if (replayed !== null) {
+          if (
+            replayed.agentId !== command.agentId ||
+            replayed.threadIdsJson !== threadIdsJson ||
+            replayed.note !== command.note
+          ) {
+            return yield* new IdempotencyConflict({
+              message: "The idempotency key was already used with different input.",
+            });
+          }
+          return {dispatch: agentDispatchFromRow(replayed), replayed: true};
+        }
+        // Every thread must be open and unclaimed by another dispatch inside
+        // the same transaction that stamps the markers, so two concurrent
+        // sends can never double-book a thread and a rejected bundle leaves
+        // no partial markers behind.
+        for (const threadId of command.threadIds) {
+          const checked = yield* sql`SELECT
+              thread.id AS "id",
+              thread.state AS "state",
+              thread.dispatch_id AS "dispatchId"
+            FROM comment_threads thread
+            WHERE thread.installation_id = ${installationId}
+              AND thread.project_id = ${command.projectId}
+              AND thread.id = ${threadId}
+            FOR UPDATE`;
+          const row = dispatchThreadCheckRowSchema.nullable().parse(
+            checked[0] ?? null,
+          );
+          if (row === null) {
+            return yield* new InvalidDispatch({
+              message:
+                "The bundle references a comment thread that does not exist in this project.",
+            });
+          }
+          if (row.state !== commentThreadStates.open) {
+            return yield* new InvalidDispatch({
+              message: "The bundle references a comment thread that is not open.",
+            });
+          }
+          if (row.dispatchId !== null) {
+            return yield* new InvalidDispatch({
+              message:
+                "The bundle references a comment thread that is already dispatched.",
+            });
+          }
+        }
+        yield* sql`INSERT INTO agent_dispatches (
+          installation_id, project_id, id, agent_id, agent_display_name,
+          thread_ids_json, note, state, sender_principal_id,
+          sender_principal_kind, sender_display_name,
+          sender_authorized_by_principal_id, idempotency_key,
+          claimed_at, lease_expires_at, delivered_at, addressed_at,
+          failed_at, failure_reason, canceled_at, created_at, updated_at
+        ) VALUES (
+          ${installationId}, ${command.projectId}, ${command.id},
+          ${command.agentId}, ${command.agentDisplayName}, ${threadIdsJson},
+          ${command.note}, ${agentDispatchStates.queued},
+          ${command.sender.principalId}, ${command.sender.principalKind},
+          ${command.sender.displayName},
+          ${command.sender.authorizedByPrincipalId}, ${command.idempotencyKey},
+          NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+          ${command.createdAt}, ${command.createdAt}
+        )`;
+        // The marker moves the thread off the default listings, so it counts
+        // as a thread edit: an incremental `since` poller must see it leave.
+        for (const threadId of command.threadIds) {
+          const marked = yield* sql`UPDATE comment_threads
+            SET dispatch_id = ${command.id}, updated_at = ${command.createdAt}
+            WHERE installation_id = ${installationId}
+              AND project_id = ${command.projectId} AND id = ${threadId}
+              AND state = ${commentThreadStates.open} AND dispatch_id IS NULL
+            RETURNING id`;
+          if (marked.length !== 1) {
+            throw new Error(
+              `Comment thread ${threadId} could not be marked dispatched inside its validating transaction.`,
+            );
+          }
+        }
+        return {
+          dispatch: agentDispatchFromRow(yield* this.#readDispatchRow(command.id)),
+          replayed: false,
+        };
+      }));
+    }));
+  }
+
+  claimNextDispatch(
+    agentId: string,
+    now: string,
+    bumpHeartbeat: boolean,
+  ): Promise<AgentDispatchRecord | null> {
+    const installationId = this.#installationId;
+    const leaseExpiresAt = isoAfter(now, agentDispatchLeaseMilliseconds);
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      // A re-check inside one held poll is a pure read while nothing is
+      // claimable: the request's first attempt already stamped the heartbeat,
+      // so an empty mailbox must not open a write transaction every second.
+      if (!bumpHeartbeat) {
+        const expired = yield* sql`SELECT id FROM agent_dispatches
+          WHERE installation_id = ${installationId} AND agent_id = ${agentId}
+            AND state = ${agentDispatchStates.claimed}
+            AND lease_expires_at < ${now}
+          LIMIT 1`;
+        if (expired.length === 0) {
+          const active = yield* sql`SELECT id FROM agent_dispatches
+            WHERE installation_id = ${installationId} AND agent_id = ${agentId}
+              AND state = ${agentDispatchStates.claimed}
+            LIMIT 1`;
+          if (active.length > 0) return null;
+          const queued = yield* sql`SELECT id FROM agent_dispatches
+            WHERE installation_id = ${installationId} AND agent_id = ${agentId}
+              AND state = ${agentDispatchStates.queued}
+            LIMIT 1`;
+          if (queued.length === 0) return null;
+        }
+      }
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        // One claim decision per agent at a time, across replicas.
+        yield* lockAgentClaim(sql, installationId, agentId);
+        // The poll request is the heartbeat, and every attempt that reaches
+        // the write path — heartbeat or successful claim — refreshes it.
+        yield* sql`UPDATE registered_agents SET last_seen_at = ${now}
+          WHERE installation_id = ${installationId} AND id = ${agentId}`;
+        // An expired lease returns its dispatch to the queue before the
+        // oldest-queued selection, so a dead claimer never wedges the FIFO.
+        yield* sql`UPDATE agent_dispatches
+          SET state = ${agentDispatchStates.queued}, claimed_at = NULL,
+            lease_expires_at = NULL, updated_at = ${now}
+          WHERE installation_id = ${installationId} AND agent_id = ${agentId}
+            AND state = ${agentDispatchStates.claimed}
+            AND lease_expires_at < ${now}`;
+        const active = yield* sql`SELECT id FROM agent_dispatches
+          WHERE installation_id = ${installationId} AND agent_id = ${agentId}
+            AND state = ${agentDispatchStates.claimed}
+          LIMIT 1`;
+        // One-active-claim: while a claim is held, the next claim waits.
+        if (active.length > 0) return null;
+        const candidates = yield* sql`SELECT id FROM agent_dispatches
+          WHERE installation_id = ${installationId} AND agent_id = ${agentId}
+            AND state = ${agentDispatchStates.queued}
+          ORDER BY created_at ASC, id ASC
+          LIMIT 1
+          FOR UPDATE`;
+        const oldest = dispatchIdentityRowSchema.nullable().parse(
+          candidates[0] ?? null,
+        );
+        if (oldest === null) return null;
+        const claimed = yield* sql`UPDATE agent_dispatches
+          SET state = ${agentDispatchStates.claimed}, claimed_at = ${now},
+            lease_expires_at = ${leaseExpiresAt}, updated_at = ${now}
+          WHERE installation_id = ${installationId} AND id = ${oldest.id}
+            AND state = ${agentDispatchStates.queued}
+          RETURNING id`;
+        if (claimed.length !== 1) return null;
+        return agentDispatchFromRow(yield* this.#readDispatchRow(oldest.id));
+      }));
+    }));
+  }
+
+  markDelivered(command: MarkDispatchDelivered): Promise<AgentDispatchRecord> {
+    this.#assertInstallationScope(command.installationId);
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        const row = yield* this.#readDispatchRowOrNull(command.dispatchId, true);
+        if (row === null) return yield* missingDispatch();
+        if (row.agentId !== command.agentId) return yield* foreignClaimReport();
+        if (row.state !== agentDispatchStates.claimed) {
+          return yield* new DispatchStateConflict({
+            message: `A ${row.state} dispatch cannot be reported delivered.`,
+          });
+        }
+        yield* sql`UPDATE agent_dispatches
+          SET state = ${agentDispatchStates.delivered},
+            delivered_at = ${command.deliveredAt},
+            updated_at = ${command.deliveredAt}
+          WHERE installation_id = ${installationId} AND id = ${row.id}
+            AND state = ${agentDispatchStates.claimed}`;
+        return agentDispatchFromRow(yield* this.#readDispatchRow(row.id));
+      }));
+    }));
+  }
+
+  markFailed(command: MarkDispatchFailed): Promise<AgentDispatchRecord> {
+    this.#assertInstallationScope(command.installationId);
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        const row = yield* this.#readDispatchRowOrNull(command.dispatchId, true);
+        if (row === null) return yield* missingDispatch();
+        if (row.agentId !== command.agentId) return yield* foreignClaimReport();
+        if (
+          row.state !== agentDispatchStates.claimed &&
+          row.state !== agentDispatchStates.delivered
+        ) {
+          return yield* new DispatchStateConflict({
+            message: `A ${row.state} dispatch cannot be reported failed.`,
+          });
+        }
+        yield* this.#failDispatch(row.id, command.reason, command.failedAt);
+        return agentDispatchFromRow(yield* this.#readDispatchRow(row.id));
+      }));
+    }));
+  }
+
+  cancelDispatch(command: CancelAgentDispatch): Promise<AgentDispatchRecord> {
+    this.#assertInstallationScope(command.installationId);
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        const row = yield* this.#readDispatchRowOrNull(command.dispatchId, true);
+        if (row === null || row.projectId !== command.projectId) {
+          return yield* missingDispatch();
+        }
+        if (
+          row.state !== agentDispatchStates.queued &&
+          row.state !== agentDispatchStates.claimed
+        ) {
+          return yield* new DispatchStateConflict({
+            message: `A ${row.state} dispatch cannot be canceled.`,
+          });
+        }
+        // Cancellation clears the markers so the threads reappear in the
+        // default listings: work is never silently lost.
+        yield* sql`UPDATE agent_dispatches
+          SET state = ${agentDispatchStates.canceled},
+            canceled_at = ${command.canceledAt},
+            updated_at = ${command.canceledAt},
+            claimed_at = NULL, lease_expires_at = NULL
+          WHERE installation_id = ${installationId} AND id = ${row.id}`;
+        yield* this.#clearDispatchMarkers(row.id, command.canceledAt);
+        return agentDispatchFromRow(yield* this.#readDispatchRow(row.id));
+      }));
+    }));
+  }
+
+  listDispatches(command: ListAgentDispatches): Promise<AgentDispatchPage> {
+    this.#assertInstallationScope(command.installationId);
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        yield* this.#applyLazyProjectTransitions(command.projectId, command.now);
+        const rows = yield* sql.unsafe<object>(
+          `${agentDispatchColumns}
+           WHERE dispatch.installation_id = $1 AND dispatch.project_id = $2
+             AND ($3::text IS NULL OR dispatch.state = $3)
+             AND ($4::text IS NULL OR dispatch.agent_id = $4)
+             AND ($5::text IS NULL OR dispatch.created_at < $5
+               OR (dispatch.created_at = $5 AND dispatch.id < $6))
+           ORDER BY dispatch.created_at DESC, dispatch.id DESC
+           LIMIT $7`,
+          [
+            installationId,
+            command.projectId,
+            command.state,
+            command.agentId,
+            command.cursor?.createdAt ?? null,
+            command.cursor?.id ?? null,
+            command.limit + 1,
+          ],
+        );
+        return pageFromRows(
+          z.array(agentDispatchRowSchema).parse(rows).map(agentDispatchFromRow),
+          command.limit,
+        );
+      }));
+    }));
+  }
+
+  findDispatch(
+    installationId: string,
+    dispatchId: string,
+    now: string,
+  ): Promise<AgentDispatchRecord | null> {
+    this.#assertInstallationScope(installationId);
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        const row = yield* this.#readDispatchRowOrNull(dispatchId, true);
+        if (row === null) return null;
+        yield* this.#applyLazyDispatchTransitions(row, now);
+        return agentDispatchFromRow(yield* this.#readDispatchRow(dispatchId));
+      }));
+    }));
+  }
+
+  observeAddressed(
+    dispatchId: string,
+    now: string,
+  ): Promise<AgentDispatchRecord | null> {
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        const row = yield* this.#readDispatchRowOrNull(dispatchId, true);
+        if (row === null) return null;
+        yield* this.#stampAddressedWhenResolved(row, now);
+        return agentDispatchFromRow(yield* this.#readDispatchRow(dispatchId));
+      }));
+    }));
+  }
+
   #managementTransaction(
     command: ChangeArtifactAccessSetting,
     operation: "change_access",
@@ -1814,6 +2938,7 @@ export class PostgresArtifactRepository implements
 
   #insertAction(
     command: {
+      readonly actionId?: string | undefined;
       readonly artifactId: string;
       readonly authorizedByPrincipalId: string | null;
       readonly createdAt: string;
@@ -1825,6 +2950,7 @@ export class PostgresArtifactRepository implements
     versionId: string,
   ): Effect.Effect<void, unknown, SqlClient> {
     const installationId = this.#installationId;
+    const actionId = command.actionId ?? null;
     return Effect.gen({self: this}, function*() {
       const sql = yield* SqlClient;
       yield* sql`INSERT INTO actions (
@@ -1832,7 +2958,7 @@ export class PostgresArtifactRepository implements
         authorized_by_principal_id, idempotency_key, created_at
       ) VALUES (
         ${installationId}, ${command.projectId},
-        ${sql.literal("gen_random_uuid()::text")},
+        COALESCE(${actionId}::text, gen_random_uuid()::text),
         ${command.artifactId}, ${versionId}, ${action}, ${command.principalId},
         ${command.authorizedByPrincipalId}, ${command.idempotencyKey},
         ${command.createdAt}
@@ -2060,6 +3186,637 @@ export class PostgresArtifactRepository implements
       };
     });
   }
+  #requireReplyThread(
+    command: DeleteCommentReply | UpdateCommentReply,
+  ): Effect.Effect<z.infer<typeof commentThreadRowSchema>, unknown, SqlClient> {
+    const installationId = this.#installationId;
+    return Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      const thread = yield* this.#readThreadRowOrNull(
+        command.projectId,
+        command.artifactId,
+        command.threadId,
+      );
+      if (thread === null) return yield* missingComment();
+      const replyRows = yield* sql`SELECT id FROM comment_replies
+        WHERE installation_id = ${installationId} AND id = ${command.replyId}
+          AND thread_id = ${command.threadId}`;
+      if (replyRows.length === 0) return yield* missingComment();
+      return thread;
+    });
+  }
+
+  #touchThread(
+    threadId: string,
+    updatedAt: string,
+  ): Effect.Effect<void, unknown, SqlClient> {
+    const installationId = this.#installationId;
+    return Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      yield* sql`UPDATE comment_threads SET updated_at = ${updatedAt}
+        WHERE installation_id = ${installationId} AND id = ${threadId}`;
+    });
+  }
+
+  #readThreadRow(
+    projectId: string,
+    artifactId: string,
+    threadId: string,
+  ): Effect.Effect<z.infer<typeof commentThreadRowSchema>, unknown, SqlClient> {
+    return Effect.gen({self: this}, function*() {
+      const row = yield* this.#readThreadRowOrNull(
+        projectId,
+        artifactId,
+        threadId,
+      );
+      if (row === null) {
+        throw new Error(
+          `Comment thread ${threadId} was not found after a successful write.`,
+        );
+      }
+      return row;
+    });
+  }
+
+  #readThreadRowOrNull(
+    projectId: string,
+    artifactId: string,
+    threadId: string,
+  ): Effect.Effect<
+    z.infer<typeof commentThreadRowSchema> | null,
+    unknown,
+    SqlClient
+  > {
+    const installationId = this.#installationId;
+    return Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(
+        `${commentThreadColumns}
+         WHERE thread.installation_id = $1 AND thread.id = $2
+           AND thread.project_id = $3 AND thread.artifact_id = $4`,
+        [installationId, threadId, projectId, artifactId],
+      );
+      return commentThreadRowSchema.nullable().parse(rows[0] ?? null);
+    });
+  }
+
+  #readIdempotentThreadRowOrNull(
+    projectId: string,
+    idempotencyKey: string,
+  ): Effect.Effect<
+    z.infer<typeof commentThreadRowSchema> | null,
+    unknown,
+    SqlClient
+  > {
+    const installationId = this.#installationId;
+    return Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(
+        `${commentThreadColumns}
+         WHERE thread.installation_id = $1 AND thread.project_id = $2
+           AND thread.idempotency_key = $3`,
+        [installationId, projectId, idempotencyKey],
+      );
+      return commentThreadRowSchema.nullable().parse(rows[0] ?? null);
+    });
+  }
+
+  #readReplyRow(
+    replyId: string,
+  ): Effect.Effect<z.infer<typeof commentReplyRowSchema>, unknown, SqlClient> {
+    const installationId = this.#installationId;
+    return Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(
+        `${commentReplyColumns}
+         WHERE reply.installation_id = $1 AND reply.id = $2`,
+        [installationId, replyId],
+      );
+      const reply = commentReplyRowSchema.nullable().parse(rows[0] ?? null);
+      if (reply === null) {
+        throw new Error(
+          `Comment reply ${replyId} was not found after a successful write.`,
+        );
+      }
+      return reply;
+    });
+  }
+
+  #readIdempotentReplyRowOrNull(
+    projectId: string,
+    idempotencyKey: string,
+  ): Effect.Effect<
+    z.infer<typeof commentReplyRowSchema> | null,
+    unknown,
+    SqlClient
+  > {
+    const installationId = this.#installationId;
+    return Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(
+        `${commentReplyColumns}
+         WHERE reply.installation_id = $1 AND reply.project_id = $2
+           AND reply.idempotency_key = $3`,
+        [installationId, projectId, idempotencyKey],
+      );
+      return commentReplyRowSchema.nullable().parse(rows[0] ?? null);
+    });
+  }
+
+  /** A caller-selected installation never widens this repository's scope. */
+  #assertInstallationScope(installationId: string): void {
+    if (installationId === this.#installationId) return;
+    throw new AgentDispatchNotFound({
+      message: "The installation is not served by this repository.",
+    });
+  }
+
+  #readRegisteredAgentRow(
+    agentId: string,
+  ): Effect.Effect<RegisteredAgentRecord, unknown, SqlClient> {
+    const installationId = this.#installationId;
+    return Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(
+        `${registeredAgentColumns}
+         WHERE agent.installation_id = $1 AND agent.id = $2`,
+        [installationId, agentId],
+      );
+      const agent = registeredAgentRowSchema.nullable().parse(rows[0] ?? null);
+      if (agent === null) {
+        throw new Error(
+          `Registered agent ${agentId} was not found after a successful write.`,
+        );
+      }
+      return agent;
+    });
+  }
+
+  #readDispatchRow(
+    dispatchId: string,
+  ): Effect.Effect<z.infer<typeof agentDispatchRowSchema>, unknown, SqlClient> {
+    return Effect.gen({self: this}, function*() {
+      const row = yield* this.#readDispatchRowOrNull(dispatchId, false);
+      if (row === null) {
+        throw new Error(
+          `Agent dispatch ${dispatchId} was not found after a successful write.`,
+        );
+      }
+      return row;
+    });
+  }
+
+  #readDispatchRowOrNull(
+    dispatchId: string,
+    lock: boolean,
+  ): Effect.Effect<
+    z.infer<typeof agentDispatchRowSchema> | null,
+    unknown,
+    SqlClient
+  > {
+    const installationId = this.#installationId;
+    return Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(
+        `${agentDispatchColumns}
+         WHERE dispatch.installation_id = $1 AND dispatch.id = $2
+         ${lock ? "FOR UPDATE" : ""}`,
+        [installationId, dispatchId],
+      );
+      return agentDispatchRowSchema.nullable().parse(rows[0] ?? null);
+    });
+  }
+
+  #readIdempotentDispatchRowOrNull(
+    projectId: string,
+    idempotencyKey: string,
+  ): Effect.Effect<
+    z.infer<typeof agentDispatchRowSchema> | null,
+    unknown,
+    SqlClient
+  > {
+    const installationId = this.#installationId;
+    return Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(
+        `${agentDispatchColumns}
+         WHERE dispatch.installation_id = $1 AND dispatch.project_id = $2
+           AND dispatch.idempotency_key = $3`,
+        [installationId, projectId, idempotencyKey],
+      );
+      return agentDispatchRowSchema.nullable().parse(rows[0] ?? null);
+    });
+  }
+
+  #failDispatch(
+    dispatchId: string,
+    reason: string,
+    failedAt: string,
+  ): Effect.Effect<void, unknown, SqlClient> {
+    const installationId = this.#installationId;
+    return Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      yield* sql`UPDATE agent_dispatches
+        SET state = ${agentDispatchStates.failed}, failed_at = ${failedAt},
+          failure_reason = ${reason}, updated_at = ${failedAt},
+          claimed_at = NULL, lease_expires_at = NULL
+        WHERE installation_id = ${installationId} AND id = ${dispatchId}`;
+      // A permanent failure returns the annotations to the artifact surfaces.
+      yield* this.#clearDispatchMarkers(dispatchId, failedAt);
+    });
+  }
+
+  #clearDispatchMarkers(
+    dispatchId: string,
+    clearedAt: string,
+  ): Effect.Effect<void, unknown, SqlClient> {
+    const installationId = this.#installationId;
+    return Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      // Releasing the marker returns the thread to the default listings, so
+      // it counts as a thread edit: a `since` poller must see it come back.
+      yield* sql`UPDATE comment_threads
+        SET dispatch_id = NULL, updated_at = ${clearedAt}
+        WHERE installation_id = ${installationId}
+          AND dispatch_id = ${dispatchId}`;
+    });
+  }
+
+  /**
+   * The lazy transition set applied on the read path, in machine order:
+   * an expired claim lease returns to queued, a queued dispatch whose agent
+   * stopped polling fails as agent_unavailable, and a delivered dispatch
+   * whose every bundle thread is resolved is stamped addressed once.
+   */
+  #applyLazyDispatchTransitions(
+    row: z.infer<typeof agentDispatchRowSchema>,
+    now: string,
+  ): Effect.Effect<void, unknown, SqlClient> {
+    const installationId = this.#installationId;
+    const staleBefore = isoBefore(now, agentUnavailableStalenessMilliseconds);
+    return Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      yield* sql`UPDATE agent_dispatches
+        SET state = ${agentDispatchStates.queued}, claimed_at = NULL,
+          lease_expires_at = NULL, updated_at = ${now}
+        WHERE installation_id = ${installationId} AND id = ${row.id}
+          AND state = ${agentDispatchStates.claimed}
+          AND lease_expires_at < ${now}`;
+      const failed = yield* sql`UPDATE agent_dispatches dispatch
+        SET state = ${agentDispatchStates.failed}, failed_at = ${now},
+          failure_reason = 'agent_unavailable', updated_at = ${now},
+          claimed_at = NULL, lease_expires_at = NULL
+        WHERE dispatch.installation_id = ${installationId}
+          AND dispatch.id = ${row.id}
+          AND dispatch.state = ${agentDispatchStates.queued}
+          AND NOT EXISTS (
+            SELECT 1 FROM registered_agents agent
+            WHERE agent.installation_id = dispatch.installation_id
+              AND agent.id = dispatch.agent_id
+              AND agent.last_seen_at >= ${staleBefore}
+          )
+        RETURNING dispatch.id`;
+      if (failed.length === 1) {
+        yield* this.#clearDispatchMarkers(row.id, now);
+        return;
+      }
+      yield* this.#stampAddressedWhenResolved(row, now);
+    });
+  }
+
+  #applyLazyProjectTransitions(
+    projectId: string,
+    now: string,
+  ): Effect.Effect<void, unknown, SqlClient> {
+    const installationId = this.#installationId;
+    const staleBefore = isoBefore(now, agentUnavailableStalenessMilliseconds);
+    return Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      yield* sql`UPDATE agent_dispatches
+        SET state = ${agentDispatchStates.queued}, claimed_at = NULL,
+          lease_expires_at = NULL, updated_at = ${now}
+        WHERE installation_id = ${installationId} AND project_id = ${projectId}
+          AND state = ${agentDispatchStates.claimed}
+          AND lease_expires_at < ${now}`;
+      const staleRows = yield* sql`SELECT dispatch.id AS "id"
+        FROM agent_dispatches dispatch
+        WHERE dispatch.installation_id = ${installationId}
+          AND dispatch.project_id = ${projectId}
+          AND dispatch.state = ${agentDispatchStates.queued}
+          AND NOT EXISTS (
+            SELECT 1 FROM registered_agents agent
+            WHERE agent.installation_id = dispatch.installation_id
+              AND agent.id = dispatch.agent_id
+              AND agent.last_seen_at >= ${staleBefore}
+          )`;
+      for (const stale of z.array(dispatchIdentityRowSchema).parse(staleRows)) {
+        yield* this.#failDispatch(stale.id, "agent_unavailable", now);
+      }
+      const deliveredRows = yield* sql.unsafe<object>(
+        `${agentDispatchColumns}
+         WHERE dispatch.installation_id = $1 AND dispatch.project_id = $2
+           AND dispatch.state = $3`,
+        [installationId, projectId, agentDispatchStates.delivered],
+      );
+      for (
+        const delivered of z.array(agentDispatchRowSchema).parse(deliveredRows)
+      ) {
+        yield* this.#stampAddressedWhenResolved(delivered, now);
+      }
+    });
+  }
+
+  #stampAddressedWhenResolved(
+    row: z.infer<typeof agentDispatchRowSchema>,
+    now: string,
+  ): Effect.Effect<void, unknown, SqlClient> {
+    const installationId = this.#installationId;
+    return Effect.gen(function*() {
+      if (row.state !== agentDispatchStates.delivered) return;
+      const threadIds = threadIdsSchema.parse(JSON.parse(row.threadIdsJson));
+      if (threadIds.length === 0) return;
+      const sql = yield* SqlClient;
+      const placeholders = [...threadIds.keys()]
+        .map((index) => `$${index + 2}`)
+        .join(", ");
+      const counted = yield* sql.unsafe<object>(
+        `SELECT COUNT(*) AS "resolvedCount" FROM comment_threads thread
+         WHERE thread.installation_id = $1 AND thread.state = 'resolved'
+           AND thread.id IN (${placeholders})`,
+        [installationId, ...threadIds],
+      );
+      const resolved = resolvedCountRowSchema.parse(counted[0] ?? null);
+      if (resolved.resolvedCount !== threadIds.length) return;
+      // Thread resolution is the ground truth; the markers stay in place
+      // because the threads are resolved and already invisible.
+      yield* sql`UPDATE agent_dispatches
+        SET state = ${agentDispatchStates.addressed}, addressed_at = ${now},
+          updated_at = ${now}
+        WHERE installation_id = ${installationId} AND id = ${row.id}
+          AND state = ${agentDispatchStates.delivered}`;
+    });
+  }
+}
+
+const commentThreadColumns = `SELECT
+    thread.id AS "id",
+    thread.installation_id AS "installationId",
+    thread.project_id AS "projectId",
+    thread.artifact_id AS "artifactId",
+    thread.version_id AS "versionId",
+    thread.path AS "path",
+    thread.anchor_json AS "anchorJson",
+    thread.body AS "body",
+    thread.state AS "state",
+    thread.author_principal_id AS "authorPrincipalId",
+    thread.author_principal_kind AS "authorPrincipalKind",
+    thread.author_display_name AS "authorDisplayName",
+    thread.author_authorized_by_principal_id AS "authorAuthorizedByPrincipalId",
+    thread.resolved_at AS "resolvedAt",
+    thread.resolved_by_principal_id AS "resolvedByPrincipalId",
+    thread.resolved_by_principal_kind AS "resolvedByPrincipalKind",
+    thread.resolved_by_display_name AS "resolvedByDisplayName",
+    thread.resolved_by_authorized_by_principal_id
+      AS "resolvedByAuthorizedByPrincipalId",
+    thread.created_at AS "createdAt",
+    thread.updated_at AS "updatedAt",
+    (SELECT COUNT(*) FROM comment_replies reply
+      WHERE reply.installation_id = thread.installation_id
+        AND reply.thread_id = thread.id) AS "replyCount"
+  FROM comment_threads thread`;
+
+const commentReplyColumns = `SELECT
+    reply.id AS "id",
+    reply.thread_id AS "threadId",
+    reply.project_id AS "projectId",
+    reply.body AS "body",
+    reply.author_principal_id AS "authorPrincipalId",
+    reply.author_principal_kind AS "authorPrincipalKind",
+    reply.author_display_name AS "authorDisplayName",
+    reply.author_authorized_by_principal_id AS "authorAuthorizedByPrincipalId",
+    reply.created_at AS "createdAt",
+    reply.updated_at AS "updatedAt"
+  FROM comment_replies reply`;
+
+function serializeCommentAnchor(carrier: {readonly anchor: unknown}): string | null {
+  return carrier.anchor === null || carrier.anchor === undefined
+    ? null
+    : JSON.stringify(carrier.anchor);
+}
+
+// The actions table is unique on (installation_id, project_id, idempotency_key),
+// so a comment action cannot carry the caller's key: that key already belongs to
+// a publish, a restore, or another comment write in the same project. A key
+// derived from a timestamp collides too when two mutations on one thread share a
+// millisecond, so the action row id is the unique component.
+function commentActionIdentity(threadId: string) {
+  const actionId = crypto.randomUUID();
+  return {actionId, idempotencyKey: `comment:${threadId}:${actionId}`};
+}
+
+function commentUpdateActionKind(
+  command: UpdateCommentThread,
+): ArtifactActionRecord["action"] {
+  if (command.state === null) return artifactActionKinds.commentUpdate;
+  return command.state.state === commentThreadStates.resolved
+    ? artifactActionKinds.commentResolve
+    : artifactActionKinds.commentReopen;
+}
+
+function changedThreadValues(
+  command: UpdateCommentThread,
+  row: z.infer<typeof commentThreadRowSchema>,
+): ChangedCommentThreadValues {
+  const resolution = command.state?.resolvedBy ?? null;
+  if (command.state === null) {
+    return {
+      anchorJson: command.anchor === null
+        ? row.anchorJson
+        : serializeCommentAnchor(command.anchor),
+      body: command.body ?? row.body,
+      resolvedAt: row.resolvedAt,
+      resolvedByAuthorizedByPrincipalId: row.resolvedByAuthorizedByPrincipalId,
+      resolvedByDisplayName: row.resolvedByDisplayName,
+      resolvedByPrincipalId: row.resolvedByPrincipalId,
+      resolvedByPrincipalKind: row.resolvedByPrincipalKind,
+      state: row.state,
+    };
+  }
+  return {
+    anchorJson: command.anchor === null
+      ? row.anchorJson
+      : serializeCommentAnchor(command.anchor),
+    body: command.body ?? row.body,
+    resolvedAt: command.state.resolvedAt,
+    resolvedByAuthorizedByPrincipalId: resolution?.authorizedByPrincipalId ?? null,
+    resolvedByDisplayName: resolution?.displayName ?? null,
+    resolvedByPrincipalId: resolution?.principalId ?? null,
+    resolvedByPrincipalKind: resolution?.principalKind ?? null,
+    state: command.state.state,
+  };
+}
+
+function commentAuthorFromRow(
+  row: z.infer<typeof commentThreadRowSchema> | z.infer<typeof commentReplyRowSchema>,
+): CommentAuthor {
+  return {
+    authorizedByPrincipalId: row.authorAuthorizedByPrincipalId,
+    displayName: row.authorDisplayName,
+    principalId: row.authorPrincipalId,
+    principalKind: row.authorPrincipalKind,
+  };
+}
+
+function commentThreadFromRow(
+  row: z.infer<typeof commentThreadRowSchema>,
+): CommentThreadRecord {
+  return {
+    anchor: row.anchorJson === null ? null : JSON.parse(row.anchorJson),
+    artifactId: row.artifactId,
+    author: commentAuthorFromRow(row),
+    body: row.body,
+    createdAt: row.createdAt,
+    id: row.id,
+    installationId: row.installationId,
+    path: row.path,
+    projectId: row.projectId,
+    replyCount: row.replyCount,
+    resolvedAt: row.resolvedAt,
+    resolvedBy: row.resolvedByPrincipalId === null ||
+        row.resolvedByPrincipalKind === null ||
+        row.resolvedByDisplayName === null
+      ? null
+      : {
+        authorizedByPrincipalId: row.resolvedByAuthorizedByPrincipalId,
+        displayName: row.resolvedByDisplayName,
+        principalId: row.resolvedByPrincipalId,
+        principalKind: row.resolvedByPrincipalKind,
+      },
+    state: row.state,
+    updatedAt: row.updatedAt,
+    versionId: row.versionId,
+  };
+}
+
+function commentReplyFromRow(
+  row: z.infer<typeof commentReplyRowSchema>,
+): CommentReplyRecord {
+  return {
+    author: commentAuthorFromRow(row),
+    body: row.body,
+    createdAt: row.createdAt,
+    id: row.id,
+    projectId: row.projectId,
+    threadId: row.threadId,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function missingComment(): CommentNotFound {
+  return new CommentNotFound({
+    message: "The comment thread or reply does not exist.",
+  });
+}
+
+const registeredAgentColumns = `SELECT
+    agent.id AS "id",
+    agent.installation_id AS "installationId",
+    agent.connection_key AS "connectionKey",
+    agent.display_name AS "displayName",
+    agent.kind AS "kind",
+    agent.working_directory AS "workingDirectory",
+    agent.agent_session_id AS "agentSessionId",
+    agent.principal_id AS "principalId",
+    agent.created_at AS "createdAt",
+    agent.last_seen_at AS "lastSeenAt"
+  FROM registered_agents agent`;
+
+const agentDispatchColumns = `SELECT
+    dispatch.id AS "id",
+    dispatch.installation_id AS "installationId",
+    dispatch.project_id AS "projectId",
+    dispatch.agent_id AS "agentId",
+    dispatch.agent_display_name AS "agentDisplayName",
+    dispatch.thread_ids_json AS "threadIdsJson",
+    dispatch.note AS "note",
+    dispatch.state AS "state",
+    dispatch.sender_principal_id AS "senderPrincipalId",
+    dispatch.sender_principal_kind AS "senderPrincipalKind",
+    dispatch.sender_display_name AS "senderDisplayName",
+    dispatch.sender_authorized_by_principal_id
+      AS "senderAuthorizedByPrincipalId",
+    dispatch.idempotency_key AS "idempotencyKey",
+    dispatch.claimed_at AS "claimedAt",
+    dispatch.lease_expires_at AS "leaseExpiresAt",
+    dispatch.delivered_at AS "deliveredAt",
+    dispatch.addressed_at AS "addressedAt",
+    dispatch.failed_at AS "failedAt",
+    dispatch.failure_reason AS "failureReason",
+    dispatch.canceled_at AS "canceledAt",
+    dispatch.created_at AS "createdAt",
+    dispatch.updated_at AS "updatedAt"
+  FROM agent_dispatches dispatch`;
+
+function agentDispatchFromRow(
+  row: z.infer<typeof agentDispatchRowSchema>,
+): AgentDispatchRecord {
+  return {
+    addressedAt: row.addressedAt,
+    agentDisplayName: row.agentDisplayName,
+    agentId: row.agentId,
+    canceledAt: row.canceledAt,
+    claimedAt: row.claimedAt,
+    createdAt: row.createdAt,
+    deliveredAt: row.deliveredAt,
+    failedAt: row.failedAt,
+    failureReason: row.failureReason,
+    id: row.id,
+    idempotencyKey: row.idempotencyKey,
+    installationId: row.installationId,
+    leaseExpiresAt: row.leaseExpiresAt,
+    note: row.note,
+    projectId: row.projectId,
+    sender: {
+      authorizedByPrincipalId: row.senderAuthorizedByPrincipalId,
+      displayName: row.senderDisplayName,
+      principalId: row.senderPrincipalId,
+      principalKind: row.senderPrincipalKind,
+    },
+    state: row.state,
+    threadIds: threadIdsSchema.parse(JSON.parse(row.threadIdsJson)),
+    updatedAt: row.updatedAt,
+  };
+}
+
+function missingDispatch(): AgentDispatchNotFound {
+  return new AgentDispatchNotFound({message: "The dispatch does not exist."});
+}
+
+function foreignClaimReport(): DispatchStateConflict {
+  return new DispatchStateConflict({
+    message: "The reporting agent does not hold this dispatch.",
+  });
+}
+
+// Stored timestamps are canonical millisecond ISO text, so offsets computed
+// through Date round-trip into the same lexicographically comparable format.
+function isoAfter(instant: string, milliseconds: number): string {
+  return new Date(Date.parse(instant) + milliseconds).toISOString();
+}
+
+function isoBefore(instant: string, milliseconds: number): string {
+  return new Date(Date.parse(instant) - milliseconds).toISOString();
+}
+
+/** Serialize the claim decision for one agent across replicas. */
+function lockAgentClaim(
+  sql: SqlClient,
+  installationId: string,
+  agentId: string,
+): Effect.Effect<readonly object[], unknown> {
+  return sql`SELECT pg_advisory_xact_lock(
+    hashtextextended(${`agent-claim:${installationId}:${agentId}`}, 0)
+  )`;
 }
 
 function lockIdempotency(

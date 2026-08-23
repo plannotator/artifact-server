@@ -1,4 +1,11 @@
 import {spawn, type ChildProcess} from "node:child_process";
+import {randomBytes} from "node:crypto";
+
+const developmentProxyCredential = randomBytes(32).toString("base64url");
+const developmentEnvironment = {
+  ...process.env,
+  ARTIFACT_SERVER_DEVELOPMENT_PROXY_CREDENTIAL: developmentProxyCredential,
+};
 
 const backend = spawn(
   process.execPath,
@@ -13,12 +20,12 @@ const backend = spawn(
     "8787",
     "--managed",
   ],
-  {stdio: "inherit"},
+  {env: developmentEnvironment, stdio: "inherit"},
 );
 const frontend = spawn(
   process.platform === "win32" ? "pnpm.cmd" : "pnpm",
   ["--dir", "apps/web", "dev"],
-  {stdio: "inherit"},
+  {env: developmentEnvironment, stdio: "inherit"},
 );
 
 const children = [backend, frontend] as const;

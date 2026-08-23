@@ -33,6 +33,12 @@ const versionListSchema = z.object({
 const actionListSchema = z.object({
   actions: z.array(z.object({action: z.string()})),
 });
+const projectGitHistorySchema = z.object({
+  gitHistory: z.object({
+    enabled: z.boolean(),
+    projectId: z.string(),
+  }).strict(),
+}).strict();
 
 let persistPath: string;
 let worker: Unstable_DevWorker;
@@ -99,6 +105,24 @@ describe("Cloudflare Worker runtime", () => {
 
     const unauthorized = await worker.fetch(`${origin}/api/v1/artifacts`);
     expect(unauthorized.status).toBe(401);
+
+    const historyStatus = await worker.fetch(
+      `${origin}/api/v1/projects/prj_default/git-history`,
+      {headers: {Authorization: `Bearer ${apiToken}`}},
+    );
+    expect(historyStatus.status).toBe(200);
+    expect(projectGitHistorySchema.parse(await historyStatus.json())).toEqual({
+      gitHistory: {enabled: false, projectId: "prj_default"},
+    });
+    const historyEnable = await worker.fetch(
+      `${origin}/api/v1/projects/prj_default/git-history`,
+      {
+        body: JSON.stringify({confirmEstimate: true, enabled: true}),
+        headers: authenticatedJsonHeaders(),
+        method: "PUT",
+      },
+    );
+    expect(historyEnable.status).toBe(501);
 
     const bytes = new TextEncoder().encode("<h1>Cloudflare runtime</h1>");
     const createUpload = await worker.fetch(`${origin}/api/v1/uploads`, {
@@ -271,6 +295,8 @@ function startWorker(persistenceDirectory: string): Promise<Unstable_DevWorker> 
         "administrator@example.test",
       ARTIFACT_SERVER_CONTENT_DOMAIN: contentDomain,
       ARTIFACT_SERVER_INSTALLATION_ID: "cloudflare-runtime-test",
+      ARTIFACT_SERVER_OIDC_CLIENT_ID: "cloudflare-worker-test",
+      ARTIFACT_SERVER_OIDC_ISSUER: "https://identity.example.test",
       ARTIFACT_SERVER_ORIGIN: origin,
       ARTIFACT_SERVER_QUALIFICATION_MODE: "enabled",
       ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE: "0",

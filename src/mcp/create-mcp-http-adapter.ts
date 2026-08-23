@@ -24,6 +24,8 @@ import {
   principalCapabilities,
   principalKinds,
 } from "../core/identity.js";
+import type {GitHistoryCapabilityReader} from
+  "../git-history/git-history-capability.js";
 import {
   createArtifactMcpServer,
   type ArtifactMcpServerDependencies,
@@ -32,13 +34,16 @@ import {
 const principalSchema = z.object({
   authorizedByPrincipalId: z.string().nullable(),
   capabilities: z.array(z.enum([
+    principalCapabilities.connectAgents,
     principalCapabilities.createArtifact,
     principalCapabilities.issueContentSession,
     principalCapabilities.manageAnyArtifact,
     principalCapabilities.manageProjects,
     principalCapabilities.publishAnyArtifact,
     principalCapabilities.readArtifacts,
+    principalCapabilities.writeComments,
   ])),
+  displayName: z.string().min(1),
   id: z.string().min(1),
   installationId: z.string().min(1),
   kind: z.enum([principalKinds.human, principalKinds.service]),
@@ -55,6 +60,8 @@ export interface McpHttpAdapterDependencies {
   readonly applicationOrigin: string | null;
   readonly applicationRuntime: ApplicationRuntime;
   readonly contentDomain: string;
+  readonly gitHistory: GitHistoryCapabilityReader;
+  readonly linkedArtifacts?: boolean;
   readonly mode: ArtifactMcpServerDependencies["mode"];
   readonly oauthResource: string | null;
 }
@@ -74,15 +81,18 @@ export function createMcpHttpAdapter(
       const principal = principalSchema.parse(
         context.authInfo?.extra?.["artifactServerPrincipal"],
       );
+      const serverDependencies: ArtifactMcpServerDependencies = {
+        applicationOrigin: dependencies.applicationOrigin
+          ?? requestOrigin(context.requestInfo),
+        applicationRuntime: dependencies.applicationRuntime,
+        contentDomain: dependencies.contentDomain,
+        gitHistory: dependencies.gitHistory.read(),
+        linkedArtifacts: dependencies.linkedArtifacts === true,
+        mode: dependencies.mode,
+        requestId: requestIdFrom(context.requestInfo),
+      };
       return createArtifactMcpServer(
-        {
-          applicationOrigin: dependencies.applicationOrigin
-            ?? requestOrigin(context.requestInfo),
-          applicationRuntime: dependencies.applicationRuntime,
-          contentDomain: dependencies.contentDomain,
-          mode: dependencies.mode,
-          requestId: requestIdFrom(context.requestInfo),
-        },
+        serverDependencies,
         {principal},
         context,
       );

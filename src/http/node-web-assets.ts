@@ -4,23 +4,62 @@ import path from "node:path";
 
 import type {WebAssetStore} from "./create-http-app.js";
 
-const webRoot = path.resolve(import.meta.dirname, "../../dist/web");
+const defaultWebRoot = path.resolve(import.meta.dirname, "../../dist/web");
+
+// The compiled web bundle is well under two megabytes; the bound only guards
+// against a misconfigured web root pointing at unexpectedly large files.
+const maximumCachedAssetBytes = 32 * 1024 * 1024;
+
+interface CachedWebAsset {
+  readonly bytes: Uint8Array<ArrayBuffer>;
+  readonly etag: string;
+  readonly mediaType: string;
+}
 
 /** Reads the compiled management application from the release's fixed web directory. */
-export function createNodeWebAssetStore(): WebAssetStore {
+export function createNodeWebAssetStore(
+  webRoot: string = defaultWebRoot,
+): WebAssetStore {
+  // Assets are content-hashed and the entry documents only change with a
+  // release restart, so one disk read and digest serves the process lifetime.
+  const cache = new Map<string, CachedWebAsset>();
+  let cachedBytes = 0;
   return {
     fetch: async (assetPath, method) => {
       if (!safeAssetPath(assetPath)) return null;
-      const relativePath = assetPath.slice(1);
-      const bytes = await readFile(path.join(webRoot, relativePath)).catch(() => null);
-      if (bytes === null) return null;
+      const cached = cache.get(assetPath);
+      const asset = cached ?? await loadWebAsset(webRoot, assetPath.slice(1));
+      if (asset === null) return null;
+      if (
+        cached === undefined
+        && cachedBytes + asset.bytes.byteLength <= maximumCachedAssetBytes
+      ) {
+        cache.set(assetPath, asset);
+        cachedBytes += asset.bytes.byteLength;
+      }
       const headers = new Headers({
-        "Content-Length": String(bytes.byteLength),
-        "Content-Type": assetMediaType(relativePath),
-        ETag: `"${createHash("sha256").update(bytes).digest("hex")}"`,
+        "Content-Length": String(asset.bytes.byteLength),
+        "Content-Type": asset.mediaType,
+        ETag: asset.etag,
       });
-      return new Response(method === "HEAD" ? null : bytes, {headers});
+      return new Response(method === "HEAD" ? null : asset.bytes, {headers});
     },
+  };
+}
+
+async function loadWebAsset(
+  webRoot: string,
+  relativePath: string,
+): Promise<CachedWebAsset | null> {
+  const fileBytes = await readFile(path.join(webRoot, relativePath))
+    .catch(() => null);
+  if (fileBytes === null) return null;
+  const bytes = new Uint8Array(fileBytes.byteLength);
+  bytes.set(fileBytes);
+  return {
+    bytes,
+    etag: `"${createHash("sha256").update(fileBytes).digest("hex")}"`,
+    mediaType: assetMediaType(relativePath),
   };
 }
 

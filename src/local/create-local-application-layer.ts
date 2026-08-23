@@ -16,6 +16,16 @@ import {
   InteractiveLoginService,
 } from "../application/interactive-login.js";
 import {
+  type AgentDispatchDependencies,
+  type AgentDispatchRepositoryFailure,
+  AgentDispatchService,
+} from "../application/agent-dispatch.js";
+import {
+  type ArtifactCommentDependencies,
+  ArtifactCommentService,
+  type CommentRepositoryFailure,
+} from "../application/artifact-comments.js";
+import {
   type ArtifactManagementDependencies,
   ArtifactManagementService,
 } from "../application/artifact-management.js";
@@ -32,6 +42,12 @@ import {ExpiredStagingCleanupService} from
   "../application/expired-staging-cleanup.js";
 
 import {
+  disabledLinkedArtifactLayer,
+  type LinkedArtifactConfiguration,
+  type LinkedSourceEngineOperations,
+  LinkedArtifactService,
+} from "../application/linked-artifacts.js";
+import {
   type PublishArtifactDependencies,
   PublishArtifactService,
 } from "../application/publish-artifact.js";
@@ -44,21 +60,33 @@ import {
   ProjectManagementService,
 } from "../application/project-management.js";
 import {
+  type ProjectGitHistoryDependencies,
+  type ProjectGitHistoryStore,
+  ProjectGitHistoryService,
+} from "../application/project-git-history.js";
+import {
   type ListPublicLinks,
   type PublicLinkAdministrationRepository,
   PublicLinkAdministrationService,
   type PublicLinkInventoryPage,
 } from "../application/public-link-administration.js";
 import {
+  AgentDispatchNotFound,
+  AgentNotFound,
   ArtifactNotFound,
   ArtifactMutationConflict,
   ArtifactRepositoryFailure,
   AuthenticationRequired,
   BlobStorageFailure,
+  CommentNotFound,
+  CommentResolved,
+  DispatchStateConflict,
   IdempotencyConflict,
   IdentityConflict,
   IdentityNotFound,
   IdentityRepositoryFailure,
+  InvalidComment,
+  InvalidDispatch,
   PublishConflict,
   ProjectConflict,
   ProjectArchived,
@@ -80,12 +108,15 @@ import {
   type Principal,
 } from "../core/identity.js";
 import type {
+  AgentDispatchRepository,
   ArtifactRepository,
   BlobStore,
   Clock,
+  CommentRepository,
   ContentSessionRepository,
   IdGenerator,
   ProjectRepository,
+  SourceBindingRepository,
   StagedUploadRepository,
   StagingStore,
 } from "../core/ports.js";
@@ -95,24 +126,46 @@ import {randomBase64Url} from "../core/random.js";
 import { FileVerificationError } from "../storage/verified-file.js";
 import {defaultStagingCleanupPolicy} from
   "../lifecycle/staging-cleanup.js";
+import {
+  disabledGitHistoryCapability,
+  fixedGitHistoryCapabilityReader,
+  type GitHistoryCapabilityReader,
+} from "../git-history/git-history-capability.js";
 
 /** Concrete Node adapters reused by the Effect application layer. */
 export interface ApplicationAdapters {
-  readonly apiToken: Redacted.Redacted;
+  readonly apiToken: Redacted.Redacted | null;
   readonly blobs: BlobStore;
   readonly bootstrapAdministratorEmail: string;
   readonly clock: Clock;
   readonly externalApiBearerVerifier: BearerCredentialVerifier | null;
   readonly externalMcpBearerVerifier: BearerCredentialVerifier | null;
   readonly externalMcpOAuthVerifier: ExternalMcpBearerVerifier | null;
+  /**
+   * Agent-dispatch persistence. Every backend implements the dispatch tables,
+   * so omitting the slot is a compile error rather than a runtime failure.
+   */
+  readonly dispatches: AgentDispatchRepository;
   readonly ids: IdGenerator;
   readonly identityRepository: IdentityRepository;
   readonly installationId: string;
   readonly interactiveIdentityProvider: InteractiveIdentityProvider | null;
+  /** Live optional-provider state used to guard project enablement. */
+  readonly gitHistory?: GitHistoryCapabilityReader;
+  /**
+   * Linked-artifact adapters, present only on a local deployment that has
+   * enabled the capability. Absent, every runtime still provides the
+   * linked-artifact service through its disabled layer, which answers the
+   * stable capability-unavailable shape.
+   */
+  readonly linked?: LinkedApplicationAdapters;
   readonly localBootstrapCredential: Redacted.Redacted | null;
+  readonly protectBootstrapAdministrator: boolean;
   readonly repository: ArtifactRepository &
+    CommentRepository &
     ContentSessionRepository &
     ProjectRepository &
+    ProjectGitHistoryStore &
     PublicLinkInventoryStore &
     StagedUploadRepository;
   readonly staging: StagingStore;
@@ -120,6 +173,13 @@ export interface ApplicationAdapters {
     readonly concurrency: number;
     readonly settleDelayMilliseconds: number;
   };
+}
+
+/** Node-only linked-artifact adapters supplied by the local deployment. */
+export interface LinkedApplicationAdapters {
+  readonly bindings: SourceBindingRepository;
+  readonly configuration: LinkedArtifactConfiguration;
+  readonly engine: LinkedSourceEngineOperations;
 }
 
 interface PublicLinkInventoryStore {
@@ -132,7 +192,9 @@ interface PublicLinkInventoryStore {
 export function createApplicationLayer(
   adapters: ApplicationAdapters,
 ): Layer.Layer<
+  | AgentDispatchService
   | AuthenticationService
+  | ArtifactCommentService
   | ArtifactManagementService
   | AuthorizationService
   | CompareArtifactService
@@ -140,7 +202,9 @@ export function createApplicationLayer(
   | ExpiredStagingCleanupService
   | InstallationAccessService
   | InteractiveLoginService
+  | LinkedArtifactService
   | PublishArtifactService
+  | ProjectGitHistoryService
   | ProjectManagementService
   | PublicLinkAdministrationService
   | StagedUploadService
@@ -339,6 +403,26 @@ export function createApplicationLayer(
       }),
     },
   };
+  const projectGitHistoryDependencies: ProjectGitHistoryDependencies = {
+    clock,
+    provider: adapters.gitHistory ?? fixedGitHistoryCapabilityReader(
+      disabledGitHistoryCapability(),
+    ),
+    repository: {
+      estimateProjectGitHistory: (projectId, limits) => Effect.tryPromise({
+        try: () => adapters.repository.estimateProjectGitHistory(projectId, limits),
+        catch: (cause) => repositoryFailure("estimateProjectGitHistory", cause),
+      }),
+      readProjectGitHistorySetting: (projectId) => Effect.tryPromise({
+        try: () => adapters.repository.readProjectGitHistorySetting(projectId),
+        catch: (cause) => repositoryFailure("readProjectGitHistorySetting", cause),
+      }),
+      storeProjectGitHistorySetting: (setting) => Effect.tryPromise({
+        try: () => adapters.repository.storeProjectGitHistorySetting(setting),
+        catch: (cause) => repositoryFailure("storeProjectGitHistorySetting", cause),
+      }),
+    },
+  };
   const managementDependencies: ArtifactManagementDependencies = {
     clock,
     repository: {
@@ -372,15 +456,15 @@ export function createApplicationLayer(
           catch: (cause) =>
             repositoryFailure("findArtifactForAdministration", cause),
         }),
-      findArtifactVersion: (projectId, artifactId, versionId) =>
+      findVersionRecord: (projectId, artifactId, versionId) =>
         Effect.tryPromise({
           try: () =>
-            adapters.repository.findArtifactVersion(
+            adapters.repository.findVersionRecord(
               projectId,
               artifactId,
               versionId,
             ),
-          catch: (cause) => repositoryFailure("findArtifactVersion", cause),
+          catch: (cause) => repositoryFailure("findVersionRecord", cause),
         }),
       listArtifactVersions: (projectId, artifactId) =>
         Effect.tryPromise({
@@ -404,6 +488,121 @@ export function createApplicationLayer(
         }),
     },
   };
+  const commentDependencies: ArtifactCommentDependencies = {
+    clock,
+    ids: adapters.ids,
+    installationId: adapters.installationId,
+    repository: {
+      createReply: (command) => commentEffect(
+        "createCommentReply",
+        () => adapters.repository.createReply(command),
+      ),
+      createThread: (command) => commentEffect(
+        "createCommentThread",
+        () => adapters.repository.createThread(command),
+      ),
+      deleteReply: (command) => commentEffect(
+        "deleteCommentReply",
+        () => adapters.repository.deleteReply(command),
+      ),
+      deleteThread: (command) => commentEffect(
+        "deleteCommentThread",
+        () => adapters.repository.deleteThread(command),
+      ),
+      findArtifact: (projectId, artifactId) => commentEffect(
+        "findArtifact",
+        () => adapters.repository.findArtifact(projectId, artifactId),
+      ),
+      findVersionRecord: (projectId, artifactId, versionId) => commentEffect(
+        "findVersionRecord",
+        () => adapters.repository.findVersionRecord(
+          projectId,
+          artifactId,
+          versionId,
+        ),
+      ),
+      findThread: (projectId, artifactId, threadId) => commentEffect(
+        "findCommentThread",
+        () => adapters.repository.findThread(projectId, artifactId, threadId),
+      ),
+      listReplies: (threadId) => commentEffect(
+        "listCommentReplies",
+        () => adapters.repository.listReplies(threadId),
+      ),
+      listThreads: (command) => commentEffect(
+        "listCommentThreads",
+        () => adapters.repository.listThreads(command),
+      ),
+      updateReply: (command) => commentEffect(
+        "updateCommentReply",
+        () => adapters.repository.updateReply(command),
+      ),
+      updateThread: (command) => commentEffect(
+        "updateCommentThread",
+        () => adapters.repository.updateThread(command),
+      ),
+      versionContainsPath: (projectId, versionId, path) => commentEffect(
+        "versionContainsPath",
+        () => adapters.repository.versionContainsPath(projectId, versionId, path),
+      ),
+    },
+  };
+  const dispatchStore = adapters.dispatches;
+  const dispatchDependencies: AgentDispatchDependencies = {
+    clock,
+    ids: adapters.ids,
+    installationId: adapters.installationId,
+    repository: {
+      cancelDispatch: (command) => dispatchEffect(
+        "cancelAgentDispatch",
+        () => dispatchStore.cancelDispatch(command),
+      ),
+      claimNextDispatch: (agentId, now, bumpHeartbeat) => dispatchEffect(
+        "claimAgentDispatch",
+        () => dispatchStore.claimNextDispatch(agentId, now, bumpHeartbeat),
+      ),
+      createDispatch: (command) => dispatchEffect(
+        "createAgentDispatch",
+        () => dispatchStore.createDispatch(command),
+      ),
+      disconnectAgent: (installationId, agentId) => dispatchEffect(
+        "disconnectRegisteredAgent",
+        () => dispatchStore.disconnectAgent(installationId, agentId),
+      ),
+      findAgent: (installationId, agentId) => dispatchEffect(
+        "findRegisteredAgent",
+        () => dispatchStore.findAgent(installationId, agentId),
+      ),
+      findDispatch: (installationId, dispatchId, now) => dispatchEffect(
+        "findAgentDispatch",
+        () => dispatchStore.findDispatch(installationId, dispatchId, now),
+      ),
+      listAgents: (installationId, now) => dispatchEffect(
+        "listRegisteredAgents",
+        () => dispatchStore.listAgents(installationId, now),
+      ),
+      listDispatches: (command) => dispatchEffect(
+        "listAgentDispatches",
+        () => dispatchStore.listDispatches(command),
+      ),
+      markDelivered: (command) => dispatchEffect(
+        "markAgentDispatchDelivered",
+        () => dispatchStore.markDelivered(command),
+      ),
+      markFailed: (command) => dispatchEffect(
+        "markAgentDispatchFailed",
+        () => dispatchStore.markFailed(command),
+      ),
+      observeAddressed: (dispatchId, now) => dispatchEffect(
+        "observeAgentDispatchAddressed",
+        () => dispatchStore.observeAddressed(dispatchId, now),
+      ),
+      registerAgent: (command) => dispatchEffect(
+        "registerAgent",
+        () => dispatchStore.registerAgent(command),
+      ),
+    },
+  };
   const publicLinkAdministrationRepository: PublicLinkAdministrationRepository = {
     listPublicLinks: (command) =>
       Effect.tryPromise({
@@ -422,7 +621,7 @@ export function createApplicationLayer(
     },
     repository: {
       findArtifact: managementDependencies.repository.findArtifact,
-      findArtifactVersion: managementDependencies.repository.findArtifactVersion,
+      findVersionRecord: managementDependencies.repository.findVersionRecord,
     },
   };
 
@@ -454,15 +653,15 @@ export function createApplicationLayer(
           try: () => adapters.repository.findCurrentVersion(projectId, artifactId),
           catch: (cause) => repositoryFailure("findCurrentVersion", cause),
         }),
-      findArtifactVersion: (projectId, artifactId, versionId) =>
+      findVersionRecord: (projectId, artifactId, versionId) =>
         Effect.tryPromise({
           try: () =>
-            adapters.repository.findArtifactVersion(
+            adapters.repository.findVersionRecord(
               projectId,
               artifactId,
               versionId,
             ),
-          catch: (cause) => repositoryFailure("findArtifactVersion", cause),
+          catch: (cause) => repositoryFailure("findVersionRecord", cause),
         }),
       findVersionContent: (contentToken, requestedPath, fallback) =>
         Effect.tryPromise({
@@ -491,13 +690,16 @@ export function createApplicationLayer(
   const localPrincipal: Principal = {
     authorizedByPrincipalId: null,
     capabilities: [
+      principalCapabilities.connectAgents,
       principalCapabilities.createArtifact,
       principalCapabilities.issueContentSession,
       principalCapabilities.manageAnyArtifact,
       principalCapabilities.manageProjects,
       principalCapabilities.publishAnyArtifact,
       principalCapabilities.readArtifacts,
+      principalCapabilities.writeComments,
     ],
+    displayName: "Local",
     id: "local-api-token",
     installationId: adapters.installationId,
     kind: principalKinds.service,
@@ -515,6 +717,7 @@ export function createApplicationLayer(
     installationId: adapters.installationId,
     localBootstrapCredential: adapters.localBootstrapCredential,
     localLoginAttemptLifetimeMilliseconds: 60 * 1_000,
+    protectBootstrapAdministrator: adapters.protectBootstrapAdministrator,
     repository: {
       admitMember: (command) => identityEffectWithConflict(
         "admitMember",
@@ -636,11 +839,14 @@ export function createApplicationLayer(
         externalVerifier: BearerCredentialVerifier | null,
       ): BearerCredentialVerifier["verify"] => (credential) => {
         const raw = Redacted.value(credential);
+        if (
+          adapters.apiToken !== null
+          && credentialsEqual(raw, Redacted.value(adapters.apiToken))
+        ) {
+          return Effect.succeed(localPrincipal);
+        }
         if (raw.startsWith("as_key_")) {
           return installationAccess.authenticateManagedApiKey(credential);
-        }
-        if (credentialsEqual(raw, Redacted.value(adapters.apiToken))) {
-          return Effect.succeed(localPrincipal);
         }
         if (externalVerifier !== null) return externalVerifier.verify(credential);
         return Effect.fail(new AuthenticationRequired({
@@ -651,19 +857,22 @@ export function createApplicationLayer(
         "AuthenticationService.authenticateMcpBearer",
       )(function*(credential: Redacted.Redacted) {
         const raw = Redacted.value(credential);
+        if (
+          adapters.apiToken !== null
+          && credentialsEqual(raw, Redacted.value(adapters.apiToken))
+        ) {
+          return {
+            clientId: localPrincipal.id,
+            expiresAt: Math.floor(adapters.clock.now().getTime() / 1_000) + 60,
+            principal: localPrincipal,
+            scopes: ["mcp"],
+          };
+        }
         if (raw.startsWith("as_key_")) {
           return {
             clientId: "artifact-server-managed-api-key",
             expiresAt: Math.floor(adapters.clock.now().getTime() / 1_000) + 60,
             principal: yield* installationAccess.authenticateManagedApiKey(credential),
-            scopes: ["mcp"],
-          };
-        }
-        if (credentialsEqual(raw, Redacted.value(adapters.apiToken))) {
-          return {
-            clientId: localPrincipal.id,
-            expiresAt: Math.floor(adapters.clock.now().getTime() / 1_000) + 60,
-            principal: localPrincipal,
             scopes: ["mcp"],
           };
         }
@@ -734,6 +943,9 @@ export function createApplicationLayer(
   const projectLayer = ProjectManagementService.layer(projectDependencies).pipe(
     Layer.provideMerge(authorizationLayer),
   );
+  const projectGitHistoryLayer = ProjectGitHistoryService.layer(
+    projectGitHistoryDependencies,
+  ).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)));
 
   const publishLayer = PublishArtifactService.layer(publishDependencies).pipe(
     Layer.provideMerge(authorizationLayer),
@@ -761,6 +973,91 @@ export function createApplicationLayer(
       Layer.mergeAll(authorizationLayer, identityLayer, projectLayer),
     ),
   );
+  const linked = adapters.linked;
+  const linkedLayer = linked === undefined
+    ? disabledLinkedArtifactLayer
+    : LinkedArtifactService.layer({
+      bindings: {
+        commitCapturedVersion: (command) =>
+          Effect.tryPromise({
+            try: () => linked.bindings.commitCapturedVersion(command),
+            catch: classifyCapturedCommitFailure,
+          }),
+        commitLinkedArtifact: (command) =>
+          Effect.tryPromise({
+            try: () => linked.bindings.commitLinkedArtifact(command),
+            catch: classifyLinkedCommitFailure,
+          }),
+        findSourceBinding: (projectId, artifactId) =>
+          Effect.tryPromise({
+            try: () => linked.bindings.findSourceBinding(projectId, artifactId),
+            catch: (cause) => repositoryFailure("linkedSource", cause),
+          }),
+        recordSourceFreshness: (command) =>
+          Effect.tryPromise({
+            try: () => linked.bindings.recordSourceFreshness(command),
+            catch: (cause) => repositoryFailure("linkedSource", cause),
+          }),
+        relinkSource: (command) =>
+          Effect.tryPromise({
+            try: () => linked.bindings.relinkSource(command),
+            catch: classifyRelinkFailure,
+          }),
+      },
+      blobs: publishDependencies.blobs,
+      clock,
+      configuration: linked.configuration,
+      engine: linked.engine,
+      ids: adapters.ids,
+      liveSessions: {
+        createContentBootstrap: (command) =>
+          contentDependencies.repository.createContentBootstrap(command),
+        findContentSession: (tokenDigest, contentToken, requestTime) =>
+          contentDependencies.repository.findContentSession(
+            tokenDigest,
+            contentToken,
+            requestTime,
+          ),
+      },
+      publication: {
+        assertPublicationSourceReady: (source, manifestDigest, commitTime) =>
+          publishDependencies.repository.assertPublicationSourceReady(
+            source,
+            manifestDigest,
+            commitTime,
+          ),
+        findCurrentVersion: (projectId, artifactId) =>
+          publishDependencies.repository.findCurrentVersion(
+            projectId,
+            artifactId,
+          ),
+        findIdempotentPublication: (projectId, idempotencyKey, inputDigest) =>
+          publishDependencies.repository.findIdempotentPublication(
+            projectId,
+            idempotencyKey,
+            inputDigest,
+          ),
+        findVersionRecord: (projectId, artifactId, versionId) =>
+          contentDependencies.repository.findVersionRecord(
+            projectId,
+            artifactId,
+            versionId,
+          ),
+      },
+      secrets: contentDependencies.secrets,
+    }).pipe(
+      Layer.provideMerge(
+        Layer.mergeAll(authorizationLayer, projectLayer, stagedLayer),
+      ),
+    );
+  const commentLayer = ArtifactCommentService.layer(commentDependencies).pipe(
+    Layer.provideMerge(
+      Layer.mergeAll(authorizationLayer, projectLayer, linkedLayer),
+    ),
+  );
+  const dispatchLayer = AgentDispatchService.layer(dispatchDependencies).pipe(
+    Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)),
+  );
   const publicLinkAdministrationLayer = PublicLinkAdministrationService.layer(
     publicLinkAdministrationRepository,
   ).pipe(
@@ -771,14 +1068,18 @@ export function createApplicationLayer(
   ).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)));
   return Layer.mergeAll(
     authenticationLayer,
+    commentLayer,
+    dispatchLayer,
     identityLayer,
     interactiveLoginLayer,
     stagedLayer,
     contentLayer,
     cleanupLayer,
+    linkedLayer,
     managementLayer,
     publicLinkAdministrationLayer,
     comparisonLayer,
+    projectGitHistoryLayer,
     projectLayer,
   );
 }
@@ -882,6 +1183,32 @@ function credentialsEqual(actualToken: string, expectedToken: string): boolean {
   const expected = Buffer.from(expectedToken);
   return actual.byteLength === expected.byteLength &&
     timingSafeEqual(actual, expected);
+}
+
+function classifyLinkedCommitFailure(cause: unknown) {
+  if (
+    cause instanceof IdempotencyConflict || cause instanceof ProjectArchived
+  ) return cause;
+  return repositoryFailure("linkedSource", cause);
+}
+
+function classifyCapturedCommitFailure(cause: unknown) {
+  if (
+    cause instanceof ArtifactNotFound ||
+    cause instanceof IdempotencyConflict ||
+    cause instanceof ProjectArchived ||
+    cause instanceof PublishConflict
+  ) {
+    return cause;
+  }
+  return repositoryFailure("linkedSource", cause);
+}
+
+function classifyRelinkFailure(cause: unknown) {
+  if (
+    cause instanceof ArtifactNotFound || cause instanceof IdempotencyConflict
+  ) return cause;
+  return repositoryFailure("linkedSource", cause);
 }
 
 function classifySourceReadinessFailure(cause: unknown) {
@@ -991,6 +1318,59 @@ function classifyDeleteFailure(cause: unknown):
     return cause;
   }
   return repositoryFailure("deleteArtifact", cause);
+}
+
+function dispatchEffect<A>(
+  operation: ArtifactRepositoryFailure["operation"],
+  run: () => Promise<A>,
+): Effect.Effect<A, AgentDispatchRepositoryFailure> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => classifyDispatchFailure(operation, cause),
+  });
+}
+
+function classifyDispatchFailure(
+  operation: ArtifactRepositoryFailure["operation"],
+  cause: unknown,
+): AgentDispatchRepositoryFailure {
+  if (
+    cause instanceof AgentDispatchNotFound ||
+    cause instanceof AgentNotFound ||
+    cause instanceof DispatchStateConflict ||
+    cause instanceof IdempotencyConflict ||
+    cause instanceof InvalidDispatch
+  ) {
+    return cause;
+  }
+  return repositoryFailure(operation, cause);
+}
+
+function commentEffect<A>(
+  operation: ArtifactRepositoryFailure["operation"],
+  run: () => Promise<A>,
+): Effect.Effect<A, CommentRepositoryFailure> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => classifyCommentFailure(operation, cause),
+  });
+}
+
+function classifyCommentFailure(
+  operation: ArtifactRepositoryFailure["operation"],
+  cause: unknown,
+): CommentRepositoryFailure {
+  if (
+    cause instanceof ArtifactNotFound ||
+    cause instanceof CommentNotFound ||
+    cause instanceof CommentResolved ||
+    cause instanceof IdempotencyConflict ||
+    cause instanceof InvalidComment ||
+    cause instanceof VersionNotFound
+  ) {
+    return cause;
+  }
+  return repositoryFailure(operation, cause);
 }
 
 function repositoryFailure(

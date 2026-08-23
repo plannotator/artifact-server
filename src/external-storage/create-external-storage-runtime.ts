@@ -7,6 +7,7 @@ import type {
 } from "../application/authentication.js";
 import type {InteractiveIdentityProvider} from "../application/interactive-login.js";
 import type {Clock} from "../core/ports.js";
+import type {BrowserAccess} from "../core/browser-access.js";
 import {SystemClock, SystemIdGenerator} from "../core/system.js";
 import {createHttpApp} from "../http/create-http-app.js";
 import type {
@@ -37,6 +38,25 @@ import {
 import type {ExpiredStagingCleanupReport} from
   "../application/expired-staging-cleanup.js";
 import {createNodeWebAssetStore} from "../http/node-web-assets.js";
+import {ensureBootstrapManagedApiKey} from
+  "../application/bootstrap-managed-api-key.js";
+import {
+  configuredNodeGitHistory,
+  offNodeGitHistoryConfiguration,
+  type NodeGitHistoryConfiguration,
+} from "../git-history/node-git-history-configuration.js";
+import {fixedGitHistoryCapabilityReader} from
+  "../git-history/git-history-capability.js";
+import type {GitHistoryProviderHealthProbe} from
+  "../git-history/git-history-provider-health.js";
+import {CloudflareArtifactsRestHealthProbe} from
+  "../git-history/cloudflare-artifacts-rest-health-probe.js";
+import {
+  startGitHistoryCapabilityMonitor,
+  type GitHistoryCapabilityMonitor,
+} from "../git-history/git-history-capability-monitor.js";
+import {PostgresGitHistoryProviderIdentityStore} from
+  "../storage/postgres-git-history-provider-identity-store.js";
 
 /** Configuration for one stateless Artifact Server process. */
 export interface ExternalStorageRuntimeConfig {
@@ -44,6 +64,7 @@ export interface ExternalStorageRuntimeConfig {
   readonly apiOAuthResource?: ApiOAuthResourceConfiguration;
   readonly applicationOrigin?: string;
   readonly bootstrapAdministratorEmail: string;
+  readonly browserAccess: Extract<BrowserAccess, {readonly mode: "private_team"}>;
   readonly clock?: Clock;
   readonly completedRequestLogSampleRate?: number;
   readonly contentDomain: string;
@@ -51,11 +72,15 @@ export interface ExternalStorageRuntimeConfig {
   readonly externalApiBearerVerifier?: BearerCredentialVerifier;
   readonly externalMcpBearerVerifier?: BearerCredentialVerifier;
   readonly externalMcpOAuthVerifier?: ExternalMcpBearerVerifier;
+  readonly gitHistory?: NodeGitHistoryConfiguration;
+  /** Optional provider seam for real-boundary tests; production composes REST. */
+  readonly gitHistoryHealthProbe?: GitHistoryProviderHealthProbe;
   readonly installationId: string;
   readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
   readonly localBootstrapCredential?: Redacted.Redacted;
   readonly mcpOAuthResource?: McpOAuthResourceConfiguration;
   readonly objectStorage: ObjectStorageProviderFactory;
+  readonly postgresMaxConnections?: number;
   readonly runtimeLifecycle?: RuntimeLifecycle;
   readonly serviceVersion?: string;
   readonly stagingCleanupPolicy?: StagingCleanupPolicy;
@@ -72,15 +97,21 @@ export interface ExternalStorageRuntime {
 export async function createExternalStorageRuntime(
   config: ExternalStorageRuntimeConfig,
 ): Promise<ExternalStorageRuntime> {
+  const runtimeClock = config.clock ?? new SystemClock();
   const stagingCleanupPolicy = config.stagingCleanupPolicy ??
     defaultStagingCleanupPolicy;
+  const gitHistory = config.gitHistory ?? offNodeGitHistoryConfiguration();
+  let applicationGitHistory = fixedGitHistoryCapabilityReader(
+    gitHistory.capability,
+  );
   const database = await PostgresDatabase.open({
     applicationName: `artifact-server:${config.installationId}`,
-    maxConnections: 10,
+    maxConnections: config.postgresMaxConnections ?? 10,
     url: config.databaseUrl,
   }, "validate");
   let objectStorage: ObjectStorageProvider | null = null;
   let applicationRuntime: ApplicationRuntime | null = null;
+  let gitHistoryMonitor: GitHistoryCapabilityMonitor | null = null;
   try {
     const connectedObjectStorage = config.objectStorage.create(
       config.installationId,
@@ -98,20 +129,36 @@ export async function createExternalStorageRuntime(
       database,
       config.installationId,
     );
+    const configuredGitHistory = configuredNodeGitHistory(gitHistory);
+    const gitHistoryIdentityStore = configuredGitHistory === null
+      ? null
+      : new PostgresGitHistoryProviderIdentityStore(
+        database,
+        config.installationId,
+      );
+    await ensureBootstrapManagedApiKey({
+      credential: config.apiToken,
+      installationId: config.installationId,
+      now: runtimeClock.now(),
+      repository: identityRepository,
+    });
     const {blobs, staging} = connectedObjectStorage;
     const applicationLayer = createApplicationLayer({
-      apiToken: config.apiToken,
+      apiToken: null,
       blobs,
       bootstrapAdministratorEmail: config.bootstrapAdministratorEmail,
-      clock: config.clock ?? new SystemClock(),
+      clock: runtimeClock,
+      dispatches: repository,
       externalApiBearerVerifier: config.externalApiBearerVerifier ?? null,
       externalMcpBearerVerifier: config.externalMcpBearerVerifier ?? null,
       externalMcpOAuthVerifier: config.externalMcpOAuthVerifier ?? null,
       ids: new SystemIdGenerator(),
       identityRepository,
       installationId: config.installationId,
+      gitHistory: {read: () => applicationGitHistory.read()},
       interactiveIdentityProvider: config.interactiveIdentityProvider ?? null,
       localBootstrapCredential: config.localBootstrapCredential ?? null,
+      protectBootstrapAdministrator: false,
       repository,
       staging,
       stagingCleanupPolicy,
@@ -132,13 +179,30 @@ export async function createExternalStorageRuntime(
     );
     await applicationRuntime.context();
     const readyRuntime = applicationRuntime;
+    if (configuredGitHistory !== null && gitHistoryIdentityStore !== null) {
+      gitHistoryMonitor = startGitHistoryCapabilityMonitor({
+        clock: runtimeClock,
+        identity: configuredGitHistory.identity,
+        identityStore: gitHistoryIdentityStore,
+        initialCapability: configuredGitHistory.capability,
+        providerHealth: config.gitHistoryHealthProbe ??
+          new CloudflareArtifactsRestHealthProbe({
+            apiToken: configuredGitHistory.apiToken,
+            identity: configuredGitHistory.identity,
+          }),
+      });
+      applicationGitHistory = gitHistoryMonitor.reader;
+    }
     const appDependenciesWithoutOAuth = {
       applicationRuntime: readyRuntime,
       blobs,
+      browserAccess: config.browserAccess,
       completedRequestLogSampleRate:
         config.completedRequestLogSampleRate ??
           defaultCompletedRequestLogSampleRate,
       contentDomain: config.contentDomain,
+      gitHistory: gitHistoryMonitor?.reader ??
+        fixedGitHistoryCapabilityReader(gitHistory.capability),
       readiness: () => externalStorageReadiness(database, connectedObjectStorage),
       trustedApplicationOrigin: config.applicationOrigin ?? null,
       webAssets: createNodeWebAssetStore(),
@@ -166,10 +230,12 @@ export async function createExternalStorageRuntime(
       cleanupStaging: (limit) => runStagingCleanupPass(readyRuntime, limit),
       close: async () => {
         if (closeCleanupSchedule !== null) await closeCleanupSchedule();
+        if (gitHistoryMonitor !== null) await gitHistoryMonitor.close();
         await readyRuntime.dispose();
       },
     };
   } catch (cause) {
+    if (gitHistoryMonitor !== null) await gitHistoryMonitor.close();
     if (applicationRuntime === null) {
       await Promise.all([
         objectStorage?.close() ?? Promise.resolve(),

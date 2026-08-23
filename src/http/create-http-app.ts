@@ -20,10 +20,23 @@ import { StagedUploadService } from "../application/staged-upload.js";
 import { AuthenticationService } from "../application/authentication.js";
 import {
   digestIdentitySecret,
+  identitySecretsEqual,
   InstallationAccessService,
 } from "../application/installation-access.js";
 import { InteractiveLoginService } from "../application/interactive-login.js";
 import { ProjectManagementService } from "../application/project-management.js";
+import {ProjectGitHistoryService} from
+  "../application/project-git-history.js";
+import {
+  AgentDispatchService,
+  type ConnectedRegisteredAgent,
+} from "../application/agent-dispatch.js";
+import {
+  ArtifactCommentService,
+  type CommentThreadDetails,
+  type ReadCommentThreadCommand,
+  type UpdateCommentThreadCommand,
+} from "../application/artifact-comments.js";
 import {
   type ArtifactDetails,
   ArtifactManagementService,
@@ -39,15 +52,28 @@ import {
 } from "../application/compare-artifact.js";
 import { ContentAccessService } from "../application/content-access.js";
 import {
+  isLiveContentToken,
+  LinkedArtifactService,
+  type LinkedPublication,
+  liveContentToken,
+  type LiveReadGrant,
+} from "../application/linked-artifacts.js";
+import {
   AuthenticationRequired,
   AuthorizationDenied,
   type ArtifactServerFailure,
+  CapabilityUnavailable,
   ContentBootstrapRejected,
   errorCodes,
   InvalidPagination,
   isArtifactServerFailure,
+  VersionNotFound,
 } from "../core/errors.js";
 import type { IssuedApplicationSession } from "../core/installation-identity.js";
+import {
+  browserAccessModes,
+  type BrowserAccess,
+} from "../core/browser-access.js";
 import {
   membershipRoles,
   principalCapabilities,
@@ -55,23 +81,40 @@ import {
 } from "../core/identity.js";
 import {
   accessSettings,
+  type AgentDispatchPage,
+  type AgentDispatchRecord,
+  agentDispatchStates,
   type ArtifactActionPage,
   type ArtifactDeletion,
   type ArtifactPage,
   type ArtifactState,
   type ArtifactVersion,
+  commentThreadStates,
+  type CommentThreadPage,
+  type CommentThreadRecord,
+  type CommentThreadState,
+  dispatchedThreadFilters,
   type ManifestEntry,
   type PageCursor,
   type PublishedVersion,
+  registeredAgentKinds,
+  type RegisteredAgentRecord,
+  type SourceBindingRecord,
   type VersionRecord,
 } from "../core/model.js";
 import type { BlobStore } from "../core/ports.js";
+import {
+  disabledGitHistoryCapability,
+  fixedGitHistoryCapabilityReader,
+  type GitHistoryCapabilityReader,
+} from "../git-history/git-history-capability.js";
 import {
   decideByteRange,
   ifRangeAllowsPartialResponse,
 } from "./byte-range.js";
 import {permitsSpaEntryFallback} from "./spa-navigation.js";
 import {
+  maximumCommentPageSize,
   maximumDeclaredFiles,
   maximumUploadPlanRequestBytes,
 } from "../core/publishing-limits.js";
@@ -104,6 +147,13 @@ const createProjectSchema = z.object({
   name: z.string().trim().min(1).max(120),
 }).strict();
 const renameProjectSchema = createProjectSchema;
+const setProjectGitHistorySchema = z.discriminatedUnion("enabled", [
+  z.object({enabled: z.literal(false)}).strict(),
+  z.object({
+    confirmEstimate: z.literal(true),
+    enabled: z.literal(true),
+  }).strict(),
+]);
 const declaredFileSchema = z.object({
   mediaType: z.string().trim().min(1).max(200),
   path: z.string().min(1).max(1_024),
@@ -148,6 +198,18 @@ const contentSessionTokenSchema = z
 const contentBootstrapQueryParameter = "__artifact_bootstrap";
 const contentSessionCookieName = "__Host-artifact_content";
 const loopbackContentSessionCookieName = "artifact_content";
+const linkArtifactSchema = z.object({
+  name: z.string().trim().min(1).max(200).optional(),
+  path: z.string().min(1).max(4_096),
+  projectId: projectIdSchema.optional(),
+}).strict();
+const captureArtifactSchema = z.object({
+  expectedCurrentVersionId: z.string().min(1).max(200),
+}).strict();
+const relinkArtifactSchema = z.object({
+  expectedSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  path: z.string().min(1).max(4_096),
+}).strict();
 const restoreVersionSchema = z.object({
   expectedCurrentVersionId: z.string().min(1).max(200),
   versionId: z.string().min(1).max(200),
@@ -163,6 +225,92 @@ const changeTagsSchema = z.object({
 const comparisonQuerySchema = z.object({
   fromVersionId: z.string().min(1).max(200),
   toVersionId: z.string().min(1).max(200),
+});
+const manifestEntryPathSchema = z.string().min(1).max(1_024);
+// The comment service is the single body authority: it measures the trimmed
+// body and answers with INVALID_COMMENT, so the wire schema only fixes the type.
+const commentBodySchema = z.string();
+const commentStateSchema = z.enum([
+  commentThreadStates.open,
+  commentThreadStates.resolved,
+]);
+const createCommentThreadSchema = z.object({
+  anchor: z.unknown().optional(),
+  body: commentBodySchema,
+  path: manifestEntryPathSchema.optional(),
+}).strict();
+const updateCommentThreadSchema = z.object({
+  anchor: z.unknown().optional(),
+  body: commentBodySchema.optional(),
+  state: commentStateSchema.optional(),
+}).strict();
+const createCommentReplySchema = z.object({
+  body: commentBodySchema,
+}).strict();
+const updateCommentReplySchema = createCommentReplySchema;
+const dispatchedThreadFilterSchema = z.enum([
+  dispatchedThreadFilters.exclude,
+  dispatchedThreadFilters.include,
+  dispatchedThreadFilters.only,
+]);
+const commentPageQuerySchema = z.object({
+  cursor: z.string().max(1_024).optional(),
+  // The default hides dispatched threads, which is what makes a send
+  // consumptive for every existing client without a change on its side.
+  dispatched: dispatchedThreadFilterSchema.default(
+    dispatchedThreadFilters.exclude,
+  ),
+  limit: z.coerce.number().int().min(1).max(maximumCommentPageSize).default(50),
+  since: z.iso.datetime().optional(),
+  state: commentStateSchema.optional(),
+  versionId: z.string().min(1).max(200).optional(),
+});
+// The dispatch service is the single bounds authority: it trims and measures
+// agent text, bundle size, and notes, then answers with INVALID_DISPATCH, so
+// the wire schemas below only fix the types.
+const agentTextSchema = z.string();
+const agentIdSchema = z.string().min(1).max(200);
+const registerAgentSchema = z.object({
+  agentSessionId: agentTextSchema.nullable().optional(),
+  connectionKey: agentTextSchema.optional(),
+  displayName: agentTextSchema,
+  kind: z.enum([registeredAgentKinds.pi]),
+  workingDirectory: agentTextSchema,
+}).strict();
+// The wait is clamped rather than refused: the contract already permits an
+// early answer, so an over-eager client gets the server cap, not an error.
+const claimDispatchQuerySchema = z.object({
+  wait: z.coerce.number().int().min(0).default(0),
+});
+const createAgentDispatchSchema = z.object({
+  agentId: agentIdSchema,
+  note: agentTextSchema.nullable().optional(),
+  projectId: projectIdSchema.optional(),
+  threadIds: z.array(agentTextSchema),
+}).strict();
+const reportDispatchDeliveredSchema = z.object({
+  agentId: agentIdSchema.optional(),
+}).strict();
+const reportDispatchFailedSchema = z.object({
+  agentId: agentIdSchema.optional(),
+  reason: agentTextSchema,
+}).strict();
+const agentDispatchStateSchema = z.enum([
+  agentDispatchStates.addressed,
+  agentDispatchStates.canceled,
+  agentDispatchStates.claimed,
+  agentDispatchStates.delivered,
+  agentDispatchStates.failed,
+  agentDispatchStates.queued,
+]);
+const agentDispatchPageQuerySchema = z.object({
+  agentId: agentIdSchema.optional(),
+  cursor: z.string().max(1_024).optional(),
+  limit: z.coerce.number().int().min(1).max(maximumCommentPageSize).default(50),
+  state: agentDispatchStateSchema.optional(),
+});
+const versionFileQuerySchema = z.object({
+  path: manifestEntryPathSchema,
 });
 const deleteArtifactSchema = z.object({
   expectedCurrentVersionId: z.string().min(1).max(200),
@@ -214,12 +362,14 @@ const admitMemberSchema = z.object({
   role: memberRoleSchema.default(membershipRoles.member),
 });
 const principalCapabilitySchema = z.enum([
+  principalCapabilities.connectAgents,
   principalCapabilities.createArtifact,
   principalCapabilities.issueContentSession,
   principalCapabilities.manageAnyArtifact,
   principalCapabilities.manageProjects,
   principalCapabilities.publishAnyArtifact,
   principalCapabilities.readArtifacts,
+  principalCapabilities.writeComments,
 ]);
 const issueApiKeySchema = z.object({
   capabilities: z.array(principalCapabilitySchema).min(1),
@@ -242,8 +392,15 @@ const sessionTokenSchema = z.string().min(32).max(200)
 const csrfTokenSchema = sessionTokenSchema;
 const applicationSessionCookie = "artifact_session";
 const applicationCsrfCookie = "artifact_csrf";
+const loginHandshakeCookie = "artifact_login";
 const secureApplicationSessionCookie = "__Host-artifact_session";
 const secureApplicationCsrfCookie = "__Host-artifact_csrf";
+const secureLoginHandshakeCookie = "__Host-artifact_login";
+const loginHandshakeMaxAgeSeconds = 10 * 60;
+/** Upper bound on one held claim poll, per the dispatch transport contract. */
+const maximumClaimWaitSeconds = 25;
+/** Spacing of the bounded re-checks inside one held claim poll. */
+const claimRecheckIntervalMilliseconds = 1_000;
 
 interface HttpEnvironment {
   readonly Variables: {
@@ -260,8 +417,20 @@ export interface HttpAppDependencies {
   readonly apiOAuthResource?: ApiOAuthResourceConfiguration;
   readonly applicationRuntime: ApplicationRuntime;
   readonly blobs: BlobStore;
+  /** Browser authentication policy fixed by the deployment entrypoint. */
+  readonly browserAccess: BrowserAccess;
   readonly completedRequestLogSampleRate: number;
   readonly contentDomain: string;
+  /** Server-only credential accepted from the co-launched Vite proxy. */
+  readonly developmentProxyCredential?: Redacted.Redacted;
+  /** Secret-free optional Git state exposed through authenticated discovery. */
+  readonly gitHistory?: GitHistoryCapabilityReader;
+  /**
+   * Advertises the linked-artifact capability (local deployment with
+   * `ARTIFACT_SERVER_LINKED_FILES=on`). The enabled application service is
+   * the enforcing guard; this flag only shapes discovery and fast gating.
+   */
+  readonly linkedArtifacts?: boolean;
   readonly mcpOAuthResource?: McpOAuthResourceConfiguration;
   readonly readiness?: ReadinessProbe;
   readonly runtimeLifecycle?: RuntimeLifecycle;
@@ -320,12 +489,17 @@ export function createHttpApp(
   const mcpAllowedHostnames = applicationHostname === null
     ? ["localhost", "127.0.0.1", "[::1]"]
     : [applicationHostname];
+  const gitHistory = dependencies.gitHistory ?? fixedGitHistoryCapabilityReader(
+    disabledGitHistoryCapability(),
+  );
   const mcp = createMcpHttpAdapter({
     allowedHostnames: mcpAllowedHostnames,
     allowedOriginHostnames: mcpAllowedHostnames,
     applicationOrigin: dependencies.trustedApplicationOrigin,
     applicationRuntime: dependencies.applicationRuntime,
     contentDomain: dependencies.contentDomain,
+    gitHistory,
+    linkedArtifacts: dependencies.linkedArtifacts === true,
     mode: dependencies.trustedApplicationOrigin === null ? "local" : "remote",
     oauthResource: dependencies.mcpOAuthResource?.resource ?? null,
   });
@@ -476,6 +650,18 @@ export function createHttpApp(
           dependencies,
         );
       }
+      // A live-origin host is artifact-scoped: it streams a linked source's
+      // current bytes to authenticated local members and never serves any
+      // immutable version route. Everywhere the capability is absent the
+      // application service answers the stable capability-unavailable shape.
+      if (isLiveContentToken(contentToken)) {
+        return serveLiveContent(
+          context,
+          contentToken,
+          context.req.header("cookie"),
+          dependencies,
+        );
+      }
       return serveVersionContent(
         context,
         requestUrl,
@@ -488,7 +674,19 @@ export function createHttpApp(
   });
 
   app.on(["GET", "HEAD"], "/assets/*", (context) =>
-    serveWebAsset(context, dependencies, new URL(context.req.url).pathname, false));
+    serveWebAsset(
+      context,
+      dependencies,
+      new URL(context.req.url).pathname,
+      "static-asset",
+    ));
+
+  app.on(
+    ["GET", "HEAD"],
+    "/review-frame",
+    (context) =>
+      serveWebAsset(context, dependencies, "/review-frame.html", "review-frame"),
+  );
 
   app.on(
     ["GET", "HEAD"],
@@ -497,11 +695,13 @@ export function createHttpApp(
       "/projects",
       "/projects/:projectId/artifacts",
       "/projects/:projectId/artifacts/:artifactId",
+      "/projects/:projectId/artifacts/:artifactId/versions/:versionId/review",
       "/administration/members",
       "/administration/api-keys",
       "/administration/public-links",
     ],
-    (context) => serveWebAsset(context, dependencies, "/index.html", true),
+    (context) =>
+      serveWebAsset(context, dependencies, "/index.html", "application-shell"),
   );
 
   app.use("/api/*", async (context, next) => {
@@ -589,7 +789,46 @@ export function createHttpApp(
     );
   });
 
+  app.get("/auth/context", (context) => {
+    context.header("Cache-Control", "private, no-store");
+    return context.json({
+      accessMode: dependencies.browserAccess.mode,
+      login: {kind: dependencies.browserAccess.loginKind},
+    });
+  });
+
+  app.post("/auth/local-owner", async (context) => {
+    if (dependencies.browserAccess.mode !== browserAccessModes.localOwner) {
+      return context.notFound();
+    }
+    requireLocalOwnerExchangeBoundary(context, dependencies);
+    const declaredBodyLength = context.req.header("content-length");
+    if (
+      (declaredBodyLength !== undefined && declaredBodyLength !== "0")
+      || context.req.header("transfer-encoding") !== undefined
+    ) {
+      return context.json({
+        error: {
+          code: errorCodes.invalidInput,
+          message: "The local-owner session request must have an empty body.",
+        },
+      }, 422);
+    }
+    const issued = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      InstallationAccessService.use((access) => access.loginAsLocalOwner()),
+    );
+    setApplicationSessionCookies(context, dependencies, issued);
+    context.header("Cache-Control", "private, no-store");
+    context.header("Referrer-Policy", "no-referrer");
+    return context.body(null, 204);
+  });
+
   app.post("/auth/local", async (context) => {
+    if (dependencies.browserAccess.mode !== browserAccessModes.localOwner) {
+      return context.notFound();
+    }
     const requestUrl = new URL(context.req.url);
     if (!isLoopbackHostname(requestUrl.hostname)) {
       throw new AuthenticationRequired({
@@ -624,6 +863,9 @@ export function createHttpApp(
   });
 
   app.get("/auth/local", async (context) => {
+    if (dependencies.browserAccess.mode !== browserAccessModes.localOwner) {
+      return context.notFound();
+    }
     const requestUrl = new URL(context.req.url);
     if (!isLoopbackHostname(requestUrl.hostname)) {
       throw new AuthenticationRequired({
@@ -648,22 +890,30 @@ export function createHttpApp(
 
   app.get("/auth/login", async (context) => {
     const query = interactiveLoginQuerySchema.parse(context.req.query());
-    const authorizationUrl = await runHttpApplicationEffect(
+    const started = await runHttpApplicationEffect(
       context,
       dependencies,
       InteractiveLoginService.use((login) => login.start(query.returnTo)),
     );
+    setLoginHandshakeCookie(context, dependencies, started.handshake);
     context.header("Cache-Control", "private, no-store");
-    return context.redirect(authorizationUrl, 302);
+    return context.redirect(started.authorizationUrl, 302);
   });
 
   app.get("/auth/callback", async (context) => {
     const query = interactiveCallbackSchema.parse(context.req.query());
+    const handshake = getCookie(
+      context,
+      applicationCookieNames(dependencies).handshake,
+    ) ?? null;
     const completed = await runHttpApplicationEffect(
       context,
       dependencies,
-      InteractiveLoginService.use((login) => login.complete(query)),
+      InteractiveLoginService.use((login) =>
+        login.complete({...query, handshake})
+      ),
     );
+    clearLoginHandshakeCookie(context, dependencies);
     setApplicationSessionCookies(context, dependencies, completed.issued);
     context.header("Cache-Control", "private, no-store");
     context.header("Referrer-Policy", "no-referrer");
@@ -673,6 +923,10 @@ export function createHttpApp(
   app.get("/api/v1/session", (context) =>
     context.json({
       authenticationMethod: context.get("authenticationMethod"),
+      capabilities: {
+        gitHistory: gitHistory.read(),
+        linkedArtifacts: dependencies.linkedArtifacts === true,
+      },
       principal: context.get("principal"),
     }));
 
@@ -838,6 +1092,195 @@ export function createHttpApp(
     },
   );
 
+  app.post("/api/v1/agents", boundedJsonBody, async (context) => {
+    const body = registerAgentSchema.parse(await context.req.json());
+    const agent = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      AgentDispatchService.use((dispatches) =>
+        dispatches.registerAgent({
+          agentSessionId: body.agentSessionId ?? null,
+          connectionKey: body.connectionKey ??
+            derivedConnectionKey(
+              context.get("principal").id,
+              body.workingDirectory,
+            ),
+          displayName: body.displayName,
+          kind: body.kind,
+          principal: context.get("principal"),
+          workingDirectory: body.workingDirectory,
+        })
+      ),
+    );
+    return context.json({agent: registeredAgentResponse(agent)});
+  });
+
+  app.get("/api/v1/agents", async (context) => {
+    const agents = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      AgentDispatchService.use((dispatches) =>
+        dispatches.listAgents({principal: context.get("principal")})
+      ),
+    );
+    return context.json({items: agents.map(connectedAgentResponse)});
+  });
+
+  app.post("/api/v1/agents/:agentId/disconnect", async (context) => {
+    await runHttpApplicationEffect(
+      context,
+      dependencies,
+      AgentDispatchService.use((dispatches) =>
+        dispatches.disconnectAgent({
+          agentId: context.req.param("agentId"),
+          principal: context.get("principal"),
+        })
+      ),
+    );
+    return context.body(null, 204);
+  });
+
+  app.post("/api/v1/agents/:agentId/claims", async (context) => {
+    const query = claimDispatchQuerySchema.parse(context.req.query());
+    const agentId = context.req.param("agentId");
+    const principal = context.get("principal");
+    const dispatch = await claimWithinPollDeadline(
+      // The poll request is the heartbeat: its first attempt bumps the
+      // agent's lastSeenAt, while the bounded re-checks inside the same held
+      // request stay pure reads until a dispatch is actually claimable.
+      (bumpHeartbeat) =>
+        runHttpApplicationEffect(
+          context,
+          dependencies,
+          AgentDispatchService.use((dispatches) =>
+            dispatches.claimDispatch({agentId, bumpHeartbeat, principal})
+          ),
+        ),
+      Date.now() + Math.min(query.wait, maximumClaimWaitSeconds) * 1_000,
+      context.req.raw.signal,
+    );
+    return dispatch === null
+      ? context.body(null, 204)
+      : context.json({dispatch: agentDispatchResponse(dispatch)});
+  });
+
+  app.post("/api/v1/agent-dispatches", boundedJsonBody, async (context) => {
+    const body = createAgentDispatchSchema.parse(await context.req.json());
+    const created = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      AgentDispatchService.use((dispatches) =>
+        dispatches.createDispatch({
+          agentId: body.agentId,
+          idempotencyKey: requiredIdempotencyKey(
+            context.req.header("idempotency-key"),
+          ),
+          note: body.note ?? null,
+          principal: context.get("principal"),
+          projectId: body.projectId ?? requestedProjectId(context),
+          threadIds: body.threadIds,
+        })
+      ),
+    );
+    return context.json({
+      dispatch: agentDispatchResponse(created.dispatch),
+      replayed: created.replayed,
+    }, 201);
+  });
+
+  app.get("/api/v1/agent-dispatches", async (context) => {
+    const query = agentDispatchPageQuerySchema.parse(context.req.query());
+    const page = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      AgentDispatchService.use((dispatches) =>
+        dispatches.listDispatches({
+          agentId: query.agentId ?? null,
+          cursor: decodePageCursor(query.cursor),
+          limit: query.limit,
+          principal: context.get("principal"),
+          projectId: requestedProjectId(context),
+          state: query.state ?? null,
+        })
+      ),
+    );
+    return context.json(agentDispatchPageResponse(page));
+  });
+
+  app.get("/api/v1/agent-dispatches/:dispatchId", async (context) => {
+    const dispatch = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      AgentDispatchService.use((dispatches) =>
+        dispatches.getDispatch({
+          dispatchId: context.req.param("dispatchId"),
+          principal: context.get("principal"),
+          projectId: requestedProjectId(context),
+        })
+      ),
+    );
+    return context.json({dispatch: agentDispatchResponse(dispatch)});
+  });
+
+  app.post(
+    "/api/v1/agent-dispatches/:dispatchId/delivered",
+    boundedJsonBody,
+    async (context) => {
+      const body = await parseOptionalJsonBody(
+        context,
+        reportDispatchDeliveredSchema,
+      );
+      const dispatch = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        AgentDispatchService.use((dispatches) =>
+          dispatches.reportDelivered({
+            agentId: reportingAgentId(context, body.agentId),
+            dispatchId: context.req.param("dispatchId"),
+            principal: context.get("principal"),
+          })
+        ),
+      );
+      return context.json({dispatch: agentDispatchResponse(dispatch)});
+    },
+  );
+
+  app.post(
+    "/api/v1/agent-dispatches/:dispatchId/failed",
+    boundedJsonBody,
+    async (context) => {
+      const body = reportDispatchFailedSchema.parse(await context.req.json());
+      const dispatch = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        AgentDispatchService.use((dispatches) =>
+          dispatches.reportFailed({
+            agentId: reportingAgentId(context, body.agentId),
+            dispatchId: context.req.param("dispatchId"),
+            principal: context.get("principal"),
+            reason: body.reason,
+          })
+        ),
+      );
+      return context.json({dispatch: agentDispatchResponse(dispatch)});
+    },
+  );
+
+  app.post("/api/v1/agent-dispatches/:dispatchId/cancel", async (context) => {
+    const dispatch = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      AgentDispatchService.use((dispatches) =>
+        dispatches.cancelDispatch({
+          dispatchId: context.req.param("dispatchId"),
+          principal: context.get("principal"),
+          projectId: requestedProjectId(context),
+        })
+      ),
+    );
+    return context.json({dispatch: agentDispatchResponse(dispatch)});
+  });
+
   app.get("/api/v1/projects", async (context) => {
     const projects = await runHttpApplicationEffect(
       context,
@@ -926,6 +1369,59 @@ export function createHttpApp(
     return context.json({project});
   });
 
+  app.get("/api/v1/projects/:projectId/git-history", async (context) => {
+    const projectGitHistory = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      ProjectGitHistoryService.use((service) => service.read({
+        principal: context.get("principal"),
+        projectId: projectIdSchema.parse(context.req.param("projectId")),
+      })),
+    );
+    return context.json({gitHistory: projectGitHistory});
+  });
+
+  app.post(
+    "/api/v1/projects/:projectId/git-history/estimate",
+    async (context) => {
+      const estimate = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ProjectGitHistoryService.use((service) => service.estimate({
+          principal: context.get("principal"),
+          projectId: projectIdSchema.parse(context.req.param("projectId")),
+        })),
+      );
+      return context.json({estimate});
+    },
+  );
+
+  app.put(
+    "/api/v1/projects/:projectId/git-history",
+    boundedJsonBody,
+    async (context) => {
+      const body = setProjectGitHistorySchema.parse(await context.req.json());
+      const command = body.enabled
+        ? {
+          confirmEstimate: true as const,
+          enabled: true as const,
+          principal: context.get("principal"),
+          projectId: projectIdSchema.parse(context.req.param("projectId")),
+        }
+        : {
+          enabled: false as const,
+          principal: context.get("principal"),
+          projectId: projectIdSchema.parse(context.req.param("projectId")),
+        };
+      const projectGitHistory = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ProjectGitHistoryService.use((service) => service.set(command)),
+      );
+      return context.json({gitHistory: projectGitHistory});
+    },
+  );
+
   app.post("/api/v1/artifacts", (context) => {
     context.header("Allow", "GET");
     return context.json({
@@ -958,22 +1454,43 @@ export function createHttpApp(
   });
 
   app.get("/api/v1/artifacts/:artifactId", async (context) => {
-    const details = await runHttpApplicationEffect(
+    const read = await runHttpApplicationEffect(
       context,
       dependencies,
-      ArtifactManagementService.use((management) =>
-        management.getArtifact({
+      Effect.gen(function*() {
+        const management = yield* ArtifactManagementService;
+        const details = yield* management.getArtifact({
           artifactId: context.req.param("artifactId"),
           principal: context.get("principal"),
           projectId: requestedProjectId(context),
-        })
-      ),
+        });
+        // The binding observation is a lazy local-deployment decoration;
+        // everywhere else the disabled service answers null and the read
+        // shape stays exactly what it is today.
+        const linked = yield* LinkedArtifactService;
+        const binding = dependencies.linkedArtifacts === true
+          ? yield* linked.observeBinding({
+            artifactId: details.artifact.id,
+            principal: context.get("principal"),
+            projectId: details.artifact.projectId,
+          })
+          : null;
+        return {binding, details};
+      }),
     );
-    return context.json(artifactDetailsResponse(
-      responseApplicationUrl(context, dependencies),
+    const requestUrl = responseApplicationUrl(context, dependencies);
+    const response = artifactDetailsResponse(
+      requestUrl,
       dependencies.contentDomain,
-      details,
-    ));
+      read.details,
+    );
+    if (read.binding === null) return context.json(response);
+    const live = liveLink(requestUrl, dependencies, read.details.artifact.id);
+    return context.json({
+      ...response,
+      links: live === null ? response.links : {...response.links, live},
+      sourceBinding: sourceBindingResponse(read.binding),
+    });
   });
 
   app.get("/api/v1/artifacts/:artifactId/versions", async (context) => {
@@ -1040,6 +1557,32 @@ export function createHttpApp(
     },
   );
 
+  app.get(
+    "/api/v1/artifacts/:artifactId/versions/:versionId/file",
+    async (context) => {
+      const query = versionFileQuerySchema.parse(context.req.query());
+      const saved = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ArtifactManagementService.use((management) =>
+          management.getVersion({
+            artifactId: context.req.param("artifactId"),
+            principal: context.get("principal"),
+            projectId: requestedProjectId(context),
+            versionId: context.req.param("versionId"),
+          })
+        ),
+      );
+      return serveVersionFile(
+        saved,
+        query.path,
+        context.req.method,
+        context.req.raw.headers,
+        dependencies,
+      );
+    },
+  );
+
   app.get("/api/v1/artifacts/:artifactId/comparisons", async (context) => {
     const query = comparisonQuerySchema.parse(context.req.query());
     const comparison = await runHttpApplicationEffect(
@@ -1061,6 +1604,205 @@ export function createHttpApp(
       comparison,
     ));
   });
+
+  app.get("/api/v1/artifacts/:artifactId/comments", async (context) => {
+    const query = commentPageQuerySchema.parse(context.req.query());
+    const page = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      ArtifactCommentService.use((comments) =>
+        comments.listThreads({
+          artifactId: context.req.param("artifactId"),
+          cursor: decodePageCursor(query.cursor),
+          dispatched: query.dispatched,
+          limit: query.limit,
+          principal: context.get("principal"),
+          projectId: requestedProjectId(context),
+          since: query.since ?? null,
+          state: query.state ?? null,
+          versionId: query.versionId ?? null,
+        })
+      ),
+    );
+    return context.json(commentThreadPageResponse(
+      responseApplicationUrl(context, dependencies),
+      page,
+    ));
+  });
+
+  app.post(
+    "/api/v1/artifacts/:artifactId/versions/:versionId/comments",
+    boundedJsonBody,
+    async (context) => {
+      const body = createCommentThreadSchema.parse(await context.req.json());
+      const created = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ArtifactCommentService.use((comments) =>
+          comments.createThread({
+            anchor: body.anchor ?? null,
+            artifactId: context.req.param("artifactId"),
+            body: body.body,
+            idempotencyKey: requiredIdempotencyKey(
+              context.req.header("idempotency-key"),
+            ),
+            path: body.path ?? null,
+            principal: context.get("principal"),
+            projectId: requestedProjectId(context),
+            versionId: context.req.param("versionId"),
+          })
+        ),
+      );
+      return context.json({
+        replayed: created.replayed,
+        thread: commentThreadResponse(
+          responseApplicationUrl(context, dependencies),
+          created.thread,
+        ),
+      }, 201);
+    },
+  );
+
+  app.get(
+    "/api/v1/artifacts/:artifactId/comments/:threadId",
+    async (context) => {
+      const details = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ArtifactCommentService.use((comments) =>
+          comments.getThread({
+            artifactId: context.req.param("artifactId"),
+            principal: context.get("principal"),
+            projectId: requestedProjectId(context),
+            threadId: context.req.param("threadId"),
+          })
+        ),
+      );
+      return context.json(commentThreadDetailsResponse(
+        responseApplicationUrl(context, dependencies),
+        details,
+      ));
+    },
+  );
+
+  app.patch(
+    "/api/v1/artifacts/:artifactId/comments/:threadId",
+    boundedJsonBody,
+    async (context) => {
+      const body = updateCommentThreadSchema.parse(await context.req.json());
+      const thread = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ArtifactCommentService.use((comments) =>
+          comments.updateThread(updateCommentThreadCommand(
+            {
+              artifactId: context.req.param("artifactId"),
+              principal: context.get("principal"),
+              projectId: requestedProjectId(context),
+              threadId: context.req.param("threadId"),
+            },
+            body,
+          ))
+        ),
+      );
+      return context.json({
+        thread: commentThreadResponse(
+          responseApplicationUrl(context, dependencies),
+          thread,
+        ),
+      });
+    },
+  );
+
+  app.delete(
+    "/api/v1/artifacts/:artifactId/comments/:threadId",
+    async (context) => {
+      await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ArtifactCommentService.use((comments) =>
+          comments.deleteThread({
+            artifactId: context.req.param("artifactId"),
+            principal: context.get("principal"),
+            projectId: requestedProjectId(context),
+            threadId: context.req.param("threadId"),
+          })
+        ),
+      );
+      return context.body(null, 204);
+    },
+  );
+
+  app.post(
+    "/api/v1/artifacts/:artifactId/comments/:threadId/replies",
+    boundedJsonBody,
+    async (context) => {
+      const body = createCommentReplySchema.parse(await context.req.json());
+      const created = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ArtifactCommentService.use((comments) =>
+          comments.createReply({
+            artifactId: context.req.param("artifactId"),
+            body: body.body,
+            idempotencyKey: requiredIdempotencyKey(
+              context.req.header("idempotency-key"),
+            ),
+            principal: context.get("principal"),
+            projectId: requestedProjectId(context),
+            threadId: context.req.param("threadId"),
+          })
+        ),
+      );
+      return context.json(
+        {replayed: created.replayed, reply: created.reply},
+        201,
+      );
+    },
+  );
+
+  app.patch(
+    "/api/v1/artifacts/:artifactId/comments/:threadId/replies/:replyId",
+    boundedJsonBody,
+    async (context) => {
+      const body = updateCommentReplySchema.parse(await context.req.json());
+      const reply = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ArtifactCommentService.use((comments) =>
+          comments.updateReply({
+            artifactId: context.req.param("artifactId"),
+            body: body.body,
+            principal: context.get("principal"),
+            projectId: requestedProjectId(context),
+            replyId: context.req.param("replyId"),
+            threadId: context.req.param("threadId"),
+          })
+        ),
+      );
+      return context.json({reply});
+    },
+  );
+
+  app.delete(
+    "/api/v1/artifacts/:artifactId/comments/:threadId/replies/:replyId",
+    async (context) => {
+      await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ArtifactCommentService.use((comments) =>
+          comments.deleteReply({
+            artifactId: context.req.param("artifactId"),
+            principal: context.get("principal"),
+            projectId: requestedProjectId(context),
+            replyId: context.req.param("replyId"),
+            threadId: context.req.param("threadId"),
+          })
+        ),
+      );
+      return context.body(null, 204);
+    },
+  );
 
   app.post(
     "/api/v1/artifacts/:artifactId/restore",
@@ -1345,6 +2087,103 @@ export function createHttpApp(
     },
   );
 
+  app.post("/api/v1/artifacts/link", boundedJsonBody, async (context) => {
+    requireLinkedRequest(context, dependencies);
+    const body = linkArtifactSchema.parse(await context.req.json());
+    let linkCommand: Parameters<
+      LinkedArtifactService["Service"]["linkArtifact"]
+    >[0] = {
+      idempotencyKey: requiredIdempotencyKey(
+        context.req.header("idempotency-key"),
+      ),
+      path: body.path,
+      principal: context.get("principal"),
+      projectId: body.projectId ?? requestedProjectId(context),
+    };
+    if (body.name !== undefined) {
+      linkCommand = {...linkCommand, name: body.name};
+    }
+    const linkedPublication = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      LinkedArtifactService.use((linked) => linked.linkArtifact(linkCommand)),
+    );
+    return context.json(
+      linkedPublicationResponse(context, dependencies, linkedPublication),
+      201,
+    );
+  });
+
+  app.post("/api/v1/artifacts/:artifactId/capture", boundedJsonBody, async (context) => {
+    requireLinkedRequest(context, dependencies);
+    const body = captureArtifactSchema.parse(await context.req.json());
+    const linkedPublication = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      LinkedArtifactService.use((linked) =>
+        linked.captureArtifact({
+          artifactId: context.req.param("artifactId"),
+          expectedCurrentVersionId: body.expectedCurrentVersionId,
+          idempotencyKey: requiredIdempotencyKey(
+            context.req.header("idempotency-key"),
+          ),
+          principal: context.get("principal"),
+          projectId: requestedProjectId(context),
+        })
+      ),
+    );
+    return context.json(
+      linkedPublicationResponse(context, dependencies, linkedPublication),
+      201,
+    );
+  });
+
+  app.put("/api/v1/artifacts/:artifactId/source", boundedJsonBody, async (context) => {
+    requireLinkedRequest(context, dependencies);
+    const body = relinkArtifactSchema.parse(await context.req.json());
+    const binding = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      LinkedArtifactService.use((linked) =>
+        linked.relinkArtifact({
+          artifactId: context.req.param("artifactId"),
+          expectedSha256: body.expectedSha256,
+          idempotencyKey: requiredIdempotencyKey(
+            context.req.header("idempotency-key"),
+          ),
+          path: body.path,
+          principal: context.get("principal"),
+          projectId: requestedProjectId(context),
+        })
+      ),
+    );
+    return context.json({sourceBinding: sourceBindingResponse(binding)});
+  });
+
+  app.post("/api/v1/artifacts/:artifactId/live-sessions", async (context) => {
+    requireLinkedRequest(context, dependencies);
+    const issued = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      LinkedArtifactService.use((linked) =>
+        linked.issueLiveBootstrap({
+          artifactId: context.req.param("artifactId"),
+          principal: context.get("principal"),
+          projectId: requestedProjectId(context),
+        })
+      ),
+    );
+    return context.json({
+      bootstrapUrl: contentBootstrapBrowserUrl(
+        responseApplicationUrl(context, dependencies),
+        dependencies.contentDomain,
+        issued.contentToken,
+        Redacted.value(issued.token),
+      ),
+      expiresAt: issued.expiresAt,
+    }, 201);
+  });
+
   app.get("/artifacts/:artifactId", async (context) => {
     const current = await runHttpApplicationEffect(
       context,
@@ -1473,6 +2312,30 @@ function setApplicationSessionCookies(
   });
 }
 
+function setLoginHandshakeCookie(
+  context: Context<HttpEnvironment>,
+  dependencies: HttpAppDependencies,
+  handshake: string,
+): void {
+  setCookie(context, applicationCookieNames(dependencies).handshake, handshake, {
+    httpOnly: true,
+    maxAge: loginHandshakeMaxAgeSeconds,
+    path: "/",
+    sameSite: "Lax",
+    secure: usesSecureApplicationCookies(dependencies),
+  });
+}
+
+function clearLoginHandshakeCookie(
+  context: Context<HttpEnvironment>,
+  dependencies: HttpAppDependencies,
+): void {
+  deleteCookie(context, applicationCookieNames(dependencies).handshake, {
+    path: "/",
+    secure: usesSecureApplicationCookies(dependencies),
+  });
+}
+
 function clearApplicationSessionCookies(
   context: Context<HttpEnvironment>,
   dependencies: HttpAppDependencies,
@@ -1485,13 +2348,22 @@ function clearApplicationSessionCookies(
 
 function applicationCookieNames(
   dependencies: HttpAppDependencies,
-): {readonly csrf: string; readonly session: string} {
+): {
+  readonly csrf: string;
+  readonly handshake: string;
+  readonly session: string;
+} {
   return usesSecureApplicationCookies(dependencies)
     ? {
       csrf: secureApplicationCsrfCookie,
+      handshake: secureLoginHandshakeCookie,
       session: secureApplicationSessionCookie,
     }
-    : {csrf: applicationCsrfCookie, session: applicationSessionCookie};
+    : {
+      csrf: applicationCsrfCookie,
+      handshake: loginHandshakeCookie,
+      session: applicationSessionCookie,
+    };
 }
 
 function usesSecureApplicationCookies(
@@ -1551,6 +2423,43 @@ function requireBrowserMutationSecurity(
   ) {
     throw new AuthorizationDenied({
       message: "A valid browser CSRF token is required.",
+    });
+  }
+}
+
+function requireLocalOwnerExchangeBoundary(
+  context: Context<HttpEnvironment>,
+  dependencies: HttpAppDependencies,
+): void {
+  const requestUrl = new URL(context.req.url);
+  const proxyCredential = context.req.header(
+    "x-artifact-server-development-proxy",
+  );
+  const configuredProxyCredential = dependencies.developmentProxyCredential;
+  const validDevelopmentProxy = proxyCredential !== undefined
+    && configuredProxyCredential !== undefined
+    && identitySecretsEqual(
+      proxyCredential,
+      Redacted.value(configuredProxyCredential),
+    );
+  const hasForwardedIdentity = [
+    "forwarded",
+    "x-forwarded-for",
+    "x-forwarded-host",
+    "x-forwarded-proto",
+    "x-real-ip",
+  ].some((name) => context.req.header(name) !== undefined);
+  const fetchMode = context.req.header("sec-fetch-mode");
+  if (
+    !isLoopbackHostname(requestUrl.hostname)
+    || context.req.header("origin") !== requestUrl.origin
+    || context.req.header("sec-fetch-site") !== "same-origin"
+    || (fetchMode !== "cors" && fetchMode !== "same-origin")
+    || hasForwardedIdentity
+    || (proxyCredential !== undefined && !validDevelopmentProxy)
+  ) {
+    throw new AuthorizationDenied({
+      message: "Local-owner access is available only to the loopback application origin.",
     });
   }
 }
@@ -1679,6 +2588,65 @@ function publishResponse(
   };
 }
 
+/**
+ * Fast deployment gate for linked-artifact routes: the capability exists
+ * only on a local deployment (loopback application origin) that enabled it.
+ * The application service enforces the same boundary; this check just keeps
+ * the stable capability-unavailable answer cheap and origin-checked.
+ */
+function requireLinkedRequest(
+  context: Context<HttpEnvironment>,
+  dependencies: HttpAppDependencies,
+): void {
+  const hostname = new URL(context.req.url).hostname;
+  if (dependencies.linkedArtifacts !== true || !isLoopbackHostname(hostname)) {
+    throw new CapabilityUnavailable({
+      message: "Linked artifacts are not available on this deployment.",
+    });
+  }
+}
+
+function sourceBindingResponse(binding: SourceBindingRecord) {
+  return {
+    lastVerifiedAt: binding.lastVerifiedAt,
+    path: binding.path,
+    status: binding.freshness,
+  };
+}
+
+function liveLink(
+  requestUrl: URL,
+  dependencies: HttpAppDependencies,
+  artifactId: string,
+): string | null {
+  const token = liveContentToken(artifactId);
+  if (token === null) return null;
+  return versionBrowserUrl(requestUrl, dependencies.contentDomain, token);
+}
+
+function linkedPublicationResponse(
+  context: Context<HttpEnvironment>,
+  dependencies: HttpAppDependencies,
+  linkedPublication: LinkedPublication,
+) {
+  const requestUrl = responseApplicationUrl(context, dependencies);
+  const response = publishResponse(
+    requestUrl,
+    dependencies.contentDomain,
+    linkedPublication.published,
+  );
+  const live = liveLink(
+    requestUrl,
+    dependencies,
+    linkedPublication.published.artifact.id,
+  );
+  return {
+    ...response,
+    links: live === null ? response.links : {...response.links, live},
+    sourceBinding: sourceBindingResponse(linkedPublication.binding),
+  };
+}
+
 function artifactDetailsResponse(
   requestUrl: URL,
   contentDomain: string,
@@ -1772,6 +2740,202 @@ function publicLinkMutationResponse(
     },
     warning: "New public requests are blocked for successful items. Copies already downloaded or cached outside Artifact Server cannot be recalled.",
   };
+}
+
+function registeredAgentResponse(agent: RegisteredAgentRecord) {
+  return {
+    agentSessionId: agent.agentSessionId,
+    connectionKey: agent.connectionKey,
+    createdAt: agent.createdAt,
+    displayName: agent.displayName,
+    id: agent.id,
+    kind: agent.kind,
+    lastSeenAt: agent.lastSeenAt,
+    principalId: agent.principalId,
+    workingDirectory: agent.workingDirectory,
+  };
+}
+
+function connectedAgentResponse(entry: ConnectedRegisteredAgent) {
+  return {
+    ...registeredAgentResponse(entry.agent),
+    connected: entry.connected,
+  };
+}
+
+function agentDispatchPageResponse(page: AgentDispatchPage) {
+  return {
+    items: page.items.map(agentDispatchResponse),
+    nextCursor: encodePageCursor(page.nextCursor),
+  };
+}
+
+function agentDispatchResponse(dispatch: AgentDispatchRecord) {
+  return {
+    addressedAt: dispatch.addressedAt,
+    agentDisplayName: dispatch.agentDisplayName,
+    agentId: dispatch.agentId,
+    canceledAt: dispatch.canceledAt,
+    claimedAt: dispatch.claimedAt,
+    createdAt: dispatch.createdAt,
+    deliveredAt: dispatch.deliveredAt,
+    failedAt: dispatch.failedAt,
+    failureReason: dispatch.failureReason,
+    id: dispatch.id,
+    idempotencyKey: dispatch.idempotencyKey,
+    leaseExpiresAt: dispatch.leaseExpiresAt,
+    note: dispatch.note,
+    projectId: dispatch.projectId,
+    sender: dispatch.sender,
+    state: dispatch.state,
+    threadIds: dispatch.threadIds,
+    updatedAt: dispatch.updatedAt,
+  };
+}
+
+/**
+ * A registration without a connection key still needs a stable upsert
+ * identity, so the server derives one from the registering principal and the
+ * working directory: the same agent process reclaims the same row, and the
+ * dispatches already queued for it, after a restart.
+ */
+function derivedConnectionKey(
+  principalId: string,
+  workingDirectory: string,
+): string {
+  return digestIdentitySecret(`${principalId}\u0000${workingDirectory}`);
+}
+
+/**
+ * A report names the reporting agent so a report from a non-holder can be
+ * refused: one principal may run several agents at once. The id travels in
+ * the request body, or in the query string for clients that post only a
+ * failure reason.
+ */
+function reportingAgentId(
+  context: Context<HttpEnvironment>,
+  declaredInBody: string | undefined,
+): string {
+  return agentIdSchema.parse(declaredInBody ?? context.req.query("agentId"));
+}
+
+/** Parse a request body that clients are allowed to omit entirely. */
+async function parseOptionalJsonBody<Body>(
+  context: Context<HttpEnvironment>,
+  schema: z.ZodType<Body>,
+): Promise<Body> {
+  const raw = await context.req.text();
+  return schema.parse(raw.trim() === "" ? {} : JSON.parse(raw));
+}
+
+/**
+ * Hold one claim poll open until its deadline, re-checking the single-shot
+ * service claim on a bounded interval and stopping early when the polling
+ * agent goes away. Answering before the deadline is conformant, so the poll
+ * never outlives the transport cap. Only the first attempt carries the
+ * heartbeat: one held request is one liveness bump, and the re-checks after
+ * it write nothing while the mailbox stays empty.
+ */
+async function claimWithinPollDeadline(
+  attemptClaim: (bumpHeartbeat: boolean) => Promise<AgentDispatchRecord | null>,
+  deadlineMilliseconds: number,
+  signal: AbortSignal,
+  bumpHeartbeat = true,
+): Promise<AgentDispatchRecord | null> {
+  const dispatch = await attemptClaim(bumpHeartbeat);
+  if (dispatch !== null) return dispatch;
+  const remainingMilliseconds = deadlineMilliseconds - Date.now();
+  if (remainingMilliseconds <= 0 || signal.aborted) return null;
+  await delayMilliseconds(
+    Math.min(remainingMilliseconds, claimRecheckIntervalMilliseconds),
+  );
+  return claimWithinPollDeadline(
+    attemptClaim,
+    deadlineMilliseconds,
+    signal,
+    false,
+  );
+}
+
+/** Wait out one bounded claim-poll re-check interval. */
+function delayMilliseconds(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
+function commentThreadPageResponse(requestUrl: URL, page: CommentThreadPage) {
+  return {
+    items: page.items.map((thread) =>
+      commentThreadResponse(requestUrl, thread)
+    ),
+    nextCursor: encodePageCursor(page.nextCursor),
+  };
+}
+
+function commentThreadDetailsResponse(
+  requestUrl: URL,
+  details: CommentThreadDetails,
+) {
+  return {
+    replies: details.replies,
+    thread: commentThreadResponse(requestUrl, details.thread),
+  };
+}
+
+function commentThreadResponse(requestUrl: URL, thread: CommentThreadRecord) {
+  return {
+    anchor: thread.anchor,
+    artifactId: thread.artifactId,
+    author: thread.author,
+    body: thread.body,
+    createdAt: thread.createdAt,
+    id: thread.id,
+    links: {
+      self: new URL(
+        `/api/v1/artifacts/${thread.artifactId}/comments/${thread.id}`,
+        requestUrl,
+      ).toString(),
+      version: new URL(
+        `/api/v1/artifacts/${thread.artifactId}/versions/${thread.versionId}`,
+        requestUrl,
+      ).toString(),
+    },
+    path: thread.path,
+    projectId: thread.projectId,
+    replyCount: thread.replyCount,
+    resolvedAt: thread.resolvedAt,
+    resolvedBy: thread.resolvedBy,
+    state: thread.state,
+    updatedAt: thread.updatedAt,
+    versionId: thread.versionId,
+  };
+}
+
+interface CommentThreadUpdate {
+  anchor?: unknown;
+  artifactId: string;
+  body?: string;
+  principal: Principal;
+  projectId: string | null;
+  state?: CommentThreadState;
+  threadId: string;
+}
+
+function updateCommentThreadCommand(
+  target: ReadCommentThreadCommand,
+  changes: z.infer<typeof updateCommentThreadSchema>,
+): UpdateCommentThreadCommand {
+  const command: CommentThreadUpdate = {
+    artifactId: target.artifactId,
+    principal: target.principal,
+    projectId: target.projectId,
+    threadId: target.threadId,
+  };
+  if (changes.anchor !== undefined) command.anchor = changes.anchor;
+  if (changes.body !== undefined) command.body = changes.body;
+  if (changes.state !== undefined) command.state = changes.state;
+  return command;
 }
 
 function artifactActionPageResponse(page: ArtifactActionPage) {
@@ -1909,6 +3073,80 @@ function comparisonResponse(
   };
 }
 
+/**
+ * Serve one live-origin read: the linked source's current bytes for an
+ * authorized local member, or the last captured version's bytes when the
+ * source is unavailable. Live responses are never cached; the immutable
+ * caching story belongs exclusively to version-scoped origins.
+ */
+async function serveLiveContent(
+  context: Context<HttpEnvironment>,
+  liveToken: string,
+  cookieHeader: string | undefined,
+  dependencies: HttpAppDependencies,
+): Promise<Response> {
+  const method = context.req.method;
+  if (method !== "GET" && method !== "HEAD") {
+    return Response.json(
+      {error: {code: errorCodes.methodNotAllowed, message: "Only GET and HEAD are supported."}},
+      {status: 405, headers: {Allow: "GET, HEAD"}},
+    );
+  }
+  const grant: LiveReadGrant = await runHttpApplicationEffect(
+    context,
+    dependencies,
+    LinkedArtifactService.use((linked) =>
+      linked.authorizeLiveRead({
+        liveToken,
+        sessionToken: contentSessionToken(cookieHeader),
+      })
+    ),
+  );
+  if (grant.kind === "captured") {
+    const headers = liveContentHeaders(
+      grant.entry.mediaType,
+      grant.entry.size,
+      grant.freshness,
+      grant.entry.disposition,
+    );
+    if (method === "HEAD") return new Response(null, {headers, status: 200});
+    const blob = await dependencies.blobs.open(grant.entry.sha256);
+    if (blob.size !== grant.entry.size) {
+      await blob.body.cancel();
+      assertBlobSize(blob.size, grant.entry.size, grant.entry.sha256);
+    }
+    return new Response(blob.body, {headers, status: 200});
+  }
+  const headers = liveContentHeaders(
+    grant.mediaType,
+    grant.source.size,
+    grant.freshness,
+    "inline",
+  );
+  if (method === "HEAD") {
+    await grant.source.close();
+    return new Response(null, {headers, status: 200});
+  }
+  return new Response(grant.source.stream(), {headers, status: 200});
+}
+
+function liveContentHeaders(
+  mediaType: string,
+  size: number,
+  freshness: string,
+  disposition: string,
+): Headers {
+  return new Headers({
+    "Artifact-Source-Freshness": freshness,
+    "Cache-Control": "private, no-store",
+    "Content-Disposition": disposition,
+    "Content-Length": String(size),
+    "Content-Type": mediaType,
+    "X-Content-Type-Options": "nosniff",
+    "X-Robots-Tag": "noindex, nofollow",
+  });
+}
+
 async function serveVersionContent(
   context: Context<HttpEnvironment>,
   requestUrl: URL,
@@ -1953,13 +3191,12 @@ async function serveVersionContent(
     publiclyCacheable,
   );
 
-  if (etagMatches(context.req.header("if-none-match"), content.entry.sha256)) {
+  const strongEtag = `"${content.entry.sha256}"`;
+  if (etagMatches(context.req.header("if-none-match"), strongEtag)) {
     headers.delete("Content-Length");
     return new Response(null, {headers, status: 304});
   }
 
-
-  const strongEtag = `"${content.entry.sha256}"`;
   const rangeDecision = ifRangeAllowsPartialResponse(
     context.req.header("if-range"),
     strongEtag,
@@ -2008,12 +3245,93 @@ async function serveVersionContent(
   });
 }
 
-function etagMatches(value: string | undefined, sha256: string): boolean {
+async function serveVersionFile(
+  saved: ArtifactVersion,
+  path: string,
+  method: string,
+  requestHeaders: Headers,
+  dependencies: HttpAppDependencies,
+): Promise<Response> {
+  const entry = saved.manifest.entries.find(
+    (candidate) => candidate.path === path,
+  );
+  if (entry === undefined) {
+    throw new VersionNotFound({
+      message: "The version file does not exist.",
+    });
+  }
+  const headers = versionFileHeaders(entry);
+  const strongEtag = `"${entry.sha256}"`;
+  if (
+    etagMatches(requestHeaders.get("if-none-match") ?? undefined, strongEtag)
+  ) {
+    headers.delete("Content-Length");
+    return new Response(null, {headers, status: 304});
+  }
+  const rangeDecision = ifRangeAllowsPartialResponse(
+    requestHeaders.get("if-range") ?? undefined,
+    strongEtag,
+  )
+    ? decideByteRange(requestHeaders.get("range") ?? undefined, entry.size)
+    : {kind: "full"} as const;
+  if (rangeDecision.kind === "unsatisfiable") {
+    headers.delete("Content-Length");
+    headers.set("Content-Range", `bytes */${entry.size}`);
+    return new Response(null, {headers, status: 416});
+  }
+  // Hono answers HEAD through the GET handler, so a body stream opened here is
+  // discarded without being cancelled and leaks its blob handle.
+  if (method === "HEAD") {
+    const inspected = await dependencies.blobs.inspect(entry.sha256);
+    assertBlobSize(inspected.size, entry.size, entry.sha256);
+    if (rangeDecision.kind === "partial") {
+      applyPartialContentHeaders(headers, rangeDecision.range, entry.size);
+    }
+    return new Response(null, {
+      headers,
+      status: rangeDecision.kind === "partial" ? 206 : 200,
+    });
+  }
+  if (rangeDecision.kind === "partial") {
+    const blob = await dependencies.blobs.openRange(
+      entry.sha256,
+      rangeDecision.range,
+    );
+    if (blob.size !== entry.size) {
+      await blob.body.cancel();
+      assertBlobSize(blob.size, entry.size, entry.sha256);
+    }
+    applyPartialContentHeaders(headers, rangeDecision.range, entry.size);
+    return new Response(blob.body, {headers, status: 206});
+  }
+  const blob = await dependencies.blobs.open(entry.sha256);
+  if (blob.size !== entry.size) {
+    await blob.body.cancel();
+    assertBlobSize(blob.size, entry.size, entry.sha256);
+  }
+  return new Response(blob.body, {headers, status: 200});
+}
+
+function versionFileHeaders(entry: ManifestEntry): Headers {
+  return new Headers({
+    "Accept-Ranges": "bytes",
+    // The route names one immutable version, so the bytes never change for
+    // this URL; `private` keeps the authenticated response in browser caches
+    // only.
+    "Cache-Control": "private, max-age=31536000, immutable",
+    "Content-Disposition": "attachment",
+    "Content-Length": String(entry.size),
+    "Content-Type": "application/octet-stream",
+    ETag: `"${entry.sha256}"`,
+    "X-Content-Type-Options": "nosniff",
+  });
+}
+
+function etagMatches(value: string | undefined, strongEtag: string): boolean {
   if (value === undefined) return false;
-  const expected = `"${sha256}"`;
   return value.split(",").some((candidate) => {
     const tag = candidate.trim();
-    return tag === "*" || tag === expected || tag === `W/${expected}`;
+    return tag === "*" || tag === strongEtag || tag === `W/${strongEtag}`;
   });
 }
 
@@ -2209,28 +3527,50 @@ function isContentBootstrapRequest(requestUrl: URL): boolean {
   return requestUrl.searchParams.has(contentBootstrapQueryParameter);
 }
 
+/**
+ * The review frame is a separate document from the application shell. It holds
+ * no credential and issues no request: it renders one artifact version inside
+ * an opaque-origin `srcdoc` sandbox, which inherits this policy. So the policy
+ * permits what published artifacts need (inline scripts and styles, images,
+ * fonts and media from anywhere) while `connect-src 'none'` keeps the sandbox
+ * from reaching any network, and `frame-ancestors 'self'` keeps the frame
+ * embeddable only by the shell that serves it.
+ */
+const reviewFrameContentSecurityPolicy =
+  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; connect-src 'none'; frame-ancestors 'self'";
+
+type WebAssetKind = "application-shell" | "review-frame" | "static-asset";
+
 async function serveWebAsset(
   context: Context<HttpEnvironment>,
   dependencies: HttpAppDependencies,
   assetPath: string,
-  applicationShell: boolean,
+  kind: WebAssetKind,
 ): Promise<Response> {
   if (dependencies.webAssets === undefined) return context.notFound();
   const method = context.req.method === "HEAD" ? "HEAD" : "GET";
   const asset = await dependencies.webAssets.fetch(assetPath, method);
   if (asset === null || !asset.ok) return context.notFound();
   const headers = new Headers({
-    "Cache-Control": applicationShell
-      ? "no-cache, must-revalidate"
-      : "public, max-age=31536000, immutable",
-    "Content-Security-Policy":
-      "default-src 'self'; base-uri 'none'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self'",
+    "Cache-Control": kind === "static-asset"
+      ? "public, max-age=31536000, immutable"
+      : "no-cache, must-revalidate",
+    "Content-Security-Policy": kind === "review-frame"
+      ? reviewFrameContentSecurityPolicy
+      : "default-src 'self'; base-uri 'none'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self'",
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
   });
+  copyAssetHeader(asset.headers, headers, "ETag");
+  const assetEtag = headers.get("ETag");
+  if (
+    assetEtag !== null
+    && etagMatches(context.req.header("if-none-match"), assetEtag)
+  ) {
+    return new Response(null, {headers, status: 304});
+  }
   copyAssetHeader(asset.headers, headers, "Content-Length");
   copyAssetHeader(asset.headers, headers, "Content-Type");
-  copyAssetHeader(asset.headers, headers, "ETag");
   return new Response(method === "HEAD" ? null : asset.body, {
     headers,
     status: 200,

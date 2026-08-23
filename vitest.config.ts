@@ -17,6 +17,7 @@ export default defineConfig({
     exclude: [
       ...configDefaults.exclude,
       "tests/integration/**",
+      "tests/pi-live/**",
       "tests/release/**",
     ],
     include: ["tests/**/*.test.ts"],

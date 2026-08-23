@@ -6,6 +6,14 @@ import {
 /** Stable protocol-safe projection shared by HTTP and MCP adapters. */
 export function artifactServerFailureResponse(failure: ArtifactServerFailure) {
   switch (failure._tag) {
+    case "AgentNotFound":
+      return {code: errorCodes.agentNotFound, message: failure.message, status: 404};
+    case "AgentDispatchNotFound":
+      return {code: errorCodes.dispatchNotFound, message: failure.message, status: 404};
+    case "InvalidDispatch":
+      return {code: errorCodes.invalidDispatch, message: failure.message, status: 422};
+    case "DispatchStateConflict":
+      return {code: errorCodes.dispatchStateConflict, message: failure.message, status: 409};
     case "ArtifactNotFound":
       return {code: errorCodes.artifactNotFound, message: failure.message, status: 404};
     case "ArtifactMutationConflict":
@@ -26,6 +34,12 @@ export function artifactServerFailureResponse(failure: ArtifactServerFailure) {
       return {code: errorCodes.authenticationRequired, message: failure.message, status: 401};
     case "AuthorizationDenied":
       return {code: errorCodes.authorizationDenied, message: failure.message, status: 403};
+    case "CommentNotFound":
+      return {code: errorCodes.commentNotFound, message: failure.message, status: 404};
+    case "CommentResolved":
+      return {code: errorCodes.commentResolved, message: failure.message, status: 409};
+    case "InvalidComment":
+      return {code: errorCodes.invalidComment, message: failure.message, status: 422};
     case "ContentBootstrapRejected":
       return {code: errorCodes.contentBootstrapRejected, message: failure.message, status: 401};
     case "ContentSessionRequired":
@@ -71,6 +85,24 @@ export function artifactServerFailureResponse(failure: ArtifactServerFailure) {
       return {code: errorCodes.uploadNotFound, message: failure.message, status: 404};
     case "VersionNotFound":
       return {code: errorCodes.versionNotFound, message: failure.message, status: 404};
+    case "InvalidLinkPath":
+      return {code: errorCodes.invalidLinkPath, message: failure.message, status: 422};
+    case "LinkPathOutsideRoots":
+      return {code: errorCodes.linkPathOutsideRoots, message: failure.message, status: 403};
+    case "LinkPathProtected":
+      return {code: errorCodes.linkPathProtected, message: failure.message, status: 403};
+    case "SourceDrifted":
+      return {code: errorCodes.sourceDrifted, message: failure.message, status: 409};
+    case "SourceMissing":
+      return {code: errorCodes.sourceMissing, message: failure.message, status: 409};
+    case "SourceUnreadable":
+      return {code: errorCodes.sourceUnreadable, message: failure.message, status: 409};
+    case "CapabilityUnavailable":
+      return {
+        code: errorCodes.capabilityUnavailable,
+        message: failure.message,
+        status: 501,
+      };
     case "ArtifactRepositoryFailure":
     case "IdentityRepositoryFailure":
     case "BlobStorageFailure":

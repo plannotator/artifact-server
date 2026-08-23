@@ -366,6 +366,7 @@ const administratorVerifier: BearerCredentialVerifier = {
       ? Effect.succeed({
         authorizedByPrincipalId: null,
         capabilities: [],
+        displayName: "Installation administrator",
         id: "installation-administrator",
         installationId: "local",
         kind: "human",

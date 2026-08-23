@@ -1,9 +1,20 @@
 import {constants} from "node:fs";
 import {access, readFile, stat} from "node:fs/promises";
+import {homedir} from "node:os";
 import path from "node:path";
 
 import {Effect, Option, Redacted, Schema} from "effect";
 import {getDomain} from "tldts";
+import {managedApiKeyCredentialPattern} from
+  "../core/installation-identity.js";
+import {
+  loadNodeGitHistoryConfiguration,
+  type NodeGitHistoryConfiguration,
+} from "../git-history/node-git-history-configuration.js";
+import type {
+  GitHistoryProvider,
+  GitHistoryProviderState,
+} from "../git-history/git-history-capability.js";
 
 import type {
   ObjectStorageProviderFactory,
@@ -31,7 +42,7 @@ import {
 const bearerCredentialSchema = Schema.String.check(
   Schema.isMinLength(32),
   Schema.isMaxLength(200),
-  Schema.isPattern(/^[A-Za-z0-9._~-]+$/u),
+  Schema.isPattern(managedApiKeyCredentialPattern),
 );
 const emailSchema = Schema.String.check(
   Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/u),
@@ -52,6 +63,7 @@ const requestLogSampleRateSchema = Schema.NumberFromString.check(
 const postgresUrlSchema = Schema.String.check(
   Schema.isPattern(/^postgres(?:ql)?:\/\/[^\s]+$/u),
 );
+const linkedFilesModeSchema = Schema.Literals(["off", "on"]);
 const urlStringSchema = Schema.String.check(
   Schema.isPattern(/^https?:\/\/[^\s]+$/u),
 );
@@ -73,13 +85,15 @@ export interface CompactRuntimeConfiguration {
   readonly apiToken: Redacted.Redacted;
   readonly applicationOrigin: string;
   readonly bootstrapAdministratorEmail: string;
-  readonly browserBootstrapToken: Redacted.Redacted;
   readonly completedRequestLogSampleRate: number;
   readonly contentDomain: string;
   readonly dataDirectory: string;
   readonly deploymentMode: "compact";
   readonly hostname: string;
+  readonly gitHistory: NodeGitHistoryConfiguration;
   readonly installation: CompactInstallationMetadata;
+  readonly linkedFiles: "off" | "on";
+  readonly linkRoots: readonly string[];
   readonly port: number;
   readonly readinessWithdrawalMilliseconds: number;
   readonly shutdownDeadlineMilliseconds: number;
@@ -100,10 +114,11 @@ export interface ExternalStorageRuntimeConfiguration {
   readonly databaseUrl: Redacted.Redacted;
   readonly deploymentMode: "external-storage";
   readonly hostname: string;
+  readonly gitHistory: NodeGitHistoryConfiguration;
   readonly installationId: string;
-  readonly localBootstrapCredential: Redacted.Redacted | null;
   readonly objectStorage: ObjectStorageProviderFactory;
   readonly port: number;
+  readonly postgresMaxConnections: number;
   readonly readinessWithdrawalMilliseconds: number;
   readonly shutdownDeadlineMilliseconds: number;
   readonly stagingCleanupPolicy: StagingCleanupPolicy;
@@ -124,8 +139,17 @@ export interface RuntimeConfigurationSummary {
   readonly dataDirectory: string | null;
   readonly deploymentMode: DeploymentMode;
   readonly hostname: string;
+  readonly gitHistory: {
+    readonly issues: readonly {
+      readonly field: string;
+      readonly message: string;
+      readonly reason: string;
+    }[];
+    readonly provider: GitHistoryProvider | null;
+    readonly providerState: GitHistoryProviderState;
+  };
   readonly installationId: string;
-  readonly interactiveIdentityProvider: "local" | "workos";
+  readonly interactiveIdentityProvider: "local" | "oidc" | "workos";
   readonly objectStorageProvider: "filesystem" | ObjectStorageProviderKind;
   readonly port: number;
   readonly readinessWithdrawalMilliseconds: number;
@@ -198,11 +222,6 @@ export const parseCompactRuntimeConfiguration = Effect.fn(
     "ARTIFACT_SERVER_API_TOKEN",
     bearerCredentialSchema,
   );
-  const browserBootstrapToken = yield* readGeneratedSecret(
-    layout.browserBootstrapTokenPath,
-    "ARTIFACT_SERVER_LOCAL_BOOTSTRAP_TOKEN",
-    bearerCredentialSchema,
-  );
   const applicationOrigin = yield* parseRequiredEnvironment(
     "ARTIFACT_SERVER_ORIGIN",
     input.environment["ARTIFACT_SERVER_ORIGIN"],
@@ -219,13 +238,15 @@ export const parseCompactRuntimeConfiguration = Effect.fn(
     apiToken,
     applicationOrigin,
     bootstrapAdministratorEmail: installation.bootstrapAdministratorEmail,
-    browserBootstrapToken,
     completedRequestLogSampleRate: yield* parseSampleRate(input.environment),
     contentDomain,
     dataDirectory: layout.dataDirectory,
     deploymentMode: "compact",
+    gitHistory: yield* loadNodeGitHistoryConfiguration(input.environment),
     hostname: yield* parseHostname(input.hostname),
     installation,
+    linkedFiles: yield* parseLinkedFilesMode(input.environment),
+    linkRoots: yield* parseLinkRoots(input.environment),
     port: yield* parsePort(input.port),
     readinessWithdrawalMilliseconds: yield* parseMilliseconds(
       input.environment,
@@ -264,12 +285,8 @@ export const parseExternalStorageRuntimeConfiguration = Effect.fn(
     hostnameSchema,
   );
   yield* assertBrowserIsolation(applicationOrigin, contentDomain);
+  yield* assertLinkedFilesAreLocalOnly(yield* parseLinkedFilesMode(environment));
   const configuredObjectStorage = yield* parseObjectStorage(environment);
-  const localBootstrapCredential = yield* loadOptionalCredential(
-    environment,
-    "ARTIFACT_SERVER_LOCAL_BOOTSTRAP_TOKEN",
-    bearerCredentialSchema,
-  );
   const apiToken = yield* readSecret(
     environment,
     "ARTIFACT_SERVER_API_TOKEN",
@@ -299,15 +316,16 @@ export const parseExternalStorageRuntimeConfiguration = Effect.fn(
     },
     databaseUrl: databaseUrl.value,
     deploymentMode: "external-storage",
+    gitHistory: yield* loadNodeGitHistoryConfiguration(environment),
     hostname: yield* parseHostname(input.hostname),
     installationId: yield* parseRequiredEnvironment(
       "ARTIFACT_SERVER_INSTALLATION_ID",
       environment["ARTIFACT_SERVER_INSTALLATION_ID"],
       installationIdSchema,
     ),
-    localBootstrapCredential: localBootstrapCredential?.value ?? null,
     objectStorage: configuredObjectStorage.factory,
     port: yield* parsePort(input.port),
+    postgresMaxConnections: yield* parsePostgresMaxConnections(environment),
     readinessWithdrawalMilliseconds: yield* parseMilliseconds(
       environment,
       "ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS",
@@ -475,7 +493,7 @@ const parseS3ObjectStorage = Effect.fn("parseS3ObjectStorage")(
 /** Render the safe, stable subset of one parsed runtime configuration. */
 export function summarizeRuntimeConfiguration(
   configuration: CompactRuntimeConfiguration | ExternalStorageRuntimeConfiguration,
-  interactiveIdentityProvider: "local" | "workos" = "local",
+  interactiveIdentityProvider: "local" | "oidc" | "workos" = "local",
 ): RuntimeConfigurationSummary {
   if (configuration.deploymentMode === "compact") {
     return {
@@ -483,10 +501,10 @@ export function summarizeRuntimeConfiguration(
       contentDomain: configuration.contentDomain,
       credentialSources: {
         apiToken: "generated_file",
-        browserBootstrapToken: "generated_file",
       },
       dataDirectory: configuration.dataDirectory,
       deploymentMode: configuration.deploymentMode,
+      gitHistory: gitHistorySummary(configuration.gitHistory),
       hostname: configuration.hostname,
       installationId: configuration.installation.installationId,
       interactiveIdentityProvider,
@@ -507,6 +525,7 @@ export function summarizeRuntimeConfiguration(
     },
     dataDirectory: null,
     deploymentMode: configuration.deploymentMode,
+    gitHistory: gitHistorySummary(configuration.gitHistory),
     hostname: configuration.hostname,
     installationId: configuration.installationId,
     interactiveIdentityProvider,
@@ -517,6 +536,16 @@ export function summarizeRuntimeConfiguration(
     shutdownDeadlineMilliseconds: configuration.shutdownDeadlineMilliseconds,
     stagingCleanup: configuration.stagingCleanupPolicy,
     status: "valid",
+  };
+}
+
+function gitHistorySummary(
+  configuration: NodeGitHistoryConfiguration,
+): RuntimeConfigurationSummary["gitHistory"] {
+  return {
+    issues: configuration.issues,
+    provider: configuration.capability.provider,
+    providerState: configuration.capability.providerState,
   };
 }
 
@@ -659,6 +688,61 @@ function parseMilliseconds(
     );
   }
   return Effect.succeed(milliseconds);
+}
+
+function parsePostgresMaxConnections(
+  environment: NodeJS.ProcessEnv,
+): Effect.Effect<number, RuntimeConfigurationError> {
+  const field = "ARTIFACT_SERVER_POSTGRES_MAX_CONNECTIONS";
+  const value = environment[field] ?? "10";
+  const maxConnections = Number(value);
+  if (
+    !Number.isSafeInteger(maxConnections) ||
+    maxConnections < 1 || maxConnections > 100
+  ) {
+    return invalidValue(
+      field,
+      `${field} must be an integer from 1 through 100.`,
+    );
+  }
+  return Effect.succeed(maxConnections);
+}
+
+/** Parse `ARTIFACT_SERVER_LINKED_FILES` for any local-server entry point. */
+export function parseLinkedFilesMode(
+  environment: NodeJS.ProcessEnv,
+): Effect.Effect<"off" | "on", RuntimeConfigurationError> {
+  return parseRequiredEnvironment(
+    "ARTIFACT_SERVER_LINKED_FILES",
+    environment["ARTIFACT_SERVER_LINKED_FILES"] ?? "off",
+    linkedFilesModeSchema,
+  );
+}
+
+function assertLinkedFilesAreLocalOnly(
+  linkedFiles: "off" | "on",
+): Effect.Effect<void, RuntimeConfigurationError> {
+  if (linkedFiles === "off") return Effect.void;
+  return invalidValue(
+    "ARTIFACT_SERVER_LINKED_FILES",
+    "ARTIFACT_SERVER_LINKED_FILES can only be enabled on the local deployment runtime; external-storage deployments must leave it off.",
+  );
+}
+
+/** Parse `ARTIFACT_SERVER_LINK_ROOTS` for any local-server entry point. */
+export function parseLinkRoots(
+  environment: NodeJS.ProcessEnv,
+): Effect.Effect<readonly string[], RuntimeConfigurationError> {
+  const field = "ARTIFACT_SERVER_LINK_ROOTS";
+  const value = environment[field];
+  if (value === undefined || value === "") return Effect.succeed([homedir()]);
+  const roots = value.split(":");
+  return roots.every((root) => root !== "" && path.isAbsolute(root))
+    ? Effect.succeed(roots)
+    : invalidValue(
+      field,
+      `${field} must be a colon-separated list of absolute directory paths.`,
+    );
 }
 
 function parseHostname(

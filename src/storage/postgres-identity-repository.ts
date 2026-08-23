@@ -11,8 +11,8 @@ import {
 import type {
   AdmitMemberRecord,
   BindExternalIdentityRecord,
+  BootstrapManagedApiKeyRepository,
   CreateApplicationSessionRecord,
-  IdentityRepository,
 } from "../core/identity-ports.js";
 import {
   type ApplicationSession,
@@ -42,12 +42,14 @@ const principalKindSchema = z.enum([
   principalKinds.service,
 ]);
 const principalCapabilitySchema = z.enum([
+  principalCapabilities.connectAgents,
   principalCapabilities.createArtifact,
   principalCapabilities.issueContentSession,
   principalCapabilities.manageAnyArtifact,
   principalCapabilities.manageProjects,
   principalCapabilities.publishAnyArtifact,
   principalCapabilities.readArtifacts,
+  principalCapabilities.writeComments,
 ]);
 const memberRowSchema = z.object({
   createdAt: z.string(),
@@ -94,6 +96,7 @@ const loginAttemptRowSchema = z.object({
   codeVerifier: z.string(),
   createdAt: z.string(),
   expiresAt: z.string(),
+  nonce: z.string().nullable(),
   provider: z.string(),
   returnTo: z.string(),
   stateDigest: z.string(),
@@ -101,7 +104,7 @@ const loginAttemptRowSchema = z.object({
 const countRowSchema = z.object({count: z.coerce.number().int().nonnegative()});
 
 /** Installation-scoped Postgres persistence for membership and credentials. */
-export class PostgresIdentityRepository implements IdentityRepository {
+export class PostgresIdentityRepository implements BootstrapManagedApiKeyRepository {
   readonly #database: PostgresDatabase;
   readonly #installationId: string;
 
@@ -389,6 +392,41 @@ export class PostgresIdentityRepository implements IdentityRepository {
     return withoutSecretDigest(key);
   }
 
+  async initializeBootstrapApiKey(
+    key: StoredManagedApiKey,
+  ): Promise<StoredManagedApiKey> {
+    this.#assertInstallationScope(key.installationId);
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        yield* sql.unsafe(
+          "SELECT pg_advisory_xact_lock(hashtext($1))",
+          [`artifact-server-bootstrap:${key.installationId}`],
+        );
+        const existing = yield* this.#findApiKey(
+          key.installationId,
+          key.id,
+          false,
+        );
+        if (existing !== null) return existing;
+        const rows = yield* sql.unsafe<{count: number}>(`
+          SELECT (
+            (SELECT COUNT(*) FROM installation_members WHERE installation_id = $1)
+            + (SELECT COUNT(*) FROM managed_api_keys WHERE installation_id = $1)
+          ) AS count
+        `, [key.installationId]);
+        if (countRowSchema.parse(rows[0]).count > 0) {
+          return yield* new IdentityConflict({
+            message:
+              "The private-team bootstrap key id cannot change after installation identity exists.",
+          });
+        }
+        yield* this.#insertApiKey(key);
+        return key;
+      }));
+    }));
+  }
+
   async findApiKey(
     installationId: string,
     keyId: string,
@@ -473,13 +511,18 @@ export class PostgresIdentityRepository implements IdentityRepository {
     const installationId = this.#installationId;
     await this.#database.run(Effect.gen({self: this}, function*() {
       const sql = yield* SqlClient;
+      // `/auth/login` is unauthenticated, so every insert clears the attempts
+      // that can no longer be consumed instead of growing the table forever.
+      yield* sql`DELETE FROM login_attempts
+        WHERE installation_id = ${installationId}
+          AND expires_at <= ${attempt.createdAt}`;
       yield* sql`INSERT INTO login_attempts (
-        installation_id, state_digest, provider, code_verifier, return_to,
+        installation_id, state_digest, provider, code_verifier, nonce, return_to,
         created_at, expires_at, consumed_at
       ) VALUES (
         ${installationId}, ${attempt.stateDigest}, ${attempt.provider},
-        ${attempt.codeVerifier}, ${attempt.returnTo}, ${attempt.createdAt},
-        ${attempt.expiresAt}, NULL
+        ${attempt.codeVerifier}, ${attempt.nonce}, ${attempt.returnTo},
+        ${attempt.createdAt}, ${attempt.expiresAt}, NULL
       )`;
     }));
   }
@@ -495,7 +538,7 @@ export class PostgresIdentityRepository implements IdentityRepository {
       return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
         const rows = yield* sql.unsafe<object>(
           `SELECT state_digest AS "stateDigest", provider,
-            code_verifier AS "codeVerifier", return_to AS "returnTo",
+            code_verifier AS "codeVerifier", nonce, return_to AS "returnTo",
             created_at AS "createdAt", expires_at AS "expiresAt"
            FROM login_attempts
            WHERE installation_id = $1 AND state_digest = $2 AND provider = $3

@@ -32,17 +32,37 @@ import {PostgresDatabase} from "../../src/storage/postgres-database.js";
 import {PostgresArtifactRepository} from "../../src/storage/postgres-artifact-repository.js";
 import {PostgresIdentityRepository} from "../../src/storage/postgres-identity-repository.js";
 import {defaultProjectId} from "../../src/core/model.js";
+import type {NodeGitHistoryConfiguration} from
+  "../../src/git-history/node-git-history-configuration.js";
+import type {GitHistoryProviderHealthProbe} from
+  "../../src/git-history/git-history-provider-health.js";
+import {managedApiKeyCredentialPattern} from
+  "../../src/core/installation-identity.js";
+import {
+  browserLoginKinds,
+  privateTeamBrowserAccess,
+} from "../../src/core/browser-access.js";
+import {createOidcIdentityProvider} from
+  "../../src/identity/oidc-identity-provider.js";
+import {
+  startStubOidcLogin,
+  startStubOidcProvider,
+  type RunningStubOidcProvider,
+} from "../support/stub-oidc-provider.js";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const externalStorageCli = path.join(repositoryRoot, "dist/cli/main.js");
 const region = "us-east-1";
 const bucket = "artifact-server-external-storage-integration";
 const installationId = "external-storage-integration-installation";
-const apiToken = "external-storage-integration-api-token-with-sufficient-entropy";
-const browserBootstrapToken =
-  "external-storage-browser-bootstrap-token-with-sufficient-entropy";
+const apiToken = managedTestKey("external-storage-integration");
+const oidcAdministratorEmail = "administrator@example.test";
+let oidcProvider: RunningStubOidcProvider;
 const runningProcesses = new Set<ChildProcessWithoutNullStreams>();
 const runningInProcessServers = new Set<InProcessExternalStorageServer>();
+const availableGitHistoryProbe: GitHistoryProviderHealthProbe = {
+  check: () => Effect.succeed({state: "available"}),
+};
 
 const publishResponseSchema = z.object({
   artifact: z.object({
@@ -59,6 +79,22 @@ const publishResponseSchema = z.object({
     projectId: z.string(),
   }),
 });
+
+const projectGitHistoryEstimateResponseSchema = z.object({
+  estimate: z.object({
+    estimatedCopiedBytes: z.number().int().nonnegative(),
+    estimatedPointerBytes: z.number().int().nonnegative(),
+    notice: z.string(),
+    operations: z.number().int().nonnegative(),
+    projectId: z.string(),
+    repositories: z.number().int().nonnegative(),
+    versions: z.number().int().nonnegative(),
+  }).strict(),
+}).strict();
+
+const projectGitHistoryResponseSchema = z.object({
+  gitHistory: z.object({enabled: z.boolean(), projectId: z.string()}).strict(),
+}).strict();
 
 const sessionResponseSchema = z.object({
   authenticationMethod: z.literal("session"),
@@ -95,6 +131,69 @@ const artifactListSchema = z.object({
   })),
 });
 
+const commentAuthorSchema = z.object({
+  authorizedByPrincipalId: z.string().nullable(),
+  displayName: z.string(),
+  principalId: z.string(),
+  principalKind: z.enum(["human", "service"]),
+});
+
+const commentThreadSchema = z.object({
+  anchor: z.unknown(),
+  artifactId: z.string(),
+  author: commentAuthorSchema,
+  body: z.string(),
+  createdAt: z.iso.datetime(),
+  id: z.string(),
+  path: z.string().nullable(),
+  projectId: z.string(),
+  replyCount: z.number().int().nonnegative(),
+  resolvedAt: z.iso.datetime().nullable(),
+  resolvedBy: commentAuthorSchema.nullable(),
+  state: z.enum(["open", "resolved"]),
+  updatedAt: z.iso.datetime(),
+  versionId: z.string(),
+}).loose();
+
+const commentCreationSchema = z.object({
+  replayed: z.boolean(),
+  thread: commentThreadSchema,
+}).strict();
+
+const commentThreadEnvelopeSchema = z.object({thread: commentThreadSchema})
+  .strict();
+
+const commentReplySchema = z.object({
+  author: commentAuthorSchema,
+  body: z.string(),
+  createdAt: z.iso.datetime(),
+  id: z.string(),
+  threadId: z.string(),
+}).loose();
+
+const replyCreationSchema = z.object({
+  replayed: z.boolean(),
+  reply: commentReplySchema,
+}).strict();
+
+const commentPageSchema = z.object({
+  items: z.array(commentThreadSchema),
+  nextCursor: z.string().nullable(),
+}).strict();
+
+const commentDetailsSchema = z.object({
+  replies: z.array(commentReplySchema),
+  thread: commentThreadSchema,
+}).strict();
+
+const commentActionPageSchema = z.object({
+  actions: z.array(z.object({action: z.string()}).loose()),
+}).loose();
+
+const commentFailureSchema = z.object({
+  error: z.object({code: z.string(), message: z.string()}).loose(),
+}).loose();
+
 interface IntegrationEnvironment {
   readonly accessKey: string;
   readonly databaseUrl: string;
@@ -128,6 +227,9 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
 
   beforeAll(async () => {
     environment = readIntegrationEnvironment();
+    oidcProvider = await startStubOidcProvider({
+      clientId: "external-storage-integration",
+    });
     s3Client = new S3Client({
       credentials: {
         accessKeyId: environment.accessKey,
@@ -157,15 +259,15 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(JSON.parse(before.output)).toMatchObject({
       compatibility: "missing",
       currentVersion: 0,
-      requiredVersion: 3,
+      requiredVersion: 8,
     });
 
     const applied = await runExternalCli(["migrate", "apply"], migrationEnvironment);
     expect(applied.exitCode).toBe(0);
     expect(JSON.parse(applied.output)).toMatchObject({
       compatibility: "current",
-      currentVersion: 3,
-      requiredVersion: 3,
+      currentVersion: 8,
+      requiredVersion: 8,
     });
 
     const after = await runExternalCli(["migrate", "status"], migrationEnvironment);
@@ -206,6 +308,126 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     }
   });
 
+  test("GIT-010 GIT-012 GIT-013 GIT-014 foundation: Postgres preserves provider identity and the project switch across restart", async () => {
+    const identity = {
+      apiToken: managedTestKey("postgres-git-history"),
+      installationId: "postgres-git-history",
+    };
+    const originalGitHistory = configuredGitHistory("postgres-history-one");
+    let server = await startInProcessExternalStorageServer(
+      environment,
+      identity,
+      {
+        gitHistory: originalGitHistory,
+        gitHistoryHealthProbe: availableGitHistoryProbe,
+      },
+    );
+    await expect.poll(
+      () => readGitHistoryProviderState(server.baseUrl, identity.apiToken),
+      {timeout: 5_000},
+    ).toBe("available");
+    const content = "Postgres Git history estimate";
+    const published = await publishNew(server.baseUrl, identity.apiToken, {
+      content,
+      idempotencyKey: "postgres-git-history-publish",
+      name: "Postgres Git history",
+    });
+    expect(published.response.status).toBe(201);
+    const estimateResponse = await fetch(
+      `${server.baseUrl}/api/v1/projects/${defaultProjectId}/git-history/estimate`,
+      {
+        headers: mutationHeaders(identity.apiToken, "postgres-git-history-estimate"),
+        method: "POST",
+      },
+    );
+    expect(estimateResponse.status).toBe(200);
+    const estimate = projectGitHistoryEstimateResponseSchema.parse(
+      await estimateResponse.json(),
+    );
+    expect(estimate.estimate).toMatchObject({
+      estimatedCopiedBytes: Buffer.byteLength(content),
+      estimatedPointerBytes: 0,
+      operations: 2,
+      projectId: defaultProjectId,
+      repositories: 1,
+      versions: 1,
+    });
+    const enableResponse = await fetch(
+      `${server.baseUrl}/api/v1/projects/${defaultProjectId}/git-history`,
+      {
+        body: JSON.stringify({confirmEstimate: true, enabled: true}),
+        headers: mutationHeaders(identity.apiToken, "postgres-git-history-enable"),
+        method: "PUT",
+      },
+    );
+    expect(enableResponse.status).toBe(200);
+    expect(projectGitHistoryResponseSchema.parse(await enableResponse.json())).toEqual({
+      gitHistory: {enabled: true, projectId: defaultProjectId},
+    });
+    await server.stop();
+
+    server = await startInProcessExternalStorageServer(
+      environment,
+      identity,
+      {
+        gitHistory: configuredGitHistory("postgres-history-two"),
+        gitHistoryHealthProbe: availableGitHistoryProbe,
+      },
+    );
+    await expect.poll(
+      () => readGitHistoryProviderState(server.baseUrl, identity.apiToken),
+      {timeout: 5_000},
+    ).toBe("migration-required");
+    const settingResponse = await authenticatedFetch(
+      server.baseUrl,
+      identity.apiToken,
+      `/api/v1/projects/${defaultProjectId}/git-history`,
+    );
+    expect(settingResponse.status).toBe(200);
+    expect(projectGitHistoryResponseSchema.parse(await settingResponse.json())).toEqual({
+      gitHistory: {enabled: true, projectId: defaultProjectId},
+    });
+
+    const database = await PostgresDatabase.inspect({
+      applicationName: "artifact-server-git-history-identity-test",
+      maxConnections: 1,
+      url: Redacted.make(environment.databaseUrl),
+    });
+    try {
+      const rows = await database.run(Effect.gen(function*() {
+        const sql = yield* SqlClient;
+        return yield* sql<{
+          readonly account_id: string;
+          readonly namespace: string;
+          readonly provider: string;
+        }>`
+          SELECT provider, account_id, namespace
+          FROM git_history_provider_identity
+          WHERE installation_id = ${identity.installationId}
+        `.withoutTransform;
+      }));
+      expect(rows).toEqual([{
+        account_id: "postgres-account",
+        namespace: "postgres-history-one",
+        provider: "cloudflare-artifacts",
+      }]);
+      const settings = await database.run(Effect.gen(function*() {
+        const sql = yield* SqlClient;
+        return yield* sql<{
+          readonly enabled: boolean;
+          readonly project_id: string;
+        }>`
+          SELECT project_id, enabled
+          FROM git_history_project_settings
+          WHERE installation_id = ${identity.installationId}
+        `.withoutTransform;
+      }));
+      expect(settings).toEqual([{enabled: true, project_id: defaultProjectId}]);
+    } finally {
+      await database.close();
+    }
+  });
+
   test("a populated Postgres v1 installation migrates without changing identity or bytes", async () => {
     const databaseName = `artifactserver_project_migration_${randomUUID().replaceAll("-", "")}`;
     await createPostgresDatabase(environment, databaseName);
@@ -214,7 +436,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       databaseUrl: databaseUrlFor(environment.databaseUrl, databaseName),
     };
     const identity = {
-      apiToken: "postgres-project-migration-token-with-sufficient-entropy",
+      apiToken: managedTestKey("postgres-project-migration"),
       installationId: "postgres-project-migration-installation",
     };
     const applied = await runExternalCli(["migrate", "apply"], {
@@ -263,6 +485,13 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
           "ALTER TABLE idempotency_records DROP COLUMN project_id CASCADE",
           "ALTER TABLE versions DROP COLUMN project_id CASCADE",
           "ALTER TABLE artifacts DROP COLUMN project_id CASCADE",
+          "ALTER TABLE login_attempts DROP COLUMN nonce",
+          "DROP TABLE comment_replies",
+          "DROP TABLE comment_threads",
+          "DROP TABLE agent_dispatches",
+          "DROP TABLE registered_agents",
+          "DROP TABLE git_history_provider_identity",
+          "DROP TABLE git_history_project_settings",
           "DROP TABLE projects",
           `ALTER TABLE artifacts ADD CONSTRAINT artifacts_current_version_fk
             FOREIGN KEY (installation_id, current_version_id)
@@ -290,7 +519,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(JSON.parse(pending.output)).toMatchObject({
       compatibility: "pending",
       currentVersion: 1,
-      requiredVersion: 3,
+      requiredVersion: 8,
     });
     const migrated = await runExternalCli(["migrate", "apply"], {
       ARTIFACT_SERVER_DATABASE_URL: migrationEnvironment.databaseUrl,
@@ -299,7 +528,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(migrated.exitCode).toBe(0);
     expect(JSON.parse(migrated.output)).toMatchObject({
       compatibility: "current",
-      currentVersion: 3,
+      currentVersion: 8,
     });
 
     const restored = await startExternalStorageProcess(migrationEnvironment, identity);
@@ -351,13 +580,13 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(repeated.exitCode).toBe(0);
     expect(JSON.parse(repeated.output)).toMatchObject({
       compatibility: "current",
-      currentVersion: 3,
+      currentVersion: 8,
     });
   });
 
   test("Postgres project scope survives restart", async () => {
     const identity = {
-      apiToken: "postgres-project-api-token-with-sufficient-entropy-000",
+      apiToken: managedTestKey("postgres-project"),
       installationId: "postgres-project-scope",
     };
     let server = await startInProcessExternalStorageServer(environment, identity);
@@ -458,8 +687,9 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     )).status).toBe(200);
   });
 
-  afterAll(() => {
+  afterAll(async () => {
     s3Client.destroy();
+    await oidcProvider.stop();
   });
 
   test("PUB-011-B PUB-011-F: independent external-storage processes accept uploaded bytes, reject remote sources, serialize writes, restart, and isolate installations", async () => {
@@ -541,13 +771,14 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       }),
     ]);
 
+    const isolatedApiToken = managedTestKey("isolated-installation");
     const isolated = await startExternalStorageProcess(environment, {
-      apiToken: "isolated-api-token-with-sufficient-entropy-000000",
+      apiToken: isolatedApiToken,
       installationId: "isolated-external-storage-installation",
     });
     const isolatedList = await listArtifacts(
       isolated.baseUrl,
-      "isolated-api-token-with-sufficient-entropy-000000",
+      isolatedApiToken,
     );
     expect(isolatedList.response.status).toBe(200);
     expect(isolatedList.body.artifacts).toEqual([]);
@@ -555,8 +786,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       `${isolated.baseUrl}/api/v1/artifacts/${initial.body.artifact.id}`,
       {
         headers: {
-          Authorization:
-            "Bearer isolated-api-token-with-sufficient-entropy-000000",
+          Authorization: `Bearer ${isolatedApiToken}`,
         },
       },
     );
@@ -566,7 +796,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
   test("foundation: independent external-storage processes expose the same stateless MCP installation", async () => {
     expect.hasAssertions();
     const identity = {
-      apiToken: "external-storage-mcp-api-token-with-sufficient-entropy-000000",
+      apiToken: managedTestKey("external-storage-mcp"),
       installationId: `external-storage-mcp-${randomUUID()}`,
     };
     const [first, second] = await Promise.all([
@@ -640,6 +870,62 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     }
   });
 
+  test("external-storage foundation: a login attempt keeps its nonce through Postgres", async () => {
+    const database = await PostgresDatabase.open({
+      maxConnections: 2,
+      url: Redacted.make(environment.databaseUrl),
+    }, "validate");
+    const scopedInstallation = `login-attempt-nonce-${randomUUID()}`;
+    try {
+      await PostgresArtifactRepository.open(database, scopedInstallation);
+      const repository = new PostgresIdentityRepository(
+        database,
+        scopedInstallation,
+      );
+      await repository.createLoginAttempt({
+        codeVerifier: "postgres-login-attempt-code-verifier",
+        createdAt: "2026-08-18T12:00:00.000Z",
+        expiresAt: "2126-08-18T12:00:00.000Z",
+        nonce: "postgres-login-attempt-nonce",
+        provider: "oidc",
+        returnTo: "/",
+        stateDigest: "postgres-login-attempt-oidc-state",
+      });
+      await repository.createLoginAttempt({
+        codeVerifier: "postgres-login-attempt-code-verifier-two",
+        createdAt: "2026-08-18T12:00:00.000Z",
+        expiresAt: "2126-08-18T12:00:00.000Z",
+        nonce: null,
+        provider: "workos",
+        returnTo: "/",
+        stateDigest: "postgres-login-attempt-workos-state",
+      });
+      const oidcAttempt = await repository.consumeLoginAttempt(
+        "postgres-login-attempt-oidc-state",
+        "oidc",
+        "2026-08-18T12:00:05.000Z",
+      );
+      expect(oidcAttempt).toMatchObject({
+        codeVerifier: "postgres-login-attempt-code-verifier",
+        nonce: "postgres-login-attempt-nonce",
+        provider: "oidc",
+      });
+      const workOsAttempt = await repository.consumeLoginAttempt(
+        "postgres-login-attempt-workos-state",
+        "workos",
+        "2026-08-18T12:00:05.000Z",
+      );
+      expect(workOsAttempt.nonce).toBeNull();
+      await expect(repository.consumeLoginAttempt(
+        "postgres-login-attempt-oidc-state",
+        "oidc",
+        "2026-08-18T12:00:06.000Z",
+      )).rejects.toMatchObject({_tag: "LoginAttemptRejected"});
+    } finally {
+      await database.close();
+    }
+  });
+
   test("external-storage foundation: concurrent replicas cannot deactivate the last two administrators", async () => {
     const database = await PostgresDatabase.open({
       maxConnections: 2,
@@ -706,7 +992,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
   test("external-storage foundation: browser sessions, managed keys, and staged uploads cross process boundaries", async () => {
     expect.hasAssertions();
     const externalStorageIdentity = {
-      apiToken: "identity-api-token-with-sufficient-entropy-000000",
+      apiToken: managedTestKey("identity-runtime"),
       installationId: "external-storage-identity-installation",
     };
     const [first, second] = await Promise.all([
@@ -714,10 +1000,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       startInProcessExternalStorageServer(environment, externalStorageIdentity),
     ]);
 
-    const login = await localBrowserLogin(
-      first.baseUrl,
-      browserBootstrapToken,
-    );
+    const login = await oidcBrowserLogin(first.baseUrl);
     expect(login.status).toBe(303);
     const cookies = applicationCookies(login.headers.getSetCookie());
 
@@ -770,8 +1053,15 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       headers: {Cookie: cookies.header},
     });
     expect(keyList.status).toBe(200);
-    expect(z.object({apiKeys: z.array(z.object({id: z.string()}))})
-      .parse(await keyList.json()).apiKeys).toHaveLength(1);
+    const listedKeys = z.object({apiKeys: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+    }))}).parse(await keyList.json()).apiKeys;
+    expect(listedKeys).toHaveLength(2);
+    expect(listedKeys).toEqual(expect.arrayContaining([
+      expect.objectContaining({id: issued.apiKey.id}),
+      expect.objectContaining({name: "Installation bootstrap key"}),
+    ]));
     expect(await bearerStatus(first.baseUrl, issued.token)).toBe(200);
 
     const rotateResponse = await fetch(
@@ -874,7 +1164,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
   test("external-storage foundation: Postgres serves management, history, comparison, idempotency, and private content", async () => {
     expect.hasAssertions();
     const repositoryIdentity = {
-      apiToken: "repository-api-token-with-sufficient-entropy-000000",
+      apiToken: managedTestKey("repository-runtime"),
       installationId: "postgres-repository-surface",
     };
     let server = await startInProcessExternalStorageServer(environment, repositoryIdentity);
@@ -1095,7 +1385,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
 
   test("external-storage foundation: integrity scans committed Postgres records and S3 bytes without repair", async () => {
     const identity = {
-      apiToken: "integrity-api-token-with-sufficient-entropy-000000",
+      apiToken: managedTestKey("integrity-runtime"),
       installationId: `external-integrity-${randomUUID()}`,
     };
     const server = await startInProcessExternalStorageServer(environment, identity);
@@ -1150,7 +1440,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
   test("external-storage foundation: logical Postgres and object backups restore stable IDs and bytes", async () => {
     expect.hasAssertions();
     const backupIdentity = {
-      apiToken: "backup-api-token-with-sufficient-entropy-00000000",
+      apiToken: managedTestKey("backup-runtime"),
       installationId: "backup-restore-installation",
     };
     const source = await startExternalStorageProcess(environment, backupIdentity);
@@ -1177,10 +1467,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       projectId: backupProject.id,
     });
     expect(published.response.status).toBe(201);
-    const login = await localBrowserLogin(
-      source.baseUrl,
-      browserBootstrapToken,
-    );
+    const login = await oidcBrowserLogin(source.baseUrl);
     expect(login.status).toBe(303);
     const cookies = applicationCookies(login.headers.getSetCookie());
     const issueResponse = await fetch(`${source.baseUrl}/api/v1/api-keys`, {
@@ -1300,7 +1587,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       secretKey: "wrong-object-store-secret",
     };
     await expect(startExternalStorageProcess(invalidStorage, {
-      apiToken: "invalid-storage-api-token-with-sufficient-entropy",
+      apiToken: managedTestKey("invalid-storage"),
       installationId: "invalid-storage-installation",
     })).rejects.toThrow(/exited before readiness/u);
 
@@ -1308,7 +1595,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     databaseUrl.password = "wrong-postgres-password";
     const invalidDatabase = {...environment, databaseUrl: databaseUrl.toString()};
     await expect(startExternalStorageProcess(invalidDatabase, {
-      apiToken: "invalid-database-api-token-with-sufficient-entropy",
+      apiToken: managedTestKey("invalid-database"),
       installationId: "invalid-database-installation",
     })).rejects.toThrow(/exited before readiness/u);
 
@@ -1317,7 +1604,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       endpoint: "http://127.0.0.1:1",
     };
     await expect(startExternalStorageProcess(unavailableStorage, {
-      apiToken: "unavailable-storage-api-token-with-sufficient-entropy",
+      apiToken: managedTestKey("unavailable-storage"),
       installationId: "unavailable-storage-installation",
     })).rejects.toThrow(/exited before readiness/u);
   });
@@ -1327,7 +1614,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     const readinessBucket = `artifact-server-readiness-${randomUUID()}`;
     await s3Client.send(new CreateBucketCommand({Bucket: readinessBucket}));
     const server = await startExternalStorageProcess(environment, {
-      apiToken: "readiness-api-token-with-sufficient-entropy-000000",
+      apiToken: managedTestKey("readiness-runtime"),
       installationId: `readiness-${randomUUID()}`,
       storageBucket: readinessBucket,
     });
@@ -1384,6 +1671,568 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     const stillAlive = await fetch(`${server.baseUrl}/health`);
     expect(stillAlive.status).toBe(200);
   });
+
+  test("external-storage foundation: Postgres serves the comment lifecycle, paging, and same-instant ledger keys", async () => {
+    expect.hasAssertions();
+    const commentIdentity = {
+      apiToken: managedTestKey("postgres-comment"),
+      installationId: `postgres-comments-${randomUUID()}`,
+    };
+    const server = await startInProcessExternalStorageServer(
+      environment,
+      commentIdentity,
+    );
+    const first = await publishNew(server.baseUrl, commentIdentity.apiToken, {
+      content: "<p>comment target version one</p>",
+      idempotencyKey: `comment-publish-${randomUUID()}`,
+      name: "Comment target",
+    });
+    const artifactId = first.body.artifact.id;
+    const second = await publishVersion(
+      server.baseUrl,
+      commentIdentity.apiToken,
+      {
+        artifactId,
+        content: "<p>comment target version two</p>",
+        expectedCurrentVersionId: first.body.version.id,
+        idempotencyKey: `comment-publish-second-${randomUUID()}`,
+      },
+    );
+    expect(second.response.status).toBe(201);
+    const secondVersionId = publishResponseSchema.parse(second.body).version.id;
+
+    const threadKey = `comment-thread-${randomUUID()}`;
+    const created = await createCommentThread(
+      server.baseUrl,
+      commentIdentity.apiToken,
+      {artifactId, versionId: first.body.version.id},
+      threadKey,
+      {body: "The axis label is wrong.", path: "index.html"},
+    );
+    expect(created.response.status).toBe(201);
+    const thread = commentCreationSchema.parse(created.body);
+    expect(thread.replayed).toBe(false);
+    expect(thread.thread.versionId).toBe(first.body.version.id);
+    expect(thread.thread.versionId).not.toBe(secondVersionId);
+    expect(thread.thread.replyCount).toBe(0);
+    expect(thread.thread.author.displayName).toBe("Installation bootstrap key");
+
+    const replayedCreate = await createCommentThread(
+      server.baseUrl,
+      commentIdentity.apiToken,
+      {artifactId, versionId: first.body.version.id},
+      threadKey,
+      {body: "The axis label is wrong.", path: "index.html"},
+    );
+    expect(replayedCreate.response.status).toBe(201);
+    const replayedThread = commentCreationSchema.parse(replayedCreate.body);
+    expect(replayedThread.replayed).toBe(true);
+    expect(replayedThread.thread.id).toBe(thread.thread.id);
+    expect(replayedThread.thread.createdAt).toBe(thread.thread.createdAt);
+
+    const replyKey = `comment-reply-${randomUUID()}`;
+    const reply = await createCommentReply(
+      server.baseUrl,
+      commentIdentity.apiToken,
+      artifactId,
+      thread.thread.id,
+      replyKey,
+      "Corrected in the next publish.",
+    );
+    expect(reply.response.status).toBe(201);
+    const replyBody = replyCreationSchema.parse(reply.body);
+    expect(replyBody.replayed).toBe(false);
+    const replayedReply = await createCommentReply(
+      server.baseUrl,
+      commentIdentity.apiToken,
+      artifactId,
+      thread.thread.id,
+      replyKey,
+      "Corrected in the next publish.",
+    );
+    expect(replyCreationSchema.parse(replayedReply.body)).toMatchObject({
+      replayed: true,
+      reply: {id: replyBody.reply.id},
+    });
+
+    const resolved = await patchCommentThread(
+      server.baseUrl,
+      commentIdentity.apiToken,
+      artifactId,
+      thread.thread.id,
+      {state: "resolved"},
+    );
+    expect(resolved.status).toBe(200);
+    expect(commentThreadEnvelopeSchema.parse(await resolved.json()).thread)
+      .toMatchObject({
+        replyCount: 1,
+        resolvedBy: {
+          displayName: "Installation bootstrap key",
+          principalKind: "service",
+        },
+        state: "resolved",
+      });
+
+    const refused = await createCommentReply(
+      server.baseUrl,
+      commentIdentity.apiToken,
+      artifactId,
+      thread.thread.id,
+      `comment-reply-refused-${randomUUID()}`,
+      "Too late to answer.",
+    );
+    expect(refused.response.status).toBe(409);
+    expect(commentFailureSchema.parse(refused.body).error.code)
+      .toBe("COMMENT_RESOLVED");
+
+    const reopened = await patchCommentThread(
+      server.baseUrl,
+      commentIdentity.apiToken,
+      artifactId,
+      thread.thread.id,
+      {state: "open"},
+    );
+    expect(reopened.status).toBe(200);
+    expect(commentThreadEnvelopeSchema.parse(await reopened.json()).thread)
+      .toMatchObject({resolvedAt: null, resolvedBy: null, state: "open"});
+    const acceptedAfterReopen = await createCommentReply(
+      server.baseUrl,
+      commentIdentity.apiToken,
+      artifactId,
+      thread.thread.id,
+      `comment-reply-after-reopen-${randomUUID()}`,
+      "Reopened because the fix regressed.",
+    );
+    expect(acceptedAfterReopen.response.status).toBe(201);
+
+    const extraThreads = await Promise.all([1, 2].map((index) =>
+      createCommentThread(
+        server.baseUrl,
+        commentIdentity.apiToken,
+        {artifactId, versionId: secondVersionId},
+        `comment-thread-page-${index}-${randomUUID()}`,
+        {body: `Paged observation ${index}.`, path: "index.html"},
+      )
+    ));
+    expect(extraThreads.map(({response}) => response.status)).toEqual([201, 201]);
+    const laterThreadIds = extraThreads.map(({body}) =>
+      commentCreationSchema.parse(body).thread.id
+    );
+
+    const firstPage = commentPageSchema.parse(await (await authenticatedFetch(
+      server.baseUrl,
+      commentIdentity.apiToken,
+      `/api/v1/artifacts/${artifactId}/comments?limit=2`,
+    )).json());
+    expect(firstPage.items).toHaveLength(2);
+    expect(firstPage.nextCursor).not.toBeNull();
+    const secondPage = commentPageSchema.parse(await (await authenticatedFetch(
+      server.baseUrl,
+      commentIdentity.apiToken,
+      `/api/v1/artifacts/${artifactId}/comments?limit=2&cursor=${
+        encodeURIComponent(firstPage.nextCursor ?? "")
+      }`,
+    )).json());
+    expect(secondPage.items).toHaveLength(1);
+    expect(secondPage.nextCursor).toBeNull();
+    expect([...firstPage.items, ...secondPage.items].map(({id}) => id)
+      .toSorted()).toEqual([thread.thread.id, ...laterThreadIds].toSorted());
+
+    const versionFiltered = commentPageSchema.parse(await (await authenticatedFetch(
+      server.baseUrl,
+      commentIdentity.apiToken,
+      `/api/v1/artifacts/${artifactId}/comments?versionId=${first.body.version.id}`,
+    )).json());
+    expect(versionFiltered.items.map(({id}) => id)).toEqual([thread.thread.id]);
+
+    // Two mutations on one thread can land in the same millisecond. The derived
+    // ledger key must stay unique, or the Postgres uniqueness constraint on
+    // (installation_id, project_id, idempotency_key) rejects the second write.
+    const commentPrincipal = managedTestPrincipal(commentIdentity.apiToken);
+    const database = await PostgresDatabase.open({
+      maxConnections: 2,
+      url: Redacted.make(environment.databaseUrl),
+    }, "validate");
+    try {
+      const repository = await PostgresArtifactRepository.open(
+        database,
+        commentIdentity.installationId,
+      );
+      const sameInstant = "2026-08-18T09:15:00.000Z";
+      const sameInstantEdit = (body: string) => repository.updateThread({
+        anchor: null,
+        artifactId,
+        authorizedByPrincipalId: commentPrincipal.authorizedByPrincipalId,
+        body,
+        principalId: commentPrincipal.principalId,
+        projectId: thread.thread.projectId,
+        state: null,
+        threadId: thread.thread.id,
+        updatedAt: sameInstant,
+      });
+      await sameInstantEdit("Same-instant edit one.");
+      await sameInstantEdit("Same-instant edit two.");
+    } finally {
+      await database.close();
+    }
+
+    const ledger = await authenticatedFetch(
+      server.baseUrl,
+      commentIdentity.apiToken,
+      `/api/v1/artifacts/${artifactId}/actions`,
+    );
+    expect(ledger.status).toBe(200);
+    const recorded = commentActionPageSchema.parse(await ledger.json()).actions
+      .filter(({action}) => action.startsWith("comment_"))
+      .map(({action}) => action);
+    expect(recorded.toSorted()).toEqual([
+      "comment_create",
+      "comment_create",
+      "comment_create",
+      "comment_reopen",
+      "comment_reply",
+      "comment_reply",
+      "comment_resolve",
+      "comment_update",
+      "comment_update",
+    ]);
+
+    const detail = await authenticatedFetch(
+      server.baseUrl,
+      commentIdentity.apiToken,
+      `/api/v1/artifacts/${artifactId}/comments/${thread.thread.id}`,
+    );
+    expect(detail.status).toBe(200);
+    expect(commentDetailsSchema.parse(await detail.json())).toMatchObject({
+      thread: {body: "Same-instant edit two.", replyCount: 2},
+    });
+
+    const removed = await fetch(
+      `${server.baseUrl}/api/v1/artifacts/${artifactId}/comments/${thread.thread.id}`,
+      {headers: bearerHeaders(commentIdentity.apiToken), method: "DELETE"},
+    );
+    expect(removed.status).toBe(204);
+    expect((await authenticatedFetch(
+      server.baseUrl,
+      commentIdentity.apiToken,
+      `/api/v1/artifacts/${artifactId}/comments/${thread.thread.id}`,
+    )).status).toBe(404);
+    await server.stop();
+  });
+
+  test("external-storage foundation: Postgres serves the dispatch mailbox, lease reclaim, and consumptive comment listings", async () => {
+    expect.hasAssertions();
+    const dispatchIdentity = {
+      apiToken: managedTestKey("postgres-dispatch"),
+      installationId: `postgres-dispatch-${randomUUID()}`,
+    };
+    const server = await startInProcessExternalStorageServer(
+      environment,
+      dispatchIdentity,
+    );
+    const published = await publishNew(
+      server.baseUrl,
+      dispatchIdentity.apiToken,
+      {
+        content: "<p>dispatch target</p>",
+        idempotencyKey: `dispatch-publish-${randomUUID()}`,
+        name: "Dispatch target",
+      },
+    );
+    const artifactId = published.body.artifact.id;
+    const versionId = published.body.version.id;
+    const annotate = async (body: string): Promise<string> => {
+      const created = await createCommentThread(
+        server.baseUrl,
+        dispatchIdentity.apiToken,
+        {artifactId, versionId},
+        `dispatch-thread-${randomUUID()}`,
+        {body, path: "index.html"},
+      );
+      expect(created.response.status).toBe(201);
+      return commentCreationSchema.parse(created.body).thread.id;
+    };
+    const listDefaultCommentIds = async (): Promise<readonly string[]> => {
+      const listed = await authenticatedFetch(
+        server.baseUrl,
+        dispatchIdentity.apiToken,
+        `/api/v1/artifacts/${artifactId}/comments`,
+      );
+      expect(listed.status).toBe(200);
+      return commentPageSchema.parse(await listed.json()).items
+        .map(({id}) => id);
+    };
+    const [firstThreadId, secondThreadId, thirdThreadId] = [
+      await annotate("The axis label is wrong."),
+      await annotate("The legend overlaps the chart."),
+      await annotate("The footer year is stale."),
+    ];
+    expect((await listDefaultCommentIds()).toSorted()).toEqual(
+      [firstThreadId, secondThreadId, thirdThreadId].toSorted(),
+    );
+
+    const baseInstant = Date.now();
+    const at = (offsetMilliseconds: number): string =>
+      new Date(baseInstant + offsetMilliseconds).toISOString();
+    const sender = managedTestPrincipal(dispatchIdentity.apiToken);
+    const database = await PostgresDatabase.open({
+      maxConnections: 2,
+      url: Redacted.make(environment.databaseUrl),
+    }, "validate");
+    try {
+      const repository = await PostgresArtifactRepository.open(
+        database,
+        dispatchIdentity.installationId,
+      );
+      const connectionKey = `dispatch-connection-${randomUUID()}`;
+      const registration = {
+        agentSessionId: "pi-session-one",
+        connectionKey,
+        displayName: "site",
+        installationId: dispatchIdentity.installationId,
+        kind: "pi",
+        principalId: sender.principalId,
+        workingDirectory: "/work/site",
+      } as const;
+      const agent = await repository.registerAgent({
+        ...registration,
+        id: `agt_${randomUUID()}`,
+        registeredAt: at(0),
+      });
+      // The connection key is the identity: a restarted session upserts back
+      // into the same row, so dispatches queued for it survive.
+      const reregistered = await repository.registerAgent({
+        ...registration,
+        agentSessionId: "pi-session-two",
+        displayName: "site (resumed)",
+        id: `agt_${randomUUID()}`,
+        registeredAt: at(500),
+      });
+      expect(reregistered).toMatchObject({
+        agentSessionId: "pi-session-two",
+        createdAt: at(0),
+        displayName: "site (resumed)",
+        id: agent.id,
+        lastSeenAt: at(500),
+      });
+
+      const sendKey = `dispatch-send-${randomUUID()}`;
+      const sent = await repository.createDispatch({
+        agentDisplayName: reregistered.displayName,
+        agentId: agent.id,
+        createdAt: at(1_000),
+        id: `dsp_${randomUUID()}`,
+        idempotencyKey: sendKey,
+        installationId: dispatchIdentity.installationId,
+        note: "Fix both before the review.",
+        projectId: defaultProjectId,
+        sender,
+        threadIds: [firstThreadId, secondThreadId],
+      });
+      expect(sent.replayed).toBe(false);
+      expect(sent.dispatch).toMatchObject({
+        agentId: agent.id,
+        state: "queued",
+        threadIds: [firstThreadId, secondThreadId],
+      });
+      const replayedSend = await repository.createDispatch({
+        agentDisplayName: reregistered.displayName,
+        agentId: agent.id,
+        createdAt: at(1_100),
+        id: `dsp_${randomUUID()}`,
+        idempotencyKey: sendKey,
+        installationId: dispatchIdentity.installationId,
+        note: "Fix both before the review.",
+        projectId: defaultProjectId,
+        sender,
+        threadIds: [firstThreadId, secondThreadId],
+      });
+      expect(replayedSend).toMatchObject({
+        dispatch: {createdAt: at(1_000), id: sent.dispatch.id},
+        replayed: true,
+      });
+
+      // Sending is consumptive: the annotations leave the default listing and
+      // stay reachable only through the dispatched filter.
+      expect(await listDefaultCommentIds()).toEqual([thirdThreadId]);
+      const listThreads = (dispatched: "exclude" | "include" | "only") =>
+        repository.listThreads({
+          artifactId,
+          cursor: null,
+          dispatched,
+          limit: 20,
+          projectId: defaultProjectId,
+          since: null,
+          state: null,
+          versionId: null,
+        });
+      expect((await listThreads("only")).items.map(({id}) => id).toSorted())
+        .toEqual([firstThreadId, secondThreadId].toSorted());
+      expect((await listThreads("include")).items).toHaveLength(3);
+
+      await expect(repository.createDispatch({
+        agentDisplayName: reregistered.displayName,
+        agentId: agent.id,
+        createdAt: at(1_200),
+        id: `dsp_${randomUUID()}`,
+        idempotencyKey: `dispatch-send-${randomUUID()}`,
+        installationId: dispatchIdentity.installationId,
+        note: null,
+        projectId: defaultProjectId,
+        sender,
+        threadIds: [secondThreadId, thirdThreadId],
+      })).rejects.toMatchObject({_tag: "InvalidDispatch"});
+      expect(await listDefaultCommentIds()).toEqual([thirdThreadId]);
+
+      const claimed = await repository.claimNextDispatch(agent.id, at(2_000), true);
+      expect(claimed).toMatchObject({
+        claimedAt: at(2_000),
+        id: sent.dispatch.id,
+        state: "claimed",
+      });
+      // One active claim per agent: the next poll waits for the report.
+      expect(await repository.claimNextDispatch(agent.id, at(2_500), true)).toBeNull();
+      // A held poll's re-check attempt answers the same way as a pure read.
+      expect(await repository.claimNextDispatch(agent.id, at(2_600), false)).toBeNull();
+      await expect(repository.markDelivered({
+        agentId: `agt_${randomUUID()}`,
+        deliveredAt: at(3_000),
+        dispatchId: sent.dispatch.id,
+        installationId: dispatchIdentity.installationId,
+      })).rejects.toMatchObject({_tag: "DispatchStateConflict"});
+      const delivered = await repository.markDelivered({
+        agentId: agent.id,
+        deliveredAt: at(3_000),
+        dispatchId: sent.dispatch.id,
+        installationId: dispatchIdentity.installationId,
+      });
+      expect(delivered).toMatchObject({
+        deliveredAt: at(3_000),
+        state: "delivered",
+      });
+
+      const resolve = async (threadId: string): Promise<void> => {
+        const resolved = await patchCommentThread(
+          server.baseUrl,
+          dispatchIdentity.apiToken,
+          artifactId,
+          threadId,
+          {state: "resolved"},
+        );
+        expect(resolved.status).toBe(200);
+      };
+      await resolve(firstThreadId);
+      // Addressed is inferred from thread resolution, so a partly answered
+      // bundle stays delivered.
+      expect(await repository.findDispatch(
+        dispatchIdentity.installationId,
+        sent.dispatch.id,
+        at(3_500),
+      )).toMatchObject({addressedAt: null, state: "delivered"});
+      await resolve(secondThreadId);
+      expect(await repository.observeAddressed(sent.dispatch.id, at(4_000)))
+        .toMatchObject({addressedAt: at(4_000), state: "addressed"});
+
+      const second = await repository.createDispatch({
+        agentDisplayName: reregistered.displayName,
+        agentId: agent.id,
+        createdAt: at(5_000),
+        id: `dsp_${randomUUID()}`,
+        idempotencyKey: `dispatch-send-${randomUUID()}`,
+        installationId: dispatchIdentity.installationId,
+        note: null,
+        projectId: defaultProjectId,
+        sender,
+        threadIds: [thirdThreadId],
+      });
+      expect(await listDefaultCommentIds()).toEqual([]);
+      expect(await repository.claimNextDispatch(agent.id, at(6_000), true))
+        .toMatchObject({id: second.dispatch.id, state: "claimed"});
+      // A claimer that never reports loses its lease, and the same dispatch
+      // returns to the queue for the next poll — even for a heartbeat-free
+      // re-check attempt, which opens the write path once a lease expires.
+      const reclaimed = await repository.claimNextDispatch(
+        agent.id,
+        at(600_000),
+        false,
+      );
+      expect(reclaimed).toMatchObject({
+        claimedAt: at(600_000),
+        id: second.dispatch.id,
+        state: "claimed",
+      });
+
+      const canceled = await repository.cancelDispatch({
+        canceledAt: at(660_000),
+        dispatchId: second.dispatch.id,
+        installationId: dispatchIdentity.installationId,
+        projectId: defaultProjectId,
+      });
+      expect(canceled).toMatchObject({
+        canceledAt: at(660_000),
+        state: "canceled",
+      });
+      // Cancellation clears the markers, so the annotation comes back.
+      expect(await listDefaultCommentIds()).toEqual([thirdThreadId]);
+      await expect(repository.cancelDispatch({
+        canceledAt: at(661_000),
+        dispatchId: second.dispatch.id,
+        installationId: dispatchIdentity.installationId,
+        projectId: defaultProjectId,
+      })).rejects.toMatchObject({_tag: "DispatchStateConflict"});
+
+      // Agent rows are disposable liveness records; the dispatch history is
+      // the durable record and keeps its own name snapshot.
+      await repository.registerAgent({
+        ...registration,
+        connectionKey: `dispatch-connection-${randomUUID()}`,
+        displayName: "abandoned",
+        id: `agt_${randomUUID()}`,
+        registeredAt: new Date(baseInstant - 8 * 24 * 60 * 60 * 1_000)
+          .toISOString(),
+      });
+      expect((await repository.listAgents(
+        dispatchIdentity.installationId,
+        at(700_000),
+      )).map(({id}) => id)).toEqual([agent.id]);
+
+      const firstPage = await repository.listDispatches({
+        agentId: null,
+        cursor: null,
+        installationId: dispatchIdentity.installationId,
+        limit: 1,
+        now: at(700_000),
+        projectId: defaultProjectId,
+        state: null,
+      });
+      expect(firstPage.items.map(({id, state}) => ({id, state}))).toEqual([
+        {id: second.dispatch.id, state: "canceled"},
+      ]);
+      expect(firstPage.nextCursor).not.toBeNull();
+      const secondPage = await repository.listDispatches({
+        agentId: agent.id,
+        cursor: firstPage.nextCursor,
+        installationId: dispatchIdentity.installationId,
+        limit: 1,
+        now: at(700_000),
+        projectId: defaultProjectId,
+        state: null,
+      });
+      expect(secondPage.items.map(({agentDisplayName, id, state}) => ({
+        agentDisplayName,
+        id,
+        state,
+      }))).toEqual([{
+        agentDisplayName: "site (resumed)",
+        id: sent.dispatch.id,
+        state: "addressed",
+      }]);
+      expect(secondPage.nextCursor).toBeNull();
+    } finally {
+      await database.close();
+    }
+    await server.stop();
+  });
 });
 
 function readIntegrationEnvironment(): IntegrationEnvironment {
@@ -1411,6 +2260,23 @@ function readIntegrationEnvironment(): IntegrationEnvironment {
   };
 }
 
+function managedTestKey(label: string): string {
+  const id = createHash("sha256").update(`id:${label}`).digest("hex").slice(0, 32);
+  const secret = createHash("sha256").update(`secret:${label}`).digest("base64url");
+  return `as_key_key_${id}_${secret}`;
+}
+
+function managedTestPrincipal(token: string) {
+  const keyId = managedApiKeyCredentialPattern.exec(token)?.[1];
+  if (keyId === undefined) throw new Error("The test key is not a managed API key.");
+  return {
+    authorizedByPrincipalId: "installation-bootstrap",
+    displayName: "Installation bootstrap key",
+    principalId: `service:${keyId}`,
+    principalKind: "service",
+  } as const;
+}
+
 function startExternalStorageProcess(
   environment: IntegrationEnvironment,
   identity: {
@@ -1427,11 +2293,12 @@ function startExternalStorageProcess(
       env: {
         ...process.env,
         ARTIFACT_SERVER_API_TOKEN: identity.apiToken,
-        ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL: "admin@example.test",
+        ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL: oidcAdministratorEmail,
         ARTIFACT_SERVER_CONTENT_DOMAIN: "content.example.net",
         ARTIFACT_SERVER_DATABASE_URL: environment.databaseUrl,
         ARTIFACT_SERVER_INSTALLATION_ID: identity.installationId,
-        ARTIFACT_SERVER_LOCAL_BOOTSTRAP_TOKEN: browserBootstrapToken,
+        ARTIFACT_SERVER_OIDC_CLIENT_ID: "external-storage-integration",
+        ARTIFACT_SERVER_OIDC_ISSUER: oidcProvider.issuer,
         ARTIFACT_SERVER_ORIGIN: "https://artifacts.example.com",
         ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS: "0",
         ARTIFACT_SERVER_S3_ACCESS_KEY_ID: environment.accessKey,
@@ -1472,16 +2339,27 @@ function runExternalCli(
 async function startInProcessExternalStorageServer(
   environment: IntegrationEnvironment,
   identity: {readonly apiToken: string; readonly installationId: string},
+  options: {
+    readonly gitHistory?: NodeGitHistoryConfiguration;
+    readonly gitHistoryHealthProbe?: GitHistoryProviderHealthProbe;
+  } = {},
 ): Promise<InProcessExternalStorageServer> {
   const server = await startExternalStorageServer({
     apiToken: Redacted.make(identity.apiToken),
     applicationOrigin: "https://artifacts.example.com",
-    bootstrapAdministratorEmail: "admin@example.test",
+    bootstrapAdministratorEmail: oidcAdministratorEmail,
+    browserAccess: privateTeamBrowserAccess(browserLoginKinds.oidc),
     contentDomain: "content.example.net",
     databaseUrl: Redacted.make(environment.databaseUrl),
     hostname: "127.0.0.1",
     installationId: identity.installationId,
-    localBootstrapCredential: Redacted.make(browserBootstrapToken),
+    interactiveIdentityProvider: createOidcIdentityProvider({
+      applicationOrigin: "https://artifacts.example.com",
+      clientId: "external-storage-integration",
+      clientSecret: null,
+      issuer: oidcProvider.issuer,
+      scopes: "openid email profile",
+    }),
     objectStorage: createS3ObjectStorageProviderFactory({
       accessKeyId: environment.accessKey,
       bucket,
@@ -1491,6 +2369,7 @@ async function startInProcessExternalStorageServer(
       secretAccessKey: Redacted.make(environment.secretKey),
     }),
     port: 0,
+    ...options,
   });
   let stopped = false;
   const running: InProcessExternalStorageServer = {
@@ -1504,6 +2383,44 @@ async function startInProcessExternalStorageServer(
   };
   runningInProcessServers.add(running);
   return running;
+}
+
+function configuredGitHistory(namespace: string): NodeGitHistoryConfiguration {
+  return {
+    _tag: "CloudflareArtifactsRest",
+    apiToken: Redacted.make("postgres-cloudflare-artifacts-token"),
+    capability: {
+      limits: {
+        fileCopyBytes: 10 * 1024 * 1024,
+        logicalCopiedBytes: 0,
+        logicalReservedBytes: 0,
+        storageBudgetBytes: null,
+        versionCopyBytes: 50 * 1024 * 1024,
+      },
+      provider: "cloudflare-artifacts",
+      providerState: "checking",
+    },
+    identity: {
+      accountId: "postgres-account",
+      namespace,
+      provider: "cloudflare-artifacts",
+    },
+    issues: [],
+  };
+}
+
+async function readGitHistoryProviderState(
+  baseUrl: string,
+  token: string,
+): Promise<string> {
+  const response = await fetch(new URL("/api/v1/session", baseUrl), {
+    headers: {Authorization: `Bearer ${token}`},
+  });
+  return z.object({
+    capabilities: z.object({
+      gitHistory: z.object({providerState: z.string()}).loose(),
+    }).loose(),
+  }).loose().parse(await response.json()).capabilities.gitHistory.providerState;
 }
 
 function waitForExternalStorageProcess(
@@ -1769,6 +2686,63 @@ function authenticatedFetch(
   return fetch(`${baseUrl}${pathname}`, {headers: bearerHeaders(token)});
 }
 
+async function createCommentThread(
+  baseUrl: string,
+  token: string,
+  target: {readonly artifactId: string; readonly versionId: string},
+  idempotencyKey: string,
+  input: {readonly body: string; readonly path?: string},
+): Promise<{readonly body: unknown; readonly response: Response}> {
+  const response = await fetch(
+    `${baseUrl}/api/v1/artifacts/${target.artifactId}/versions/${target.versionId}/comments`,
+    {
+      body: JSON.stringify(input),
+      headers: mutationHeaders(token, idempotencyKey),
+      method: "POST",
+    },
+  );
+  return {body: await response.json(), response};
+}
+
+async function createCommentReply(
+  baseUrl: string,
+  token: string,
+  artifactId: string,
+  threadId: string,
+  idempotencyKey: string,
+  body: string,
+): Promise<{readonly body: unknown; readonly response: Response}> {
+  const response = await fetch(
+    `${baseUrl}/api/v1/artifacts/${artifactId}/comments/${threadId}/replies`,
+    {
+      body: JSON.stringify({body}),
+      headers: mutationHeaders(token, idempotencyKey),
+      method: "POST",
+    },
+  );
+  return {body: await response.json(), response};
+}
+
+function patchCommentThread(
+  baseUrl: string,
+  token: string,
+  artifactId: string,
+  threadId: string,
+  changes: {readonly body?: string; readonly state?: "open" | "resolved"},
+): Promise<Response> {
+  return fetch(
+    `${baseUrl}/api/v1/artifacts/${artifactId}/comments/${threadId}`,
+    {
+      body: JSON.stringify(changes),
+      headers: new Headers({
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      }),
+      method: "PATCH",
+    },
+  );
+}
+
 type ArtifactMutationBody =
   | {readonly expectedCurrentVersionId: string}
   | {
@@ -1804,24 +2778,13 @@ interface ApplicationCookies {
   readonly header: string;
 }
 
-async function localBrowserLogin(
-  baseUrl: string,
-  bootstrapToken: string,
-): Promise<Response> {
-  const issuedResponse = await fetch(`${baseUrl}/auth/local`, {
-    headers: {Authorization: `Bearer ${bootstrapToken}`},
-    method: "POST",
-  });
-  if (issuedResponse.status !== 201) {
-    throw new Error(
-      `Local browser login issuance failed with ${issuedResponse.status}.`,
-    );
-  }
-  const issued = z.object({
-    expiresAt: z.iso.datetime(),
-    token: z.string().min(32).max(200),
-  }).strict().parse(await issuedResponse.json());
-  return fetch(`${baseUrl}/auth/local?token=${issued.token}`, {
+async function oidcBrowserLogin(baseUrl: string): Promise<Response> {
+  const authorization = await startStubOidcLogin(baseUrl);
+  const callback = new URL(baseUrl);
+  callback.pathname = authorization.callbackUrl.pathname;
+  callback.search = authorization.callbackUrl.search;
+  return fetch(callback, {
+    headers: {Cookie: authorization.handshakeCookie},
     redirect: "manual",
   });
 }

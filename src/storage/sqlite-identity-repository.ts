@@ -24,8 +24,8 @@ import {requiredSqliteSchemaVersion} from "./sqlite-schema.js";
 import type {
   AdmitMemberRecord,
   BindExternalIdentityRecord,
+  BootstrapManagedApiKeyRepository,
   CreateApplicationSessionRecord,
-  IdentityRepository,
 } from "../core/identity-ports.js";
 
 const membershipRoleSchema = z.enum([
@@ -41,12 +41,14 @@ const principalKindSchema = z.enum([
   principalKinds.service,
 ]);
 const principalCapabilitySchema = z.enum([
+  principalCapabilities.connectAgents,
   principalCapabilities.createArtifact,
   principalCapabilities.issueContentSession,
   principalCapabilities.manageAnyArtifact,
   principalCapabilities.manageProjects,
   principalCapabilities.publishAnyArtifact,
   principalCapabilities.readArtifacts,
+  principalCapabilities.writeComments,
 ]);
 const memberRowSchema = z.object({
   createdAt: z.string(),
@@ -93,6 +95,7 @@ const loginAttemptRowSchema = z.object({
   codeVerifier: z.string(),
   createdAt: z.string(),
   expiresAt: z.string(),
+  nonce: z.string().nullable(),
   provider: z.string(),
   returnTo: z.string(),
   stateDigest: z.string(),
@@ -101,7 +104,7 @@ const presenceRowSchema = z.object({present: z.union([z.literal(0), z.literal(1)
 const countRowSchema = z.object({count: z.number().int().nonnegative()});
 
 /** SQLite persistence for installation membership, sessions, and API keys. */
-export class SqliteIdentityRepository implements IdentityRepository {
+export class SqliteIdentityRepository implements BootstrapManagedApiKeyRepository {
   readonly #database: DatabaseSync;
 
   constructor(databasePath: string) {
@@ -435,6 +438,37 @@ export class SqliteIdentityRepository implements IdentityRepository {
     return withoutSecretDigest(key);
   }
 
+  async initializeBootstrapApiKey(
+    key: StoredManagedApiKey,
+  ): Promise<StoredManagedApiKey> {
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const existing = this.#findApiKey(key.installationId, key.id);
+      if (existing !== null) {
+        this.#database.exec("COMMIT;");
+        return existing;
+      }
+      const state = countRowSchema.parse(this.#database.prepare(`
+        SELECT (
+          (SELECT COUNT(*) FROM installation_members WHERE installation_id = ?)
+          + (SELECT COUNT(*) FROM managed_api_keys WHERE installation_id = ?)
+        ) AS count
+      `).get(key.installationId, key.installationId));
+      if (state.count > 0) {
+        throw new IdentityConflict({
+          message:
+            "The private-team bootstrap key id cannot change after installation identity exists.",
+        });
+      }
+      this.#insertApiKey(key);
+      this.#database.exec("COMMIT;");
+      return key;
+    } catch (cause) {
+      this.#database.exec("ROLLBACK;");
+      throw cause;
+    }
+  }
+
   async findApiKey(
     installationId: string,
     keyId: string,
@@ -540,15 +574,21 @@ export class SqliteIdentityRepository implements IdentityRepository {
   }
 
   async createLoginAttempt(attempt: LoginAttempt): Promise<void> {
+    // `/auth/login` is unauthenticated, so every insert clears the attempts that
+    // can no longer be consumed instead of letting the table grow forever.
+    this.#database.prepare(`
+      DELETE FROM login_attempts WHERE expires_at <= ?
+    `).run(attempt.createdAt);
     this.#database.prepare(`
       INSERT INTO login_attempts (
-        state_digest, provider, code_verifier, return_to, created_at,
+        state_digest, provider, code_verifier, nonce, return_to, created_at,
         expires_at, consumed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, NULL)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
     `).run(
       attempt.stateDigest,
       attempt.provider,
       attempt.codeVerifier,
+      attempt.nonce,
       attempt.returnTo,
       attempt.createdAt,
       attempt.expiresAt,
@@ -567,6 +607,7 @@ export class SqliteIdentityRepository implements IdentityRepository {
           state_digest AS stateDigest,
           provider,
           code_verifier AS codeVerifier,
+          nonce,
           return_to AS returnTo,
           created_at AS createdAt,
           expires_at AS expiresAt
@@ -679,13 +720,43 @@ export class SqliteIdentityRepository implements IdentityRepository {
         state_digest TEXT PRIMARY KEY,
         provider TEXT NOT NULL,
         code_verifier TEXT NOT NULL,
+        nonce TEXT,
         return_to TEXT NOT NULL,
         created_at TEXT NOT NULL,
         expires_at TEXT NOT NULL,
         consumed_at TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS git_history_provider_identity (
+        installation_id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL CHECK (provider = 'cloudflare-artifacts'),
+        account_id TEXT NOT NULL,
+        namespace TEXT NOT NULL,
+        activated_at TEXT NOT NULL,
+        UNIQUE (provider, account_id, namespace)
+      ) STRICT;
+
+      CREATE TABLE IF NOT EXISTS git_history_project_settings (
+        project_id TEXT PRIMARY KEY REFERENCES projects(id),
+        installation_id TEXT NOT NULL,
+        enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+        updated_by_principal_id TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
     `);
+    this.#addLoginAttemptNonceIfMissing();
     this.#database.exec(`PRAGMA user_version = ${requiredSqliteSchemaVersion};`);
+  }
+
+  #addLoginAttemptNonceIfMissing(): void {
+    if (this.#tableColumns("login_attempts").includes("nonce")) return;
+    this.#database.exec("ALTER TABLE login_attempts ADD COLUMN nonce TEXT");
+  }
+
+  #tableColumns(table: "login_attempts"): readonly string[] {
+    const rows = this.#database.prepare(`PRAGMA table_info(${table})`).all();
+    const columns = z.array(z.object({name: z.string()})).parse(rows);
+    return columns.map((column) => column.name);
   }
 }
 

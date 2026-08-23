@@ -38,12 +38,14 @@ const principalKindSchema = z.enum([
   principalKinds.service,
 ]);
 const principalCapabilitySchema = z.enum([
+  principalCapabilities.connectAgents,
   principalCapabilities.createArtifact,
   principalCapabilities.issueContentSession,
   principalCapabilities.manageAnyArtifact,
   principalCapabilities.manageProjects,
   principalCapabilities.publishAnyArtifact,
   principalCapabilities.readArtifacts,
+  principalCapabilities.writeComments,
 ]);
 const memberRowSchema = z.object({
   createdAt: z.string(),
@@ -90,6 +92,7 @@ const loginAttemptRowSchema = z.object({
   codeVerifier: z.string(),
   createdAt: z.string(),
   expiresAt: z.string(),
+  nonce: z.string().nullable(),
   provider: z.string(),
   returnTo: z.string(),
   stateDigest: z.string(),
@@ -234,7 +237,7 @@ export function createD1IdentityRepository(
         `).bind(consumedAt, stateDigest, provider, consumedAt),
         database.prepare(`
           SELECT state_digest AS stateDigest, provider,
-            code_verifier AS codeVerifier, return_to AS returnTo,
+            code_verifier AS codeVerifier, nonce, return_to AS returnTo,
             created_at AS createdAt, expires_at AS expiresAt
           FROM login_attempts
           WHERE state_digest = ? AND provider = ? AND consumed_at = ?
@@ -287,15 +290,21 @@ export function createD1IdentityRepository(
     },
 
     createLoginAttempt: async (attempt: LoginAttempt) => {
+      // `/auth/login` is unauthenticated, so every insert clears the attempts
+      // that can no longer be consumed instead of growing the table forever.
+      await database.prepare(`
+        DELETE FROM login_attempts WHERE expires_at <= ?
+      `).bind(attempt.createdAt).run();
       await database.prepare(`
         INSERT INTO login_attempts (
-          state_digest, provider, code_verifier, return_to, created_at,
+          state_digest, provider, code_verifier, nonce, return_to, created_at,
           expires_at, consumed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, NULL)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
       `).bind(
         attempt.stateDigest,
         attempt.provider,
         attempt.codeVerifier,
+        attempt.nonce,
         attempt.returnTo,
         attempt.createdAt,
         attempt.expiresAt,

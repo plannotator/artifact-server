@@ -10,8 +10,23 @@ export class SystemClock implements Clock {
 }
 
 export class SystemIdGenerator implements IdGenerator {
+  /** Create one opaque agent dispatch identity. */
+  agentDispatchId(): string {
+    return `dsp_${randomUUID()}`;
+  }
+
   artifactId(): string {
     return `art_${randomUUID()}`;
+  }
+
+  /** Create one opaque comment reply identity. */
+  commentReplyId(): string {
+    return `rpl_${randomUUID()}`;
+  }
+
+  /** Create one opaque comment thread identity. */
+  commentThreadId(): string {
+    return `cmt_${randomUUID()}`;
   }
 
   contentToken(): string {
@@ -21,6 +36,11 @@ export class SystemIdGenerator implements IdGenerator {
   /** Create one opaque project identity. */
   projectId(): string {
     return `prj_${randomUUID()}`;
+  }
+
+  /** Create one opaque registered-agent identity. */
+  registeredAgentId(): string {
+    return `agt_${randomUUID()}`;
   }
 
   stagedFileToken(): string {

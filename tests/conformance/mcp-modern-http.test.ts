@@ -1,4 +1,7 @@
 import {createHash} from "node:crypto";
+import {mkdtemp, realpath, rename, rm, writeFile} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import path from "node:path";
 
 import {
   CLIENT_CAPABILITIES_META_KEY,
@@ -57,6 +60,25 @@ const createUploadResultSchema = z.object({
   files: z.array(uploadPlanSchema).min(1),
   manifestDigest: z.string(),
   uploadId: z.string(),
+});
+const sourceBindingResultSchema = z.object({
+  lastVerifiedAt: z.string(),
+  path: z.string(),
+  status: z.enum(["in-sync", "modified", "missing", "unreadable"]),
+});
+const linkedPublicationResultSchema = z.object({
+  artifact: z.object({id: z.string(), name: z.string()}).loose(),
+  links: z.object({
+    artifact: z.url(),
+    live: z.url().nullable(),
+    version: z.url(),
+  }),
+  replayed: z.boolean(),
+  sourceBinding: sourceBindingResultSchema,
+  version: z.object({
+    id: z.string(),
+    number: z.number().int().positive(),
+  }).loose(),
 });
 const publicationResultSchema = z.object({
   artifact: z.object({currentVersionId: z.string(), id: z.string()}).loose(),
@@ -152,6 +174,9 @@ describe("modern MCP HTTP", () => {
       "project_rename",
       "project_archive",
       "project_unarchive",
+      "project_git_history_status",
+      "project_git_history_estimate",
+      "project_set_git_history",
       "artifact_list",
       "artifact_get",
       "artifact_open",
@@ -163,6 +188,16 @@ describe("modern MCP HTTP", () => {
       "artifact_set_tags",
       "artifact_restore_version",
       "artifact_delete",
+      "artifact_link",
+      "artifact_capture",
+      "artifact_relink",
+      "comment_list",
+      "comment_get",
+      "comment_create",
+      "comment_reply",
+      "comment_resolve",
+      "comment_update",
+      "comment_delete",
     ]);
     expect(tools.some((tool) => tool.name.includes("inline"))).toBe(false);
     expect(tools.find((tool) => tool.name === "artifact_delete")?.annotations)
@@ -678,6 +713,7 @@ describe("modern MCP HTTP", () => {
         return Effect.succeed({
           authorizedByPrincipalId: "external-issuer",
           capabilities: ["artifact:read"],
+          displayName: "External reader",
           id: "external-reader",
           installationId: token === readToken ? "local" : "other-installation",
           kind: "service",
@@ -743,6 +779,169 @@ describe("modern MCP HTTP", () => {
       error: "server_error",
     });
   });
+
+  test("the linked-file tools answer the stable coded error while the capability is off", async () => {
+    expect.hasAssertions();
+    const capabilities = z.object({
+      linkedArtifacts: z.object({available: z.boolean()}),
+    }).loose().parse((await callTool(server, installation.apiToken, {
+      arguments: {},
+      name: "artifact_capabilities",
+    })).structuredContent);
+    expect(capabilities.linkedArtifacts.available).toBe(false);
+
+    const calls = [
+      {arguments: {path: "/absent/notes.md"}, name: "artifact_link"},
+      {
+        arguments: {
+          artifactId: "art_missing",
+          expectedCurrentVersionId: "ver_missing",
+        },
+        name: "artifact_capture",
+      },
+      {
+        arguments: {
+          artifactId: "art_missing",
+          expectedSha256: "a".repeat(64),
+          path: "/absent/notes.md",
+        },
+        name: "artifact_relink",
+      },
+    ];
+    const results = await Promise.all(calls.map((invocation) =>
+      callTool(server, installation.apiToken, invocation)
+    ));
+    for (const result of results) {
+      expect(result).toMatchObject({
+        isError: true,
+        structuredContent: {error: {code: "CAPABILITY_UNAVAILABLE"}},
+      });
+      expect(result.content[0]?.text).toContain("CAPABILITY_UNAVAILABLE");
+    }
+  });
+
+  test("the linked-file tools link, capture, and relink one file on the server machine", async () => {
+    expect.hasAssertions();
+    const linkRoot = await realpath(
+      await mkdtemp(path.join(tmpdir(), "artifact-server-mcp-linked-")),
+    );
+    const sourcePath = path.join(linkRoot, "notes.md");
+    const movedPath = path.join(linkRoot, "moved-notes.md");
+    const driftedBytes = "# drifted state\n";
+    await writeFile(sourcePath, "# original state\n");
+    await server.stop();
+    server = await startTestServer(installation, {
+      linkRoots: [linkRoot],
+      linkedFiles: "on",
+    });
+
+    try {
+      const capabilities = z.object({
+        linkedArtifacts: z.object({available: z.boolean()}),
+      }).loose().parse((await callTool(server, installation.apiToken, {
+        arguments: {},
+        name: "artifact_capabilities",
+      })).structuredContent);
+      expect(capabilities.linkedArtifacts.available).toBe(true);
+
+      const linkResult = await callTool(server, installation.apiToken, {
+        arguments: {path: sourcePath},
+        name: "artifact_link",
+      });
+      expect(linkResult.isError).not.toBe(true);
+      const linked = linkedPublicationResultSchema.parse(
+        linkResult.structuredContent,
+      );
+      expect(linked.artifact.name).toBe("notes.md");
+      expect(linked.sourceBinding).toMatchObject({
+        path: sourcePath,
+        status: "in-sync",
+      });
+      expect(new URL(linked.links.live ?? "").hostname.startsWith("live-"))
+        .toBe(true);
+
+      await writeFile(sourcePath, driftedBytes);
+      const stale = await callTool(server, installation.apiToken, {
+        arguments: {
+          artifactId: linked.artifact.id,
+          expectedCurrentVersionId: "ver_that_never_existed",
+        },
+        name: "artifact_capture",
+      });
+      expect(stale.isError).toBe(true);
+      const staleText = stale.content[0]?.text ?? "";
+      expect(staleText).toContain("PUBLISH_CONFLICT");
+      expect(staleText).toContain(linked.version.id);
+      expect(staleText).toContain("expectedCurrentVersionId");
+
+      const captured = linkedPublicationResultSchema.parse(
+        (await callTool(server, installation.apiToken, {
+          arguments: {
+            artifactId: linked.artifact.id,
+            expectedCurrentVersionId: linked.version.id,
+          },
+          name: "artifact_capture",
+        })).structuredContent,
+      );
+      expect(captured.version.id).not.toBe(linked.version.id);
+      expect(captured.version.number).toBe(2);
+      expect(captured.sourceBinding.status).toBe("in-sync");
+
+      const unchanged = linkedPublicationResultSchema.parse(
+        (await callTool(server, installation.apiToken, {
+          arguments: {
+            artifactId: linked.artifact.id,
+            expectedCurrentVersionId: captured.version.id,
+          },
+          name: "artifact_capture",
+        })).structuredContent,
+      );
+      expect(unchanged.version.id).toBe(captured.version.id);
+      expect(unchanged.replayed).toBe(true);
+
+      await rename(sourcePath, movedPath);
+      const expectedSha256 = createHash("sha256")
+        .update(driftedBytes)
+        .digest("hex");
+      const mismatched = await callTool(server, installation.apiToken, {
+        arguments: {
+          artifactId: linked.artifact.id,
+          expectedSha256: "b".repeat(64),
+          path: movedPath,
+        },
+        name: "artifact_relink",
+      });
+      expect(mismatched).toMatchObject({
+        isError: true,
+        structuredContent: {error: {code: "INVALID_LINK_PATH"}},
+      });
+
+      const relinked = z.object({
+        artifactId: z.string(),
+        sourceBinding: sourceBindingResultSchema,
+      }).parse((await callTool(server, installation.apiToken, {
+        arguments: {
+          artifactId: linked.artifact.id,
+          expectedSha256,
+          path: movedPath,
+        },
+        name: "artifact_relink",
+      })).structuredContent);
+      expect(relinked.artifactId).toBe(linked.artifact.id);
+      expect(relinked.sourceBinding).toMatchObject({
+        path: movedPath,
+        status: "in-sync",
+      });
+
+      const outsideRoots = await callTool(server, installation.apiToken, {
+        arguments: {path: path.join(installation.dataDirectory, "artifact-server.db")},
+        name: "artifact_link",
+      });
+      expect(outsideRoots.isError).toBe(true);
+    } finally {
+      await rm(linkRoot, {force: true, recursive: true});
+    }
+  });
 });
 
 interface ToolInvocation {
@@ -762,10 +961,14 @@ type McpParameterValue =
   | readonly McpParameterValue[]
   | McpParameters;
 
-function declaredMcpFile(path: string, mediaType: string, bytes: Uint8Array) {
+function declaredMcpFile(
+  manifestPath: string,
+  mediaType: string,
+  bytes: Uint8Array,
+) {
   return {
     mediaType,
-    path,
+    path: manifestPath,
     sha256: createHash("sha256").update(bytes).digest("hex"),
     size: bytes.byteLength,
   };

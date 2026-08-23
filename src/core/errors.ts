@@ -2,10 +2,15 @@ import { Schema } from "effect";
 
 /** Stable error codes exposed by Artifact Server protocols. */
 export const errorCodes = {
+  agentNotFound: "AGENT_NOT_FOUND",
   artifactNotFound: "ARTIFACT_NOT_FOUND",
   artifactMutationConflict: "ARTIFACT_MUTATION_CONFLICT",
   authorizationDenied: "AUTHORIZATION_DENIED",
   authenticationRequired: "AUTHENTICATION_REQUIRED",
+  commentNotFound: "COMMENT_NOT_FOUND",
+  commentResolved: "COMMENT_RESOLVED",
+  dispatchNotFound: "DISPATCH_NOT_FOUND",
+  dispatchStateConflict: "DISPATCH_STATE_CONFLICT",
   contentBootstrapRejected: "CONTENT_BOOTSTRAP_REJECTED",
   contentNotPublic: "CONTENT_NOT_PUBLIC",
   idempotencyConflict: "IDEMPOTENCY_CONFLICT",
@@ -14,9 +19,18 @@ export const errorCodes = {
   identityNotFound: "IDENTITY_NOT_FOUND",
   identityProviderFailure: "IDENTITY_PROVIDER_FAILURE",
   interactiveLoginUnavailable: "INTERACTIVE_LOGIN_UNAVAILABLE",
+  invalidComment: "INVALID_COMMENT",
+  invalidDispatch: "INVALID_DISPATCH",
   invalidInput: "INVALID_INPUT",
+  invalidLinkPath: "INVALID_LINK_PATH",
   invalidManifestPath: "INVALID_MANIFEST_PATH",
+  linkPathOutsideRoots: "LINK_PATH_OUTSIDE_ROOTS",
+  linkPathProtected: "LINK_PATH_PROTECTED",
   methodNotAllowed: "METHOD_NOT_ALLOWED",
+  capabilityUnavailable: "CAPABILITY_UNAVAILABLE",
+  sourceDrifted: "SOURCE_DRIFTED",
+  sourceMissing: "SOURCE_MISSING",
+  sourceUnreadable: "SOURCE_UNREADABLE",
   publishConflict: "PUBLISH_CONFLICT",
   projectArchived: "PROJECT_ARCHIVED",
   projectConflict: "PROJECT_CONFLICT",
@@ -86,6 +100,48 @@ export class IdentityProviderFailure extends Schema.TaggedError<IdentityProvider
 /** An interactive login attempt is invalid, expired, or already consumed. */
 export class LoginAttemptRejected extends Schema.TaggedError<LoginAttemptRejected>()(
   "LoginAttemptRejected",
+  messageField,
+) {}
+
+/** The requested comment thread or reply does not exist on the artifact. */
+export class CommentNotFound extends Schema.TaggedError<CommentNotFound>()(
+  "CommentNotFound",
+  messageField,
+) {}
+
+/** A reply was attempted on a comment thread that is already resolved. */
+export class CommentResolved extends Schema.TaggedError<CommentResolved>()(
+  "CommentResolved",
+  messageField,
+) {}
+
+/** A comment body, anchor, or file path does not meet the comment contract. */
+export class InvalidComment extends Schema.TaggedError<InvalidComment>()(
+  "InvalidComment",
+  messageField,
+) {}
+
+/** The requested registered agent does not exist in this installation. */
+export class AgentNotFound extends Schema.TaggedError<AgentNotFound>()(
+  "AgentNotFound",
+  messageField,
+) {}
+
+/** The requested agent dispatch does not exist in this project. */
+export class AgentDispatchNotFound extends Schema.TaggedError<AgentDispatchNotFound>()(
+  "AgentDispatchNotFound",
+  messageField,
+) {}
+
+/** A dispatch registration or bundle does not meet the dispatch contract. */
+export class InvalidDispatch extends Schema.TaggedError<InvalidDispatch>()(
+  "InvalidDispatch",
+  messageField,
+) {}
+
+/** A dispatch report, claim, or cancellation conflicts with its state. */
+export class DispatchStateConflict extends Schema.TaggedError<DispatchStateConflict>()(
+  "DispatchStateConflict",
   messageField,
 ) {}
 
@@ -245,6 +301,52 @@ export class ContentNotPublic extends Schema.TaggedError<ContentNotPublic>()(
   messageField,
 ) {}
 
+/**
+ * A presented link path cannot become a source binding. Messages never carry
+ * the path itself, so surfaced or logged failures disclose no filesystem
+ * layout.
+ */
+export class InvalidLinkPath extends Schema.TaggedError<InvalidLinkPath>()(
+  "InvalidLinkPath",
+  messageField,
+) {}
+
+/** A canonicalized link path resolves outside every configured link root. */
+export class LinkPathOutsideRoots extends Schema.TaggedError<LinkPathOutsideRoots>()(
+  "LinkPathOutsideRoots",
+  messageField,
+) {}
+
+/** A canonicalized link path selects Artifact Server's own durable state. */
+export class LinkPathProtected extends Schema.TaggedError<LinkPathProtected>()(
+  "LinkPathProtected",
+  messageField,
+) {}
+
+/** A linked source changed while its bytes were being read; retry the read. */
+export class SourceDrifted extends Schema.TaggedError<SourceDrifted>()(
+  "SourceDrifted",
+  messageField,
+) {}
+
+/** A linked source file no longer exists at its bound canonical path. */
+export class SourceMissing extends Schema.TaggedError<SourceMissing>()(
+  "SourceMissing",
+  messageField,
+) {}
+
+/** A linked source file exists but cannot be opened as the bound regular file. */
+export class SourceUnreadable extends Schema.TaggedError<SourceUnreadable>()(
+  "SourceUnreadable",
+  messageField,
+) {}
+
+/** A deployment-gated capability is not available on this installation. */
+export class CapabilityUnavailable extends Schema.TaggedError<CapabilityUnavailable>()(
+  "CapabilityUnavailable",
+  messageField,
+) {}
+
 /** An outbound repository operation failed unexpectedly. */
 export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactRepositoryFailure>()(
   "ArtifactRepositoryFailure",
@@ -252,35 +354,63 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
     cause: Schema.Defect(),
     operation: Schema.Literals([
       "assertPublicationSourceReady",
+      "cancelAgentDispatch",
       "changeAccessSetting",
       "changeTags",
+      "claimAgentDispatch",
       "commitNewArtifact",
       "commitVersion",
+      "createAgentDispatch",
+      "createCommentReply",
+      "createCommentThread",
       "createContentBootstrap",
       "createStagedUpload",
       "exchangeContentBootstrap",
+      "linkedSource",
+      "deleteCommentReply",
+      "deleteCommentThread",
+      "disconnectRegisteredAgent",
+      "findAgentDispatch",
       "findArtifact",
       "findArtifactForAdministration",
-      "findArtifactVersion",
+      "findVersionRecord",
+      "findCommentThread",
+      "findRegisteredAgent",
       "findContentSession",
       "findCurrentVersion",
+      "findIdempotentCommentReply",
+      "findIdempotentCommentThread",
       "findIdempotentPublication",
       "findStagedUpload",
       "findVersionContent",
       "deleteArtifact",
+      "listAgentDispatches",
       "listArtifactActions",
       "listArtifacts",
+      "listCommentReplies",
+      "listCommentThreads",
       "listArtifactVersions",
       "listPublicLinks",
       "listExpiredStagedUploads",
+      "listRegisteredAgents",
+      "markAgentDispatchDelivered",
+      "markAgentDispatchFailed",
       "markStagedFileUploaded",
+      "observeAgentDispatchAddressed",
+      "registerAgent",
       "removeExpiredStagedUpload",
       "restoreVersion",
+      "updateCommentReply",
+      "updateCommentThread",
+      "versionContainsPath",
       "createProject",
+      "estimateProjectGitHistory",
       "findProject",
       "listProjects",
+      "readProjectGitHistorySetting",
       "renameProject",
       "setProjectArchive",
+      "storeProjectGitHistorySetting",
     ]),
   },
 ) {}
@@ -332,9 +462,16 @@ export class StagingStorageFailure extends Schema.TaggedError<StagingStorageFail
 ) {}
 
 const artifactServerFailureSchema = Schema.Union([
+  AgentDispatchNotFound,
+  AgentNotFound,
   ArtifactNotFound,
   ArtifactMutationConflict,
   AuthenticationRequired,
+  CommentNotFound,
+  CommentResolved,
+  DispatchStateConflict,
+  InvalidComment,
+  InvalidDispatch,
   IdentityAdmissionDenied,
   IdentityConflict,
   IdentityNotFound,
@@ -367,6 +504,13 @@ const artifactServerFailureSchema = Schema.Union([
   UploadNotFound,
   VersionNotFound,
   ContentNotPublic,
+  InvalidLinkPath,
+  LinkPathOutsideRoots,
+  LinkPathProtected,
+  SourceDrifted,
+  SourceMissing,
+  SourceUnreadable,
+  CapabilityUnavailable,
   ArtifactRepositoryFailure,
   IdentityRepositoryFailure,
   BlobStorageFailure,

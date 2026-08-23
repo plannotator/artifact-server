@@ -351,14 +351,197 @@ const addSpaRouting = Effect.gen(function*() {
       CHECK (routing_mode IN ('static', 'spa'))`);
 });
 
+const addCommentThreads = Effect.gen(function*() {
+  const sql = yield* SqlClient;
+  const statements = [
+    `CREATE TABLE comment_threads (
+      installation_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      artifact_id TEXT NOT NULL,
+      version_id TEXT NOT NULL,
+      path TEXT,
+      anchor_json TEXT,
+      body TEXT NOT NULL,
+      state TEXT NOT NULL CHECK (state IN ('open', 'resolved')),
+      author_principal_id TEXT NOT NULL,
+      author_principal_kind TEXT NOT NULL
+        CHECK (author_principal_kind IN ('human', 'service')),
+      author_display_name TEXT NOT NULL,
+      author_authorized_by_principal_id TEXT,
+      resolved_at TEXT,
+      resolved_by_principal_id TEXT,
+      resolved_by_principal_kind TEXT
+        CHECK (
+          resolved_by_principal_kind IS NULL
+          OR resolved_by_principal_kind IN ('human', 'service')
+        ),
+      resolved_by_display_name TEXT,
+      resolved_by_authorized_by_principal_id TEXT,
+      idempotency_key TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (installation_id, id),
+      UNIQUE (installation_id, project_id, id),
+      UNIQUE (installation_id, project_id, idempotency_key),
+      FOREIGN KEY (installation_id, project_id, artifact_id)
+        REFERENCES artifacts(installation_id, project_id, id),
+      FOREIGN KEY (installation_id, project_id, version_id)
+        REFERENCES versions(installation_id, project_id, id)
+    )`,
+    `CREATE TABLE comment_replies (
+      installation_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      thread_id TEXT NOT NULL,
+      body TEXT NOT NULL,
+      author_principal_id TEXT NOT NULL,
+      author_principal_kind TEXT NOT NULL
+        CHECK (author_principal_kind IN ('human', 'service')),
+      author_display_name TEXT NOT NULL,
+      author_authorized_by_principal_id TEXT,
+      idempotency_key TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (installation_id, id),
+      UNIQUE (installation_id, project_id, idempotency_key),
+      FOREIGN KEY (installation_id, project_id, thread_id)
+        REFERENCES comment_threads(installation_id, project_id, id)
+        ON DELETE CASCADE
+    )`,
+    `ALTER TABLE actions
+      DROP CONSTRAINT actions_action_check,
+      ADD CONSTRAINT actions_action_check
+        CHECK (action IN (
+          'publish', 'restore', 'change_access', 'change_tags', 'delete',
+          'comment_create', 'comment_reply', 'comment_update',
+          'comment_resolve', 'comment_reopen', 'comment_delete'
+        ))`,
+    `CREATE INDEX comment_threads_artifact_created
+      ON comment_threads (installation_id, project_id, artifact_id, created_at DESC, id DESC)`,
+    `CREATE INDEX comment_threads_version_created
+      ON comment_threads (installation_id, project_id, version_id, created_at DESC, id DESC)`,
+    `CREATE INDEX comment_threads_updated
+      ON comment_threads (installation_id, project_id, artifact_id, updated_at)`,
+    `CREATE INDEX comment_replies_thread_created
+      ON comment_replies (installation_id, thread_id, created_at, id)`,
+  ] as const;
+
+  for (const statement of statements) {
+    yield* sql.unsafe(statement);
+  }
+});
+
+const addLoginAttemptNonce = Effect.gen(function*() {
+  const sql = yield* SqlClient;
+  yield* sql.unsafe("ALTER TABLE login_attempts ADD COLUMN nonce TEXT");
+});
+
+const addAgentDispatch = Effect.gen(function*() {
+  const sql = yield* SqlClient;
+  const statements = [
+    `CREATE TABLE registered_agents (
+      installation_id TEXT NOT NULL REFERENCES artifact_installations(id),
+      id TEXT NOT NULL,
+      connection_key TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('pi')),
+      working_directory TEXT NOT NULL,
+      agent_session_id TEXT,
+      principal_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      PRIMARY KEY (installation_id, id),
+      UNIQUE (installation_id, principal_id, connection_key)
+    )`,
+    `CREATE TABLE agent_dispatches (
+      installation_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      agent_display_name TEXT NOT NULL,
+      thread_ids_json TEXT NOT NULL,
+      note TEXT,
+      state TEXT NOT NULL CHECK (state IN (
+        'queued', 'claimed', 'delivered', 'addressed', 'failed', 'canceled'
+      )),
+      sender_principal_id TEXT NOT NULL,
+      sender_principal_kind TEXT NOT NULL
+        CHECK (sender_principal_kind IN ('human', 'service')),
+      sender_display_name TEXT NOT NULL,
+      sender_authorized_by_principal_id TEXT,
+      idempotency_key TEXT NOT NULL,
+      claimed_at TEXT,
+      lease_expires_at TEXT,
+      delivered_at TEXT,
+      addressed_at TEXT,
+      failed_at TEXT,
+      failure_reason TEXT,
+      canceled_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (installation_id, id),
+      UNIQUE (installation_id, project_id, id),
+      UNIQUE (installation_id, project_id, idempotency_key),
+      FOREIGN KEY (installation_id, project_id)
+        REFERENCES projects(installation_id, id)
+    )`,
+    `ALTER TABLE comment_threads ADD COLUMN dispatch_id TEXT`,
+    `ALTER TABLE comment_threads ADD CONSTRAINT comment_threads_dispatch_fk
+      FOREIGN KEY (installation_id, dispatch_id)
+      REFERENCES agent_dispatches(installation_id, id)`,
+    `CREATE INDEX agent_dispatches_claim
+      ON agent_dispatches (installation_id, agent_id, state, created_at, id)`,
+    `CREATE INDEX agent_dispatches_project_created
+      ON agent_dispatches (installation_id, project_id, created_at DESC, id DESC)`,
+    `CREATE INDEX comment_threads_dispatch
+      ON comment_threads (installation_id, dispatch_id)`,
+  ] as const;
+
+  for (const statement of statements) {
+    yield* sql.unsafe(statement);
+  }
+});
+
+const addGitHistoryProviderIdentity = Effect.gen(function*() {
+  const sql = yield* SqlClient;
+  yield* sql.unsafe(`CREATE TABLE git_history_provider_identity (
+    installation_id TEXT PRIMARY KEY REFERENCES artifact_installations(id),
+    provider TEXT NOT NULL CHECK (provider = 'cloudflare-artifacts'),
+    account_id TEXT NOT NULL,
+    namespace TEXT NOT NULL,
+    activated_at TEXT NOT NULL,
+    UNIQUE (provider, account_id, namespace)
+  )`);
+});
+
+const addProjectGitHistorySetting = Effect.gen(function*() {
+  const sql = yield* SqlClient;
+  yield* sql.unsafe(`CREATE TABLE git_history_project_settings (
+    installation_id TEXT NOT NULL REFERENCES artifact_installations(id),
+    project_id TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL,
+    updated_by_principal_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (installation_id, project_id),
+    FOREIGN KEY (installation_id, project_id)
+      REFERENCES projects(installation_id, id)
+  )`);
+});
+
 const migrationLoader = Migrator.fromRecord({
   "0001_initial_shared_schema": initialSchema,
   "0002_project_scoped_artifacts": addProjectScope,
   "0003_spa_routing": addSpaRouting,
+  "0004_comment_threads": addCommentThreads,
+  "0005_login_attempt_nonce": addLoginAttemptNonce,
+  "0006_agent_dispatch": addAgentDispatch,
+  "0007_git_history_provider_identity": addGitHistoryProviderIdentity,
+  "0008_project_git_history_setting": addProjectGitHistorySetting,
 });
 
 /** Schema revision required by this Artifact Server build. */
-export const requiredPostgresSchemaVersion = 3;
+export const requiredPostgresSchemaVersion = 8;
 
 /** Migration compatibility observed without changing Postgres. */
 export interface PostgresMigrationStatus {
@@ -422,6 +605,21 @@ export const readPostgresMigrationStatus = Effect.gen(function*() {
   }, {
     migration_id: 3,
     name: "spa_routing",
+  }, {
+    migration_id: 4,
+    name: "comment_threads",
+  }, {
+    migration_id: 5,
+    name: "login_attempt_nonce",
+  }, {
+    migration_id: 6,
+    name: "agent_dispatch",
+  }, {
+    migration_id: 7,
+    name: "git_history_provider_identity",
+  }, {
+    migration_id: 8,
+    name: "project_git_history_setting",
   }] as const;
   const observedRequiredHistory = rows.filter(
     (row) => row.migration_id <= requiredPostgresSchemaVersion,

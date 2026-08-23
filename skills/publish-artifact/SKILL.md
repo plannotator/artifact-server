@@ -64,6 +64,16 @@ artifactserver publish "<path>" --profile "<profile>" --server "<origin>" --proj
 
 Do not pass `--name`, `--tag`, or `--public` when publishing a new version. Change tags or sharing separately through MCP.
 
+## Check reviewer comments after a new version
+
+Reviewers leave comment threads on an exact artifact version. After publishing a
+new version, call `comment_list` with the previous version ID and `state: "open"`
+to see whether reviewers left open threads. Report those threads to the user, and
+reply with `comment_reply` or close one with `comment_resolve` only when the new
+version or the user's instruction actually answers the thread. Never auto-reply,
+never resolve a thread the user did not address, and never delete another
+person's comment.
+
 ## Open an artifact
 
 Call `artifact_open` with the artifact ID, project ID, and exact version ID when the user named one. Use the returned browser URL.
