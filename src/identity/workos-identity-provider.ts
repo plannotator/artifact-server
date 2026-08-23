@@ -42,6 +42,7 @@ export class WorkOsIdentityProvider implements InteractiveIdentityProvider {
         return {
           authorizationUrl: authorization.url,
           codeVerifier: authorization.codeVerifier,
+          nonce: null,
           state: authorization.state,
         };
       },
@@ -52,6 +53,7 @@ export class WorkOsIdentityProvider implements InteractiveIdentityProvider {
   complete(
     code: string,
     codeVerifier: string,
+    _nonce: string | null,
   ): Effect.Effect<ExternalIdentity, IdentityProviderFailure> {
     return Effect.tryPromise({
       try: async () => {

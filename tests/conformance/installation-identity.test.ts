@@ -1,5 +1,7 @@
 import {afterEach, beforeEach, describe, expect, test} from "vitest";
 import {createHash} from "node:crypto";
+import path from "node:path";
+import {DatabaseSync} from "node:sqlite";
 import {Effect, Redacted} from "effect";
 import {z} from "zod";
 
@@ -15,9 +17,14 @@ import {
 import type {ExternalIdentity} from "../../src/core/installation-identity.js";
 import type {Clock} from "../../src/core/ports.js";
 import {
+  browserLoginKinds,
+  privateTeamBrowserAccess,
+} from "../../src/core/browser-access.js";
+import {
   createTestInstallation,
   fetchVersion,
   issueLocalBrowserLogin,
+  loginHandshakeCookie,
   type RunningTestServer,
   type TestInstallation,
   removeTestInstallation,
@@ -65,7 +72,7 @@ describe("installation identity and access", () => {
     await removeTestInstallation(installation);
   });
 
-  test("bootstrap membership and managed keys fail closed", async () => {
+  test("AUTH-024-F AUTH-027-B AUTH-027-F AUTH-028-F: bootstrap membership and managed keys fail closed", async () => {
     const rejected = await fetch(`${server.baseUrl}/auth/local`, {
       headers: {Authorization: `Bearer ${"x".repeat(43)}`},
       method: "POST",
@@ -132,6 +139,51 @@ describe("installation identity and access", () => {
       },
     );
     expect(cannotRemoveLastAdministrator.status).toBe(409);
+
+    const replacementAdministratorResponse = await fetch(
+      `${server.baseUrl}/api/v1/members`,
+      {
+        body: JSON.stringify({
+          displayName: "Replacement administrator",
+          email: "replacement-local-administrator@example.test",
+          role: "administrator",
+        }),
+        headers: browserMutationHeaders(server.baseUrl, cookies),
+        method: "POST",
+      },
+    );
+    expect(replacementAdministratorResponse.status).toBe(201);
+    const replacementAdministrator = z.object({
+      member: z.object({id: z.string()}),
+    }).parse(await replacementAdministratorResponse.json()).member;
+    const replacementKeyResponse = await fetch(
+      `${server.baseUrl}/api/v1/api-keys`,
+      {
+        body: JSON.stringify({
+          capabilities: ["artifact:read"],
+          expiresAt: "2099-01-01T00:00:00.000Z",
+          memberId: replacementAdministrator.id,
+          name: "Replacement local administrator key",
+        }),
+        headers: browserMutationHeaders(server.baseUrl, cookies),
+        method: "POST",
+      },
+    );
+    expect(replacementKeyResponse.status).toBe(201);
+    const replacementKey = issuedHumanKeySchema.parse(
+      await replacementKeyResponse.json(),
+    );
+    const cannotRemoveLocalOwner = await fetch(
+      `${server.baseUrl}/api/v1/members/${principal.id}/deactivate`,
+      {
+        headers: {Authorization: `Bearer ${replacementKey.token}`},
+        method: "POST",
+      },
+    );
+    expect(cannotRemoveLocalOwner.status).toBe(403);
+    expect((await fetch(`${server.baseUrl}/api/v1/session`, {
+      headers: {Cookie: cookies.header},
+    })).status).toBe(200);
 
     const pastExpiration = await fetch(`${server.baseUrl}/api/v1/api-keys`, {
       body: JSON.stringify({
@@ -249,6 +301,214 @@ describe("installation identity and access", () => {
     expect(await bearerStatus(server, humanKey.token)).toBe(401);
   });
 
+  test("AUTH-023-B AUTH-023-F AUTH-024-B: local-owner browsers receive a stable session only across the loopback same-origin boundary", async () => {
+    const contextResponse = await fetch(`${server.baseUrl}/auth/context`);
+    expect(contextResponse.status).toBe(200);
+    expect(contextResponse.headers.get("cache-control")).toBe("private, no-store");
+    await expect(contextResponse.json()).resolves.toEqual({
+      accessMode: "local_owner",
+      login: {kind: "local_owner"},
+    });
+
+    const exchange = () => fetch(`${server.baseUrl}/auth/local-owner`, {
+      headers: {
+        Origin: server.baseUrl,
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+      },
+      method: "POST",
+    });
+    const firstExchange = await exchange();
+    expect(firstExchange.status).toBe(204);
+    expect(firstExchange.headers.get("cache-control")).toBe("private, no-store");
+    expect(firstExchange.headers.get("referrer-policy")).toBe("no-referrer");
+    const firstCookies = applicationCookies(firstExchange.headers.getSetCookie());
+    const firstSessionResponse = await fetch(`${server.baseUrl}/api/v1/session`, {
+      headers: {Cookie: firstCookies.header},
+    });
+    const firstPrincipal = sessionResponseSchema.parse(
+      await firstSessionResponse.json(),
+    ).principal;
+
+    const secondExchange = await exchange();
+    expect(secondExchange.status).toBe(204);
+    const secondCookies = applicationCookies(secondExchange.headers.getSetCookie());
+    const secondSessionResponse = await fetch(`${server.baseUrl}/api/v1/session`, {
+      headers: {Cookie: secondCookies.header},
+    });
+    const secondPrincipal = sessionResponseSchema.parse(
+      await secondSessionResponse.json(),
+    ).principal;
+    expect(secondPrincipal.id).toBe(firstPrincipal.id);
+
+    const hostileHeaders = {
+      Origin: server.baseUrl,
+      "Sec-Fetch-Mode": "cors",
+      "Sec-Fetch-Site": "same-origin",
+    };
+    const deniedRequests = [
+      fetch(`${server.baseUrl}/auth/local-owner`, {method: "POST"}),
+      fetch(`${server.baseUrl}/auth/local-owner`, {
+        headers: {...hostileHeaders, Origin: "https://hostile.example"},
+        method: "POST",
+      }),
+      fetch(`${server.baseUrl}/auth/local-owner`, {
+        headers: {...hostileHeaders, "Sec-Fetch-Site": "cross-site"},
+        method: "POST",
+      }),
+      fetch(`${server.baseUrl}/auth/local-owner`, {
+        headers: {...hostileHeaders, "X-Forwarded-For": "127.0.0.1"},
+        method: "POST",
+      }),
+      fetch(`${server.baseUrl}/auth/local-owner`, {
+        headers: {
+          ...hostileHeaders,
+          "X-Artifact-Server-Development-Proxy": "untrusted-proxy",
+        },
+        method: "POST",
+      }),
+      fetch(`${server.baseUrl}/auth/local-owner`, {
+        headers: {
+          ...hostileHeaders,
+          Host: `loopback.example:${server.port}`,
+          Origin: `http://loopback.example:${server.port}`,
+        },
+        method: "POST",
+      }),
+    ];
+    await expect(Promise.all(deniedRequests).then((responses) =>
+      responses.map((response) => response.status)
+    )).resolves.toEqual([403, 403, 403, 403, 403, 403]);
+    await expect(startTestServer(installation, {
+      clock,
+      hostname: "0.0.0.0",
+    })).rejects.toThrow("must bind to an exact loopback address");
+
+    const nonEmpty = await fetch(`${server.baseUrl}/auth/local-owner`, {
+      body: "{}",
+      headers: hostileHeaders,
+      method: "POST",
+    });
+    expect(nonEmpty.status).toBe(422);
+
+    const contentHostContext = await fetchVersion(
+      server,
+      `http://${"c".repeat(32)}.localhost:${server.port}/auth/context`,
+    );
+    expect(contentHostContext.status).toBe(404);
+
+    await server.stop();
+    const developmentProxyCredential = "development-proxy-credential-with-entropy";
+    server = await startTestServer(installation, {
+      clock,
+      developmentProxyCredential,
+    });
+    const proxiedExchange = await fetch(`${server.baseUrl}/auth/local-owner`, {
+      headers: {
+        Origin: server.baseUrl,
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        "X-Artifact-Server-Development-Proxy": developmentProxyCredential,
+      },
+      method: "POST",
+    });
+    expect(proxiedExchange.status).toBe(204);
+  });
+
+  test("AUTH-025-B AUTH-025-F AUTH-026-F: private-team mode advertises its provider and has no local browser bootstrap route", async () => {
+    await server.stop();
+    const provider = new TestIdentityProvider({
+      displayName: "Team administrator",
+      email: "administrator@example.test",
+      emailVerified: true,
+      provider: "test-oidc",
+      subject: "team-administrator",
+    });
+    server = await startTestServer(installation, {
+      browserAccess: privateTeamBrowserAccess(browserLoginKinds.oidc),
+      interactiveIdentityProvider: provider,
+    });
+
+    const contextResponse = await fetch(`${server.baseUrl}/auth/context`);
+    await expect(contextResponse.json()).resolves.toEqual({
+      accessMode: "private_team",
+      login: {kind: "oidc"},
+    });
+    const boundaryHeaders = {
+      Origin: server.baseUrl,
+      "Sec-Fetch-Mode": "cors",
+      "Sec-Fetch-Site": "same-origin",
+    };
+    expect((await fetch(`${server.baseUrl}/auth/local-owner`, {
+      headers: boundaryHeaders,
+      method: "POST",
+    })).status).toBe(404);
+    expect((await fetch(`${server.baseUrl}/auth/local`, {
+      headers: {Authorization: `Bearer ${installation.browserBootstrapToken}`},
+      method: "POST",
+    })).status).toBe(404);
+    expect(await bearerStatus(
+      server,
+      "legacy-installation-bearer-with-sufficient-entropy",
+    )).toBe(401);
+    expect(await bearerStatus(server, installation.apiToken)).toBe(200);
+    await expect(startTestServer(installation, {
+      browserAccess: privateTeamBrowserAccess(browserLoginKinds.oidc),
+    })).rejects.toThrow("requires exactly one OIDC or WorkOS");
+    await expect(startTestServer({
+      ...installation,
+      apiToken: "legacy-installation-bearer-with-sufficient-entropy",
+    }, {
+      browserAccess: privateTeamBrowserAccess(browserLoginKinds.oidc),
+      interactiveIdentityProvider: provider,
+    })).rejects.toThrow("must use the managed as_key_ format");
+  });
+
+  test("concurrent private-team startup cannot seed two machine authorities", async () => {
+    await server.stop();
+    const provider = new TestIdentityProvider({
+      displayName: "Team administrator",
+      email: "administrator@example.test",
+      emailVerified: true,
+      provider: "test-oidc",
+      subject: "team-administrator",
+    });
+    const alternateApiToken =
+      `as_key_key_10000000-0000-4000-8000-000000000000_${"z".repeat(43)}`;
+    const options = {
+      browserAccess: privateTeamBrowserAccess(browserLoginKinds.oidc),
+      interactiveIdentityProvider: provider,
+    } as const;
+    const attempts = await Promise.allSettled([
+      startTestServer(installation, options),
+      startTestServer({...installation, apiToken: alternateApiToken}, options),
+    ]);
+    const started = attempts.filter(
+      (attempt): attempt is PromiseFulfilledResult<RunningTestServer> =>
+        attempt.status === "fulfilled",
+    );
+    const refused = attempts.filter(
+      (attempt): attempt is PromiseRejectedResult => attempt.status === "rejected",
+    );
+    expect(started).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect(String(refused[0]?.reason)).toContain(
+      "bootstrap key id cannot change",
+    );
+    const running = started[0]?.value;
+    if (running === undefined) throw new Error("One private-team server must start.");
+    server = running;
+    const firstWon = attempts[0]?.status === "fulfilled";
+    expect(await bearerStatus(
+      server,
+      firstWon ? installation.apiToken : alternateApiToken,
+    )).toBe(200);
+    expect(await bearerStatus(
+      server,
+      firstWon ? alternateApiToken : installation.apiToken,
+    )).toBe(401);
+  });
+
   test("AUTH-010-B AUTH-010-F AUTH-011-B AUTH-011-F AUTH-012-B AUTH-012-F: browser credentials stay on the application host and mutations require same-origin proof", async () => {
     const localBrowserToken = await issueLocalBrowserLogin(server, installation);
     const login = await fetch(
@@ -337,7 +597,66 @@ describe("installation identity and access", () => {
     expect(afterLogout.status).toBe(401);
   });
 
-  test("AUTH-001-B AUTH-001-F: external login admits only the configured first administrator and consumes state once", async () => {
+  test("AUTH-022-B AUTH-022-F: session authentication caching stays a bounded-staleness optimization", async () => {
+    const sessionStatus = async (cookieHeader: string): Promise<number> => {
+      const response = await fetch(`${server.baseUrl}/api/v1/session`, {
+        headers: {Cookie: cookieHeader},
+      });
+      return response.status;
+    };
+    const loginCookies = async (): Promise<ApplicationCookies> => {
+      const token = await issueLocalBrowserLogin(server, installation);
+      const login = await fetch(
+        `${server.baseUrl}/auth/local?token=${token}`,
+        {redirect: "manual"},
+      );
+      expect(login.status).toBe(303);
+      return applicationCookies(login.headers.getSetCookie());
+    };
+
+    expect(await sessionStatus(`artifact_session=${"s".repeat(43)}`)).toBe(401);
+
+    const revoked = await loginCookies();
+    expect(await sessionStatus(revoked.header)).toBe(200);
+    // Another replica revokes the session directly in shared storage; this
+    // process receives no eviction signal, so its warmed check keeps
+    // succeeding until the 30-second cache bound passes.
+    const database = new DatabaseSync(
+      path.join(installation.dataDirectory, "artifact-server.db"),
+    );
+    try {
+      database
+        .prepare("UPDATE application_sessions SET revoked_at = ?")
+        .run(clock.now().toISOString());
+    } finally {
+      database.close();
+    }
+    expect(await sessionStatus(revoked.header)).toBe(200);
+    clock.advance(30_001);
+    expect(await sessionStatus(revoked.header)).toBe(401);
+    // The storage refusal is not cached into a later success.
+    expect(await sessionStatus(revoked.header)).toBe(401);
+
+    // Same-process logout evicts immediately instead of waiting out the bound.
+    const loggedOut = await loginCookies();
+    expect(await sessionStatus(loggedOut.header)).toBe(200);
+    const logoutResponse = await fetch(`${server.baseUrl}/api/v1/session/logout`, {
+      headers: browserMutationHeaders(server.baseUrl, loggedOut),
+      method: "POST",
+    });
+    expect(logoutResponse.status).toBe(204);
+    expect(await sessionStatus(loggedOut.header)).toBe(401);
+
+    // A warmed entry never outlives the session's absolute expiry, even
+    // inside a fresh 30-second cache window.
+    const expiring = await loginCookies();
+    clock.advance(12 * 60 * 60 * 1_000 - 10_000);
+    expect(await sessionStatus(expiring.header)).toBe(200);
+    clock.advance(15_000);
+    expect(await sessionStatus(expiring.header)).toBe(401);
+  });
+
+  test("AUTH-001-B AUTH-001-F AUTH-028-B: external login admits only the configured first administrator and consumes state once", async () => {
     await server.stop();
     const provider = new TestIdentityProvider({
       displayName: "Michael Ramos",
@@ -348,6 +667,7 @@ describe("installation identity and access", () => {
     });
     server = await startTestServer(installation, {
       bootstrapAdministratorEmail: "ramos@plannotator.ai",
+      browserAccess: privateTeamBrowserAccess(browserLoginKinds.workOs),
       interactiveIdentityProvider: provider,
     });
 
@@ -361,7 +681,14 @@ describe("installation identity and access", () => {
     const callbackUrl = new URL("/auth/callback", server.baseUrl);
     callbackUrl.searchParams.set("code", provider.authorizationCode);
     callbackUrl.searchParams.set("state", provider.authorization.state);
-    const completed = await fetch(callbackUrl, {redirect: "manual"});
+    const handshake = loginHandshakeCookie(started);
+    const unboundCallback = await fetch(callbackUrl, {redirect: "manual"});
+    expect(unboundCallback.status).toBe(401);
+    expect(unboundCallback.headers.getSetCookie()).toEqual([]);
+    const completed = await fetch(callbackUrl, {
+      headers: {Cookie: handshake},
+      redirect: "manual",
+    });
     expect(completed.status).toBe(303);
     expect(completed.headers.get("location")).toBe("/api/v1/session");
     expect(provider.completedCodeVerifier).toBe(provider.authorization.codeVerifier);
@@ -374,7 +701,10 @@ describe("installation identity and access", () => {
       await signedInSession.json(),
     ).principal;
 
-    const replay = await fetch(callbackUrl, {redirect: "manual"});
+    const replay = await fetch(callbackUrl, {
+      headers: {Cookie: handshake},
+      redirect: "manual",
+    });
     expect(replay.status).toBe(401);
 
     const replacementAdministratorResponse = await fetch(
@@ -393,25 +723,72 @@ describe("installation identity and access", () => {
     const replacementAdministrator = z.object({
       member: z.object({email: z.string(), id: z.string()}),
     }).parse(await replacementAdministratorResponse.json()).member;
-    expect((await fetch(
-      `${server.baseUrl}/api/v1/members/${firstAdministrator.id}/deactivate`,
-      {
-        headers: browserMutationHeaders(server.baseUrl, cookies),
-        method: "POST",
-      },
-    )).status).toBe(200);
-
     provider.identity = {
       ...provider.identity,
       email: replacementAdministrator.email,
     };
-    expect((await fetch(`${server.baseUrl}/auth/login`, {
+    const rebindStart = await fetch(`${server.baseUrl}/auth/login`, {
       redirect: "manual",
-    })).status).toBe(302);
+    });
+    expect(rebindStart.status).toBe(302);
     const rebindCallback = new URL("/auth/callback", server.baseUrl);
     rebindCallback.searchParams.set("code", provider.authorizationCode);
     rebindCallback.searchParams.set("state", provider.authorization.state);
-    expect((await fetch(rebindCallback, {redirect: "manual"})).status).toBe(409);
+    expect((await fetch(rebindCallback, {
+      headers: {Cookie: loginHandshakeCookie(rebindStart)},
+      redirect: "manual",
+    })).status).toBe(303);
+
+    provider.identity = {
+      ...provider.identity,
+      subject: "replacement-administrator",
+    };
+    const replacementStart = await fetch(`${server.baseUrl}/auth/login`, {
+      redirect: "manual",
+    });
+    const replacementCallback = new URL("/auth/callback", server.baseUrl);
+    replacementCallback.searchParams.set("code", provider.authorizationCode);
+    replacementCallback.searchParams.set("state", provider.authorization.state);
+    const replacementCompleted = await fetch(replacementCallback, {
+      headers: {Cookie: loginHandshakeCookie(replacementStart)},
+      redirect: "manual",
+    });
+    expect(replacementCompleted.status).toBe(303);
+    const replacementCookies = applicationCookies(
+      replacementCompleted.headers.getSetCookie(),
+    );
+    expect((await fetch(
+      `${server.baseUrl}/api/v1/members/${firstAdministrator.id}/deactivate`,
+      {
+        headers: browserMutationHeaders(server.baseUrl, replacementCookies),
+        method: "POST",
+      },
+    )).status).toBe(200);
+    expect((await fetch(`${server.baseUrl}/api/v1/session`, {
+      headers: {Cookie: cookies.header},
+    })).status).toBe(401);
+    expect(await bearerStatus(server, installation.apiToken)).toBe(200);
+
+    provider.identity = {
+      ...provider.identity,
+      subject: "workos-user-ramos",
+    };
+    const conflictingRebindStart = await fetch(`${server.baseUrl}/auth/login`, {
+      redirect: "manual",
+    });
+    const conflictingRebindCallback = new URL("/auth/callback", server.baseUrl);
+    conflictingRebindCallback.searchParams.set(
+      "code",
+      provider.authorizationCode,
+    );
+    conflictingRebindCallback.searchParams.set(
+      "state",
+      provider.authorization.state,
+    );
+    expect((await fetch(conflictingRebindCallback, {
+      headers: {Cookie: loginHandshakeCookie(conflictingRebindStart)},
+      redirect: "manual",
+    })).status).toBe(409);
 
     provider.identity = {
       ...provider.identity,
@@ -425,7 +802,31 @@ describe("installation identity and access", () => {
     const outsideCallback = new URL("/auth/callback", server.baseUrl);
     outsideCallback.searchParams.set("code", provider.authorizationCode);
     outsideCallback.searchParams.set("state", provider.authorization.state);
-    expect((await fetch(outsideCallback, {redirect: "manual"})).status).toBe(403);
+    expect((await fetch(outsideCallback, {
+      headers: {Cookie: loginHandshakeCookie(outsideStart)},
+      redirect: "manual",
+    })).status).toBe(403);
+
+    const keysResponse = await fetch(`${server.baseUrl}/api/v1/api-keys`, {
+      headers: {Cookie: replacementCookies.header},
+    });
+    expect(keysResponse.status).toBe(200);
+    const bootstrapKey = z.object({
+      apiKeys: z.array(z.object({id: z.string(), name: z.string()})),
+    }).parse(await keysResponse.json()).apiKeys.find(
+      (key) => key.name === "Installation bootstrap key",
+    );
+    expect(bootstrapKey).toBeDefined();
+    if (bootstrapKey === undefined) throw new Error("The bootstrap key is missing.");
+    const revokedBootstrap = await fetch(
+      `${server.baseUrl}/api/v1/api-keys/${bootstrapKey.id}/revoke`,
+      {
+        headers: browserMutationHeaders(server.baseUrl, replacementCookies),
+        method: "POST",
+      },
+    );
+    expect(revokedBootstrap.status).toBe(200);
+    expect(await bearerStatus(server, installation.apiToken)).toBe(401);
   });
 
   test("external login reports a malformed verified identity as a typed conflict", async () => {
@@ -439,16 +840,21 @@ describe("installation identity and access", () => {
     });
     server = await startTestServer(installation, {
       bootstrapAdministratorEmail: "ramos@plannotator.ai",
+      browserAccess: privateTeamBrowserAccess(browserLoginKinds.workOs),
       interactiveIdentityProvider: provider,
     });
 
-    expect((await fetch(`${server.baseUrl}/auth/login`, {
+    const started = await fetch(`${server.baseUrl}/auth/login`, {
       redirect: "manual",
-    })).status).toBe(302);
+    });
+    expect(started.status).toBe(302);
     const callback = new URL("/auth/callback", server.baseUrl);
     callback.searchParams.set("code", provider.authorizationCode);
     callback.searchParams.set("state", provider.authorization.state);
-    const response = await fetch(callback, {redirect: "manual"});
+    const response = await fetch(callback, {
+      headers: {Cookie: loginHandshakeCookie(started)},
+      redirect: "manual",
+    });
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
@@ -469,6 +875,7 @@ describe("installation identity and access", () => {
           ? Effect.succeed({
             authorizedByPrincipalId: "external-issuer",
             capabilities: ["artifact:read"],
+            displayName: "External service",
             id: "external-service",
             installationId: "local",
             kind: "service",
@@ -530,6 +937,7 @@ class TestIdentityProvider implements InteractiveIdentityProvider {
   authorization: InteractiveAuthorization = {
     authorizationUrl: "https://identity.example/authorize",
     codeVerifier: "test-code-verifier-with-sufficient-entropy",
+    nonce: null,
     state: "test-login-state-with-sufficient-entropy-0",
   };
   readonly authorizationCode = "test-authorization-code";

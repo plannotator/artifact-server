@@ -4,6 +4,11 @@ import { Context, Effect, Layer, Redacted } from "effect";
 
 import type { AuthenticatedApplicationSession } from "./authentication.js";
 import {
+  AuthenticationCache,
+  type AuthenticationCachePolicy,
+  defaultAuthenticationCachePolicy,
+} from "./authentication-cache.js";
+import {
   AuthenticationRequired,
   AuthorizationDenied,
   IdentityAdmissionDenied,
@@ -21,6 +26,7 @@ import {
   type IssuedApplicationSession,
   type IssuedManagedApiKey,
   type LoginAttempt,
+  managedApiKeyCredentialPattern,
   type ManagedApiKey,
   memberStatuses,
   type StoredManagedApiKey,
@@ -35,8 +41,6 @@ import {
   type PrincipalCapability,
 } from "../core/identity.js";
 
-const managedApiKeyPattern =
-  /^as_key_(key_[0-9a-f-]+)_([A-Za-z0-9_-]{32,})$/u;
 const allCapabilities = Object.values(principalCapabilities);
 const localBrowserLoginProvider = "artifact-server-local";
 
@@ -157,12 +161,23 @@ export interface IdentityIdProvider {
 }
 
 export interface InstallationAccessDependencies {
+  /**
+   * Bounded-staleness cache policy for successful session and managed-key
+   * authentication, keyed by installation and credential digest. Omit it to
+   * apply {@link defaultAuthenticationCachePolicy}; pass `null` to disable
+   * caching. Only successes are cached, entries never outlive the credential's
+   * own expiry, and local revocation paths evict, so a credential revoked in
+   * another process may authenticate here for at most the TTL.
+   */
+  readonly authenticationCache?: AuthenticationCachePolicy | null;
   readonly bootstrapAdministratorEmail: string;
   readonly clock: {readonly now: () => Date};
   readonly ids: IdentityIdProvider;
   readonly installationId: string;
   readonly localBootstrapCredential: Redacted.Redacted | null;
   readonly localLoginAttemptLifetimeMilliseconds: number;
+  /** Keep the installation's local-owner member permanently active. */
+  readonly protectBootstrapAdministrator: boolean;
   readonly repository: InstallationIdentityRepository;
   readonly secrets: IdentitySecretProvider;
   readonly sessionLifetimeMilliseconds: number;
@@ -260,6 +275,11 @@ export interface InstallationAccessOperations {
     IssuedApplicationSession,
     IdentityConflict | IdentityRepositoryFailure | LoginAttemptRejected
   >;
+  /** Issue a session for the stable administrator of a local-owner process. */
+  readonly loginAsLocalOwner: () => Effect.Effect<
+    IssuedApplicationSession,
+    IdentityConflict | IdentityRepositoryFailure
+  >;
   readonly revokeApiKey: (
     principal: Principal,
     keyId: string,
@@ -296,6 +316,18 @@ export class InstallationAccessService extends Context.Service<
 function makeInstallationAccessService(
   dependencies: InstallationAccessDependencies,
 ): InstallationAccessOperations {
+  const cachePolicy = dependencies.authenticationCache === undefined
+    ? defaultAuthenticationCachePolicy
+    : dependencies.authenticationCache;
+  const sessionCache = cachePolicy === null
+    ? null
+    : new AuthenticationCache<AuthenticatedApplicationSession>(cachePolicy);
+  const apiKeyCache = cachePolicy === null
+    ? null
+    : new AuthenticationCache<Principal>(cachePolicy);
+  const cacheKey = (digest: string): string =>
+    `${dependencies.installationId}:${digest}`;
+
   const issueSession = Effect.fn(
     "InstallationAccessService.issueSession",
   )(function*(member: InstallationMember) {
@@ -322,7 +354,7 @@ function makeInstallationAccessService(
     const configuredCredential = dependencies.localBootstrapCredential;
     if (
       configuredCredential === null ||
-      !secretsEqual(
+      !identitySecretsEqual(
         Redacted.value(credential),
         Redacted.value(configuredCredential),
       )
@@ -347,6 +379,7 @@ function makeInstallationAccessService(
       codeVerifier: "not-applicable",
       createdAt: now.toISOString(),
       expiresAt,
+      nonce: null,
       provider: localBrowserLoginProvider,
       returnTo: "/",
       stateDigest: dependencies.secrets.digest(token),
@@ -357,14 +390,9 @@ function makeInstallationAccessService(
     };
   });
 
-  const loginWithLocalBrowserToken = Effect.fn(
-    "InstallationAccessService.loginWithLocalBrowserToken",
-  )(function*(token: Redacted.Redacted) {
-    yield* dependencies.repository.consumeLoginAttempt(
-      dependencies.secrets.digest(Redacted.value(token)),
-      localBrowserLoginProvider,
-      dependencies.clock.now().toISOString(),
-    );
+  const loginAsLocalOwner = Effect.fn(
+    "InstallationAccessService.loginAsLocalOwner",
+  )(function*() {
     const email = yield* normalizeEmail(dependencies.bootstrapAdministratorEmail);
     let member = yield* dependencies.repository.findActiveMemberByEmail(
       dependencies.installationId,
@@ -385,7 +413,23 @@ function makeInstallationAccessService(
         role: membershipRoles.administrator,
       });
     }
+    if (member.role !== membershipRoles.administrator) {
+      return yield* Effect.fail(new IdentityConflict({
+        message: "The configured local administrator is not an administrator.",
+      }));
+    }
     return yield* issueSession(member);
+  });
+
+  const loginWithLocalBrowserToken = Effect.fn(
+    "InstallationAccessService.loginWithLocalBrowserToken",
+  )(function*(token: Redacted.Redacted) {
+    yield* dependencies.repository.consumeLoginAttempt(
+      dependencies.secrets.digest(Redacted.value(token)),
+      localBrowserLoginProvider,
+      dependencies.clock.now().toISOString(),
+    );
+    return yield* loginAsLocalOwner();
   });
 
   const completeExternalIdentity = Effect.fn(
@@ -469,53 +513,76 @@ function makeInstallationAccessService(
   const authenticateSession = Effect.fn(
     "InstallationAccessService.authenticateSession",
   )(function*(credential: Redacted.Redacted) {
+    const now = dependencies.clock.now();
+    const tokenDigest = dependencies.secrets.digest(Redacted.value(credential));
+    const cached = sessionCache?.get(cacheKey(tokenDigest), now.getTime());
+    if (cached !== undefined) return cached;
     const session = yield* dependencies.repository.findApplicationSession(
       dependencies.installationId,
-      dependencies.secrets.digest(Redacted.value(credential)),
-      dependencies.clock.now().toISOString(),
+      tokenDigest,
+      now.toISOString(),
     );
     if (session === null) {
       return yield* Effect.fail(new AuthenticationRequired({
         message: "A valid application session is required.",
       }));
     }
-    return {
+    const authenticated: AuthenticatedApplicationSession = {
       csrfDigest: session.csrfDigest,
       expiresAt: session.expiresAt,
       principal: humanPrincipal(session.member),
     };
+    sessionCache?.set(
+      cacheKey(tokenDigest),
+      authenticated,
+      now.getTime(),
+      new Date(session.expiresAt).getTime(),
+    );
+    return authenticated;
   });
 
   const authenticateManagedApiKey = Effect.fn(
     "InstallationAccessService.authenticateManagedApiKey",
   )(function*(credential: Redacted.Redacted) {
     const raw = Redacted.value(credential);
-    const parsed = managedApiKeyPattern.exec(raw);
+    const parsed = managedApiKeyCredentialPattern.exec(raw);
     if (parsed === null || parsed[1] === undefined) {
       return yield* invalidApiKey();
     }
+    const presentedDigest = dependencies.secrets.digest(raw);
+    const requestTime = dependencies.clock.now();
+    const cached = apiKeyCache?.get(
+      cacheKey(presentedDigest),
+      requestTime.getTime(),
+    );
+    if (cached !== undefined) return cached;
     const key = yield* dependencies.repository.findApiKey(
       dependencies.installationId,
       parsed[1],
     );
-    const now = dependencies.clock.now().toISOString();
+    const now = requestTime.toISOString();
     if (
       key === null || key.revokedAt !== null || key.expiresAt <= now ||
-      !secretsEqual(
-        dependencies.secrets.digest(raw),
-        key.secretDigest,
-      )
+      !identitySecretsEqual(presentedDigest, key.secretDigest)
     ) {
       return yield* invalidApiKey();
     }
-    return {
+    const principal: Principal = {
       authorizedByPrincipalId: key.authorizedByPrincipalId,
       capabilities: key.capabilities,
+      displayName: key.name,
       id: key.principalId,
       installationId: key.installationId,
       kind: key.principalKind,
       membershipRole: membershipRoles.member,
     };
+    apiKeyCache?.set(
+      cacheKey(presentedDigest),
+      principal,
+      requestTime.getTime(),
+      new Date(key.expiresAt).getTime(),
+    );
+    return principal;
   });
 
   const admitMember = Effect.fn(
@@ -545,11 +612,35 @@ function makeInstallationAccessService(
     "InstallationAccessService.deactivateMember",
   )(function*(principal: Principal, memberId: string) {
     yield* requireAdministrator(principal, dependencies.installationId);
-    return yield* dependencies.repository.deactivateMember(
+    if (principal.id === memberId) {
+      return yield* Effect.fail(new IdentityConflict({
+        message: "An administrator cannot deactivate their current member.",
+      }));
+    }
+    if (dependencies.protectBootstrapAdministrator) {
+      const [member, bootstrapAdministratorEmail] = yield* Effect.all([
+        dependencies.repository.findMember(
+          dependencies.installationId,
+          memberId,
+        ),
+        normalizeEmail(dependencies.bootstrapAdministratorEmail),
+      ]);
+      if (member?.email === bootstrapAdministratorEmail) {
+        return yield* Effect.fail(new IdentityConflict({
+          message: "The local-owner administrator cannot be deactivated.",
+        }));
+      }
+    }
+    const member = yield* dependencies.repository.deactivateMember(
       dependencies.installationId,
       memberId,
       dependencies.clock.now().toISOString(),
     );
+    // Session entries are keyed by token digest, not member, so this rare
+    // administrative mutation clears the whole cache instead of indexing it.
+    sessionCache?.clear();
+    apiKeyCache?.clear();
+    return member;
   });
 
   const issueApiKey = Effect.fn(
@@ -606,11 +697,15 @@ function makeInstallationAccessService(
     "InstallationAccessService.revokeApiKey",
   )(function*(principal: Principal, keyId: string) {
     yield* requireAdministrator(principal, dependencies.installationId);
-    return yield* dependencies.repository.revokeApiKey(
+    const revoked = yield* dependencies.repository.revokeApiKey(
       dependencies.installationId,
       keyId,
       dependencies.clock.now().toISOString(),
     );
+    // Key entries are keyed by presented-credential digest, not key id, so
+    // this rare administrative mutation clears the cache instead of indexing.
+    apiKeyCache?.clear();
+    return revoked;
   });
 
   const rotateApiKey = Effect.fn(
@@ -651,17 +746,20 @@ function makeInstallationAccessService(
       replacement,
       now.toISOString(),
     );
+    apiKeyCache?.clear();
     return {apiKey, token};
   });
 
   const revokeSession = Effect.fn(
     "InstallationAccessService.revokeSession",
   )(function*(credential: Redacted.Redacted) {
+    const tokenDigest = dependencies.secrets.digest(Redacted.value(credential));
     yield* dependencies.repository.revokeApplicationSession(
       dependencies.installationId,
-      dependencies.secrets.digest(Redacted.value(credential)),
+      tokenDigest,
       dependencies.clock.now().toISOString(),
     );
+    sessionCache?.evict(cacheKey(tokenDigest));
   });
 
   return InstallationAccessService.of({
@@ -674,6 +772,7 @@ function makeInstallationAccessService(
     deactivateMember,
     issueApiKey,
     issueLocalBrowserLogin,
+    loginAsLocalOwner,
     listApiKeys,
     listMembers,
     loginWithLocalBrowserToken,
@@ -687,6 +786,7 @@ function humanPrincipal(member: InstallationMember): Principal {
   return {
     authorizedByPrincipalId: null,
     capabilities: [],
+    displayName: member.displayName,
     id: member.id,
     installationId: member.installationId,
     kind: principalKinds.human,
@@ -768,7 +868,8 @@ const normalizeCapabilities = Effect.fn(
   return unique.toSorted();
 });
 
-function secretsEqual(actual: string, expected: string): boolean {
+/** Constant-time comparison for identity secrets presented by a caller. */
+export function identitySecretsEqual(actual: string, expected: string): boolean {
   const actualBytes = Buffer.from(actual);
   const expectedBytes = Buffer.from(expected);
   return actualBytes.byteLength === expectedBytes.byteLength &&

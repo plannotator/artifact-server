@@ -2,13 +2,13 @@ import { Context, Effect, Layer } from "effect";
 
 import {
   InteractiveLoginUnavailable,
+  LoginAttemptRejected,
 } from "../core/errors.js";
 import type {
   IdentityAdmissionDenied,
   IdentityConflict,
   IdentityProviderFailure,
   IdentityRepositoryFailure,
-  LoginAttemptRejected,
 } from "../core/errors.js";
 import type {
   ExternalIdentity,
@@ -17,6 +17,7 @@ import type {
 } from "../core/installation-identity.js";
 import {
   digestIdentitySecret,
+  identitySecretsEqual,
   InstallationAccessService,
   type InstallationAccessOperations,
 } from "./installation-access.js";
@@ -24,6 +25,7 @@ import {
 export interface InteractiveAuthorization {
   readonly authorizationUrl: string;
   readonly codeVerifier: string;
+  readonly nonce: string | null;
   readonly state: string;
 }
 
@@ -32,6 +34,7 @@ export interface InteractiveIdentityProvider {
   readonly complete: (
     code: string,
     codeVerifier: string,
+    nonce: string | null,
   ) => Effect.Effect<ExternalIdentity, IdentityProviderFailure>;
   readonly name: string;
   readonly start: () => Effect.Effect<InteractiveAuthorization, IdentityProviderFailure>;
@@ -57,7 +60,15 @@ export interface InteractiveLoginDependencies {
 
 export interface CompleteInteractiveLoginCommand {
   readonly code: string;
+  /** The handshake secret the browser carried back from `/auth/login`. */
+  readonly handshake: string | null;
   readonly state: string;
+}
+
+/** The authorization redirect plus the handshake that binds it to one browser. */
+export interface StartedInteractiveLogin {
+  readonly authorizationUrl: string;
+  readonly handshake: string;
 }
 
 interface InteractiveLoginOperations {
@@ -75,7 +86,7 @@ interface InteractiveLoginOperations {
   readonly start: (
     returnTo: string,
   ) => Effect.Effect<
-    string,
+    StartedInteractiveLogin,
     IdentityProviderFailure | IdentityRepositoryFailure | InteractiveLoginUnavailable
   >;
 }
@@ -112,11 +123,16 @@ function makeInteractiveLoginService(
         expiresAt: new Date(
           now.getTime() + dependencies.attemptLifetimeMilliseconds,
         ).toISOString(),
+        nonce: authorization.nonce,
         provider: provider.name,
         returnTo: safeReturnTo(returnTo),
         stateDigest: digestIdentitySecret(authorization.state),
       });
-      return authorization.authorizationUrl;
+      const started: StartedInteractiveLogin = {
+        authorizationUrl: authorization.authorizationUrl,
+        handshake: authorization.state,
+      };
+      return started;
     },
   );
 
@@ -124,12 +140,25 @@ function makeInteractiveLoginService(
     function*(command: CompleteInteractiveLoginCommand) {
       const provider = dependencies.provider;
       if (provider === null) return yield* unavailable();
+      if (
+        command.handshake === null ||
+        !identitySecretsEqual(command.handshake, command.state)
+      ) {
+        return yield* Effect.fail(new LoginAttemptRejected({
+          message:
+            "The browser login callback did not come from the browser that started it.",
+        }));
+      }
       const attempt = yield* dependencies.repository.consume(
         digestIdentitySecret(command.state),
         provider.name,
         dependencies.clock.now().toISOString(),
       );
-      const identity = yield* provider.complete(command.code, attempt.codeVerifier);
+      const identity = yield* provider.complete(
+        command.code,
+        attempt.codeVerifier,
+        attempt.nonce,
+      );
       const issued = yield* installationAccess.completeExternalIdentity(identity);
       return {issued, returnTo: attempt.returnTo};
     },
@@ -150,9 +179,13 @@ function safeReturnTo(value: string): string {
   try {
     const base = new URL("https://artifactserver.invalid");
     const parsed = new URL(value, base);
-    return parsed.origin === base.origin
-      ? `${parsed.pathname}${parsed.search}${parsed.hash}`
-      : fallback;
+    if (parsed.origin !== base.origin) return fallback;
+    // Path normalization can resurrect a scheme-relative target: "/..//host"
+    // normalizes to the pathname "//host", which browsers resolve off-origin.
+    if (!parsed.pathname.startsWith("/") || parsed.pathname.startsWith("//")) {
+      return fallback;
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   } catch {
     return fallback;
   }

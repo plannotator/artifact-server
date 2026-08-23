@@ -4,6 +4,10 @@ import type {
   PrincipalKind,
 } from "./identity.js";
 
+/** Serialized form shared by every persisted Artifact Server managed API key. */
+export const managedApiKeyCredentialPattern =
+  /^as_key_(key_[0-9a-f-]+)_([A-Za-z0-9_-]{32,})$/u;
+
 /** Installation member lifecycle states. */
 export const memberStatuses = {
   active: "active",
@@ -52,6 +56,7 @@ export interface LoginAttempt {
   readonly codeVerifier: string;
   readonly createdAt: string;
   readonly expiresAt: string;
+  readonly nonce: string | null;
   readonly provider: string;
   readonly returnTo: string;
   readonly stateDigest: string;

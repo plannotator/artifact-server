@@ -20,12 +20,14 @@ export type MembershipRole =
 
 /** Explicit capabilities assignable to API keys and service principals. */
 export const principalCapabilities = {
+  connectAgents: "agent:connect",
   createArtifact: "artifact:create",
   issueContentSession: "content-session:issue",
   manageAnyArtifact: "artifact:manage:any",
   publishAnyArtifact: "artifact:publish:any",
   readArtifacts: "artifact:read",
   manageProjects: "project:manage",
+  writeComments: "comment:write",
 } as const;
 
 /** One explicit capability granted to a principal. */
@@ -36,6 +38,8 @@ export type PrincipalCapability =
 export interface Principal {
   readonly authorizedByPrincipalId: string | null;
   readonly capabilities: readonly PrincipalCapability[];
+  /** Name captured with every write this principal makes; never re-read later. */
+  readonly displayName: string;
   readonly id: string;
   readonly installationId: string;
   readonly kind: PrincipalKind;

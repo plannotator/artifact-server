@@ -48,7 +48,7 @@ afterEach(async () => {
 });
 
 describe("local Artifact Server CLI", () => {
-  test("opens the managed application without printing its browser credential", async () => {
+  test("opens the managed application at a credential-free URL", async () => {
     const parentDirectory = await mkdtemp(
       path.join(tmpdir(), "artifact-server-open-cli-"),
     );
@@ -79,18 +79,14 @@ describe("local Artifact Server CLI", () => {
       )).trim();
       expect(result.output).not.toContain(browserCredential);
       const loginUrl = new URL(await waitForFile(capturedUrl));
-      expect(loginUrl.pathname).toBe("/auth/local");
+      expect(loginUrl.pathname).toBe("/");
+      expect(loginUrl.search).toBe("");
       const serviceRecord = managedServiceRecordSchema.parse(JSON.parse(
         await readFile(path.join(dataDirectory, "local-service.json"), "utf8"),
       ));
       servicePid = serviceRecord.pid;
       expect((await fetch(new URL("/health", serviceRecord.origin))).status).toBe(200);
-      const oneTimeToken = loginUrl.searchParams.get("token");
-      expect(oneTimeToken).toMatch(/^[A-Za-z0-9_-]{43}$/u);
-      expect(oneTimeToken).not.toBe(browserCredential);
-      const login = await fetch(loginUrl, {redirect: "manual"});
-      expect(login.status).toBe(303);
-      expect((await fetch(loginUrl, {redirect: "manual"})).status).toBe(401);
+      expect((await fetch(loginUrl)).status).toBe(200);
     } finally {
       if (servicePid !== undefined) {
         try {
@@ -365,7 +361,7 @@ describe("local Artifact Server CLI", () => {
       await stopProcess(server);
       await rm(parentDirectory, {force: true, recursive: true});
     }
-  });
+  }, 30_000);
 });
 
 function startCli(

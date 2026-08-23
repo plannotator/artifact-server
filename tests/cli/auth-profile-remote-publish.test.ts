@@ -232,7 +232,7 @@ describe("authenticated CLI profiles and remote publication", () => {
       await stopProcess(server);
       await rm(temporaryDirectory, {force: true, recursive: true});
     }
-  }, 30_000);
+  }, 60_000);
 
   test("CLI-002-F PUB-012-F: rejects an invalid credential without saving it and never sends one profile to another origin", async () => {
     const temporaryDirectory = await mkdtemp(

@@ -50,13 +50,18 @@ const storedCredentialSchema = z.discriminatedUnion("kind", [
 const principalSchema = Schema.Struct({
   authorizedByPrincipalId: Schema.NullOr(Schema.String),
   capabilities: Schema.Array(Schema.Literals([
+    principalCapabilities.connectAgents,
     principalCapabilities.createArtifact,
     principalCapabilities.issueContentSession,
     principalCapabilities.manageAnyArtifact,
     principalCapabilities.manageProjects,
     principalCapabilities.publishAnyArtifact,
     principalCapabilities.readArtifacts,
+    principalCapabilities.writeComments,
   ])),
+  displayName: Schema.String.pipe(
+    Schema.withDecodingDefault(Effect.succeed("Agent")),
+  ),
   id: Schema.String,
   installationId: Schema.String,
   kind: Schema.Literals([principalKinds.human, principalKinds.service]),

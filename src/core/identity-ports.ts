@@ -97,3 +97,11 @@ export interface IdentityRepository {
     revokedAt: string,
   ): Promise<ManagedApiKey>;
 }
+
+/** Atomic first-key operation required by private-team composition roots. */
+export interface BootstrapManagedApiKeyRepository extends IdentityRepository {
+  /** Return the same key, or create it only while the installation has no identity state. */
+  initializeBootstrapApiKey(
+    key: StoredManagedApiKey,
+  ): Promise<StoredManagedApiKey>;
+}

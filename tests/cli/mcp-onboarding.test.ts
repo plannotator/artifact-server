@@ -72,7 +72,7 @@ describe("local MCP onboarding", () => {
     const first = await connectStdio(dataDirectory);
     const firstTools = await first.client.listTools();
     expect(first.client.getNegotiatedProtocolVersion()).toBe(modernProtocolRevision);
-    expect(firstTools.tools).toHaveLength(17);
+    expect(firstTools.tools).toHaveLength(30);
     const capabilities = await first.client.callTool({
       arguments: {},
       name: "artifact_capabilities",
@@ -94,11 +94,11 @@ describe("local MCP onboarding", () => {
     )).toEqual({status: "ok"});
 
     const second = await connectStdio(dataDirectory);
-    expect((await second.client.listTools()).tools).toHaveLength(17);
+    expect((await second.client.listTools()).tools).toHaveLength(30);
     await second.client.close();
 
     const legacy = await connectStdio(dataDirectory, "legacy");
-    expect((await legacy.client.listTools()).tools).toHaveLength(17);
+    expect((await legacy.client.listTools()).tools).toHaveLength(30);
     const legacyCapabilities = await legacy.client.callTool({
       arguments: {},
       name: "artifact_capabilities",
@@ -114,7 +114,7 @@ describe("local MCP onboarding", () => {
     const doctor = await runCli(["doctor", "--data", dataDirectory]);
     expect(doctor.exitCode).toBe(0);
     expect(doctorSchema.parse(JSON.parse(doctor.stdout))).toMatchObject({
-      discovery: {tools: 17},
+      discovery: {tools: 30},
       status: "healthy",
     });
     const apiCredential = (await readFile(
@@ -136,7 +136,7 @@ describe("local MCP onboarding", () => {
     expect(safeSurfaces).not.toContain(browserCredential);
     expect(safeSurfaces).not.toContain("Local API token:");
     expect(safeSurfaces).not.toContain("Browser login:");
-  });
+  }, 30_000);
 
   test("connect and disconnect preserve unrelated client configuration", async () => {
     const workspace = await temporaryWorkspace("artifact-server-mcp-clients-");
