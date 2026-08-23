@@ -17,6 +17,7 @@ configuration:
   applicationOrigin: ""
   contentDomain: ""
   postgresConnectionBudget: 22
+  postgresPoolSize: 10
   requestLogSampleRate: 0.01
   readinessWithdrawalMilliseconds: 1000
   shutdownDeadlineMilliseconds: 10000
@@ -34,12 +35,15 @@ secret:
     databaseUrl: database-url
     s3AccessKeyId: ""
     s3SecretAccessKey: ""
-    localBootstrapToken: ""
     workosApiKey: ""
+    oidcClientSecret: ""
 
 identity:
   workosClientId: ""
   workosIssuer: ""
+  oidcClientId: ""
+  oidcIssuer: ""
+  oidcScopes: ""
 
 serviceAccount:
   create: true

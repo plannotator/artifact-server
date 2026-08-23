@@ -465,7 +465,8 @@ async function createProject(
   const secretDirectory = await temporaryDirectory(
     "artifact-server-external-compose-secrets-",
   );
-  const apiToken = randomBytes(32).toString("base64url");
+  const apiToken =
+    `as_key_key_${randomUUID()}_${randomBytes(32).toString("base64url")}`;
   const databaseUrl = options.databaseUrl ?? dockerDatabaseUrl;
   const paths = {
     apiToken: path.join(secretDirectory, "api-token"),
@@ -496,6 +497,8 @@ async function createProject(
     ARTIFACT_SERVER_DATABASE_URL_SECRET_FILE: paths.databaseUrl,
     ARTIFACT_SERVER_IMAGE: composeImage,
     ARTIFACT_SERVER_INSTALLATION_ID: name,
+    ARTIFACT_SERVER_OIDC_CLIENT_ID: "external-compose-integration",
+    ARTIFACT_SERVER_OIDC_ISSUER: "https://identity.example.test",
     ARTIFACT_SERVER_ORIGIN: applicationOrigin,
     ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS: "0",
     ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE: "0",

@@ -14,6 +14,8 @@ artifactserver_values=(
   --set "configuration.contentDomain=content.example.net"
   --set "configuration.s3.bucket=artifact-server-static-verification"
   --set "configuration.s3.region=us-east-1"
+  --set "identity.oidcClientId=artifact-server"
+  --set "identity.oidcIssuer=https://idp.example.test"
   --set "secret.name=artifact-server-runtime"
 )
 
@@ -55,11 +57,34 @@ expect_render_failure "image.digest is required" \
   --set configuration.contentDomain=content.example.net \
   --set configuration.s3.bucket=artifact-server-static-verification \
   --set configuration.s3.region=us-east-1 \
+  --set identity.oidcClientId=artifact-server \
+  --set identity.oidcIssuer=https://idp.example.test \
   --set secret.name=artifact-server-runtime
 
 expect_render_failure "must be configured together" \
   "${artifactserver_values[@]}" \
   --set secret.keys.s3AccessKeyId=s3-access-key-id
+
+expect_render_failure "identity.oidcClientId and identity.oidcIssuer must be configured together" \
+  "${artifactserver_values[@]}" \
+  --set identity.oidcIssuer=
+
+expect_render_failure "identity.oidcScopes and secret.keys.oidcClientSecret require" \
+  "${artifactserver_values[@]}" \
+  --set identity.oidcClientId= \
+  --set identity.oidcIssuer= \
+  --set identity.oidcScopes="openid email profile"
+
+expect_render_failure "one installation has one browser-login provider" \
+  "${artifactserver_values[@]}" \
+  --set identity.workosClientId=client_workos \
+  --set identity.workosIssuer=https://auth.example.test \
+  --set secret.keys.workosApiKey=workos-api-key
+
+expect_render_failure "private-team deployments require exactly one browser-login provider" \
+  "${artifactserver_values[@]}" \
+  --set identity.oidcClientId= \
+  --set identity.oidcIssuer=
 
 expect_render_failure "terminationGracePeriodSeconds must be longer" \
   "${artifactserver_values[@]}" \

@@ -30,6 +30,11 @@ If an external secret manager changes the Secret, update
 `secret.rolloutChecksum` to its non-secret version or checksum so the Deployment
 restarts in a controlled rollout.
 
+The `api-token` Secret value is the installation bootstrap service key. Generate
+it in `as_key_key_<id>_<secret>` form. Artifact Server persists it as an
+ordinary visible, revocable managed key on first startup and refuses a new key
+id after installation identity exists.
+
 Create a values file containing the installation identity, origins, bucket,
 region, released image repository and digest, and Secret reference:
 
@@ -44,9 +49,14 @@ configuration:
   applicationOrigin: https://artifacts.example.com
   contentDomain: content.example.net
   postgresConnectionBudget: 22
+  postgresPoolSize: 10
   s3:
     bucket: artifact-server-team-example
     region: us-east-1
+
+identity:
+  oidcClientId: artifact-server
+  oidcIssuer: https://idp.example.com/realms/main
 
 secret:
   name: artifact-server-runtime
@@ -103,14 +113,30 @@ names empty, add the provider annotations under `serviceAccount.annotations`,
 and set `serviceAccount.automountServiceAccountToken` only when that identity
 mechanism requires the projected Kubernetes token.
 
-## Optional WorkOS authentication
+## WorkOS authentication
 
-Leave `identity.workosClientId`, `identity.workosIssuer`, and
-`secret.keys.workosApiKey` empty when the installation uses only local members
-and administration-issued API keys. Hosted browser and MCP authentication
-requires all three values. `identity.workosIssuer` is the exact HTTPS AuthKit
+Private-team deployments require exactly one browser identity provider. To use
+WorkOS, set `identity.workosClientId`, `identity.workosIssuer`, and
+`secret.keys.workosApiKey`. `identity.workosIssuer` is the exact HTTPS AuthKit
 origin for this environment, and `secret.keys.workosApiKey` names a key in the
 existing Kubernetes Secret. The chart rejects a partial WorkOS configuration.
+
+## OIDC authentication
+
+An installation that already runs its own OpenID Connect provider can use it for
+browser login instead of WorkOS. Set `identity.oidcIssuer` to the exact issuer
+URL and `identity.oidcClientId` to the registered client. The issuer must be an
+HTTPS URL with no query or fragment. The redirect URI to register with the
+provider is `configuration.applicationOrigin` followed by `/auth/callback`.
+
+`secret.keys.oidcClientSecret` is optional, because a public client using PKCE
+alone is valid; when set, it names a key in the existing Kubernetes Secret and
+the chart mounts it as a file. `identity.oidcScopes` overrides the default
+`openid email profile`. The chart rejects a partial OIDC configuration, and an
+OIDC client secret or scope list without an issuer and client.
+
+One installation has one browser-login provider. The chart rejects values that
+configure neither provider or configure WorkOS and OIDC together.
 
 ## NetworkPolicy
 
@@ -123,9 +149,10 @@ network. An empty enabled rule set is default-deny.
 ## Scaling and resources
 
 The default is two replicas with a PodDisruptionBudget and preferred spreading
-across nodes. Each serving replica has a bounded ten-connection Postgres pool;
-the migration Job and cleanup CronJob each require one additional connection.
-The chart rejects a replica count that exceeds
+across nodes. Each serving replica has a bounded Postgres pool sized by
+`configuration.postgresPoolSize` (default 10 connections); the migration Job
+and cleanup CronJob each require one additional connection. The chart rejects
+a replica count and pool size combination that exceeds
 `configuration.postgresConnectionBudget`. Horizontal autoscaling is
 intentionally not included until measured capacity defines safe thresholds.
 

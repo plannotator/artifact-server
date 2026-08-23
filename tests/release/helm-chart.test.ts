@@ -44,7 +44,8 @@ const secretName = "artifact-server-runtime";
 const applicationOrigin = "https://artifacts.example.test";
 const contentDomain = "content.example.net";
 const bucket = `artifact-server-helm-${randomUUID()}`;
-const apiToken = randomBytes(32).toString("base64url");
+const apiToken =
+  `as_key_key_${randomUUID()}_${randomBytes(32).toString("base64url")}`;
 
 const publicationSchema = z.object({
   artifact: z.object({
@@ -606,6 +607,13 @@ async function writeValues(
       repository: imageRepository,
       tag: imageTag,
     },
+    identity: {
+      oidcClientId: "helm-integration",
+      oidcIssuer: "https://identity.example.test",
+      oidcScopes: "openid email profile",
+      workosClientId: "",
+      workosIssuer: "",
+    },
     migration: {
       activeDeadlineSeconds: options.migrationDeadlineSeconds ?? 60,
       backoffLimit: 0,
@@ -620,7 +628,7 @@ async function writeValues(
       keys: {
         apiToken: "api-token",
         databaseUrl: "database-url",
-        localBootstrapToken: "",
+        oidcClientSecret: "",
         s3AccessKeyId: "s3-access-key-id",
         s3SecretAccessKey: "s3-secret-access-key",
         workosApiKey: "",

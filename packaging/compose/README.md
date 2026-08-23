@@ -6,9 +6,10 @@ in one Docker volume. It is intended for one private team on one server. It does
 not provide application failover or horizontal scaling.
 
 The package does not include Caddy, another reverse proxy, DNS, or certificates.
-The default configuration binds to `127.0.0.1` and uses localhost addresses. A
-server reached from another device needs a trusted reverse proxy and the two
-DNS names described under [Network access](#network-access).
+The default configuration binds the container port to `127.0.0.1`, while its
+application and content origins are explicit HTTPS names. A trusted reverse
+proxy must serve the two DNS names described under
+[Network access](#network-access).
 
 ## Requirements
 
@@ -39,8 +40,9 @@ docker compose run --rm --no-deps artifact-server \
   --data /var/lib/artifact-server/data
 ```
 
-The command prints the installation ID and a one-time browser bootstrap
-credential. Store the credential securely. Later server logs do not print it.
+The command prints the installation ID and data directory. It does not issue a
+browser bootstrap credential; the configured identity provider admits the
+bootstrap administrator on that person's first successful sign-in.
 
 Start the server:
 
@@ -109,10 +111,7 @@ containing links or special files.
 
 ## Network access
 
-No proxy is needed when only the same computer uses the default localhost
-configuration.
-
-A server reached from another device needs:
+A private-team server needs:
 
 - an HTTPS application origin, such as `https://artifacts.example.com`;
 - a separate registrable wildcard content domain, such as
@@ -128,15 +127,34 @@ configure a proxy, issue certificates, open a firewall, or create a tunnel.
 Changing an artifact to public removes the Artifact Server login check. It does
 not make a private server reachable from the internet.
 
-## Optional WorkOS login
+## WorkOS login
 
-The base installation supports its generated local administrator and admitted
-members without WorkOS. To use WorkOS, set the exact AuthKit issuer in
+Private-team serving requires exactly one identity provider. To use WorkOS, set
+the exact AuthKit issuer in
 `ARTIFACT_SERVER_WORKOS_ISSUER`, set `ARTIFACT_SERVER_WORKOS_CLIENT_ID`, and set either
 `ARTIFACT_SERVER_WORKOS_API_KEY` or
 `ARTIFACT_SERVER_WORKOS_API_KEY_FILE`. A file-backed key also needs a Compose
 override that mounts the file read-only. Use a dedicated Artifact Server WorkOS
 environment. Partial WorkOS configuration makes startup fail.
+
+## OIDC login
+
+An installation that already runs its own OpenID Connect provider can use it
+instead of WorkOS. Set the issuer in `ARTIFACT_SERVER_OIDC_ISSUER` and the
+client in `ARTIFACT_SERVER_OIDC_CLIENT_ID`. The issuer must be an HTTPS URL
+with no query or fragment; plain `http` is allowed only for `localhost`,
+`127.0.0.1`, and `::1`. The redirect URI to register with the provider is
+`ARTIFACT_SERVER_ORIGIN` followed by `/auth/callback`.
+
+`ARTIFACT_SERVER_OIDC_CLIENT_SECRET` or
+`ARTIFACT_SERVER_OIDC_CLIENT_SECRET_FILE` is optional, because a public client
+using PKCE alone is valid. A file-backed secret also needs a Compose override
+that mounts the file read-only. `ARTIFACT_SERVER_OIDC_SCOPES` defaults to
+`openid email profile`.
+
+One installation has one browser-login provider. Setting any
+`ARTIFACT_SERVER_WORKOS_` variable together with any `ARTIFACT_SERVER_OIDC_`
+variable makes startup fail, and so does partial OIDC configuration.
 
 ## Limits
 
@@ -181,7 +199,8 @@ secret files:
 ```sh
 cp .env.external-storage.example .env
 install -d -m 0700 /etc/artifact-server
-openssl rand -base64 32 > /etc/artifact-server/api-token
+printf 'as_key_key_%s_%s\n' "$(openssl rand -hex 16)" "$(openssl rand -hex 32)" \
+  > /etc/artifact-server/api-token
 chmod 0600 /etc/artifact-server/api-token
 ```
 

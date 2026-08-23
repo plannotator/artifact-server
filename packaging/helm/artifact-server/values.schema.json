@@ -62,6 +62,7 @@
         "applicationOrigin",
         "contentDomain",
         "postgresConnectionBudget",
+        "postgresPoolSize",
         "requestLogSampleRate",
         "readinessWithdrawalMilliseconds",
         "shutdownDeadlineMilliseconds",
@@ -70,9 +71,10 @@
       "properties": {
         "installationId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"},
         "bootstrapAdministratorEmail": {"type": "string", "format": "email"},
-        "applicationOrigin": {"type": "string", "pattern": "^https?://[^/\\s]+$"},
+        "applicationOrigin": {"type": "string", "pattern": "^https://[^/\\s]+$"},
         "contentDomain": {"type": "string", "pattern": "^[A-Za-z0-9.-]+$"},
         "postgresConnectionBudget": {"type": "integer", "minimum": 1, "maximum": 100000},
+        "postgresPoolSize": {"type": "integer", "minimum": 1, "maximum": 100},
         "requestLogSampleRate": {"type": "number", "minimum": 0, "maximum": 1},
         "readinessWithdrawalMilliseconds": {"type": "integer", "minimum": 0, "maximum": 60000},
         "shutdownDeadlineMilliseconds": {"type": "integer", "minimum": 1, "maximum": 300000},
@@ -107,16 +109,16 @@
             "databaseUrl",
             "s3AccessKeyId",
             "s3SecretAccessKey",
-            "localBootstrapToken",
-            "workosApiKey"
+            "workosApiKey",
+            "oidcClientSecret"
           ],
           "properties": {
             "apiToken": {"type": "string", "minLength": 1},
             "databaseUrl": {"type": "string", "minLength": 1},
             "s3AccessKeyId": {"type": "string"},
             "s3SecretAccessKey": {"type": "string"},
-            "localBootstrapToken": {"type": "string"},
-            "workosApiKey": {"type": "string"}
+            "workosApiKey": {"type": "string"},
+            "oidcClientSecret": {"type": "string"}
           }
         }
       }
@@ -124,10 +126,13 @@
     "identity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["workosClientId", "workosIssuer"],
+      "required": ["workosClientId", "workosIssuer", "oidcClientId", "oidcIssuer", "oidcScopes"],
       "properties": {
         "workosClientId": {"type": "string"},
-        "workosIssuer": {"type": "string"}
+        "workosIssuer": {"type": "string"},
+        "oidcClientId": {"type": "string"},
+        "oidcIssuer": {"type": "string"},
+        "oidcScopes": {"type": "string"}
       }
     },
     "serviceAccount": {

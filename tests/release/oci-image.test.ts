@@ -46,7 +46,6 @@ const imageManifestSchema = z.object({
   version: z.string().min(1),
 });
 const initializationSchema = z.object({
-  bootstrapCredential: z.string().min(32),
   installationId: z.string().startsWith("inst_"),
 });
 const publicationSchema = z.object({
@@ -185,7 +184,6 @@ describe.sequential("production OCI image", () => {
       installationId: initialization.installationId,
     });
     expect(JSON.stringify(support)).not.toContain(storedApiToken);
-    expect(JSON.stringify(support)).not.toContain(initialization.bootstrapCredential);
 
     await recordRuntimeBaseline("compact", {
       concurrentReads: firstReads.count,

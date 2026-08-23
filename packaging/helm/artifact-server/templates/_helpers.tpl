@@ -66,13 +66,27 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if not (or (and (not $hasWorkosClient) (not $hasWorkosIssuer) (not $hasWorkosKey)) (and $hasWorkosClient $hasWorkosIssuer $hasWorkosKey)) -}}
 {{- fail "identity.workosClientId, identity.workosIssuer, and secret.keys.workosApiKey must be configured together" -}}
 {{- end -}}
+{{- $hasOidcClient := ne .Values.identity.oidcClientId "" -}}
+{{- $hasOidcIssuer := ne .Values.identity.oidcIssuer "" -}}
+{{- if ne $hasOidcClient $hasOidcIssuer -}}
+{{- fail "identity.oidcClientId and identity.oidcIssuer must be configured together" -}}
+{{- end -}}
+{{- if and (not $hasOidcIssuer) (or (ne .Values.identity.oidcScopes "") (ne .Values.secret.keys.oidcClientSecret "")) -}}
+{{- fail "identity.oidcScopes and secret.keys.oidcClientSecret require identity.oidcClientId and identity.oidcIssuer" -}}
+{{- end -}}
+{{- if and $hasOidcIssuer $hasWorkosIssuer -}}
+{{- fail "one installation has one browser-login provider: configure the identity.workos values or the identity.oidc values, not both" -}}
+{{- end -}}
+{{- if and (not $hasOidcIssuer) (not $hasWorkosIssuer) -}}
+{{- fail "private-team deployments require exactly one browser-login provider: configure identity.oidc or identity.workos" -}}
+{{- end -}}
 {{- $drainMilliseconds := add .Values.configuration.readinessWithdrawalMilliseconds .Values.configuration.shutdownDeadlineMilliseconds -}}
 {{- if le (mul .Values.terminationGracePeriodSeconds 1000) $drainMilliseconds -}}
 {{- fail "terminationGracePeriodSeconds must be longer than readinessWithdrawalMilliseconds plus shutdownDeadlineMilliseconds" -}}
 {{- end -}}
 {{- $migrationConnections := ternary 1 0 .Values.migration.enabled -}}
 {{- $cleanupConnections := ternary 1 0 .Values.cleanup.enabled -}}
-{{- $requiredConnections := add (mul (int .Values.replicaCount) 10) $migrationConnections $cleanupConnections -}}
+{{- $requiredConnections := add (mul (int .Values.replicaCount) (int .Values.configuration.postgresPoolSize)) $migrationConnections $cleanupConnections -}}
 {{- if lt (int .Values.configuration.postgresConnectionBudget) $requiredConnections -}}
 {{- fail (printf "configuration.postgresConnectionBudget must be at least %d for %d replicas and the enabled migration and cleanup Jobs" $requiredConnections (int .Values.replicaCount)) -}}
 {{- end -}}
@@ -114,13 +128,13 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 - key: {{ .Values.secret.keys.s3SecretAccessKey | quote }}
   path: s3-secret-access-key
 {{- end }}
-{{- if .Values.secret.keys.localBootstrapToken }}
-- key: {{ .Values.secret.keys.localBootstrapToken | quote }}
-  path: local-bootstrap-token
-{{- end }}
 {{- if .Values.secret.keys.workosApiKey }}
 - key: {{ .Values.secret.keys.workosApiKey | quote }}
   path: workos-api-key
+{{- end }}
+{{- if .Values.secret.keys.oidcClientSecret }}
+- key: {{ .Values.secret.keys.oidcClientSecret | quote }}
+  path: oidc-client-secret
 {{- end }}
 {{- end -}}
 
@@ -139,6 +153,8 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
   value: {{ .Values.configuration.applicationOrigin | quote }}
 - name: ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER
   value: "s3"
+- name: ARTIFACT_SERVER_POSTGRES_MAX_CONNECTIONS
+  value: {{ .Values.configuration.postgresPoolSize | quote }}
 - name: ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS
   value: {{ .Values.configuration.readinessWithdrawalMilliseconds | quote }}
 - name: ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE
@@ -169,9 +185,19 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 - name: ARTIFACT_SERVER_S3_SECRET_ACCESS_KEY_FILE
   value: /run/secrets/artifact-server/s3-secret-access-key
 {{- end }}
-{{- if .Values.secret.keys.localBootstrapToken }}
-- name: ARTIFACT_SERVER_LOCAL_BOOTSTRAP_TOKEN_FILE
-  value: /run/secrets/artifact-server/local-bootstrap-token
+{{- if .Values.identity.oidcIssuer }}
+{{- if .Values.secret.keys.oidcClientSecret }}
+- name: ARTIFACT_SERVER_OIDC_CLIENT_SECRET_FILE
+  value: /run/secrets/artifact-server/oidc-client-secret
+{{- end }}
+- name: ARTIFACT_SERVER_OIDC_CLIENT_ID
+  value: {{ .Values.identity.oidcClientId | quote }}
+- name: ARTIFACT_SERVER_OIDC_ISSUER
+  value: {{ .Values.identity.oidcIssuer | quote }}
+{{- if .Values.identity.oidcScopes }}
+- name: ARTIFACT_SERVER_OIDC_SCOPES
+  value: {{ .Values.identity.oidcScopes | quote }}
+{{- end }}
 {{- end }}
 {{- if .Values.identity.workosClientId }}
 - name: ARTIFACT_SERVER_WORKOS_API_KEY_FILE

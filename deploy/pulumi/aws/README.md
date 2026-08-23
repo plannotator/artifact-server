@@ -3,7 +3,23 @@
 This Pulumi project creates the default AWS Artifact Server stack. It uses ECS
 Fargate for the application, RDS PostgreSQL for records, S3 for artifact files,
 Secrets Manager for application credentials, an Application Load Balancer for
-HTTPS, Route 53 for DNS, and CloudWatch for logs.
+HTTPS, CloudFront in front of the load balancer for public ingress, Route 53
+for DNS, and CloudWatch for logs.
+
+For public ingress, CloudFront serves both the application host and the
+wildcard content host. Its cache policy honors the application's `Cache-Control`
+headers and caches nothing without origin instruction, so `private, no-store`
+management and API responses are never cached. The cache key includes the host,
+the query string, and the `Authorization` header, and the managed
+`Managed-AllViewer` origin request policy forwards every viewer header, cookie,
+and query string to the application. The origin read timeout is 60 seconds
+because the agent long-poll route holds requests for up to 25 seconds. The
+CloudFront viewer certificate is a separate DNS-validated ACM certificate that
+this project creates in `us-east-1`, covering both names; the regional load
+balancer certificates are unchanged. The load balancer stays internet-facing as
+the CloudFront origin, but its security group accepts HTTPS only from the AWS
+managed CloudFront origin-facing prefix list, and both Route 53 aliases point
+at the distribution.
 
 It does not create Kubernetes or EKS. A team with an existing EKS cluster uses
 the application-only Helm chart in `packaging/helm/artifact-server` instead.
@@ -87,7 +103,8 @@ Without `existingNetwork`, the stack creates:
 - two private application subnets;
 - two isolated database subnets;
 - one NAT gateway outside production and two in production; and
-- security groups that allow only HTTPS to the load balancer, load-balancer
+- security groups that allow only HTTPS to the load balancer (from the
+  CloudFront origin-facing prefix list when ingress is public), load-balancer
   traffic to the application, and application traffic to PostgreSQL.
 
 To use an existing VPC, set all of these values:
@@ -108,7 +125,8 @@ at least two availability zones before it defines resources.
 
 For private ingress, set `ingress: private` and `tlsCertificateArn` to an
 existing ACM certificate covering the application name and wildcard content
-name. Supply `dnsZoneIds` when Pulumi should create private Route 53 aliases.
+name. Private ingress creates no CloudFront distribution; callers reach the
+internal load balancer directly. Supply `dnsZoneIds` when Pulumi should create private Route 53 aliases.
 If they are omitted, the operator creates private DNS records pointing both
 names to the returned internal load balancer.
 

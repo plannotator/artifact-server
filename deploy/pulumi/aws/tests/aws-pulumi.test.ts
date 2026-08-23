@@ -32,6 +32,13 @@ beforeAll(async () => {
           reverseDnsPrefix: "com.amazonaws",
         };
       }
+      if (args.token.includes("getManagedPrefixList")) {
+        return {
+          ...args.inputs,
+          id: "pl-3b927c5e",
+          name: "com.amazonaws.global.cloudfront.origin-facing",
+        };
+      }
       if (args.token.includes("getVpc")) {
         return {...args.inputs, cidrBlock: "10.50.0.0/16"};
       }
@@ -133,6 +140,8 @@ describe("AWS Pulumi deployment", () => {
     ));
 
     const resourceTypes = resources.map((resource) => resource.type);
+    expect(resourceTypes).toContain("aws:cloudfront/cachePolicy:CachePolicy");
+    expect(resourceTypes).toContain("aws:cloudfront/distribution:Distribution");
     expect(resourceTypes).toContain("aws:ecs/service:Service");
     expect(resourceTypes).toContain("aws:rds/instance:Instance");
     expect(resourceTypes).toContain("aws:s3/bucket:Bucket");
@@ -179,6 +188,77 @@ describe("AWS Pulumi deployment", () => {
     expect(String(loadBalancer.inputs["name"]).length).toBeLessThanOrEqual(32);
     const targetGroup = requireResource("aws:lb/targetGroup:TargetGroup");
     expect(String(targetGroup.inputs["name"]).length).toBeLessThanOrEqual(32);
+    const loadBalancerSecurityGroup = requireNamedResource(
+      "aws:ec2/securityGroup:SecurityGroup",
+      "load-balancer",
+    );
+    expect(loadBalancerSecurityGroup.inputs["ingress"]).toEqual([
+      expect.objectContaining({prefixListIds: ["pl-3b927c5e"]}),
+    ]);
+    expect(JSON.stringify(loadBalancerSecurityGroup.inputs["ingress"]))
+      .not.toContain("0.0.0.0/0");
+
+    const cachePolicy = requireResource("aws:cloudfront/cachePolicy:CachePolicy");
+    expect(cachePolicy.inputs).toMatchObject({
+      defaultTtl: 0,
+      maxTtl: 31_536_000,
+      minTtl: 0,
+      parametersInCacheKeyAndForwardedToOrigin: {
+        cookiesConfig: {cookieBehavior: "none"},
+        enableAcceptEncodingBrotli: true,
+        enableAcceptEncodingGzip: true,
+        headersConfig: {
+          headerBehavior: "whitelist",
+          headers: {items: ["authorization", "host"]},
+        },
+        queryStringsConfig: {queryStringBehavior: "all"},
+      },
+    });
+    const distribution = requireResource("aws:cloudfront/distribution:Distribution");
+    expect(distribution.inputs["aliases"]).toEqual([
+      "artifacts.example.com",
+      "*.artifact-content.example.net",
+    ]);
+    expect(distribution.inputs["defaultCacheBehavior"]).toMatchObject({
+      cachedMethods: ["GET", "HEAD"],
+      compress: true,
+      originRequestPolicyId: "216adef6-5c7f-47e4-b989-5492eafa07d3",
+      viewerProtocolPolicy: "redirect-to-https",
+    });
+    expect(distribution.inputs["origins"]).toEqual([expect.objectContaining({
+      customOriginConfig: expect.objectContaining({
+        originProtocolPolicy: "https-only",
+        originReadTimeout: 60,
+      }),
+    })]);
+    expect(distribution.inputs["viewerCertificate"]).toMatchObject({
+      minimumProtocolVersion: "TLSv1.2_2021",
+      sslSupportMethod: "sni-only",
+    });
+    const edgeProvider = requireNamedResource("pulumi:providers:aws", "us-east-1");
+    expect(edgeProvider.inputs).toMatchObject({region: "us-east-1"});
+    const edgeCertificate = requireNamedResource(
+      "aws:acm/certificate:Certificate",
+      "edge",
+    );
+    expect(edgeCertificate.inputs).toMatchObject({
+      domainName: "artifacts.example.com",
+      subjectAlternativeNames: ["*.artifact-content.example.net"],
+      validationMethod: "DNS",
+    });
+    expect(edgeCertificate.provider).toContain("us-east-1");
+    const aliasRecords = resources.filter((resource) =>
+      resource.type === "aws:route53/record:Record" &&
+      Array.isArray(resource.inputs["aliases"])
+    );
+    expect(aliasRecords).toHaveLength(2);
+    for (const record of aliasRecords) {
+      expect(record.inputs["aliases"]).toEqual([{
+        evaluateTargetHealth: false,
+        name: expect.stringContaining(".cloudfront.net"),
+        zoneId: "Z2FDTNDATAQYW2",
+      }]);
+    }
 
     const taskDefinition = requireNamedResource(
       "aws:ecs/taskDefinition:TaskDefinition",
@@ -268,6 +348,12 @@ describe("AWS Pulumi deployment", () => {
       .toBe(false);
     expect(resources.some((resource) => resource.type === "aws:route53/record:Record"))
       .toBe(false);
+    expect(resources.some((resource) =>
+      resource.type === "aws:cloudfront/distribution:Distribution"
+    )).toBe(false);
+    expect(resources.some((resource) =>
+      resource.type === "aws:cloudfront/cachePolicy:CachePolicy"
+    )).toBe(false);
     expect(requireResource("aws:lb/loadBalancer:LoadBalancer").inputs["internal"])
       .toBe(true);
     expect(requireResource("aws:ec2/securityGroup:SecurityGroup").inputs["ingress"])
@@ -386,15 +472,27 @@ function mockResourceState(
     return {...base, arn, endpoint: "database.internal:5432"};
   }
   if (args.type === "aws:acm/certificate:Certificate") {
+    const alternativeNames = Array.isArray(args.inputs["subjectAlternativeNames"])
+      ? args.inputs["subjectAlternativeNames"].map(String)
+      : [];
+    const domains = [String(args.inputs["domainName"]), ...alternativeNames];
     return {
       ...base,
       arn,
-      domainValidationOptions: [{
-        domainName: args.inputs["domainName"],
-        resourceRecordName: `_validation.${args.name}`,
+      domainValidationOptions: domains.map((domain, index) => ({
+        domainName: domain,
+        resourceRecordName: `_validation-${index}.${args.name}`,
         resourceRecordType: "CNAME",
         resourceRecordValue: "validation.acm.invalid",
-      }],
+      })),
+    };
+  }
+  if (args.type === "aws:cloudfront/distribution:Distribution") {
+    return {
+      ...base,
+      arn,
+      domainName: `${args.name}.cloudfront.net`,
+      hostedZoneId: "Z2FDTNDATAQYW2",
     };
   }
   if (args.type === "aws:route53/record:Record") {

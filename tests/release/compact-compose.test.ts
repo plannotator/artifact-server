@@ -43,7 +43,6 @@ const commandFailureSchema = z.object({
 });
 const addressSchema = z.object({port: z.number().int().positive()});
 const initializationSchema = z.object({
-  bootstrapCredential: z.string().min(32),
   dataDirectory: z.string(),
   installationId: z.string().min(1),
 });
@@ -145,7 +144,6 @@ describe.sequential("Compact Compose release", () => {
   test("DEP-005-B OPS-003-B: the packaged stack publishes, restarts, replaces, backs up, and restores exact state", async () => {
     const source = await createProject("compact-source");
     const initialization = await initialize(source);
-    registerSensitive(initialization.bootstrapCredential);
     const apiToken = await readApiToken(source);
     registerSensitive(apiToken);
 
@@ -563,6 +561,8 @@ async function createProject(
     ARTIFACT_SERVER_ALLOW_TEST_IMAGE_TAG: "true",
     ARTIFACT_SERVER_CONTENT_DOMAIN: contentDomain,
     ARTIFACT_SERVER_IMAGE: composeImage,
+    ARTIFACT_SERVER_OIDC_CLIENT_ID: "compact-compose-integration",
+    ARTIFACT_SERVER_OIDC_ISSUER: "https://identity.example.test",
     ARTIFACT_SERVER_ORIGIN: applicationOrigin,
     ARTIFACT_SERVER_PORT: String(port),
     ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS: "0",

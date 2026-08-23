@@ -9,7 +9,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import {createServer} from "node:net";
-import {tmpdir} from "node:os";
+import {homedir, tmpdir} from "node:os";
 import path from "node:path";
 import {DatabaseSync} from "node:sqlite";
 
@@ -27,7 +27,6 @@ const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const runningProcesses = new Set<ChildProcessWithoutNullStreams>();
 const assignedAddressSchema = z.object({port: z.number().int().positive()});
 const initializedSchema = z.object({
-  bootstrapCredential: z.string().min(32),
   dataDirectory: z.string(),
   installationId: z.string().startsWith("inst_"),
 });
@@ -58,17 +57,19 @@ describe("Artifact Server lifecycle CLI", () => {
         path.join(dataDirectory, "secrets/api-token"),
         "utf8",
       )).trim();
-      const browserToken = (await readFile(
+      await expect(stat(
         path.join(dataDirectory, "secrets/browser-bootstrap-token"),
-        "utf8",
-      )).trim();
+      )).rejects.toMatchObject({code: "ENOENT"});
       expect((await stat(dataDirectory)).mode & 0o777).toBe(0o700);
       expect((await stat(path.join(dataDirectory, "installation.json"))).mode & 0o777)
         .toBe(0o600);
       expect((await stat(path.join(dataDirectory, "secrets/api-token"))).mode & 0o777)
         .toBe(0o600);
 
-      const environment = compactEnvironment();
+      const environment = compactEnvironment({
+        ARTIFACT_SERVER_OIDC_CLIENT_ID: "lifecycle-configuration-client",
+        ARTIFACT_SERVER_OIDC_ISSUER: "https://identity.example.test",
+      });
       const checked = await runCli([
         "config",
         "check",
@@ -82,10 +83,9 @@ describe("Artifact Server lifecycle CLI", () => {
         configuration: {
           credentialSources: {
             apiToken: "generated_file",
-            browserBootstrapToken: "generated_file",
           },
           deploymentMode: "compact",
-          interactiveIdentityProvider: "local",
+          interactiveIdentityProvider: "oidc",
           installationId: initialization.installationId,
           stagingCleanup: {
             batchSize: 100,
@@ -99,8 +99,18 @@ describe("Artifact Server lifecycle CLI", () => {
         providers: {status: "ready"},
       });
       expect(checked.output).not.toContain(apiToken);
-      expect(checked.output).not.toContain(browserToken);
-      expect(checked.output).not.toContain(initialization.bootstrapCredential);
+      const missingIdentityProvider = await runCli([
+        "config",
+        "check",
+        "--mode",
+        "compact",
+        "--data",
+        dataDirectory,
+      ], compactEnvironment());
+      expect(missingIdentityProvider.exitCode).not.toBe(0);
+      expect(missingIdentityProvider.output).toContain(
+        "requires exactly one OIDC or WorkOS",
+      );
       const incompleteWorkOs = await runCli([
         "config",
         "check",
@@ -109,7 +119,7 @@ describe("Artifact Server lifecycle CLI", () => {
         "--data",
         dataDirectory,
       ], {
-        ...environment,
+        ...compactEnvironment(),
         ARTIFACT_SERVER_WORKOS_API_KEY: "workos-secret-value",
       });
       expect(incompleteWorkOs.exitCode).not.toBe(0);
@@ -151,6 +161,69 @@ describe("Artifact Server lifecycle CLI", () => {
         field: "ARTIFACT_SERVER_STAGING_CLEANUP",
         reason: "invalid_value",
       });
+      const defaultLinkedFiles = await Effect.runPromise(
+        parseCompactRuntimeConfiguration({
+          dataDirectory,
+          environment,
+          hostname: "127.0.0.1",
+          port: "8787",
+        }),
+      );
+      expect(defaultLinkedFiles.linkedFiles).toBe("off");
+      expect(defaultLinkedFiles.linkRoots).toEqual([homedir()]);
+      const linkedFilesEnabled = await Effect.runPromise(
+        parseCompactRuntimeConfiguration({
+          dataDirectory,
+          environment: {
+            ...environment,
+            ARTIFACT_SERVER_LINKED_FILES: "on",
+            ARTIFACT_SERVER_LINK_ROOTS: "/tmp/workspace-a:/tmp/workspace-b",
+          },
+          hostname: "127.0.0.1",
+          port: "8787",
+        }),
+      );
+      expect(linkedFilesEnabled.linkedFiles).toBe("on");
+      expect(linkedFilesEnabled.linkRoots).toEqual([
+        "/tmp/workspace-a",
+        "/tmp/workspace-b",
+      ]);
+      await expect(Effect.runPromise(parseCompactRuntimeConfiguration({
+        dataDirectory,
+        environment: {
+          ...environment,
+          ARTIFACT_SERVER_LINKED_FILES: "maybe",
+        },
+        hostname: "127.0.0.1",
+        port: "8787",
+      }))).rejects.toMatchObject({
+        field: "ARTIFACT_SERVER_LINKED_FILES",
+        reason: "invalid_value",
+      });
+      await expect(Effect.runPromise(parseCompactRuntimeConfiguration({
+        dataDirectory,
+        environment: {
+          ...environment,
+          ARTIFACT_SERVER_LINK_ROOTS: "relative/path",
+        },
+        hostname: "127.0.0.1",
+        port: "8787",
+      }))).rejects.toMatchObject({
+        field: "ARTIFACT_SERVER_LINK_ROOTS",
+        reason: "invalid_value",
+      });
+      await expect(Effect.runPromise(parseCompactRuntimeConfiguration({
+        dataDirectory,
+        environment: {
+          ...environment,
+          ARTIFACT_SERVER_LINK_ROOTS: "/tmp/workspace-a:",
+        },
+        hostname: "127.0.0.1",
+        port: "8787",
+      }))).rejects.toMatchObject({
+        field: "ARTIFACT_SERVER_LINK_ROOTS",
+        reason: "invalid_value",
+      });
 
       const support = await runCli([
         "support",
@@ -168,7 +241,6 @@ describe("Artifact Server lifecycle CLI", () => {
         providers: {status: "ready"},
       });
       expect(support.output).not.toContain(apiToken);
-      expect(support.output).not.toContain(browserToken);
 
       const repeated = await runCli([
         "init",
@@ -180,7 +252,6 @@ describe("Artifact Server lifecycle CLI", () => {
       expect(repeated.exitCode).not.toBe(0);
       expect(repeated.output).toContain("already contains files");
       expect(repeated.output).not.toContain(apiToken);
-      expect(repeated.output).not.toContain(browserToken);
 
       const credentialFile = path.join(parent, "access-key");
       await writeFile(credentialFile, "file-secret\n", {mode: 0o600});
@@ -206,7 +277,11 @@ describe("Artifact Server lifecycle CLI", () => {
         s3Secret: path.join(parent, "s3-secret"),
       };
       await Promise.all([
-        writeFile(secretFiles.api, `${"a".repeat(40)}\n`, {mode: 0o600}),
+        writeFile(
+          secretFiles.api,
+          `as_key_key_00000000-0000-4000-8000-000000000000_${"a".repeat(40)}\n`,
+          {mode: 0o600},
+        ),
         writeFile(
           secretFiles.database,
           "postgres://user:password@database.example/artifacts\n",
@@ -339,10 +414,73 @@ describe("Artifact Server lifecycle CLI", () => {
         hostname: "127.0.0.1",
         port: "8787",
       }))).rejects.toMatchObject({reason: "incomplete_configuration"});
+      const defaultPostgresPool = await Effect.runPromise(
+        parseExternalStorageRuntimeConfiguration({
+          environment: externalConfigurationEnvironment(),
+          hostname: "127.0.0.1",
+          port: "8787",
+        }),
+      );
+      expect(defaultPostgresPool.postgresMaxConnections).toBe(10);
+      const configuredPostgresPool = await Effect.runPromise(
+        parseExternalStorageRuntimeConfiguration({
+          environment: {
+            ...externalConfigurationEnvironment(),
+            ARTIFACT_SERVER_POSTGRES_MAX_CONNECTIONS: "25",
+          },
+          hostname: "127.0.0.1",
+          port: "8787",
+        }),
+      );
+      expect(configuredPostgresPool.postgresMaxConnections).toBe(25);
+      await expect(Effect.runPromise(parseExternalStorageRuntimeConfiguration({
+        environment: {
+          ...externalConfigurationEnvironment(),
+          ARTIFACT_SERVER_POSTGRES_MAX_CONNECTIONS: "0",
+        },
+        hostname: "127.0.0.1",
+        port: "8787",
+      }))).rejects.toMatchObject({
+        field: "ARTIFACT_SERVER_POSTGRES_MAX_CONNECTIONS",
+        reason: "invalid_value",
+      });
+      await expect(Effect.runPromise(parseExternalStorageRuntimeConfiguration({
+        environment: {
+          ...externalConfigurationEnvironment(),
+          ARTIFACT_SERVER_POSTGRES_MAX_CONNECTIONS: "101",
+        },
+        hostname: "127.0.0.1",
+        port: "8787",
+      }))).rejects.toMatchObject({
+        field: "ARTIFACT_SERVER_POSTGRES_MAX_CONNECTIONS",
+        reason: "invalid_value",
+      });
+      await expect(Effect.runPromise(parseExternalStorageRuntimeConfiguration({
+        environment: {
+          ...externalConfigurationEnvironment(),
+          ARTIFACT_SERVER_LINKED_FILES: "on",
+        },
+        hostname: "127.0.0.1",
+        port: "8787",
+      }))).rejects.toMatchObject({
+        field: "ARTIFACT_SERVER_LINKED_FILES",
+        reason: "invalid_value",
+      });
+      await expect(Effect.runPromise(parseExternalStorageRuntimeConfiguration({
+        environment: {
+          ...externalConfigurationEnvironment(),
+          ARTIFACT_SERVER_LINKED_FILES: "maybe",
+        },
+        hostname: "127.0.0.1",
+        port: "8787",
+      }))).rejects.toMatchObject({
+        field: "ARTIFACT_SERVER_LINKED_FILES",
+        reason: "invalid_value",
+      });
     } finally {
       await rm(parent, {force: true, recursive: true});
     }
-  });
+  }, 30_000);
 
   test("foundation: compact serving withdraws readiness and integrity scans real committed bytes", async () => {
     const parent = await mkdtemp(path.join(tmpdir(), "artifact-server-drain-"));
@@ -360,6 +498,8 @@ describe("Artifact Server lifecycle CLI", () => {
       expect(initialized.exitCode).toBe(0);
       const port = await availablePort();
       const environment = compactEnvironment({
+        ARTIFACT_SERVER_OIDC_CLIENT_ID: "lifecycle-test-client",
+        ARTIFACT_SERVER_OIDC_ISSUER: "https://identity.example.test",
         ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS: "300",
         ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS: "3000",
       });
@@ -479,7 +619,8 @@ function compactEnvironment(
 
 function externalConfigurationEnvironment(): NodeJS.ProcessEnv {
   return {
-    ARTIFACT_SERVER_API_TOKEN: "a".repeat(40),
+    ARTIFACT_SERVER_API_TOKEN:
+      `as_key_key_00000000-0000-4000-8000-000000000000_${"a".repeat(40)}`,
     ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL: "admin@example.test",
     ARTIFACT_SERVER_CONTENT_DOMAIN: "content.example.net",
     ARTIFACT_SERVER_DATABASE_URL: "postgres://user:secret@localhost/artifacts",

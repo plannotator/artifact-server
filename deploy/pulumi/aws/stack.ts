@@ -15,6 +15,12 @@ const applicationPort = 8_787;
 const databaseName = "artifactserver";
 const databaseUsername = "artifactadmin";
 const postgresEngineVersion = "17.10";
+// The AWS managed Managed-AllViewer origin request policy. It forwards every
+// viewer header (including Host), cookie, and query string to the origin.
+const allViewerOriginRequestPolicyId = "216adef6-5c7f-47e4-b989-5492eafa07d3";
+// The AWS managed prefix list holding CloudFront origin-facing addresses.
+const cloudFrontOriginFacingPrefixListName =
+  "com.amazonaws.global.cloudfront.origin-facing";
 
 export interface AwsStackConfiguration {
   readonly input: AwsCloudDeploymentInput;
@@ -131,20 +137,29 @@ export async function defineAwsStack(
     }),
   }, {dependsOn: [bucketPublicAccess]});
 
-  const loadBalancerSecurityGroup = new aws.ec2.SecurityGroup(`${name}-load-balancer`, {
-    description: "Artifact Server HTTPS load balancer",
-    egress: [],
-    ingress: [{
-      cidrBlocks: input.ingress === "public"
-        ? ["0.0.0.0/0"]
-        : input.privateIngressCidrs === undefined
+  const loadBalancerIngress = input.ingress === "public"
+    ? {
+      description: "HTTPS from CloudFront origin-facing addresses",
+      fromPort: 443,
+      prefixListIds: [aws.ec2.getManagedPrefixListOutput({
+        name: cloudFrontOriginFacingPrefixListName,
+      }).id],
+      protocol: "tcp",
+      toPort: 443,
+    }
+    : {
+      cidrBlocks: input.privateIngressCidrs === undefined
         ? [network.vpcCidrBlock]
         : [...input.privateIngressCidrs],
       description: "HTTPS",
       fromPort: 443,
       protocol: "tcp",
       toPort: 443,
-    }],
+    };
+  const loadBalancerSecurityGroup = new aws.ec2.SecurityGroup(`${name}-load-balancer`, {
+    description: "Artifact Server HTTPS load balancer",
+    egress: [],
+    ingress: [loadBalancerIngress],
     tags,
     vpcId: network.vpcId,
   });
@@ -239,7 +254,7 @@ export async function defineAwsStack(
   }, {protect: input.deletionProtection});
 
   const apiTokenSecret = new aws.secretsmanager.Secret(`${name}-api-token`, {
-    description: "Artifact Server fallback automation token",
+    description: "Artifact Server managed bootstrap service key",
     recoveryWindowInDays: input.environment === "production" ? 30 : 7,
     tags,
   }, {protect: input.deletionProtection});
@@ -247,7 +262,9 @@ export async function defineAwsStack(
     `${name}-api-token`,
     {
     secretId: apiTokenSecret.id,
-    secretString: pulumi.secret(apiToken.result),
+    secretString: pulumi.secret(
+      pulumi.interpolate`as_key_key_${installationId.result}_${apiToken.result}`,
+    ),
     },
   );
 
@@ -494,7 +511,20 @@ export async function defineAwsStack(
       listenerArn: listener.arn,
     });
   }
-  const dnsAliases = defineDnsAliases(input, name, loadBalancer);
+  const contentDeliveryNetwork = input.ingress === "public"
+    ? defineContentDeliveryNetwork({input, listener, loadBalancer, name, physicalName, tags})
+    : undefined;
+  const dnsAliases = defineDnsAliases(input, name, contentDeliveryNetwork === undefined
+    ? {
+      dnsName: loadBalancer.dnsName,
+      evaluateTargetHealth: true,
+      zoneId: loadBalancer.zoneId,
+    }
+    : {
+      dnsName: contentDeliveryNetwork.distribution.domainName,
+      evaluateTargetHealth: false,
+      zoneId: contentDeliveryNetwork.distribution.hostedZoneId,
+    });
 
   const service = new aws.ecs.Service(`${name}-application`, {
     cluster: cluster.arn,
@@ -635,13 +665,17 @@ export async function defineAwsStack(
   if (input.workosApiKeySecretRef !== undefined) {
     secretResourceIds["workosApiKey"] = input.workosApiKeySecretRef;
   }
-  const networkResourceIds = {
+  const networkResourceIds: AwsResourceIds = {
     ...network.resourceIds,
     applicationSecurityGroup: applicationSecurityGroup.id,
     databaseSecurityGroup: databaseSecurityGroup.id,
     loadBalancer: loadBalancer.arn,
     loadBalancerSecurityGroup: loadBalancerSecurityGroup.id,
   };
+  if (contentDeliveryNetwork !== undefined) {
+    networkResourceIds["contentDeliveryNetwork"] =
+      contentDeliveryNetwork.distribution.arn;
+  }
   const supportManifestKey = installationId.result.apply((value) =>
     `support/${value}/installation.json`
   );
@@ -794,18 +828,10 @@ function defineValidatedCertificate(options: {
     validationMethod: "DNS",
     tags: options.tags,
   });
-  const validationRecord = new aws.route53.Record(`${options.name}-validation`, {
-    allowOverwrite: true,
-    name: certificate.domainValidationOptions.apply((values) =>
-      requireCertificateValidationOption(values).resourceRecordName
-    ),
-    records: [certificate.domainValidationOptions.apply((values) =>
-      requireCertificateValidationOption(values).resourceRecordValue
-    )],
-    ttl: 60,
-    type: certificate.domainValidationOptions.apply((values) =>
-      requireCertificateValidationOption(values).resourceRecordType
-    ),
+  const validationRecord = defineCertificateValidationRecord({
+    certificate,
+    domain: options.domain,
+    name: `${options.name}-validation`,
     zoneId: options.zoneId,
   });
   const validation = new aws.acm.CertificateValidation(options.name, {
@@ -815,20 +841,160 @@ function defineValidatedCertificate(options: {
   return validation.certificateArn;
 }
 
+function defineCertificateValidationRecord(options: {
+  readonly certificate: aws.acm.Certificate;
+  readonly domain: string;
+  readonly name: string;
+  readonly zoneId: string;
+}): aws.route53.Record {
+  const {certificate, domain} = options;
+  return new aws.route53.Record(options.name, {
+    allowOverwrite: true,
+    name: certificate.domainValidationOptions.apply((values) =>
+      requireCertificateValidationOption(values, domain).resourceRecordName
+    ),
+    records: [certificate.domainValidationOptions.apply((values) =>
+      requireCertificateValidationOption(values, domain).resourceRecordValue
+    )],
+    ttl: 60,
+    type: certificate.domainValidationOptions.apply((values) =>
+      requireCertificateValidationOption(values, domain).resourceRecordType
+    ),
+    zoneId: options.zoneId,
+  });
+}
+
 function requireCertificateValidationOption(
   values: readonly aws.types.output.acm.CertificateDomainValidationOption[],
+  domain: string,
 ): aws.types.output.acm.CertificateDomainValidationOption {
-  const value = values[0];
+  const value = values.find((candidate) => candidate.domainName === domain);
   if (value === undefined) {
-    throw new Error("ACM returned no DNS validation record.");
+    throw new Error(`ACM returned no DNS validation record for ${domain}.`);
   }
   return value;
+}
+
+interface AwsContentDeliveryNetwork {
+  readonly certificateArn: pulumi.Output<string>;
+  readonly distribution: aws.cloudfront.Distribution;
+}
+
+function defineContentDeliveryNetwork(options: {
+  readonly input: AwsCloudDeploymentInput;
+  readonly listener: aws.lb.Listener;
+  readonly loadBalancer: aws.lb.LoadBalancer;
+  readonly name: string;
+  readonly physicalName: string;
+  readonly tags: Readonly<Record<string, string>>;
+}): AwsContentDeliveryNetwork {
+  const {input, name, tags} = options;
+  // CloudFront only accepts viewer certificates issued in us-east-1.
+  const usEast1 = new aws.Provider(`${name}-us-east-1`, {region: "us-east-1"});
+  const certificateArn = defineEdgeCertificate({input, name, provider: usEast1, tags});
+  // Mirrors the managed UseOriginCacheControlHeaders-QueryStrings policy: the
+  // origin's Cache-Control decides every lifetime and nothing is cached without
+  // origin instruction. It additionally keys on Host, so the application host
+  // and wildcard content host never share entries, and on Authorization, so
+  // CloudFront forwards credentials on GET and HEAD requests.
+  const cachePolicy = new aws.cloudfront.CachePolicy(`${name}-application`, {
+    comment: "Honor origin Cache-Control headers; never cache without instruction.",
+    defaultTtl: 0,
+    maxTtl: 31_536_000,
+    minTtl: 0,
+    name: `${options.physicalName}-origin-cache-control`,
+    parametersInCacheKeyAndForwardedToOrigin: {
+      cookiesConfig: {cookieBehavior: "none"},
+      enableAcceptEncodingBrotli: true,
+      enableAcceptEncodingGzip: true,
+      headersConfig: {
+        headerBehavior: "whitelist",
+        headers: {items: ["authorization", "host"]},
+      },
+      queryStringsConfig: {queryStringBehavior: "all"},
+    },
+  });
+  const originId = `${name}-application`;
+  const distribution = new aws.cloudfront.Distribution(`${name}-application`, {
+    aliases: [input.applicationDomain, `*.${input.contentDomain}`],
+    comment: `Artifact Server ${name}`,
+    defaultCacheBehavior: {
+      allowedMethods: ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"],
+      cachePolicyId: cachePolicy.id,
+      cachedMethods: ["GET", "HEAD"],
+      compress: true,
+      originRequestPolicyId: allViewerOriginRequestPolicyId,
+      targetOriginId: originId,
+      viewerProtocolPolicy: "redirect-to-https",
+    },
+    enabled: true,
+    httpVersion: "http2and3",
+    isIpv6Enabled: true,
+    origins: [{
+      customOriginConfig: {
+        httpPort: 80,
+        httpsPort: 443,
+        originProtocolPolicy: "https-only",
+        // The agent long-poll route holds requests for up to 25 seconds.
+        originReadTimeout: 60,
+        originSslProtocols: ["TLSv1.2"],
+      },
+      domainName: options.loadBalancer.dnsName,
+      originId,
+    }],
+    priceClass: "PriceClass_All",
+    restrictions: {geoRestriction: {restrictionType: "none"}},
+    tags,
+    viewerCertificate: {
+      acmCertificateArn: certificateArn,
+      minimumProtocolVersion: "TLSv1.2_2021",
+      sslSupportMethod: "sni-only",
+    },
+  }, {dependsOn: [options.listener]});
+  return {certificateArn, distribution};
+}
+
+function defineEdgeCertificate(options: {
+  readonly input: AwsCloudDeploymentInput;
+  readonly name: string;
+  readonly provider: aws.Provider;
+  readonly tags: Readonly<Record<string, string>>;
+}): pulumi.Output<string> {
+  const {input, name} = options;
+  const zones = requireDnsZones(input);
+  const certificate = new aws.acm.Certificate(`${name}-edge`, {
+    domainName: input.applicationDomain,
+    subjectAlternativeNames: [`*.${input.contentDomain}`],
+    validationMethod: "DNS",
+    tags: options.tags,
+  }, {provider: options.provider});
+  const validationRecords = [
+    {
+      domain: input.applicationDomain,
+      name: `${name}-edge-application-validation`,
+      zoneId: zones.application,
+    },
+    {
+      domain: `*.${input.contentDomain}`,
+      name: `${name}-edge-content-validation`,
+      zoneId: zones.content,
+    },
+  ].map((record) => defineCertificateValidationRecord({certificate, ...record}));
+  const validation = new aws.acm.CertificateValidation(`${name}-edge`, {
+    certificateArn: certificate.arn,
+    validationRecordFqdns: validationRecords.map((record) => record.fqdn),
+  }, {provider: options.provider});
+  return validation.certificateArn;
 }
 
 function defineDnsAliases(
   input: AwsCloudDeploymentInput,
   name: string,
-  loadBalancer: aws.lb.LoadBalancer,
+  target: {
+    readonly dnsName: pulumi.Input<string>;
+    readonly evaluateTargetHealth: boolean;
+    readonly zoneId: pulumi.Input<string>;
+  },
 ): readonly aws.route53.Record[] {
   const zones = input.dnsZoneIds;
   if (zones === undefined) return [];
@@ -838,9 +1004,9 @@ function defineDnsAliases(
   ];
   return aliases.map((alias) => new aws.route53.Record(alias.name, {
       aliases: [{
-        evaluateTargetHealth: true,
-        name: loadBalancer.dnsName,
-        zoneId: loadBalancer.zoneId,
+        evaluateTargetHealth: target.evaluateTargetHealth,
+        name: target.dnsName,
+        zoneId: target.zoneId,
       }],
       name: alias.domain,
       type: "A",

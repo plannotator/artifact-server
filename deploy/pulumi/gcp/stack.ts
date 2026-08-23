@@ -212,7 +212,9 @@ export function defineGcpStack(
   const apiTokenVersion = new gcp.secretmanager.SecretVersion(`${name}-api-token`, {
     enabled: true,
     secret: apiTokenSecret.id,
-    secretData: pulumi.secret(apiToken.result),
+    secretData: pulumi.secret(
+      pulumi.interpolate`as_key_key_${installationId.result}_${apiToken.result}`,
+    ),
   });
   const databaseUrlSecret = new gcp.secretmanager.Secret(`${name}-database-url`, {
     labels,
