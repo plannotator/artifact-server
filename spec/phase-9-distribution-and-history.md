@@ -9,7 +9,7 @@ tracks:
 1. Cloudflare-native deployment.
 2. AWS and GCP installers, with Azure using Helm on AKS.
 3. Agent Skills for publishing and operation.
-4. Optional private Git history.
+4. Optional private Git handoff.
 
 The tracks share product contracts, but they do not ship as one release.
 Cloudflare adds a new runtime and new storage adapters. The direct-cloud
@@ -394,27 +394,58 @@ provider does not qualify another.
 This track closes `DEP-008` through `DEP-012`, `GATE-007`, `REL-004`, and the
 provider-specific parts of `DEP-001`, `DEP-014`, `DEP-016`, and `GATE-009`.
 
-## Track D: optional private Git history
+## Track D: optional private Git handoff
+
+Implementation status (August 23, 2026): the first slice has a Node
+configuration, durable provider-identity, read-only REST availability, and
+HTTP/MCP discovery foundation. It defaults to `off`, keeps optional Git out of
+readiness, rejects malformed or direct-secret configuration without disclosing
+credentials, prevents silent account/namespace changes, and classifies live
+provider availability without creating repositories. Cloudflare binding
+composition, the project switch, mirror provider calls, and all conformance
+evidence remain open.
 
 ### Core model
 
-Add a history outbox to the authoritative database. The version transaction
-records one pending history job only after all primary bytes are durable. A
-worker claims the job, copies the exact manifest, writes one commit, and records
-the provider, repository identifier, commit identifier, attempt count, and
-result.
+Add a history outbox to the authoritative database. Deployment configuration
+makes a provider available; it never selects data. Every project's durable Git
+history switch defaults to off. When the provider is non-off and a project is
+enabled, the version transaction records one
+pending history job only after all primary bytes are durable. While either is
+off, publication records no mirror job; later project enablement discovers
+unmapped versions through reconciliation. A worker claims the job, copies the
+exact manifest, writes one commit, and records the provider, repository
+identifier, commit identifier, copied-byte count, attempt count, and result.
 
 The mapping is unique by installation, project, artifact, and version. A retry
 returns the existing commit mapping or safely creates the same logical commit.
 Provider failure changes only history status. It cannot change publication,
 the current-version pointer, browser delivery, comparison, or access.
 
+The installation configuration is explicit and off by default. The initial
+accepted values are `off` and `cloudflare-artifacts`; there is no `auto` value.
+An administrator requests a repository/version/operation/byte planning
+estimate before enabling one project. The estimate is computed on demand and
+is not persisted as a receipt. There is no installation-wide mode or automatic
+enablement for future projects. The project switch uses the normal
+authorization rules, and setting it to its current value is a no-op over HTTP
+or MCP.
+Bounded reconciliation then enqueues every unmapped version in the selected
+project oldest-first per artifact. Disabling a project or provider stops
+applicable mirror work without deleting repositories or durable state, and
+re-enabling the same project and provider resumes. Replacing a provider,
+account, or namespace after repositories exist requires a separate migration
+and is not inferred from a configuration edit.
+
 ### Repository layout
 
-Use one private repository per artifact, matching the current product
-specification. Each commit contains:
+Use one private repository per artifact, including single-document artifacts,
+matching the current product specification. Projects remain organizational
+containers; a project checkout command aggregates independent repositories as
+sibling folders instead of creating a project repository. Each commit contains:
 
-- the version's copied files that are at or below the configured Git limit;
+- the version's copied files selected by deterministic per-file and per-version
+  limits snapshotted on the history job;
 - `.artifactserver/version.json` with installation, project, artifact, version,
   manifest fingerprint, entry path, creation time, and copied commit metadata;
 - manifest entries for large or excluded files with path, media type, size, and
@@ -423,17 +454,27 @@ specification. Each commit contains:
 Commit metadata contains Artifact Server identities, not untrusted commit
 messages supplied by artifact content. Repositories and credentials remain
 private. Public artifact access never exposes a Git URL or commit identifier.
+An optional logical copied-byte budget reserves capacity atomically before a
+provider write. Reaching it pauses mirror work in `budget-limited` without
+changing publication or readiness.
 
 ### Provider order
 
-1. **Local disk:** private repositories below the installation data directory.
-   The implementation must not add Git as a requirement when history is off.
-2. **Cloudflare Artifacts:** one repository per artifact through a Worker
-   binding or REST interface. Ship only with beta access and completed provider
-   evidence.
-3. **Private Git remote:** an administrator-configured smart-HTTP server for
-   Kubernetes and direct clouds. Credentials come from the deployment secret
-   manager. Concurrent push conflicts retry without changing the version.
+1. **Off:** the default on every deployment. It loads no Git implementation,
+   binding, or credential and makes no provider request.
+2. **Cloudflare Artifacts:** the first managed adapter and the only non-off
+   value in the first Git handoff slice. Cloudflare deployments use the Worker
+   binding; other runtimes use the REST control plane. Both write commits over
+   Git smart HTTP. Every installation environment uses one exclusive persisted
+   account/namespace identity. The adapter has no namespace-delete or
+   account-wide delete operation. Ship and advertise it only after the bounded
+   live provider gate.
+3. **Local disk:** a future offline adapter and conformance reference. Decide
+   its embedded-versus-system-Git mechanics when it enters scope; its name is
+   not accepted merely because the design is recorded here.
+4. **code.storage and private Git remote:** future managed and
+   administrator-supplied adapters. Re-probe their current APIs, authentication,
+   limits, pricing, and recovery behavior before freezing either contract.
 
 The provider interface exposes repository creation, exact-version commit,
 mapping lookup, health, and deletion. It does not expose arbitrary Git hosting,
@@ -443,10 +484,24 @@ branches, pull requests, user pushes, or source repository management.
 
 - Run with history disabled, enabled, misconfigured, unavailable, slow, and
   restored from backup.
+- Configure the provider with projects present and prove it copies nothing.
+  Estimate and enable one project without touching another; prove that existing
+  and future projects remain off until each is explicitly enabled.
+- Interrupt bounded project backfill and resume it without duplicate or missing
+  commits while new publishes run.
+- Disable one project and the provider without deleting provider data or
+  durable jobs, then re-enable the same project and provider and resume. Reject
+  a provider-location replacement until an explicit migration has been
+  performed.
+- Plan an installation-wide purge without provider writes, require exact
+  installation confirmation to apply it, and resume partial deletion without
+  touching primary artifact data or the provider namespace.
 - Prove publication returns before or independently of history completion.
 - Inject a failure before and after every outbox and provider step.
 - Retry concurrently and preserve one version-to-commit mapping.
-- Test copied and excluded large files and verify the manifest representation.
+- Test per-file and per-version copied/excluded bytes, job-snapshotted limits,
+  and atomic logical-budget races; verify the manifest representation and
+  `budget-limited` recovery.
 - Verify public links, content sessions, unauthorized MCP requests, logs, and
   errors never expose Git credentials, remotes, earlier versions, or commit
   identifiers.
@@ -454,9 +509,13 @@ branches, pull requests, user pushes, or source repository management.
   making Git part of primary artifact recovery.
 - Measure repository count, copy time, storage growth, worker memory, provider
   limits, and deletion behavior.
+- Run Node REST and the remote Workers binding only in a dedicated
+  `artifact-server-test-` namespace with explicit opt-in, a separate token,
+  unique run prefixes, hard operation/storage bounds, and durable
+  run-manifest-only cleanup. Prove another namespace is untouched.
 - Prove every deployment remains supported with history disabled.
 
-This track closes `GIT-001` through `GIT-007` and `GATE-004`.
+This track closes `GIT-001` through `GIT-014` and `GATE-004`.
 
 ## Build order
 
@@ -465,9 +524,14 @@ This track closes `GIT-001` through `GIT-007` and `GATE-004`.
 2. Freeze the cloud configuration, output, evidence, and storage-provider
    contracts. Do not add a deployment wrapper.
 3. Build the one-installation Cloudflare runtime with Git disabled.
-4. Add the history outbox and local Git provider.
-5. Add the Cloudflare Artifacts provider if beta access and provider evidence
-   are available.
+4. Add explicit off-by-default Git configuration, the persisted per-project
+   switch, on-demand estimate and budget accounting, the history outbox,
+   project backfill/reconciliation, and separate provider/project capability
+   states.
+5. Add Cloudflare Artifacts as the first managed provider and pass its binding,
+   REST, smart-HTTP, token, project-switch, estimate, budget, namespace, bounded live
+   cleanup, backfill, disable, deletion, limit, and recovery probes before
+   advertising it.
 6. Build the AWS installer.
 7. Add the GCS adapter and GCP installer.
 8. Keep the Azure Blob adapter preview and document AKS through Helm.
@@ -491,8 +555,11 @@ not advertised until its own gate passes.
 - Pulumi supports customer-owned S3 and GCS state backends and
   provider-backed secrets encryption. The official packages use the Pulumi CLI
   directly. Automation API is not part of the initial deployment surface.
-- Cloudflare Artifacts is in closed beta. Its current documented limit is 10 GB
-  per repository. Artifact Server cannot require it for the Cloudflare release.
+- Cloudflare Artifacts access is not universal. Its current documented limit is
+  10 GB per repository and its published pricing requires Workers Paid, whose
+  account-level minimum is $5 per month. Artifacts bills aggregate repository
+  operations and stored bytes, with no per-repository fee. Artifact Server
+  cannot require it for any deployment release.
 - Agent Skills use the open folder format with `SKILL.md` and optional
   `scripts`, `references`, and `assets`. `allowed-tools` remains experimental,
   so security cannot depend on a client enforcing that field.
@@ -506,4 +573,6 @@ References:
 - [Pulumi secrets](https://www.pulumi.com/docs/iac/concepts/secrets/)
 - [Cloudflare Artifacts](https://developers.cloudflare.com/artifacts/)
 - [Cloudflare Artifacts limits](https://developers.cloudflare.com/artifacts/platform/limits/)
+- [Cloudflare Artifacts pricing](https://developers.cloudflare.com/artifacts/platform/pricing/)
+- [Cloudflare Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/)
 - [Agent Skills specification](https://agentskills.io/specification)

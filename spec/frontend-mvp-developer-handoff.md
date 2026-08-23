@@ -75,13 +75,15 @@ The backend already supports:
 - local packages, OCI images, Compose, Helm, Cloudflare, AWS, and GCP release
   paths.
 
-The repository does not currently contain a web application, and the
-application origin does not currently serve one. Do not mistake the HTML product
-specification in `spec/` for the product interface.
+The repository now contains the management application in `apps/web`, and the
+application origin serves its compiled assets. This document records the
+original frontend assignment and is no longer a current-state inventory.
 
-Optional Git history, Plannotator integration, comments, annotations, public
-hosting controls, an operator skill, custom domains, and new identity models are
-outside this assignment.
+Since this handoff was written, the tree has also gained exact-version comments,
+the artifact-first review viewer, agent dispatch, linked local artifacts,
+generic OIDC and local-owner access, plus the first configurable Git-history
+foundation. Public hosting controls, an operator skill, custom domains, and the
+remaining Git mirror are still separate work.
 
 ## Read these files before changing code
 
@@ -227,16 +229,18 @@ Vite may proxy same-origin application and API requests to port 8787. The proxy
 must preserve the backend's session and CSRF protections. Do not disable origin,
 Fetch Metadata, cookie, or CSRF checks to make development convenient.
 
-Add a simple packaged CLI path that opens the local management interface in the
-person's browser. The command must read the local browser-bootstrap credential
-internally, open the private local login address, and redirect to the clean UI
-address. A person must not open a credential file, copy a token, inspect startup
-logs, or paste a secret. Choose a command name consistent with the existing CLI
-after inspecting its current surface, and document it.
+Add a simple packaged CLI path that opens the clean local management URL in the
+person's browser. The loopback, same-origin local-owner exchange creates the
+normal application session without putting a credential in a URL or exposing
+one to browser JavaScript. A person must not open a credential file, copy a
+token, inspect startup logs, paste a secret, or use a particular browser
+profile. Choose a command name consistent with the existing CLI after inspecting
+its current surface, and document it.
 
-Local browser login currently uses `GET /auth/local`. Once the UI exists, a
-successful login must land on the management application rather than a raw JSON
-session response. Update the associated behavior tests.
+The legacy `GET /auth/local` compatibility route is not the normal UI entry.
+The UI reads `/auth/context`, performs at most one empty
+`POST /auth/local-owner` exchange in local-owner mode, and then loads the management
+application. Update the associated behavior tests.
 
 ## Browser authentication and request rules
 

@@ -299,6 +299,41 @@ Start with a small, explicit tool surface:
 | `artifact_diff` | Return a bounded comparison summary and a link to the full comparison. |
 | `artifact_restore_version` | Make an existing immutable version current again. |
 | `artifact_delete` | Delete one artifact after an optimistic current-version check. |
+| `project_git_history_status` | Read whether optional Git history is on for one project. |
+| `project_git_history_estimate` | For a project-management principal, estimate repositories, versions, provider operations, copied bytes, and pointer bytes before enabling that project's optional Git handoff. Makes no provider request. |
+| `project_set_git_history` | Enable or disable one project's optional Git handoff. Enabling requires explicit estimate confirmation; setting the current value is a no-op. |
+| `artifact_history_clone_token` | Issue an authorized, repository-scoped read credential for one provisioned artifact repository, with a 15-minute default and one-hour maximum lifetime. Public-link possession never qualifies. |
+| `comment_list` | List one artifact's comment threads, filtered by exact version or state and polled with `since` on last activity. A `dispatched` filter (`exclude`, `include`, or `only`; default `exclude`) matches the HTTP `GET …/comments` parameter exactly, so a thread an agent dispatch currently holds stays out of ordinary listings until it is addressed, fails, or is canceled, and is findable on demand with `dispatched: "only"`. |
+| `comment_get` | Read one comment thread with every reply it carries. |
+| `comment_create` | Open one comment thread on one exact saved version, optionally on one manifest path with a client-owned anchor. |
+| `comment_reply` | Add one reply to an open comment thread. A resolved thread rejects replies until it is reopened. |
+| `comment_resolve` | Resolve one comment thread, or reopen it with `resolved` false. |
+| `comment_update` | Edit the body of one thread or reply, or move one thread's anchor. Only the author may edit. |
+| `comment_delete` | Delete one comment thread with its replies, or one reply. The author, a human administrator, or `artifact:manage:any` may delete. |
+
+Comment threads belong to one exact immutable version, never to "current".
+`artifact_capabilities` reports the comment body and anchor limits and the one
+anchor rule the server enforces: the anchor is opaque client JSON, except that a
+top-level `point` must carry `x` and `y` between 0 and 1. Comment tools require a
+direct human member or the `comment:write` capability; only the author may edit
+the words attributed to that author. `artifact_capabilities` also reports the
+agent-dispatch bundle rule (1..100 open, undispatched threads from one project
+per bundle) and the note character limit; no dispatch tool exists over MCP —
+dispatch send, claim, and reporting are HTTP-only, and `comment_get` still reads
+a dispatched thread directly by its id.
+`comment_delete` carries the same destructive tool annotation as
+`artifact_delete`, because deleting a thread also deletes every reply it
+carries; the other comment write tools carry the idempotent write annotation.
+
+Git provider configuration is never an MCP operation. `artifact_capabilities`
+reports provider availability and bounded copy limits/accounting without
+credentials or repository coordinates. Project and artifact reads report only
+their effective Git state and whether clone access is currently available. The
+project estimate tool is a privileged read-only tool; it computes a planning
+summary on demand, persists no receipt, and makes no provider call. The project
+switch has the same authorization and result contract over MCP and HTTP.
+Clone-token output is sensitive, non-cacheable, and excluded from logs;
+it is returned only to the authorized caller for immediate Git use.
 
 The first read-only resource template exposes one bounded version manifest:
 

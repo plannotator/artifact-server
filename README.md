@@ -30,6 +30,13 @@ This repository contains the local publication foundation and the first external
 - a responsive management application for projects, artifacts, immutable
   versions, comparisons, restores, action history, administrator public-link
   inventory and shutdown, members, and API keys;
+- frictionless loopback-only local-owner browser sessions plus private-team
+  WorkOS or generic OIDC login, with real Keycloak integration coverage;
+- exact-version comment threads and replies across HTTP, MCP, and the web,
+  including an artifact-first sandboxed review viewer;
+- an attributed agent registry and dispatch mailbox with an optional Pi bridge;
+- optional, explicitly configured linked local files with captured immutable
+  versions, drift reporting, relinking, and member-only live views;
 - replaceable interactive login with a WorkOS AuthKit adapter;
 - authenticated artifact metadata, saved-version history, and canonical manifests;
 - manifest-based file comparisons with unambiguous rename detection;
@@ -100,15 +107,19 @@ The remaining product work is:
    Cloudflare package. Quotas, abuse operations, malware handling, and
    regulated-enterprise controls belong to an optional artifactserver.com
    service policy and are not core OSS first-release work.
-3. Optional private Git history, including local and Cloudflare providers.
+3. Finish optional private Git history. Configuration, provider discovery,
+   durable provider identity, estimates, and the off-by-default project switch
+   exist; durable mirror jobs, Cloudflare repository writes, clone handoff,
+   deletion, and release proof remain.
 4. The AWS and GCP Pulumi projects and native S3 and GCS adapters are
    implemented and have selected live qualification evidence. Their complete
    ledger lifecycle gates remain open. The Azure Blob adapter is preview-only
    until it passes a live Azure qualification.
 5. The optional `operate-artifact-server` skill after its deployment commands
    are stable.
-6. Direct Plannotator project pairing and the review bridge after the separate
-   integration contract passes.
+6. Direct Plannotator project pairing after the separate integration contract
+   passes. Comment review and the optional Pi agent-dispatch bridge now exist,
+   but they are not one-click Plannotator project pairing.
 
 Phase 11 has selected recovery and live-cloud evidence for Cloudflare, AWS, and
 GCP, and the temporary qualification resources were removed after those runs.
@@ -262,8 +273,11 @@ docker compose run --rm --no-deps artifact-server \
 docker compose up --detach --wait
 ```
 
-The initialization command prints the browser bootstrap credential once. The
-server uses the same volume on restart and container replacement.
+The initialization command prints only the installation ID and data directory.
+Compact serving requires exactly one OIDC or WorkOS browser identity provider;
+the configured bootstrap administrator is admitted on that person's first
+verified sign-in. The server uses the same volume on restart and container
+replacement.
 
 Create a stopped-volume backup and restore it into a clean Compose project:
 
@@ -389,17 +403,21 @@ This command builds the management shell once, then runs the backend on port
 node --import tsx src/cli/main.ts open --data .artifact-server
 ```
 
-The command signs the browser into the backend shell. The session also works
-through the Vite proxy at `http://127.0.0.1:5173`.
+The command opens the plain management URL. Local-owner mode gives a loopback,
+same-origin browser a normal application session automatically, so a fresh
+browser profile needs no token or sign-in step. The same exchange works through
+the Vite proxy at `http://127.0.0.1:5173` without exposing its development-only
+proxy credential to browser JavaScript.
 
 For a production-style source run, use `pnpm build` followed by
 `pnpm start -- --data .artifact-server --port 8787`, then open
 `http://localhost:8787`.
 
-The local server creates separate random API and browser-bootstrap credentials in
-`.artifact-server/local-api-token` and `.artifact-server/local-browser-token`
-and keeps both files with mode `0600`. It prints neither credential and does not
-print a URL containing one.
+The local server keeps its machine API credential in
+`.artifact-server/local-api-token` with mode `0600`. It may retain a legacy
+browser-token file for compatibility, but normal startup, `artifactserver open`,
+and the web shell do not read or expose it. Local-owner mode binds only to an
+exact loopback address and refuses forwarded requests.
 
 Hosted deployments serve the same application at their configured HTTPS
 application origin. Users sign in through WorkOS. Artifact content remains on
@@ -444,14 +462,19 @@ self-sign-up. Administrators manage human-owned or service-owned credentials
 through `/api/v1/api-keys`; each key has explicit capabilities and a required
 future expiration and can be rotated or revoked.
 
-### Optional hosted WorkOS authentication
+### Private-team browser authentication
 
-WorkOS owns browser authorization for hosted MCP and interactive application
-login. Artifact Server still owns its member list, authorization decisions,
-application sessions, and API keys. Copy `.env.example` into a secret local
-environment file or secret manager. Set the application origin, bootstrap
-administrator email, client ID, exact AuthKit issuer, and either the WorkOS
-API-key value or its `_FILE` path before starting the server.
+Every remotely reachable single-server, Compose, external-storage, and
+Kubernetes deployment requires exactly one browser identity provider: generic
+OIDC or WorkOS. Artifact Server still owns its member list, authorization
+decisions, application sessions, and API keys. Missing, partial, or multiple
+provider configurations fail startup; the credential-free local-owner route and
+legacy local bearer are unavailable in this mode.
+
+For generic OIDC, configure the issuer, client ID, optional client secret, and
+exact `/auth/callback` redirect. For WorkOS, set the application origin,
+bootstrap administrator email, client ID, exact AuthKit issuer, and either the
+API-key value or its `_FILE` path.
 
 Use a dedicated Artifact Server WorkOS environment. Configure the exact
 `/auth/callback` redirect. Enable CIMD, retain DCR for current-client
@@ -603,8 +626,9 @@ logical copy of the bucket for backup and restore; both halves are required.
 
 The same commands are used by direct packages, containers, Compose, and
 Kubernetes. `artifactserver init` creates one compact installation and prints
-its browser bootstrap credential once. `start-compact` requires that initialized
-directory and never prints a credential.
+only its installation ID and data directory. `start-compact` requires that
+initialized directory and exactly one identity provider; neither command prints
+a credential.
 
 ```sh
 artifactserver init --admin-email admin@example.com --data /srv/artifact-server

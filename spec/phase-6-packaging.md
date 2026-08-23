@@ -93,10 +93,10 @@ changes:
 
 | Command | Required behavior |
 | --- | --- |
-| `artifactserver start` | Run the default direct local mode on loopback with SQLite and one local data directory. It may print the newly generated local bootstrap link. Docker is not required. |
+| `artifactserver start` | Run explicit local-owner mode on an exact loopback address with SQLite and one local data directory. Open only a clean URL; never print or require a browser credential. Docker is not required. |
 | `artifactserver start-compact` | Bind to the configured interface, use a generated stable installation ID, use the configured application and content origins, require an initialized data directory, and never print a credential or login link. |
 | `artifactserver start-external-storage` | Keep the current Postgres and object-storage composition, but validate rather than apply migrations before serving. |
-| `artifactserver init` | Create the compact data directory, installation identity, and initial secret files with restrictive permissions. Return the bootstrap credential once to the invoking terminal, never to later server logs. |
+| `artifactserver init` | Create the compact data directory, installation identity, and initial machine API key with restrictive permissions. Print only nonsecret installation metadata; private-team browser access comes from its required identity provider. |
 | `artifactserver config check` | Parse the exact runtime configuration, inspect required paths and providers, print only redacted results, and exit without serving. |
 | `artifactserver migrate status` | Report the database schema and application compatibility without changing it. |
 | `artifactserver migrate apply` | Apply external-storage Postgres migrations under the existing advisory lock and exit. |
@@ -432,9 +432,11 @@ fail the packaging gate.
   unsupported until its exact mount and failure behavior passes the SQLite and
   blob tests.
 - **Database connection multiplication:** each serving replica uses a bounded
-  ten-connection pool and the migration Job uses one connection. The chart
-  validates that the replica count and migration Job fit the declared Postgres
-  connection budget.
+  Postgres pool, configurable through `ARTIFACT_SERVER_POSTGRES_MAX_CONNECTIONS`
+  (Helm: `configuration.postgresPoolSize`, default 10 connections), and the
+  migration Job uses one connection. The chart validates that the replica
+  count, pool size, and migration Job fit the declared Postgres connection
+  budget.
 - **Object lifecycle rules:** a provider rule cannot expire or rewrite the
   committed-object prefix. Cleanup is limited to separately identified,
   expired, uncommitted staging data.

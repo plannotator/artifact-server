@@ -80,6 +80,15 @@ local mode-`0600` files and never enter source control.
   replacing the customer's Artifact Server login.
 - Disabling an installation member immediately blocks new sessions and API use,
   regardless of whether the external identity provider still recognizes them.
+- Each process may keep one small bounded cache of successful session and
+  managed-key checks so every request does not repeat the storage lookup. Only
+  successes are cached, an entry lives at most 30 seconds and never past the
+  credential's own expiry, and logout, key revocation, key rotation, and member
+  deactivation in the same process evict immediately. Replicas share no memory,
+  so a session or key revoked on one replica may still authenticate on another
+  for at most 30 seconds; correctness never depends on process memory, and the
+  cache only bounds how quickly a shared-storage revocation reaches every
+  replica.
 - Artifact Server must back up identity records together with artifact metadata.
 - Hosted deployments must configure a public application origin and exact WorkOS
   callback URI before interactive login can be enabled.

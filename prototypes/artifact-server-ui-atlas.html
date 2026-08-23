@@ -1,0 +1,1103 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Artifact Server · UI Atlas</title>
+  <style>
+    :root {
+      --bg: #fafafa;
+      --fg: #161616;
+      --panel: #ffffff;
+      --muted: #f2f2f3;
+      --muted-fg: #68686f;
+      --border: #dcdce0;
+      --input: #cfcfd4;
+      --primary: #5b4fe8;
+      --primary-fg: #ffffff;
+      --danger: #c9363e;
+      --success: #147d56;
+      --warning: #a25d0c;
+      --catalog-bg: #ececef;
+      --catalog-fg: #242428;
+      --catalog-border: #d0d0d5;
+      --shadow: 0 18px 60px rgba(0,0,0,.2);
+      color-scheme: light;
+    }
+
+    html.dark {
+      --bg: #09090b;
+      --fg: #f4f4f5;
+      --panel: #0d0d10;
+      --muted: #18181b;
+      --muted-fg: #a1a1aa;
+      --border: #2b2b31;
+      --input: #36363e;
+      --primary: #8b80f9;
+      --primary-fg: #111014;
+      --danger: #fb7185;
+      --success: #50d19b;
+      --warning: #f0ae55;
+      --catalog-bg: #18181b;
+      --catalog-fg: #f4f4f5;
+      --catalog-border: #303037;
+      --shadow: 0 22px 70px rgba(0,0,0,.5);
+      color-scheme: dark;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: Geist, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input, select, textarea { font: inherit; }
+    button, a, select { -webkit-tap-highlight-color: transparent; }
+    a { color: inherit; text-decoration: none; }
+    button { color: inherit; }
+    button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible {
+      outline: 2px solid color-mix(in srgb, var(--primary) 70%, transparent);
+      outline-offset: 2px;
+    }
+    [hidden] { display: none !important; }
+
+    /* Review harness chrome, deliberately separate from the product UI. */
+    .atlas-bar {
+      position: fixed;
+      inset: 0 0 auto 0;
+      z-index: 10000;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--catalog-border);
+      background: color-mix(in srgb, var(--catalog-bg) 92%, transparent);
+      color: var(--catalog-fg);
+      -webkit-backdrop-filter: blur(18px);
+      backdrop-filter: blur(18px);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .atlas-id { display: flex; align-items: center; gap: 10px; min-width: 222px; }
+    .atlas-mark { width: 8px; height: 8px; background: #7d70f4; box-shadow: 9px 0 0 #7d70f4; }
+    .atlas-id strong { font-size: 13px; letter-spacing: -.01em; }
+    .atlas-id span { color: color-mix(in srgb, var(--catalog-fg) 55%, transparent); font: 10px ui-monospace, monospace; letter-spacing: .13em; text-transform: uppercase; }
+    .atlas-modes { display: flex; align-self: stretch; }
+    .atlas-mode {
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      padding: 0 14px;
+      color: color-mix(in srgb, var(--catalog-fg) 58%, transparent);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .atlas-mode:hover { color: var(--catalog-fg); }
+    .atlas-mode[data-active] { border-bottom-color: #7d70f4; color: var(--catalog-fg); }
+    .atlas-page-nav { display: flex; align-items: center; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+    .atlas-page-nav::-webkit-scrollbar { display: none; }
+    .atlas-page {
+      flex: none;
+      height: 30px;
+      border: 1px solid transparent;
+      background: transparent;
+      padding: 0 9px;
+      color: color-mix(in srgb, var(--catalog-fg) 56%, transparent);
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .atlas-page:hover { color: var(--catalog-fg); }
+    .atlas-page[data-active] { border-color: var(--catalog-border); background: color-mix(in srgb, var(--catalog-fg) 7%, transparent); color: var(--catalog-fg); }
+    .atlas-count { margin-left: auto; flex: none; color: color-mix(in srgb, var(--catalog-fg) 45%, transparent); font: 10px ui-monospace, monospace; }
+    .atlas-stage { min-height: 100vh; padding-top: 52px; }
+
+    /* Shared product system, matched to apps/web. */
+    .product-shell { min-height: calc(100vh - 52px); background: var(--bg); color: var(--fg); }
+    .app-header { border-bottom: 1px solid var(--border); background: var(--bg); }
+    .app-header-inner {
+      width: min(100%, 1280px);
+      min-height: 70px;
+      margin: 0 auto;
+      padding: 15px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 28px;
+    }
+    .app-brand-row, .app-user-row, .app-nav, .row { display: flex; align-items: center; }
+    .app-brand-row { gap: 20px; min-width: 0; }
+    .app-brand { font-family: "Noto Sans", -apple-system, sans-serif; font-weight: 700; letter-spacing: -.025em; white-space: nowrap; }
+    .divider-v { width: 1px; height: 20px; flex: none; background: var(--border); }
+    .project-picker {
+      width: 190px;
+      height: 36px;
+      border: 1px solid var(--input);
+      border-radius: 0;
+      padding: 0 34px 0 12px;
+      background: var(--bg);
+      color: var(--fg);
+      appearance: auto;
+    }
+    .app-nav { gap: 2px; }
+    .nav-link, .btn {
+      min-height: 34px;
+      border: 1px solid transparent;
+      border-radius: 0;
+      background: transparent;
+      padding: 0 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .nav-link { color: var(--muted-fg); }
+    .nav-link:hover, .nav-link.active { background: var(--muted); color: var(--fg); }
+    .btn { border-color: var(--input); background: var(--bg); }
+    .btn:hover { background: var(--muted); }
+    .btn.primary { border-color: var(--primary); background: var(--primary); color: var(--primary-fg); }
+    .btn.primary:hover { filter: brightness(1.05); }
+    .btn.ghost { border-color: transparent; }
+    .btn.danger { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); }
+    .btn.sm { min-height: 30px; padding-inline: 9px; font-size: 11px; }
+    .btn.icon { width: 34px; padding: 0; }
+    .user-meta { min-width: 0; text-align: right; }
+    .user-id { max-width: 150px; overflow: hidden; text-overflow: ellipsis; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
+    .user-role { margin-top: 3px; color: var(--muted-fg); font-size: 11px; text-transform: capitalize; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      color: var(--muted-fg);
+      font: 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .badge.primary { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); background: color-mix(in srgb, var(--primary) 9%, transparent); color: var(--primary); }
+    .badge.success { border-color: color-mix(in srgb, var(--success) 38%, var(--border)); color: var(--success); }
+    .badge.warning { border-color: color-mix(in srgb, var(--warning) 40%, var(--border)); color: var(--warning); }
+    .badge.danger { border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); color: var(--danger); }
+    .main { width: min(100%, 1280px); margin: 0 auto; padding: 44px 32px 84px; }
+    .stack { display: flex; flex-direction: column; gap: 32px; }
+    .page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; border-bottom: 1px solid var(--border); padding-bottom: 28px; }
+    .eyebrow { margin: 0 0 10px; color: var(--primary); font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; text-transform: uppercase; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1, h2, h3 { font-family: "Noto Sans", -apple-system, BlinkMacSystemFont, sans-serif; }
+    h1 { margin-bottom: 8px; font-size: clamp(29px, 3vw, 42px); line-height: 1.08; letter-spacing: -.04em; }
+    h2 { margin-bottom: 8px; font-size: 18px; letter-spacing: -.025em; }
+    h3 { margin-bottom: 6px; font-size: 14px; letter-spacing: -.015em; }
+    .lede { max-width: 760px; margin: 0; color: var(--muted-fg); line-height: 1.65; }
+    .header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .panel { border: 1px solid var(--border); background: var(--bg); }
+    .panel-pad { padding: 22px; }
+    .muted { color: var(--muted-fg); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .tiny { font-size: 11px; }
+    .small { font-size: 12px; }
+    .text-link { color: var(--primary); cursor: pointer; }
+    .text-link:hover { text-decoration: underline; }
+    .filter-bar { display: flex; align-items: end; gap: 12px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+    .field { display: grid; gap: 7px; }
+    .field.grow { flex: 1; }
+    .label { font-size: 12px; font-weight: 650; }
+    .input {
+      width: 100%; height: 38px; border: 1px solid var(--input); border-radius: 0; background: var(--bg); color: var(--fg); padding: 0 11px;
+    }
+    .input::placeholder { color: color-mix(in srgb, var(--muted-fg) 70%, transparent); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th { height: 42px; padding: 0 15px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--muted) 62%, transparent); color: var(--muted-fg); font-size: 10px; letter-spacing: .15em; text-transform: uppercase; white-space: nowrap; }
+    td { padding: 16px 15px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: color-mix(in srgb, var(--muted) 46%, transparent); }
+    .td-title { margin-bottom: 6px; font-family: "Noto Sans", sans-serif; font-weight: 700; }
+    .tag-row, .action-row { display: flex; flex-wrap: wrap; gap: 7px; }
+    .action-row { justify-content: flex-end; }
+    .projects-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); border: 1px solid var(--border); }
+    .project-card { min-width: 0; padding: 22px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .project-card:nth-child(2n) { border-right: 0; }
+    .project-card:nth-last-child(-n+2) { border-bottom: 0; }
+    .project-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+    .git-block { margin-top: 20px; padding-top: 17px; border-top: 1px solid var(--border); }
+    .git-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .git-actions { margin-top: 13px; }
+    .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+    .tab { position: relative; min-height: 40px; border: 0; background: transparent; color: var(--muted-fg); padding: 0 13px; cursor: pointer; font-size: 12px; font-weight: 650; white-space: nowrap; }
+    .tab.active { color: var(--fg); }
+    .tab.active::after { content: ""; position: absolute; inset: auto 8px -1px; height: 2px; background: var(--primary); }
+    .detail-grid { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 32px; padding-top: 24px; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+    .meta { margin: 0; }
+    .meta-row { display: grid; grid-template-columns: 160px minmax(0,1fr); gap: 18px; padding: 12px 0; border-top: 1px solid var(--border); }
+    .meta-row dt { color: var(--muted-fg); font-size: 12px; }
+    .meta-row dd { min-width: 0; margin: 0; }
+    .manage-stack { display: grid; gap: 10px; }
+    .manage-stack .btn { width: 100%; }
+    .version-list { border: 1px solid var(--border); }
+    .version-row { display: grid; grid-template-columns: 1fr auto; gap: 16px; padding: 18px; border-bottom: 1px solid var(--border); }
+    .version-row:last-child { border-bottom: 0; }
+    .review-canvas { display: grid; grid-template-columns: minmax(0,1fr) 360px; min-height: 580px; border: 1px solid var(--border); }
+    .artifact-preview { overflow: hidden; background: #f4f2ed; color: #171719; }
+    .preview-top { height: 50px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid #d6d2c9; background: #fff; font-size: 12px; }
+    .preview-body { padding: 54px 56px; }
+    .preview-kicker { color: #6659d9; font: 700 10px ui-monospace, monospace; letter-spacing: .16em; text-transform: uppercase; }
+    .preview-title { max-width: 640px; margin: 16px 0 22px; font: 650 clamp(34px, 5vw, 68px)/.98 Georgia, serif; letter-spacing: -.045em; }
+    .preview-copy { max-width: 590px; color: #5d5b58; font-size: 16px; line-height: 1.65; }
+    .preview-grid { display: grid; grid-template-columns: repeat(3,1fr); margin-top: 44px; border: 1px solid #d6d2c9; background: #fff; }
+    .preview-card { min-height: 120px; padding: 20px; border-right: 1px solid #d6d2c9; }
+    .preview-card:last-child { border: 0; }
+    .comment-rail { display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--bg); }
+    .comment-head { display: flex; align-items: center; justify-content: space-between; padding: 15px; border-bottom: 1px solid var(--border); }
+    .comment-list { display: grid; gap: 0; overflow: auto; }
+    .comment { padding: 17px; border-bottom: 1px solid var(--border); }
+    .comment-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+    .comment p { margin: 0; line-height: 1.55; }
+    .avatar { width: 26px; height: 26px; display: inline-grid; place-items: center; background: var(--muted); border: 1px solid var(--border); font-size: 10px; font-weight: 700; }
+    .bulk-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 15px; border: 1px solid var(--border); }
+    .check { width: 15px; height: 15px; accent-color: var(--primary); }
+    .signin { min-height: calc(100vh - 52px); display: grid; place-items: center; padding: 24px; background: var(--bg); }
+    .signin-card { width: min(100%, 520px); padding: 34px; border: 1px solid var(--border); }
+    .signin-card h1 { margin-top: 10px; }
+    .signin-card .btn { margin-top: 22px; }
+    .notice { border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border)); background: color-mix(in srgb, var(--primary) 7%, transparent); padding: 15px; line-height: 1.55; }
+    .secret-prefix { display: block; max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Lightweight dialog behavior for the mockups. */
+    .dialog-layer { position: fixed; inset: 52px 0 0; z-index: 20000; display: none; place-items: center; padding: 24px; background: rgba(0,0,0,.64); }
+    .dialog-layer.open { display: grid; }
+    .dialog { width: min(100%, 520px); max-height: min(760px, calc(100vh - 100px)); overflow: auto; border: 1px solid var(--border); background: var(--bg); padding: 24px; box-shadow: var(--shadow); }
+    .dialog h2 { font-size: 22px; }
+    .dialog p { color: var(--muted-fg); line-height: 1.6; }
+    .dialog-form { display: grid; gap: 16px; margin: 22px 0; }
+    .dialog-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 18px; border-top: 1px solid var(--border); }
+    .capability { display: grid; grid-template-columns: auto 1fr; gap: 10px; border: 1px solid var(--border); padding: 12px; }
+
+    /* Three intentionally structural shell directions. */
+    .direction-stage { min-height: calc(100vh - 52px); }
+    .direction-note { color: var(--muted-fg); font-size: 12px; line-height: 1.55; }
+    .rail-shell { min-height: calc(100vh - 52px); display: grid; grid-template-columns: 248px minmax(0,1fr); }
+    .rail-sidebar { position: sticky; top: 52px; height: calc(100vh - 52px); display: flex; flex-direction: column; border-right: 1px solid var(--border); background: var(--bg); }
+    .rail-brand { height: 70px; display: flex; align-items: center; padding: 0 21px; border-bottom: 1px solid var(--border); font-family: "Noto Sans", sans-serif; font-weight: 700; }
+    .rail-project { margin: 17px; padding: 13px; border: 1px solid var(--border); }
+    .rail-project small { display: block; margin-bottom: 6px; color: var(--muted-fg); font: 9px ui-monospace, monospace; letter-spacing: .15em; text-transform: uppercase; }
+    .side-nav { display: grid; gap: 3px; padding: 0 11px; }
+    .side-label { margin: 20px 10px 7px; color: var(--muted-fg); font: 9px ui-monospace, monospace; letter-spacing: .16em; text-transform: uppercase; }
+    .side-link { display: flex; align-items: center; gap: 11px; min-height: 38px; padding: 0 10px; color: var(--muted-fg); font-size: 12px; font-weight: 600; }
+    .side-link.active { background: var(--muted); color: var(--fg); }
+    .side-link svg { width: 15px; height: 15px; }
+    .rail-user { margin-top: auto; padding: 16px 18px; border-top: 1px solid var(--border); }
+    .rail-top { min-height: 70px; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; border-bottom: 1px solid var(--border); }
+    .rail-main { min-width: 0; }
+    .rail-content { padding: 38px 32px 90px; }
+    .shell-content { width: min(100%, 1120px); margin: 0 auto; }
+
+    .layer-global { min-height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--muted) 48%, var(--bg)); }
+    .layer-global .row { gap: 16px; }
+    .layer-project { min-height: 66px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid var(--border); }
+    .layer-project-name { display: flex; align-items: baseline; gap: 12px; font-family: "Noto Sans", sans-serif; font-size: 18px; font-weight: 700; }
+    .layer-project-name small { color: var(--muted-fg); font: 10px ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; }
+    .layer-tabs { display: flex; align-self: stretch; }
+    .layer-tab { position: relative; display: flex; align-items: center; padding: 0 16px; color: var(--muted-fg); font-size: 12px; font-weight: 650; }
+    .layer-tab.active { color: var(--fg); }
+    .layer-tab.active::after { content: ""; position: absolute; inset: auto 14px -1px; height: 2px; background: var(--primary); }
+
+    .dock-shell { min-height: calc(100vh - 52px); display: grid; grid-template-columns: 58px 218px minmax(0,1fr); }
+    .icon-dock { position: sticky; top: 52px; height: calc(100vh - 52px); display: flex; flex-direction: column; align-items: center; padding: 12px 0; border-right: 1px solid var(--border); background: color-mix(in srgb, var(--muted) 45%, var(--bg)); }
+    .dock-logo { width: 34px; height: 34px; display: grid; place-items: center; margin-bottom: 18px; border: 1px solid var(--border); font: 800 12px "Noto Sans", sans-serif; }
+    .dock-icon { width: 38px; height: 38px; display: grid; place-items: center; margin-bottom: 5px; border: 0; background: transparent; color: var(--muted-fg); }
+    .dock-icon.active { background: var(--bg); color: var(--fg); box-shadow: 0 0 0 1px var(--border) inset; }
+    .dock-icon svg { width: 16px; height: 16px; }
+    .dock-bottom { margin-top: auto; }
+    .context-rail { position: sticky; top: 52px; height: calc(100vh - 52px); display: flex; flex-direction: column; border-right: 1px solid var(--border); }
+    .context-head { padding: 22px 18px 18px; border-bottom: 1px solid var(--border); }
+    .context-head small { color: var(--muted-fg); font: 9px ui-monospace, monospace; letter-spacing: .14em; text-transform: uppercase; }
+    .context-head h2 { margin: 7px 0 2px; }
+    .context-list { display: grid; padding: 12px 9px; }
+    .context-link { min-height: 37px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; color: var(--muted-fg); font-size: 12px; }
+    .context-link.active { background: var(--muted); color: var(--fg); }
+    .count { min-width: 22px; padding: 2px 5px; border: 1px solid var(--border); text-align: center; font: 9px ui-monospace, monospace; }
+    .dock-main { min-width: 0; }
+    .dock-top { height: 62px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid var(--border); }
+    .crumbs { color: var(--muted-fg); font-size: 12px; }
+    .crumbs strong { color: var(--fg); }
+    .dock-content { padding: 34px 28px 90px; }
+
+    /* Artifact Stage: one viewer shell, shown in three meaningful states. */
+    .viewer-shell {
+      position: relative;
+      height: calc(100vh - 52px);
+      min-height: 560px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      background: #e8e5de;
+      color: #171719;
+    }
+    .viewer-toolbar {
+      position: relative;
+      z-index: 20;
+      height: 44px;
+      flex: 0 0 44px;
+      display: grid;
+      grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+      align-items: center;
+      gap: 12px;
+      padding: 0 9px;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, var(--bg) 94%, transparent);
+      color: var(--fg);
+      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(16px);
+    }
+    .viewer-toolbar-left,
+    .viewer-toolbar-center,
+    .viewer-toolbar-right { display: flex; align-items: center; min-width: 0; }
+    .viewer-toolbar-left { gap: 4px; }
+    .viewer-toolbar-center { justify-content: center; gap: 8px; }
+    .viewer-toolbar-right { justify-content: flex-end; gap: 3px; }
+    .viewer-title-block { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+    .viewer-title {
+      overflow: hidden;
+      color: var(--fg);
+      font-size: 12px;
+      font-weight: 680;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .viewer-project { color: var(--muted-fg); font-size: 11px; white-space: nowrap; }
+    .viewer-icon {
+      position: relative;
+      width: 32px;
+      height: 32px;
+      flex: none;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted-fg);
+      cursor: pointer;
+    }
+    .viewer-icon:hover { background: var(--muted); color: var(--fg); }
+    .viewer-icon.active { border-color: var(--border); background: var(--muted); color: var(--fg); }
+    .viewer-icon svg { width: 16px; height: 16px; }
+    .viewer-icon .control-count {
+      position: absolute;
+      top: 1px;
+      right: 0;
+      min-width: 14px;
+      height: 14px;
+      padding: 0 3px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--bg);
+      background: var(--primary);
+      color: var(--primary-fg);
+      font: 700 8px ui-monospace, monospace;
+    }
+    .viewer-version {
+      min-height: 25px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--muted-fg);
+      font: 10px ui-monospace, monospace;
+      white-space: nowrap;
+    }
+    .viewer-version strong { color: var(--fg); font-weight: 700; }
+    .viewer-drift {
+      min-height: 25px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 8px;
+      border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--border));
+      color: var(--warning);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+    .viewer-drift::before { content: ""; width: 5px; height: 5px; background: currentColor; border-radius: 50%; }
+    .viewer-body { position: relative; min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0,1fr); }
+    .viewer-body.comments-open { grid-template-columns: minmax(0,1fr) 352px; }
+    .viewer-body.versions-open { grid-template-columns: 304px minmax(0,1fr); }
+    .viewer-surface { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #e8e5de; }
+    .viewer-document {
+      height: 100%;
+      overflow: auto;
+      padding: clamp(42px, 7vh, 76px) clamp(28px, 7vw, 110px) 110px;
+      background: #f1eee7;
+      color: #171719;
+      scrollbar-color: #bdb8ad transparent;
+    }
+    .document-masthead {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid #cbc6bb;
+      font: 700 10px ui-monospace, monospace;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+    }
+    .document-masthead span:last-child { color: #77736b; font-weight: 500; }
+    .document-kicker {
+      margin: clamp(46px, 8vh, 86px) 0 16px;
+      color: #6659d9;
+      font: 700 10px ui-monospace, monospace;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+    .document-title {
+      max-width: 940px;
+      margin: 0;
+      font: 650 clamp(46px, 7vw, 104px)/.92 Georgia, "Times New Roman", serif;
+      letter-spacing: -.055em;
+    }
+    .document-intro {
+      max-width: 700px;
+      margin: 32px 0 0;
+      color: #5d5a54;
+      font-size: clamp(16px, 1.55vw, 22px);
+      line-height: 1.55;
+    }
+    .document-process {
+      display: grid;
+      grid-template-columns: repeat(3,minmax(0,1fr));
+      margin-top: clamp(58px, 10vh, 112px);
+      border: 1px solid #cbc6bb;
+      background: #f8f6f1;
+    }
+    .document-step { min-height: 170px; padding: 24px; border-right: 1px solid #cbc6bb; }
+    .document-step:last-child { border-right: 0; }
+    .document-step > span { color: #77736b; font: 10px ui-monospace, monospace; }
+    .document-step h3 { margin: 46px 0 8px; font: 650 18px Georgia, serif; }
+    .document-step p { margin: 0; color: #6b675f; font-size: 13px; line-height: 1.5; }
+    .annotation-pin {
+      position: absolute;
+      z-index: 8;
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      background: #6759df;
+      color: #fff;
+      box-shadow: 0 3px 14px rgba(35,28,92,.3);
+      font: 700 10px ui-monospace, monospace;
+      cursor: pointer;
+    }
+    .annotation-pin.one { top: 34%; left: 54%; }
+    .annotation-pin.two { top: 71%; left: 29%; }
+    .annotation-pin.three { top: 76%; left: 69%; }
+    .viewer-panel {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    .comments-panel { border-left: 1px solid var(--border); }
+    .versions-panel { border-right: 1px solid var(--border); }
+    .viewer-panel-header {
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 12px 0 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .viewer-panel-header h2 { margin: 0; font-size: 13px; }
+    .viewer-panel-scroll { min-height: 0; overflow: auto; }
+    .viewer-panel-section { padding: 15px 16px 9px; color: var(--muted-fg); font: 700 9px ui-monospace, monospace; letter-spacing: .15em; text-transform: uppercase; }
+    .viewer-comment { padding: 16px; border-bottom: 1px solid var(--border); }
+    .viewer-comment.selected { box-shadow: 3px 0 0 var(--primary) inset; background: color-mix(in srgb, var(--primary) 7%, transparent); }
+    .viewer-comment p { margin: 10px 0 0; color: var(--fg); font-size: 12px; line-height: 1.55; }
+    .viewer-comment-location { margin-top: 11px; color: var(--muted-fg); font-size: 10px; }
+    .viewer-compose { margin-top: auto; padding: 12px; border-top: 1px solid var(--border); }
+    .viewer-compose textarea { width: 100%; min-height: 66px; resize: vertical; border: 1px solid var(--input); background: var(--bg); color: var(--fg); padding: 9px; }
+    .viewer-compose-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+    .artifact-jump,
+    .version-jump {
+      width: 100%;
+      min-height: 43px;
+      display: grid;
+      grid-template-columns: minmax(0,1fr) auto;
+      align-items: center;
+      gap: 12px;
+      border: 0;
+      border-bottom: 1px solid var(--border);
+      background: transparent;
+      color: var(--fg);
+      padding: 8px 16px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .artifact-jump:hover,
+    .version-jump:hover { background: var(--muted); }
+    .artifact-jump.active,
+    .version-jump.active { box-shadow: 3px 0 0 var(--primary) inset; background: color-mix(in srgb, var(--primary) 7%, transparent); }
+    .jump-name { display: block; overflow: hidden; font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .jump-meta { display: block; margin-top: 3px; color: var(--muted-fg); font: 9px ui-monospace, monospace; }
+    .jump-count { color: var(--muted-fg); font: 9px ui-monospace, monospace; }
+    .focus-return {
+      position: absolute;
+      z-index: 40;
+      top: 10px;
+      right: 10px;
+      display: none;
+      min-height: 32px;
+      border: 1px solid rgba(255,255,255,.2);
+      background: rgba(10,10,12,.78);
+      color: #fff;
+      padding: 0 10px;
+      font-size: 11px;
+      cursor: pointer;
+      -webkit-backdrop-filter: blur(10px);
+      backdrop-filter: blur(10px);
+    }
+    .viewer-shell.focus .viewer-toolbar,
+    .viewer-shell.focus .viewer-panel { display: none; }
+    .viewer-shell.focus .viewer-body { grid-template-columns: minmax(0,1fr); }
+    .viewer-shell.focus .focus-return { display: inline-flex; align-items: center; }
+
+    /* Prototype picker: canonical harness chrome. */
+    .proto-picker {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2147483647;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 4px;
+      border-radius: 999px;
+      background: rgba(10, 10, 10, 0.82);
+      -webkit-backdrop-filter: blur(12px) saturate(1.4);
+      backdrop-filter: blur(12px) saturate(1.4);
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+        0 8px 24px rgba(0, 0, 0, 0.24),
+        0 2px 6px rgba(0, 0, 0, 0.12);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      line-height: 1;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .proto-picker-highlight {
+      position: absolute;
+      top: 4px;
+      left: 0;
+      height: 28px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      will-change: transform;
+    }
+    .proto-picker[data-ready] .proto-picker-highlight {
+      transition:
+        transform 250ms cubic-bezier(0.23, 1, 0.32, 1),
+        width 250ms cubic-bezier(0.23, 1, 0.32, 1);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .proto-picker[data-ready] .proto-picker-highlight { transition: none; }
+    }
+    .proto-picker-item {
+      position: relative;
+      display: flex;
+      align-items: center;
+      height: 28px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.55);
+      font: inherit;
+      cursor: pointer;
+      transition: color 150ms ease-out;
+    }
+    .proto-picker-item:hover { color: rgba(255, 255, 255, 0.85); }
+    .proto-picker-item:active { transform: scale(0.97); }
+    .proto-picker-item:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.4); outline-offset: 2px; }
+    .proto-picker-item[data-active] { color: #fff; }
+    .proto-picker-divider { width: 1px; height: 16px; margin: 0 4px; background: rgba(255, 255, 255, 0.12); }
+    .proto-picker-replay { padding: 0 10px; font-size: 14px; }
+    .proto-picker[data-position="top"] { bottom: auto; top: 24px; }
+
+    @media (max-width: 1080px) {
+      .app-header-inner { align-items: flex-start; flex-direction: column; gap: 12px; }
+      .app-user-row { width: 100%; justify-content: space-between; }
+      .review-canvas { grid-template-columns: 1fr; }
+      .comment-rail { border-left: 0; border-top: 1px solid var(--border); }
+      .dock-shell { grid-template-columns: 58px minmax(0,1fr); }
+      .context-rail { display: none; }
+      .viewer-toolbar { grid-template-columns: minmax(0,1fr) auto; }
+      .viewer-toolbar-center { display: none; }
+      .viewer-body.comments-open { grid-template-columns: minmax(0,1fr) 320px; }
+      .viewer-body.versions-open { grid-template-columns: 304px minmax(0,1fr); }
+    }
+    @media (max-width: 760px) {
+      .atlas-id { min-width: 0; }
+      .atlas-id span, .atlas-count, .atlas-page-nav { display: none; }
+      .atlas-bar { justify-content: space-between; }
+      .app-header-inner, .main { padding-left: 18px; padding-right: 18px; }
+      .app-nav { overflow-x: auto; max-width: 100%; }
+      .user-meta, .app-user-row .divider-v, .app-user-row > .badge { display: none; }
+      .page-header { align-items: flex-start; flex-direction: column; }
+      .projects-grid { grid-template-columns: 1fr; }
+      .project-card { border-right: 0; }
+      .project-card:nth-last-child(-n+2) { border-bottom: 1px solid var(--border); }
+      .project-card:last-child { border-bottom: 0; }
+      .detail-grid { grid-template-columns: 1fr; }
+      .meta-row { grid-template-columns: 1fr; gap: 5px; }
+      .rail-shell { grid-template-columns: 1fr; }
+      .rail-sidebar { display: none; }
+      .layer-global { overflow-x: auto; }
+      .layer-project { align-items: flex-start; flex-direction: column; padding-top: 15px; }
+      .layer-tabs { min-height: 48px; max-width: 100%; overflow-x: auto; }
+      .dock-shell { grid-template-columns: 1fr; }
+      .icon-dock { display: none; }
+      .preview-body { padding: 34px 24px; }
+      .preview-grid { grid-template-columns: 1fr; }
+      .preview-card { border-right: 0; border-bottom: 1px solid #d6d2c9; }
+      .viewer-toolbar { padding-inline: 5px; }
+      .viewer-project, .viewer-toolbar-right .viewer-icon[data-secondary] { display: none; }
+      .viewer-body.comments-open,
+      .viewer-body.versions-open { grid-template-columns: minmax(0,1fr); }
+      .viewer-panel { position: absolute; z-index: 18; inset: 0 0 0 auto; width: min(92vw, 352px); box-shadow: -18px 0 50px rgba(0,0,0,.28); }
+      .versions-panel { inset: 0 auto 0 0; box-shadow: 18px 0 50px rgba(0,0,0,.28); }
+      .viewer-document { padding: 38px 22px 92px; }
+      .document-title { font-size: clamp(44px, 15vw, 70px); }
+      .document-process { grid-template-columns: 1fr; }
+      .document-step { min-height: 126px; border-right: 0; border-bottom: 1px solid #cbc6bb; }
+      .document-step:last-child { border-bottom: 0; }
+      .document-step h3 { margin-top: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="atlas-bar">
+    <div class="atlas-id">
+      <span class="atlas-mark" aria-hidden="true"></span>
+      <strong>Artifact Server</strong>
+      <span>UI atlas</span>
+    </div>
+    <nav class="atlas-modes" aria-label="Atlas sections">
+      <button class="atlas-mode" data-mode="reference" data-active>Reference pages</button>
+      <button class="atlas-mode" data-mode="directions">Layout directions</button>
+    </nav>
+    <nav class="atlas-page-nav" id="atlas-page-nav" aria-label="Reference pages"></nav>
+    <span class="atlas-count" id="atlas-count">01 / 08</span>
+  </header>
+
+  <main class="atlas-stage" id="reference-stage"></main>
+  <section class="atlas-stage direction-stage" id="directions-stage" hidden>
+    <div id="stage"></div>
+    <nav class="proto-picker" aria-label="Prototype variants">
+      <span class="proto-picker-highlight" aria-hidden="true"></span>
+      <button class="proto-picker-item" data-active aria-current="true">Clean view</button>
+      <button class="proto-picker-item">Comments open</button>
+      <button class="proto-picker-item">Browse + versions</button>
+    </nav>
+  </section>
+
+  <div class="dialog-layer" id="dialog-layer" role="presentation">
+    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" id="dialog-content"></section>
+  </div>
+
+  <script>
+    const pages = [
+      ["signin", "Sign in"],
+      ["projects", "Projects"],
+      ["artifacts", "Artifacts"],
+      ["artifact", "Artifact detail"],
+      ["review", "Version review"],
+      ["public-links", "Public links"],
+      ["members", "Members"],
+      ["api-keys", "API keys"],
+    ];
+
+    const icon = (name) => {
+      const paths = {
+        projects: '<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h18M8 4v5"/>',
+        artifacts: '<path d="M7 3h8l4 4v14H7z"/><path d="M15 3v5h5M10 13h6M10 17h6"/>',
+        links: '<path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1"/>',
+        people: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+        key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m11 12 9-9M15 8l3 3M17 6l3 3"/>',
+        search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
+        command: '<path d="M18 9a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3z"/>',
+        settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>',
+        back: '<path d="m15 18-6-6 6-6"/>',
+        comments: '<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/>',
+        history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>',
+        share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/>',
+        more: '<circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/>',
+        focus: '<path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>',
+        close: '<path d="m6 6 12 12M18 6 6 18"/>',
+      };
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.artifacts}</svg>`;
+    };
+
+    const badge = (text, tone = "") => `<span class="badge ${tone}">${text}</span>`;
+    const button = (text, kind = "", action = "") => `<button class="btn ${kind}" ${action ? `data-action="${action}"` : ""}>${text}</button>`;
+    const pageHeader = (eyebrow, title, description, actions = "") => `
+      <header class="page-header">
+        <div><p class="eyebrow">${eyebrow}</p><h1>${title}</h1><p class="lede">${description}</p></div>
+        ${actions ? `<div class="header-actions">${actions}</div>` : ""}
+      </header>`;
+
+    function appShell(content, active = "artifacts") {
+      return `<div class="product-shell">
+        <header class="app-header">
+          <div class="app-header-inner">
+            <div class="app-brand-row">
+              <a class="app-brand" href="#reference/artifacts" data-page="artifacts">Artifact Server</a>
+              <span class="divider-v"></span>
+              <select class="project-picker" aria-label="Selected project"><option>Default</option><option>Workspaces</option><option>Research notes</option></select>
+            </div>
+            <div class="app-user-row" style="gap:12px; min-width:0;">
+              <nav class="app-nav" aria-label="Primary navigation">
+                ${[["projects","Projects"],["public-links","Public links"],["members","Members"],["api-keys","API keys"]].map(([key,label]) => `<a class="nav-link ${active===key?"active":""}" href="#reference/${key}" data-page="${key}">${label}</a>`).join("")}
+              </nav>
+              <span class="divider-v"></span>
+              <div class="user-meta"><div class="user-id">local-owner</div><div class="user-role">administrator</div></div>
+              ${badge("human", "primary")}
+              <button class="btn ghost sm" data-action="theme">Light theme</button>
+            </div>
+          </div>
+        </header>
+        <main class="main"><div class="stack">${content}</div></main>
+      </div>`;
+    }
+
+    const artifactsRows = () => `
+      <tr><td><a class="td-title" href="#reference/artifact" data-page="artifact">Workspaces launch review</a><div class="tag-row">${badge("prototype")}${badge("launch")}</div></td><td>${badge("Public link","primary")}</td><td><span class="mono tiny">ver_01JQF8…K2T</span></td><td class="muted small">Aug 23, 2026, 10:42 AM</td><td><div class="action-row">${button("Open","sm")}${button("Manage","sm","artifact")}</div></td></tr>
+      <tr><td><a class="td-title" href="#reference/artifact" data-page="artifact">Artifact Server onboarding</a><div class="tag-row">${badge("docs")}${badge("team")}</div></td><td>${badge("Account required")}</td><td><span class="mono tiny">ver_01JQE7…4MC</span></td><td class="muted small">Aug 22, 2026, 4:18 PM</td><td><div class="action-row">${button("Open","sm")}${button("Manage","sm","artifact")}</div></td></tr>
+      <tr><td><a class="td-title" href="#reference/artifact" data-page="artifact">Infrastructure decision map</a><div class="tag-row">${badge("architecture")}</div></td><td>${badge("Account required")}</td><td><span class="mono tiny">ver_01JQB3…9PL</span></td><td class="muted small">Aug 20, 2026, 9:07 AM</td><td><div class="action-row">${button("Open","sm")}${button("Manage","sm","artifact")}</div></td></tr>`;
+
+    const artifactsTable = () => `<div class="table-wrap"><table><thead><tr><th>Artifact</th><th>Access</th><th>Current version</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead><tbody>${artifactsRows()}</tbody></table></div>`;
+
+    function renderSignIn() {
+      return `<div class="signin"><section class="signin-card"><p class="eyebrow">Artifact Server</p><h1>Sign in required</h1><p class="lede">Sign in with this installation’s configured identity provider.</p>${button("Sign in","primary","signin")}</section></div>`;
+    }
+
+    function renderProjects() {
+      const card = (name,id,state,git,copy) => `<article class="project-card"><div class="project-top"><div><h2>${name}</h2><p class="mono tiny muted">${id}</p></div>${badge(state,state==="Active"?"primary":"")}</div><p class="small muted" style="margin:18px 0 0">Created ${copy}</p><div class="git-block"><div class="git-head"><div><h3>Git history</h3><p class="tiny muted" style="margin:0">Optional Cloudflare mirror for this project.</p></div>${badge(git,git==="On"?"primary":"")}</div><div class="git-actions">${button(git==="On"?"Turn off":"Turn on","sm")}</div></div><div class="action-row" style="margin-top:20px; justify-content:flex-start">${button("Open project","sm","artifacts")}${button("Rename","ghost sm")}</div></article>`;
+      const content = pageHeader("Installation","Projects","One installation contains one or more projects. Project names are labels; stable IDs select the project.",button("New project","primary","new-project")) + `<div class="projects-grid">${card("Default","prj_default","Active","On","Aug 17, 2026")}${card("Workspaces","prj_workspaces","Active","Off","Aug 19, 2026")}${card("Research notes","prj_research","Active","Off","Aug 20, 2026")}${card("Client archive","prj_client_archive","Archived","Off","Jul 02, 2026")}</div>`;
+      return appShell(content,"projects");
+    }
+
+    function renderArtifacts() {
+      const content = pageHeader("Project","Default","Browse active artifacts in this project. Publication stays in the CLI and Agent Skill.") + `<form class="filter-bar" onsubmit="return false"><label class="field grow"><span class="label">Exact tag</span><input class="input" placeholder="prototype"></label>${button("Filter")}</form>${artifactsTable()}`;
+      return appShell(content,"artifacts");
+    }
+
+    const overviewPanel = () => `<div class="detail-grid"><section class="panel panel-pad"><div class="section-head"><h2>Current artifact</h2>${badge("Public link","primary")}</div><dl class="meta"><div class="meta-row"><dt>Current version</dt><dd>Version 7</dd></div><div class="meta-row"><dt>Saved</dt><dd>Aug 23, 2026, 10:42 AM</dd></div><div class="meta-row"><dt>Entry file</dt><dd class="mono tiny">index.html</dd></div><div class="meta-row"><dt>Routing</dt><dd>SPA</dd></div><div class="meta-row"><dt>Tags</dt><dd><div class="tag-row">${badge("launch")}${badge("prototype")}</div></dd></div><div class="meta-row"><dt>Linked file</dt><dd><span class="mono tiny">/Users/ramos/workspaces/launch/index.html</span> ${badge("Modified","warning")}</dd></div></dl><div class="notice" style="margin-top:18px"><div class="row" style="justify-content:space-between; gap:12px"><span class="small muted">The linked file has changed since version 7 was captured.</span>${button("Capture now","sm")}</div></div></section><aside class="panel panel-pad"><h2>Manage</h2><div class="manage-stack">${button("Edit tags")}${button("Require account")}${button("Tombstone artifact","danger")}</div></aside></div>`;
+
+    const versionsPanel = () => `<div class="version-list">${[[7,"Current","Aug 23, 10:42 AM",2],[6,"","Aug 22, 6:13 PM",0],[5,"","Aug 21, 11:04 AM",1]].map(([n,current,time,threads])=>`<article class="version-row"><div><div class="row" style="gap:9px"><h2 style="margin:0">Version ${n}</h2>${current?badge(current,"primary"):""}${threads?badge(`${threads} open ${threads===1?"thread":"threads"}`,"warning"):""}</div><p class="mono tiny muted" style="margin:8px 0 0">ver_01JQ${n}F8C4WQ3Y9</p><p class="small muted" style="margin:8px 0 0">Saved ${time} · 14 files · 2.8 MB</p></div><div class="action-row">${button("Review","sm","review")}${button("Open","sm")}${!current?button("Restore","sm"):""}</div></article>`).join("")}</div>`;
+
+    function renderArtifact() {
+      const content = pageHeader("Artifact","Workspaces launch review","Project: Default",button("Open artifact","primary")+button("Reload")) + `<nav class="tabs" aria-label="Artifact sections"><button class="tab active" data-tab="overview">Overview</button><button class="tab" data-tab="versions">Versions</button><button class="tab" data-tab="compare">Compare</button><button class="tab" data-tab="comments">Comments</button><button class="tab" data-tab="actions">Action history</button></nav><div id="artifact-tab-content">${overviewPanel()}</div>`;
+      return appShell(content,"artifacts");
+    }
+
+    function reviewCanvas() {
+      return `<div class="review-canvas"><article class="artifact-preview"><div class="preview-top"><strong>WORKSPACES</strong><span>Product brief · 07</span></div><div class="preview-body"><p class="preview-kicker">A calmer place for agent work</p><div class="preview-title">Make the work visible while it is still moving.</div><p class="preview-copy">Workspaces turns drafts, decisions, and live artifacts into a review surface the whole team can understand.</p><div class="preview-grid"><div class="preview-card"><b>01</b><h3 style="margin-top:22px">Capture</h3><p class="small" style="color:#666">Keep the exact version worth discussing.</p></div><div class="preview-card"><b>02</b><h3 style="margin-top:22px">Review</h3><p class="small" style="color:#666">Comment directly on the work.</p></div><div class="preview-card"><b>03</b><h3 style="margin-top:22px">Resolve</h3><p class="small" style="color:#666">Send bounded feedback to an agent.</p></div></div></div></article><aside class="comment-rail"><header class="comment-head"><span class="eyebrow" style="margin:0">3 threads</span>${button("Send all open","primary sm")}</header><div class="comment-list"><article class="comment"><div class="comment-meta"><div class="row" style="gap:8px"><span class="avatar">ER</span><b class="small">Emily Ramos</b></div>${badge("Open","warning")}</div><p class="small">Can the headline say what becomes visible, rather than speaking abstractly about work?</p><p class="tiny muted" style="margin-top:12px">on “Make the work visible…” · 12 min ago</p></article><article class="comment"><div class="comment-meta"><div class="row" style="gap:8px"><span class="avatar">JR</span><b class="small">José Ramos</b></div>${badge("Open","warning")}</div><p class="small">The three-step framing is strong. “Resolve” may imply the agent closes the thread automatically.</p><p class="tiny muted" style="margin-top:12px">on the process grid · 8 min ago</p></article><article class="comment"><div class="comment-meta"><div class="row" style="gap:8px"><span class="avatar">AS</span><b class="small">Artifact Server</b></div>${badge("Resolved","success")}</div><p class="small">Updated the supporting copy and preserved the original thread attribution.</p></article></div></aside></div>`;
+    }
+
+    function renderReview() {
+      const content = pageHeader("Version 7 · Current","Review Workspaces launch review","Click an element in the page to comment on it. Every comment is attached to this exact saved version.",button("Back to artifact","","artifact")) + `<div class="notice"><div class="row" style="justify-content:space-between; gap:16px"><span>${badge("Modified","warning")} <span class="small muted" style="margin-left:9px">The linked file has changed since this captured version.</span></span>${button("Open live view","sm")}</div></div>` + reviewCanvas();
+      return appShell(content,"artifacts");
+    }
+
+    function renderPublicLinks() {
+      const row = (project,name,version,url) => `<tr><td><input class="check" type="checkbox" aria-label="Select ${name}"></td><td><b>${project}</b></td><td><a class="td-title" href="#reference/artifact" data-page="artifact">${name}</a><div class="tiny muted">Created Aug 20, 2026</div></td><td><b>Version ${version}</b><div class="mono tiny muted" style="margin-top:5px">ver_01JQF8…</div></td><td><span class="mono tiny text-link secret-prefix">https://artifacts.local/a/${name.toLowerCase().replaceAll(" ","-")}</span></td><td><div class="action-row">${button("Open","sm")}${button("Make private","ghost sm")}</div></td></tr>`;
+      const content = pageHeader("Administration","Public links","See every active artifact that currently allows public-link access, then make individual links or a bounded selection private.",button("Reload")) + `<section class="bulk-bar"><div class="row" style="gap:8px">${button("Select visible (3)","sm")}${button("Select all (3)","sm")}${button("Clear selection","ghost sm")}</div><div class="row" style="gap:12px"><span class="small muted">0 selected · maximum 100</span>${button("Make 0 private","primary sm")}</div></section><div class="table-wrap"><table><thead><tr><th></th><th>Project</th><th>Artifact</th><th>Current version</th><th>Public URL</th><th style="text-align:right">Actions</th></tr></thead><tbody>${row("Default","Workspaces launch review",7,"url")}${row("Default","Release readiness board",3,"url")}${row("Research notes","Agent interaction map",12,"url")}</tbody></table></div>`;
+      return appShell(content,"public-links");
+    }
+
+    function renderMembers() {
+      const row = (initials,name,email,role,status,date) => `<tr><td><div class="row" style="gap:11px"><span class="avatar">${initials}</span><div><b class="td-title">${name}</b><div class="tiny muted">${email}</div></div></div></td><td style="text-transform:capitalize">${role}</td><td>${badge(status,status==="active"?"primary":"")}</td><td class="small muted">${date}</td><td><div class="action-row">${status==="active"?button("Deactivate","ghost sm"):""}</div></td></tr>`;
+      const content = pageHeader("Administration","Members","One installation has one closed member group. There is no public sign-up or project-specific membership.",button("Admit member","primary","admit-member")) + `<div class="table-wrap"><table><thead><tr><th>Member</th><th>Role</th><th>Status</th><th>Admitted</th><th style="text-align:right">Actions</th></tr></thead><tbody>${row("JR","José Ramos","jose@example.com","administrator","active","Aug 17, 2026")}${row("ER","Emily Ramos","emily@example.com","member","active","Aug 18, 2026")}${row("MC","Maya Chen","maya@example.com","member","active","Aug 21, 2026")}${row("AL","Alex Lee","alex@example.com","member","inactive","Jul 04, 2026")}</tbody></table></div>`;
+      return appShell(content,"members");
+    }
+
+    function renderApiKeys() {
+      const key = (name,prefix,expiry,caps,state="Active") => `<article class="version-row" style="grid-template-columns:260px 1fr auto"><div><div class="row" style="gap:9px"><h2 style="margin:0">${name}</h2>${badge(state,state==="Active"?"primary":"danger")}</div><p class="mono tiny muted" style="margin:9px 0 0">${prefix}</p><p class="tiny muted" style="margin:7px 0 0">Expires ${expiry}</p></div><div class="tag-row">${caps.map(cap=>badge(cap)).join("")}</div><div class="action-row">${state==="Active"?button("Rotate","sm")+button("Revoke","ghost sm"):""}</div></article>`;
+      const content = pageHeader("Administration","API keys","Managed API keys have explicit capabilities, a required expiration, and revocation. Secrets are never shown again.",button("Issue API key","primary","issue-key")) + `<div class="version-list">${key("Codex local","as_k_8fd1…","Nov 30, 2026",["artifact:read","artifact:create","artifact:publish:any"])}${key("Release automation","as_k_2c41…","Dec 31, 2026",["artifact:read","artifact:publish:any","agent:connect"])}${key("Old preview bot","as_k_91aa…","Oct 01, 2026",["artifact:read"],"Revoked")}</div>`;
+      return appShell(content,"api-keys");
+    }
+
+    const pageRenderers = { signin: renderSignIn, projects: renderProjects, artifacts: renderArtifacts, artifact: renderArtifact, review: renderReview, "public-links": renderPublicLinks, members: renderMembers, "api-keys": renderApiKeys };
+
+    const viewerControl = (name, label, options = {}) => {
+      const { active = false, count = "", attributes = "", secondary = false } = options;
+      return `<button class="viewer-icon${active ? " active" : ""}" type="button" aria-label="${label}" title="${label}" ${secondary ? "data-secondary" : ""} ${attributes}>${icon(name)}${count ? `<span class="control-count">${count}</span>` : ""}</button>`;
+    };
+
+    function viewerToolbar(state) {
+      return `<header class="viewer-toolbar">
+        <div class="viewer-toolbar-left">
+          ${viewerControl("back", "Back to artifact details", { attributes: 'data-page="artifact"' })}
+          <button class="viewer-icon" type="button" aria-label="Browse artifacts and versions" title="Browse artifacts and versions" data-view-state="2">${icon("artifacts")}</button>
+          <div class="viewer-title-block"><span class="viewer-title">Workspaces launch review</span><span class="viewer-project">Default · v7</span></div>
+        </div>
+        <div class="viewer-toolbar-center">
+          <span class="viewer-version"><strong>Version 7</strong> · Current</span>
+          <button class="viewer-drift" type="button" title="Linked source has changed" data-viewer-action="drift">Source modified</button>
+        </div>
+        <div class="viewer-toolbar-right">
+          ${viewerControl("comments", "Comments — 3 threads", { active: state === 1, count: "3", attributes: 'data-view-state="1"' })}
+          ${viewerControl("history", "Browse artifacts and versions", { active: state === 2, attributes: 'data-view-state="2"' })}
+          ${viewerControl("share", "Share this version", { attributes: 'data-viewer-action="share"', secondary: true })}
+          ${viewerControl("focus", "Focus mode — F", { attributes: 'data-viewer-action="focus"', secondary: true })}
+        </div>
+      </header>`;
+    }
+
+    function artifactDocument(showAnnotations = false) {
+      return `<section class="viewer-surface" aria-label="Artifact canvas">
+        <article class="viewer-document">
+          <div class="document-masthead"><strong>Workspaces</strong><span>Product brief · 07</span></div>
+          <p class="document-kicker">A calmer place for agent work</p>
+          <h1 class="document-title">Make the work visible while it is still moving.</h1>
+          <p class="document-intro">Workspaces turns drafts, decisions, and live artifacts into a review surface the whole team can understand—without asking the work to stop first.</p>
+          <div class="document-process">
+            <section class="document-step"><span>01</span><h3>Capture</h3><p>Keep the exact version worth discussing.</p></section>
+            <section class="document-step"><span>02</span><h3>Review</h3><p>Comment directly on the work, in context.</p></section>
+            <section class="document-step"><span>03</span><h3>Resolve</h3><p>Send bounded feedback back to the agent.</p></section>
+          </div>
+        </article>
+        ${showAnnotations ? `<button class="annotation-pin one" type="button" aria-label="Open comment 1" data-view-state="1">1</button><button class="annotation-pin two" type="button" aria-label="Open comment 2" data-view-state="1">2</button><button class="annotation-pin three" type="button" aria-label="Open comment 3" data-view-state="1">3</button>` : ""}
+      </section>`;
+    }
+
+    function commentsPanel() {
+      const comment = (initials, name, copy, location, selected = false, resolved = false) => `<article class="viewer-comment${selected ? " selected" : ""}">
+        <div class="row" style="justify-content:space-between;gap:8px"><span class="row" style="gap:8px"><span class="avatar">${initials}</span><b class="small">${name}</b></span>${badge(resolved ? "Resolved" : "Open", resolved ? "success" : "warning")}</div>
+        <p>${copy}</p><div class="viewer-comment-location">${location}</div>
+      </article>`;
+      return `<aside class="viewer-panel comments-panel" aria-label="Comments">
+        <header class="viewer-panel-header"><h2>Comments <span class="muted">3</span></h2>${viewerControl("close", "Close comments", { attributes: 'data-view-state="0"' })}</header>
+        <div class="viewer-panel-scroll">
+          ${comment("ER", "Emily Ramos", "Can the headline say what becomes visible, rather than speaking abstractly about work?", "Headline · 12 minutes ago", true)}
+          ${comment("JR", "José Ramos", "The three-step framing is strong. “Resolve” may imply the agent closes the thread automatically.", "Process grid · 8 minutes ago")}
+          ${comment("AS", "Artifact Server", "Updated the supporting copy and preserved the original thread attribution.", "Supporting copy · 2 minutes ago", false, true)}
+        </div>
+        <form class="viewer-compose" onsubmit="return false"><textarea aria-label="Reply to selected thread" placeholder="Reply to thread…"></textarea><div class="viewer-compose-actions">${button("Resolve", "ghost sm")}${button("Reply", "primary sm")}</div></form>
+      </aside>`;
+    }
+
+    function viewerVersionsPanel() {
+      const artifact = (name, meta, count, active = false) => `<button class="artifact-jump${active ? " active" : ""}" type="button"><span><span class="jump-name">${name}</span><span class="jump-meta">${meta}</span></span><span class="jump-count">${count}</span></button>`;
+      const version = (number, meta, threads, active = false) => `<button class="version-jump${active ? " active" : ""}" type="button"><span><span class="jump-name">Version ${number}</span><span class="jump-meta">${meta}</span></span><span class="jump-count">${threads}</span></button>`;
+      return `<aside class="viewer-panel versions-panel" aria-label="Browse artifacts and versions">
+        <header class="viewer-panel-header"><h2>Browse</h2>${viewerControl("close", "Close browser", { attributes: 'data-view-state="0"' })}</header>
+        <div style="padding:12px;border-bottom:1px solid var(--border)"><label class="field"><span class="label">Jump to artifact</span><input class="input" aria-label="Search artifacts" placeholder="Search…  ⌘ K"></label></div>
+        <div class="viewer-panel-scroll">
+          <div class="viewer-panel-section">Recent artifacts</div>
+          ${artifact("Workspaces launch review", "Default · HTML", "v7", true)}
+          ${artifact("Artifact Server onboarding", "Default · Markdown", "v4")}
+          ${artifact("Infrastructure decision map", "Research · HTML", "v12")}
+          <div class="viewer-panel-section">Version history</div>
+          ${version(7, "Current · Aug 23, 10:42", "2 open", true)}
+          ${version(6, "Aug 22, 18:13", "—")}
+          ${version(5, "Aug 21, 11:04", "1 open")}
+          ${version(4, "Aug 19, 16:38", "—")}
+        </div>
+      </aside>`;
+    }
+
+    function artifactStage(state = 0) {
+      const panelClass = state === 1 ? "comments-open" : state === 2 ? "versions-open" : "";
+      const panel = state === 1 ? commentsPanel() : state === 2 ? viewerVersionsPanel() : "";
+      return `<div class="viewer-shell" data-viewer-shell>
+        ${viewerToolbar(state)}
+        <div class="viewer-body ${panelClass}">${state === 2 ? panel : ""}${artifactDocument(state === 1)}${state === 1 ? panel : ""}</div>
+        <button class="focus-return" type="button" data-viewer-action="focus">Exit focus mode · Esc</button>
+      </div>`;
+    }
+
+    const directionClean = () => artifactStage(0);
+    const directionComments = () => artifactStage(1);
+    const directionVersions = () => artifactStage(2);
+
+    const referenceStage = document.getElementById("reference-stage");
+    const directionsStage = document.getElementById("directions-stage");
+    const atlasPageNav = document.getElementById("atlas-page-nav");
+    const atlasCount = document.getElementById("atlas-count");
+    let currentPage = "signin";
+    let currentMode = "reference";
+
+    atlasPageNav.innerHTML = pages.map(([key,label],i)=>`<button class="atlas-page" data-page="${key}">${String(i+1).padStart(2,"0")} ${label}</button>`).join("");
+
+    function setMode(mode) {
+      currentMode = mode;
+      document.querySelectorAll(".atlas-mode").forEach(el => el.toggleAttribute("data-active", el.dataset.mode === mode));
+      referenceStage.hidden = mode !== "reference";
+      directionsStage.hidden = mode !== "directions";
+      atlasPageNav.hidden = mode !== "reference";
+      atlasCount.hidden = mode !== "reference";
+      if (mode === "directions") requestAnimationFrame(moveHighlight);
+      location.hash = mode === "directions" ? "directions" : `reference/${currentPage}`;
+    }
+
+    function setPage(key, updateHash = true) {
+      if (!pageRenderers[key]) return;
+      currentPage = key;
+      referenceStage.innerHTML = pageRenderers[key]();
+      const index = pages.findIndex(([page]) => page === key);
+      atlasCount.textContent = `${String(index+1).padStart(2,"0")} / ${String(pages.length).padStart(2,"0")}`;
+      document.querySelectorAll(".atlas-page").forEach(el => el.toggleAttribute("data-active", el.dataset.page === key));
+      if (updateHash) location.hash = `reference/${key}`;
+      window.scrollTo({top:0, behavior:"instant"});
+    }
+
+    function openDialog(kind) {
+      const dialogs = {
+        "new-project": ["New project","Projects organize artifacts inside this installation. Every admitted member can manage every project.",`<label class="field"><span class="label">Project name</span><input class="input" value="Launch research"></label>`,"Create project"],
+        "admit-member": ["Admit member","Admit one person to this installation. Every active member can manage artifacts in every project.",`<label class="field"><span class="label">Display name</span><input class="input" value="Avery Stone"></label><label class="field"><span class="label">Email</span><input class="input" type="email" value="avery@example.com"></label><label class="field"><span class="label">Role</span><select class="input"><option>Member</option><option>Administrator</option></select></label>`,"Admit member"],
+        "issue-key": ["Issue API key","The secret appears once. Give the key only the capabilities it needs and choose a future expiration.",`<label class="field"><span class="label">Name</span><input class="input" value="Preview automation"></label><label class="field"><span class="label">Expires at</span><input class="input" type="datetime-local" value="2026-12-31T17:00"></label><div class="field"><span class="label">Capabilities</span><label class="capability"><input class="check" type="checkbox" checked><span><b>Read artifacts</b><small class="muted" style="display:block;margin-top:4px">List and read artifact metadata.</small></span></label><label class="capability"><input class="check" type="checkbox" checked><span><b>Publish versions</b><small class="muted" style="display:block;margin-top:4px">Publish new immutable versions.</small></span></label></div>`,"Issue API key"],
+        signin: ["Identity provider handoff","In a remote team deployment this continues to the configured provider. In local-owner mode the application establishes the owner session automatically.",`<div class="notice"><b>Mockup behavior</b><div class="small muted" style="margin-top:6px">No external sign-in is performed from this atlas.</div></div>`,"Done"],
+        share: ["Share version 7","This link stays pinned to the exact immutable version currently on screen.",`<label class="field"><span class="label">Version URL</span><input class="input mono" readonly value="https://artifacts.local/a/workspaces-launch-review?v=7"></label><div class="capability"><input class="check" type="checkbox" checked><span><b>Require an account</b><small class="muted" style="display:block;margin-top:4px">Only admitted installation members can open this link.</small></span></div>`,"Copy link"],
+        drift: ["Linked source changed","Version 7 remains immutable. The file linked from your workspace has changed since this version was captured.",`<div class="notice"><b>Current saved version is safe</b><div class="small muted" style="margin-top:6px">Open the live file to inspect the change, or capture it as a new version from the artifact details page.</div></div>`,"Done"],
+      };
+      const [title,description,form,confirm] = dialogs[kind] || ["Mock action","This control is represented for layout review only.","","Done"];
+      document.getElementById("dialog-content").innerHTML = `<h2 id="dialog-title">${title}</h2><p>${description}</p><div class="dialog-form">${form}</div><footer class="dialog-footer">${button("Cancel","ghost","close-dialog")}${button(confirm,"primary","close-dialog")}</footer>`;
+      document.getElementById("dialog-layer").classList.add("open");
+    }
+
+    document.addEventListener("click", event => {
+      const pageTarget = event.target.closest("[data-page]");
+      if (pageTarget) { event.preventDefault(); setMode("reference"); setPage(pageTarget.dataset.page); return; }
+      const modeTarget = event.target.closest("[data-mode]");
+      if (modeTarget) { setMode(modeTarget.dataset.mode); return; }
+      const viewStateTarget = event.target.closest("[data-view-state]");
+      if (viewStateTarget) { setActive(Number(viewStateTarget.dataset.viewState)); return; }
+      const viewerActionTarget = event.target.closest("[data-viewer-action]");
+      if (viewerActionTarget) {
+        const action = viewerActionTarget.dataset.viewerAction;
+        if (action === "focus") document.querySelector("[data-viewer-shell]")?.classList.toggle("focus");
+        else openDialog(action);
+        return;
+      }
+      const jumpTarget = event.target.closest(".artifact-jump, .version-jump");
+      if (jumpTarget) {
+        const selector = jumpTarget.classList.contains("artifact-jump") ? ".artifact-jump" : ".version-jump";
+        jumpTarget.closest(".viewer-panel")?.querySelectorAll(selector).forEach(el => el.classList.toggle("active", el === jumpTarget));
+        return;
+      }
+      const actionTarget = event.target.closest("[data-action]");
+      if (actionTarget) {
+        const action = actionTarget.dataset.action;
+        if (action === "theme") {
+          document.documentElement.classList.toggle("dark");
+          document.querySelectorAll('[data-action="theme"]').forEach(el => el.textContent = document.documentElement.classList.contains("dark") ? "Light theme" : "Dark theme");
+        } else if (["artifact","artifacts","review"].includes(action)) setPage(action);
+        else if (action === "close-dialog") document.getElementById("dialog-layer").classList.remove("open");
+        else openDialog(action);
+      }
+      const tab = event.target.closest("[data-tab]");
+      if (tab) {
+        document.querySelectorAll("[data-tab]").forEach(el=>el.classList.toggle("active",el===tab));
+        const content = document.getElementById("artifact-tab-content");
+        if (tab.dataset.tab === "overview") content.innerHTML = overviewPanel();
+        else if (tab.dataset.tab === "versions") content.innerHTML = versionsPanel();
+        else if (tab.dataset.tab === "compare") content.innerHTML = `<div class="panel panel-pad"><div class="section-head"><h2>Compare saved versions</h2>${badge("Version 6 → 7","primary")}</div><div class="projects-grid" style="margin-top:20px"><div class="project-card"><p class="eyebrow">Added · 3</p><span class="mono small">assets/diagram.svg</span></div><div class="project-card"><p class="eyebrow">Changed · 2</p><span class="mono small">index.html</span></div></div></div>`;
+        else if (tab.dataset.tab === "comments") content.innerHTML = `<div class="panel panel-pad"><div class="section-head"><h2>Open comment threads</h2>${button("Send all open","primary sm")}</div><p class="muted">Three open threads are attached to versions 5 and 7. Open a version review to see anchored comments in place.</p>${button("Review current version","","review")}</div>`;
+        else content.innerHTML = `<div class="version-list"><article class="version-row"><div><h2>Access changed</h2><p class="small muted">Made public by local-owner · Aug 23, 10:45 AM</p></div>${badge("Attributed","primary")}</article><article class="version-row"><div><h2>Version published</h2><p class="small muted">Version 7 published by Codex local · Aug 23, 10:42 AM</p></div>${badge("Immutable","success")}</article></div>`;
+      }
+    });
+
+    document.getElementById("dialog-layer").addEventListener("click", event => {
+      if (event.target.id === "dialog-layer") event.currentTarget.classList.remove("open");
+    });
+
+    const variants = [directionClean, directionComments, directionVersions];
+    const stage = document.getElementById('stage');
+    const picker = document.querySelector('.proto-picker');
+    const highlight = picker.querySelector('.proto-picker-highlight');
+    const items = [...picker.querySelectorAll('.proto-picker-item:not(.proto-picker-replay)')];
+    const replay = picker.querySelector('.proto-picker-replay');
+    let current = 0;
+
+    function moveHighlight() {
+      const el = items[current];
+      highlight.style.width = el.offsetWidth + 'px';
+      highlight.style.transform = `translateX(${el.offsetLeft}px)`;
+    }
+
+    function mount(i) {
+      stage.innerHTML = '';
+      requestAnimationFrame(() => { stage.innerHTML = variants[i](); });
+    }
+
+    function setActive(i) {
+      if (i < 0 || i >= variants.length) return;
+      current = i;
+      items.forEach((el, j) => {
+        el.toggleAttribute('data-active', j === i);
+        if (j === i) el.setAttribute('aria-current', 'true');
+        else el.removeAttribute('aria-current');
+      });
+      moveHighlight();
+      const url = new URL(location);
+      url.searchParams.set('v', i + 1);
+      history.replaceState(null, '', url);
+      mount(i);
+    }
+
+    items.forEach((el, i) => el.addEventListener('click', () => setActive(i)));
+    replay?.addEventListener('click', () => mount(current));
+    window.addEventListener('resize', moveHighlight);
+
+    document.addEventListener('keydown', (e) => {
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+      if (currentMode !== "directions") return;
+      if (e.key === 'Escape' && document.querySelector('[data-viewer-shell].focus')) {
+        document.querySelector('[data-viewer-shell]')?.classList.remove('focus');
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'f' || e.key === 'F') {
+        document.querySelector('[data-viewer-shell]')?.classList.toggle('focus');
+        return;
+      }
+      const num = parseInt(e.key, 10);
+      if (num >= 1 && num <= variants.length) setActive(num - 1);
+      else if (e.key === 'ArrowRight') setActive((current + 1) % variants.length);
+      else if (e.key === 'ArrowLeft') setActive((current - 1 + variants.length) % variants.length);
+      else if (e.key === 'r' || e.key === 'R') mount(current);
+    });
+
+    setActive((parseInt(new URLSearchParams(location.search).get('v'), 10) || 1) - 1);
+    requestAnimationFrame(() => requestAnimationFrame(() => picker.setAttribute('data-ready', '')));
+
+    const initialHash = location.hash.replace(/^#/, "");
+    if (initialHash === "directions") setMode("directions");
+    else {
+      const hashPage = initialHash.startsWith("reference/") ? initialHash.split("/")[1] : "signin";
+      setPage(pageRenderers[hashPage] ? hashPage : "signin", false);
+      setMode("reference");
+    }
+  </script>
+</body>
+</html>

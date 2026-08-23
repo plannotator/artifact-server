@@ -133,12 +133,26 @@ stack.
   zones. Private ingress requires `tlsCertificateArn` for an existing ACM
   certificate that covers both names. Private Route 53 records are created when
   `dnsZoneIds` is supplied; otherwise the operator owns private DNS.
+- Public ingress places one CloudFront distribution in front of the load
+  balancer for both the application host and the wildcard content host, with a
+  separate DNS-validated `us-east-1` ACM certificate covering both names. The
+  distribution honors origin `Cache-Control` headers and caches nothing without
+  origin instruction, keys the cache on host, query string, and
+  `Authorization`, forwards every viewer header, cookie, and query string to
+  the origin, compresses responses, and waits 60 seconds for origin responses
+  to cover agent long-polling. Route 53 aliases both names to the
+  distribution, and the load-balancer security group accepts HTTPS only from
+  the CloudFront origin-facing managed prefix list. Private ingress has no
+  CloudFront distribution.
 - A private load balancer accepts the VPC CIDR by default. Set
   `privateIngressCidrs` when VPN, transit-gateway, peered-network, or on-premises
   callers arrive from other IPv4 ranges.
 - Capacity validation reserves enough database connections for the configured
-  maximum task count and a rolling deployment at 200 percent capacity. An
-  unsafe task-count and RDS-plan combination is rejected before deployment.
+  maximum task count and a rolling deployment at 200 percent capacity. Each
+  task's Postgres pool size is configurable through
+  `ARTIFACT_SERVER_POSTGRES_MAX_CONNECTIONS` (default 10 connections) and feeds
+  that reservation math. An unsafe task-count, pool-size, and RDS-plan
+  combination is rejected before deployment.
 
 ### GCP
 
@@ -158,8 +172,16 @@ stack.
 Every package supplies the running application with the common values below.
 Secrets are mounted, injected by the managed runtime, or fetched from the
 provider secret manager. They are not plain stack outputs or task-definition
-values. ECS injects the API token, database URL, and optional WorkOS key from
-Secrets Manager. Compose and Kubernetes use the file variants below.
+values. The direct-cloud Pulumi packages inject the API token, database URL, and
+optional WorkOS key from their secret manager and expose typed WorkOS inputs
+only; generic OIDC runs on those deployments through container environment
+variables, with typed OIDC inputs a scoped follow-up. Compose and Kubernetes use
+the file variants below and support either browser-login family.
+
+A package supplies one browser-login family or neither. The WorkOS variables and
+the generic OIDC variables are mutually exclusive, and each family is
+all-or-nothing; a package that emits part of a family, or both families, makes
+the application fail at startup.
 
 | Runtime value | Source |
 | --- | --- |
@@ -169,12 +191,17 @@ Secrets Manager. Compose and Kubernetes use the file variants below.
 | `ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL` | Shared input |
 | `ARTIFACT_SERVER_API_TOKEN_FILE` or `ARTIFACT_SERVER_API_TOKEN` | Provider secret; fallback automation credential only |
 | `ARTIFACT_SERVER_DATABASE_URL_FILE` or `ARTIFACT_SERVER_DATABASE_URL` | Provider-managed PostgreSQL connection secret |
+| `ARTIFACT_SERVER_POSTGRES_MAX_CONNECTIONS` | Per-process Postgres pool size; `10` unless the package proves another value |
 | `ARTIFACT_SERVER_HOST` | `0.0.0.0` inside the managed runtime |
 | `ARTIFACT_SERVER_PORT` | `8787` |
 | `ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE` | Shared input or `0.01` |
 | `ARTIFACT_SERVER_WORKOS_CLIENT_ID` | Hosted login only; shared WorkOS client input |
 | `ARTIFACT_SERVER_WORKOS_ISSUER` | Hosted login only; exact AuthKit issuer |
 | `ARTIFACT_SERVER_WORKOS_API_KEY_FILE` or `ARTIFACT_SERVER_WORKOS_API_KEY` | Hosted login only; provider secret reference |
+| `ARTIFACT_SERVER_OIDC_ISSUER` | Generic OIDC login only; exact issuer URL, HTTPS with no query or fragment |
+| `ARTIFACT_SERVER_OIDC_CLIENT_ID` | Generic OIDC login only; registered client for this installation |
+| `ARTIFACT_SERVER_OIDC_CLIENT_SECRET_FILE` or `ARTIFACT_SERVER_OIDC_CLIENT_SECRET` | Generic OIDC login only; optional provider secret reference, omitted for a public PKCE client |
+| `ARTIFACT_SERVER_OIDC_SCOPES` | Generic OIDC login only; defaults to `openid email profile` |
 | `ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS` | `1000` unless the package proves another value |
 | `ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS` | `10000` unless the package proves another value |
 
@@ -225,7 +252,9 @@ Every provider package must produce all of the following:
 1. Application and content hosts are separate, use HTTPS, and route only their
    allowed surfaces.
 2. Public artifacts can be cached; account-required content and every
-   management response use `private, no-store` behavior.
+   management response use `private, no-store` behavior, except the
+   authenticated immutable version file route, which may use `private`
+   immutable browser caching with a strong `ETag`.
 3. Postgres and object storage are private by default and use encryption at
    rest and in transit.
 4. The runtime can scale horizontally and has no correctness dependency on

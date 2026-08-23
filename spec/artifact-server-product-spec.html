@@ -1592,12 +1592,16 @@
             <p class="answer-value">MCP, the command-line program, and normal web requests use the same artifact operations and permissions. The command-line program handles files on the user's computer. MCP or the command-line program handles work that only needs server data. Local MCP setup uses <code>artifactserver connect</code> without a visible key. Remote command-line setup uses <code>artifactserver auth login</code> and browser sign-in when the server supports it.</p>
           </article>
           <article class="answer">
+            <span class="answer-label">Sending annotations to an agent</span>
+            <p class="answer-value">A person selects comment threads on a version, picks a connected agent, and sends them as one bundle. Sending is consumptive: the sent annotations leave the normal views at once, and they return only if the bundle cannot be delivered. Agents connect outward and ask for work; Artifact Server never calls out to an agent, and it adds no notifications.</p>
+          </article>
+          <article class="answer">
             <span class="answer-label">Deployment</span>
             <p class="answer-value">The same product rules run locally, on one server, on Kubernetes, or on Cloudflare. AWS and GCP have direct installers. Azure teams use the Kubernetes release on AKS; there is no separate Azure installer.</p>
           </article>
           <article class="answer">
             <span class="answer-label">Not included</span>
-            <p class="answer-value">No comments, annotations, workspace collaboration, general-purpose source-code hosting, code-building service, arbitrary add-ons, or programs that must keep running on the server. Plannotator provides review and collaboration.</p>
+            <p class="answer-value">No workspace collaboration, general-purpose source-code hosting, code-building service, arbitrary add-ons, or programs that must keep running on the server. Artifact Server stores comment threads on its own artifact versions; Plannotator owns its workspaces and their review records.</p>
           </article>
         </div>
       </div>
@@ -1659,7 +1663,7 @@
           <p class="editorial-lead">
             A project contains related artifacts. Publishing an artifact does not create a separate
             hosting deployment. Artifact Server owns the link, browser view, saved versions,
-            comparisons, and sharing. It does not store comments or annotations.
+            comparisons, sharing, and the comment threads made on its own artifact versions.
           </p>
 
           <div class="pathway" aria-label="The four steps in the normal artifact workflow">
@@ -1877,18 +1881,20 @@
               </div>
             </article>
             <article class="feature-row">
-              <h3>Optional Git history</h3>
+              <h3>Optional Git handoff</h3>
               <div class="feature-copy">
                 <p>
-                  An administrator can enable a private Git copy when installing the server. Each
-                  artifact gets one repository, and each saved version maps to one commit. Git is
-                  not required for saved versions or comparisons.
+                  Private Git handoff is off by default. An operator can explicitly make Cloudflare
+                  Artifacts available, but configuration alone copies nothing. Every project starts
+                  with Git history off. An administrator reviews a current-inventory estimate before
+                  explicitly enabling one project; existing and future projects remain off until
+                  each is enabled.
                 </p>
                 <p class="feature-note">
-                  Cloudflare deployments can use Cloudflare Artifacts when that optional provider
-                  is enabled and supported. Self-hosted deployments store Git repositories in the
-                  Artifact Server data folder, use a small internal Git storage service, or connect
-                  to an existing private Git server.
+                  Every enabled artifact, including one document, gets its own repository and each
+                  saved version maps to one commit. Git is never required for saving, opening, or
+                  comparing artifacts. Cloudflare Artifacts is the first managed provider; local,
+                  code.storage, and private-remote adapters remain future options.
                 </p>
               </div>
             </article>
@@ -1899,15 +1905,17 @@
                   One Artifact Server installation can connect to one Plannotator organization.
                   Each Plannotator project maps to one Artifact Server project. Workspaces reference
                   artifacts and exact versions from that project. Plannotator owns workspace
-                  permissions, comments, and review state. Artifact Server owns the paired project,
-                  artifact files, saved versions, browser delivery, and comparisons.
+                  permissions, its own workspace comments, and review state. Artifact Server owns
+                  the paired project, artifact files, saved versions, browser delivery, comparisons,
+                  and the comment threads made on its own artifact versions.
                 </p>
                 <p>
                   Example: a reviewer comments on a button in version 12. Plannotator saves the
-                  comment with the artifact ID, version 12's ID, and information that identifies the
-                  button. If version 13 is published later, opening the comment still loads version
-                  12. Artifact Server returns the saved files and Plannotator returns the comment.
-                  Artifact Server never stores the comment.
+                  workspace comment with the artifact ID, version 12's ID, and information that
+                  identifies the button. If version 13 is published later, opening the comment still
+                  loads version 12. Artifact Server returns the saved files and Plannotator returns
+                  the workspace comment. Artifact Server never stores a Plannotator workspace
+                  comment; it stores only the comment threads made on its own artifact versions.
                 </p>
                 <p class="feature-note">
                   Normal artifact links return the stored files unchanged. An explicit review
@@ -1939,7 +1947,8 @@
               single-organization model without an organization list or organization switcher: the
               installation itself is the group. On a laptop, that can be one implicit local user.
               On a team server, an administrator controls who can sign in through invitations or
-              the configured company login. The product has no public self-sign-up and does not host
+              the configured company login, which can be WorkOS AuthKit or any OpenID Connect
+              provider the team already runs. The product has no public self-sign-up and does not host
               several organizations inside one installation.
             </p>
           </div>
@@ -2050,11 +2059,15 @@
                         <td>Artifact Server</td>
                       </tr>
                       <tr>
-                        <td>Comments, annotations, replies, notifications, and review state</td>
+                        <td>Workspace comments, annotations, replies, notifications, and review state</td>
                         <td>Plannotator</td>
                       </tr>
                       <tr>
                         <td>Finished artifact files, saved versions, file fingerprints, and comparisons</td>
+                        <td>Artifact Server</td>
+                      </tr>
+                      <tr>
+                        <td>Comment threads on Artifact Server artifact versions</td>
                         <td>Artifact Server</td>
                       </tr>
                     </tbody>
@@ -2289,7 +2302,7 @@
             <p>
               The browser, MCP, command-line program, and normal web requests from software call the same application services and follow the same rules for sign-in, sharing, versions,
               comparisons, and publishing. These ways of calling the server intentionally overlap. Where a file exists decides which one works: the command-line program can read files on the user's computer; a remote MCP server cannot. Small pieces of code connect those rules to the database,
-              file storage, and optional Git provider selected when the server is installed.
+              file storage, and an optional Git provider selected by explicit installation configuration.
             </p>
           </div>
 
@@ -2374,8 +2387,8 @@
                     <rect class="svg-boundary-optional" x="770" y="234" width="242" height="126" rx="14"></rect>
                     <text class="svg-label" x="794" y="264">OPTIONAL PRIVATE GIT</text>
                     <rect class="svg-node-store" x="794" y="282" width="194" height="54" rx="8"></rect>
-                    <text class="svg-title" x="814" y="314">Git history provider</text>
-                    <text class="svg-small" x="814" y="330">Cloudflare or self-hosted</text>
+                    <text class="svg-title" x="814" y="314">Git handoff provider</text>
+                    <text class="svg-small" x="814" y="330">Cloudflare Artifacts · off by default</text>
 
                     <rect class="svg-boundary-optional" x="770" y="388" width="242" height="144" rx="14"></rect>
                     <text class="svg-label" x="794" y="418">SEPARATE PRODUCT</text>
@@ -2504,57 +2517,96 @@
               </div>
             </details>
             <details>
-              <summary>How optional Git history works</summary>
+              <summary>How optional Git handoff works</summary>
               <div class="detail-body">
                 <p>
                   Artifact Server always saves the version record, file list, fingerprints, and
-                  published files first. When Git history is enabled, it then copies that version
-                  into one private repository for the artifact. Each saved version maps to one commit,
-                  and the database records the Git commit identifier.
+                  published files first. A configured provider is only available infrastructure; it
+                  creates no repository and copies no version. When an enabled project's version is
+                  durable, the server copies it in the background into one private repository for
+                  that artifact. Each saved version maps to one commit, and the database records the
+                  Git commit identifier.
                 </p>
                 <p>
                   Git never supplies the files used to open the artifact. If the Git provider is
                   unavailable, the saved version remains available and the server retries the Git copy.
                 </p>
-                <pre><code>history:
-  git:
-    enabled: true
-    provider: auto</code></pre>
+                <pre><code>ARTIFACT_SERVER_GIT_HISTORY_PROVIDER=off
+# Explicit opt-in when the installation has access:
+ARTIFACT_SERVER_GIT_HISTORY_PROVIDER=cloudflare-artifacts</code></pre>
                 <p>
-                  Git history is off unless an administrator enables it. With <code>provider: auto</code>,
-                  the server chooses the provider that matches the deployment.
+                  The variable is absent or <code>off</code> by default, and there is no
+                  <code>auto</code> value. Off means no Git implementation, binding, credential, or
+                  provider request. The Cloudflare runtime uses a configured Workers binding; other
+                  runtimes use Cloudflare's REST control plane with operator-supplied credentials.
                 </p>
-                <div class="table-wrap" role="region" aria-label="Optional Git history providers" tabindex="0">
+                <div class="table-wrap" role="region" aria-label="Optional Git handoff configuration" tabindex="0">
                   <table>
                     <thead>
                       <tr>
-                        <th>Deployment</th>
-                        <th>Git provider when enabled</th>
+                        <th>Configuration</th>
+                        <th>Behavior</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
-                        <td>Laptop or one server</td>
-                        <td>Git repositories stored inside the Artifact Server data folder.</td>
+                        <td><code>off</code> or absent</td>
+                        <td>Normal Artifact Server behavior without Git. This is the default everywhere.</td>
                       </tr>
                       <tr>
-                        <td>Kubernetes</td>
-                        <td>A small internal Git history service with persistent storage, or an existing private Git server.</td>
-                      </tr>
-                      <tr>
-                        <td>Cloudflare</td>
-                        <td><a href="https://developers.cloudflare.com/artifacts/">Cloudflare Artifacts</a>.</td>
+                        <td><code>cloudflare-artifacts</code></td>
+                        <td>Makes one dedicated <a href="https://developers.cloudflare.com/artifacts/">Cloudflare Artifacts</a> namespace available. It enables no project and creates no repository by itself.</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
                 <p>
-                  Large files remain in the normal file store. Their names, sizes, and fingerprints
-                  stay in the Git version manifest. An administrator sets the largest file or artifact
-                  copied into Git. Cloudflare Artifacts currently
+                  Every project has one durable Git-history switch, and it starts off. An
+                  administrator first sees a current-inventory estimate for repositories,
+                  versions, operations, copied bytes, and pointer bytes. Enabling that project
+                  schedules a bounded, resumable backfill. There is no installation-wide mode,
+                  inheritance rule, or automatic enablement for future projects. Browser, HTTP,
+                  and MCP use the same authorized, naturally idempotent project operation.
+                </p>
+                <p>
+                  Disabling a project or provider stops applicable mirror work but does not delete
+                  remote repositories, jobs, or mappings; re-enabling the same project and provider
+                  resumes. Changing the persisted provider account or namespace after repositories
+                  exist requires a separate migration instead of silently moving or deleting history.
+                </p>
+                <p>
+                  Permanent removal uses an operator-only
+                  <code>artifactserver history purge</code> plan/apply command with exact
+                  installation-ID confirmation. It is resumable and cannot delete primary artifact
+                  data or the Cloudflare namespace. No purge surface exists in HTTP, MCP, or the
+                  member application.
+                </p>
+                <p>
+                  Authenticated HTTP and MCP capability discovery separately reports provider state
+                  and each project's disabled, waiting, backfilling, ready, degraded, or
+                  budget-limited state. It never exposes credentials or repository coordinates. Git
+                  provider health never controls the application's readiness check.
+                </p>
+                <p>
+                  Deterministic per-file and per-version limits leave excluded bytes in the normal
+                  file store while path, media type, size, and fingerprint stay in the Git pointer
+                  manifest. An optional logical copied-byte budget pauses new provider writes before
+                  overshoot without affecting saved versions. Cloudflare Artifacts currently
                   <a href="https://developers.cloudflare.com/artifacts/platform/limits/">limits each repository to 10 GB</a>
-                  and does not document Git's separate large-file extension, called Git LFS. It is also
-                  <a href="https://developers.cloudflare.com/artifacts/">in closed beta</a>.
+                  and its <a href="https://developers.cloudflare.com/artifacts/platform/pricing/">published pricing</a>
+                  requires Workers Paid and bills aggregate operations and storage, not a per-repository
+                  fee. Estimates are guidance rather than invoice guarantees.
+                </p>
+                <p>
+                  Each installation environment persists one exclusive Cloudflare account and
+                  namespace identity. The adapter has no account-wide or namespace-delete operation.
+                  Live tests use a separate <code>artifact-server-test-</code> namespace, unique
+                  run-prefixed repositories, a separate revocable token, hard bounds, and cleanup
+                  restricted to a durable run manifest. Existing namespaces such as
+                  <code>workspaces</code> remain outside that route and cleanup boundary, although
+                  the Cloudflare control credential and billing remain account-wide. Access is not
+                  universal, so the product remains complete when the provider is unavailable or
+                  disabled.
                 </p>
                 <p>
                   Git repositories remain private. A public artifact link never grants Git access
@@ -3192,8 +3244,10 @@ artifact_delete</code></pre>
             <span class="section-label">Deployment</span>
             <h2 id="deployment-title">Supported deployment targets</h2>
             <p>
-              A local installation starts as one process running directly on the host with one data folder and does not require Docker. A team deployment may
-              run several copies of the application, all using the same database and file storage.
+              The first release supports a local owner and a private team. A local installation
+              starts as one process running directly on the host with one data folder and does not
+              require Docker. A team deployment may run several copies of the application, all using
+              the same database and file storage.
               The product defines runtime and storage interfaces; official infrastructure packages
               select the provider-specific services.
             </p>
@@ -3201,16 +3255,16 @@ artifact_delete</code></pre>
 
           <div class="deployment-summary">
             <article class="deployment-item">
-              <h3>Local first</h3>
-              <p>One process runs directly on the host with one SQLite database file and local disk. Docker is optional. Local browser addresses use <code>*.localhost</code>, so no DNS or certificate setup is required.</p>
+              <h3>First release: local owner</h3>
+              <p>One process runs directly on the host with one SQLite database file and local disk. Docker is optional. Opening the loopback management address creates a normal local-owner session without a sign-in step. Local browser addresses use <code>*.localhost</code>, so no DNS or certificate setup is required.</p>
             </article>
             <article class="deployment-item">
-              <h3>Private team</h3>
-              <p>Compact Compose runs one container with SQLite and attached disk. External-storage Compose uses the same image with existing Postgres and object storage, and it can run multiple application processes.</p>
+              <h3>First release: private team</h3>
+              <p>Compact Compose runs one container with SQLite and attached disk. External-storage Compose uses the same image with existing Postgres and object storage, and it can run multiple application processes. Each teammate signs in through the installation's configured OpenID Connect or WorkOS provider.</p>
             </article>
             <article class="deployment-item">
               <h3>Cloudflare</h3>
-              <p>Cloudflare Workers, D1 records, R2 files, nearby copies of public files, and optional Cloudflare Artifacts history.</p>
+              <p>Cloudflare Workers, D1 records, R2 files, nearby copies of public files, and off-by-default Cloudflare Artifacts handoff.</p>
             </article>
             <article class="deployment-item">
               <h3>AWS, GCP, and Azure</h3>
@@ -3237,7 +3291,7 @@ artifact_delete</code></pre>
             <div class="diagram-shell">
               <div class="diagram-heading">
                 <strong>Deployment map</strong>
-                <span>Git history is optional in every column.</span>
+                <span>Git handoff is off by default in every column.</span>
               </div>
               <div class="diagram-scroll">
                 <svg class="architecture-diagram" viewBox="0 0 1040 520" role="img" aria-labelledby="deployment-map-title deployment-map-desc">
@@ -3269,7 +3323,7 @@ artifact_delete</code></pre>
                   <text class="svg-copy" x="62" y="349">Artifact records</text>
                   <rect class="svg-node-store" x="44" y="386" width="196" height="68" rx="7"></rect>
                   <text class="svg-title" x="62" y="414">Local disk</text>
-                  <text class="svg-copy" x="62" y="435">Files + optional Git repos</text>
+                  <text class="svg-copy" x="62" y="435">Published files</text>
                   <path class="svg-line" d="M112 282 V300" marker-end="url(#deployment-arrow)"></path>
                   <path class="svg-line" d="M172 282 H248 V420 H240" marker-end="url(#deployment-arrow)"></path>
 
@@ -3295,8 +3349,8 @@ artifact_delete</code></pre>
                   <text class="svg-title" x="566" y="328">Postgres + S3-compatible</text>
                   <text class="svg-copy" x="566" y="349">External records and files</text>
                   <rect class="svg-boundary-optional" x="548" y="386" width="196" height="68" rx="7"></rect>
-                  <text class="svg-title" x="566" y="414">Git history service</text>
-                  <text class="svg-copy" x="566" y="435">Persistent or private remote</text>
+                  <text class="svg-title" x="566" y="414">Cloudflare Artifacts</text>
+                  <text class="svg-copy" x="566" y="435">Optional through REST</text>
                   <path class="svg-line" d="M616 282 V300" marker-end="url(#deployment-arrow)"></path>
                   <path class="svg-line-optional" d="M676 282 H752 V420 H744" marker-end="url(#deployment-arrow)"></path>
 
@@ -3309,14 +3363,14 @@ artifact_delete</code></pre>
                   <text class="svg-copy" x="818" y="349">Records and published files</text>
                   <rect class="svg-boundary-optional" x="800" y="386" width="196" height="68" rx="7"></rect>
                   <text class="svg-title" x="818" y="414">Cloudflare Artifacts</text>
-                  <text class="svg-copy" x="818" y="435">Optional private Git history</text>
+                  <text class="svg-copy" x="818" y="435">Optional Workers binding</text>
                   <path class="svg-line" d="M868 282 V300" marker-end="url(#deployment-arrow)"></path>
                   <path class="svg-line-optional" d="M928 282 H1004 V420 H996" marker-end="url(#deployment-arrow)"></path>
                 </svg>
               </div>
               <div class="diagram-legend" aria-label="Deployment diagram legend">
                 <span><i class="diagram-key" aria-hidden="true"></i>Required component</span>
-                <span><i class="diagram-key optional" aria-hidden="true"></i>Optional Git history</span>
+                <span><i class="diagram-key optional" aria-hidden="true"></i>Off-by-default Git handoff</span>
               </div>
             </div>
           </figure>
@@ -3329,7 +3383,7 @@ artifact_delete</code></pre>
                   <th>How it runs</th>
                   <th>Where records are stored</th>
                   <th>Where files are stored</th>
-                  <th>Optional Git history</th>
+                  <th>Optional Git handoff</th>
                   <th>Can it read local files?</th>
                 </tr>
               </thead>
@@ -3339,7 +3393,7 @@ artifact_delete</code></pre>
                   <td>Artifact Server runs directly on the host. A local container is optional.</td>
                   <td>SQLite</td>
                   <td>Local disk</td>
-                  <td>Git repositories in the data folder</td>
+                  <td>Off by default; Cloudflare Artifacts through REST when explicitly configured</td>
                   <td>Yes. The local publishing client reads a user-selected path with that user's operating-system permissions, validates it, and uploads bytes immediately.</td>
                 </tr>
                 <tr>
@@ -3347,7 +3401,7 @@ artifact_delete</code></pre>
                   <td>One software container</td>
                   <td>SQLite</td>
                   <td>One persistent local or attached data directory</td>
-                  <td>Git repositories on persistent disk</td>
+                  <td>Off by default; Cloudflare Artifacts through REST when explicitly configured</td>
                   <td>Only when a publishing client runs on that server. Artifact Server itself never accepts a filesystem path through HTTP or MCP.</td>
                 </tr>
                 <tr>
@@ -3355,7 +3409,7 @@ artifact_delete</code></pre>
                   <td>One or more stateless software containers</td>
                   <td>Existing Postgres</td>
                   <td>Existing S3-compatible object storage</td>
-                  <td>Configured private Git server</td>
+                  <td>Off by default; Cloudflare Artifacts through REST when explicitly configured</td>
                   <td>Only when a publishing client runs on that server. Artifact Server itself never accepts a filesystem path through HTTP or MCP.</td>
                 </tr>
                 <tr>
@@ -3363,7 +3417,7 @@ artifact_delete</code></pre>
                   <td>Node.js containers that keep no data on their own disks</td>
                   <td>Postgres</td>
                   <td>S3, Google Cloud Storage, a tested compatible object store, or the preview Azure Blob adapter</td>
-                  <td>Internal Git history service or private Git server</td>
+                  <td>Off by default; Cloudflare Artifacts through REST when explicitly configured</td>
                   <td>Normally no</td>
                 </tr>
                 <tr>
@@ -3371,7 +3425,7 @@ artifact_delete</code></pre>
                   <td>Cloudflare Workers</td>
                   <td>D1</td>
                   <td>Cloudflare R2</td>
-                  <td>Cloudflare Artifacts</td>
+                  <td>Off by default; Cloudflare Artifacts through the Workers binding when explicitly configured</td>
                   <td>No</td>
                 </tr>
                 <tr>
@@ -3379,7 +3433,7 @@ artifact_delete</code></pre>
                   <td>ECS Fargate</td>
                   <td>RDS PostgreSQL</td>
                   <td>Amazon S3</td>
-                  <td>Configured private Git server</td>
+                  <td>Off by default; Cloudflare Artifacts through REST when explicitly configured</td>
                   <td>No</td>
                 </tr>
                 <tr>
@@ -3387,7 +3441,7 @@ artifact_delete</code></pre>
                   <td>Cloud Run</td>
                   <td>Cloud SQL PostgreSQL</td>
                   <td>Google Cloud Storage</td>
-                  <td>Configured private Git server</td>
+                  <td>Off by default; Cloudflare Artifacts through REST when explicitly configured</td>
                   <td>No</td>
                 </tr>
               </tbody>
@@ -3417,7 +3471,9 @@ artifact_delete</code></pre>
                 </p>
                 <p>
                   Browser login and MCP authorization are separate protocols even when they use the
-                  same identity provider. Team browser login may use OpenID Connect. Hosted MCP
+                  same identity provider. Team browser login uses WorkOS AuthKit or any OpenID Connect
+                  provider, configured directly on the installation; one installation configures one
+                  browser-login provider. Hosted MCP
                   connections use WorkOS AuthKit. Private installations can use server API keys or a
                   compatible authorization service. A single-user installation may rely on the
                   operating-system account or a local token.
@@ -3431,15 +3487,15 @@ artifact_delete</code></pre>
                   The product rules do not know which database or file storage is in use. Each
                   deployment supplies small pieces of code for saving records, saving files, signing
                   users in, and running cleanup work. The product rules do not call Node.js file
-                  functions or a specific database library directly. Optional Git history follows
+                  functions or a specific database library directly. Optional Git handoff follows
                   the same rule through one small provider interface.
                 </p>
                 <ul>
-                  <li><strong>Laptop:</strong> one process runs directly on the host by default, with SQLite for records, files stored on disk by their SHA-256 fingerprints, optional local file links, and optional Git repositories in the same data folder. Docker is optional.</li>
-                  <li><strong>One server, compact:</strong> one process, SQLite in write-ahead logging mode, one persistent data directory, and optional Git repositories in that directory. This profile does not support multiple application writers or claim failover.</li>
+                  <li><strong>Laptop:</strong> one process runs directly on the host by default, with SQLite for records, files stored on disk by their SHA-256 fingerprints, and optional local file links. Cloudflare Artifacts may be configured through REST. Docker is optional.</li>
+                  <li><strong>One server, compact:</strong> one process, SQLite in write-ahead logging mode, and one persistent data directory. Cloudflare Artifacts may be configured through REST. This profile does not support multiple application writers or claim failover.</li>
                   <li><strong>One server, external storage:</strong> the same image connected to existing Postgres and object storage through a supported adapter. The Compose package does not bundle those providers.</li>
-                  <li><strong>Kubernetes:</strong> Postgres plus S3, Google Cloud Storage, R2, a tested compatible object store, or the preview Azure Blob adapter, with an optional internal Git history service or private Git server. This is the official Azure path on AKS.</li>
-                  <li><strong>Cloudflare:</strong> Workers for the application, D1 for records, R2 for files, and optional Cloudflare Artifacts history. External Postgres is supported through a separate adapter but is not the default.</li>
+                  <li><strong>Kubernetes:</strong> Postgres plus S3, Google Cloud Storage, R2, a tested compatible object store, or the preview Azure Blob adapter. Cloudflare Artifacts may be configured through REST. This is the official Azure path on AKS.</li>
+                  <li><strong>Cloudflare:</strong> Workers for the application, D1 for records, R2 for files, and off-by-default Cloudflare Artifacts handoff through a configured Workers binding. External Postgres is supported through a separate adapter but is not the default.</li>
                   <li><strong>AWS:</strong> ECS Fargate, RDS PostgreSQL, and S3 through the AWS Pulumi project.</li>
                   <li><strong>GCP:</strong> Cloud Run, Cloud SQL PostgreSQL, and native Google Cloud Storage through the GCP Pulumi project.</li>
                 </ul>
@@ -3665,7 +3721,7 @@ artifact_delete</code></pre>
               </div>
             </article>
             <article class="feature-row">
-              <h3>Private Git history</h3>
+              <h3>Private Git handoff</h3>
               <div class="feature-copy">
                 <p>Optional Git repositories remain private. Making an artifact available through a public link never grants Git access or exposes its earlier versions through a Git remote.</p>
               </div>
@@ -3702,7 +3758,7 @@ artifact_delete</code></pre>
                 <li>Finished client-side output directories and arbitrary individual files.</li>
                 <li>Saved versions that never change, plus the ability to restore an earlier one.</li>
                 <li>File and text comparisons between any two saved versions.</li>
-                <li>Optional private Git history selected when the server is installed.</li>
+                <li>Optional private Git handoff, off by default and selected by explicit installation configuration.</li>
                 <li>Exactly two access settings: account required and public link.</li>
                 <li>Browser access, MCP, the Artifact Server command-line program, and normal web requests from software.</li>
                 <li>An optional connection from one Artifact Server installation to one Plannotator organization, including signed operation requests and temporary browser sessions.</li>
@@ -3714,8 +3770,8 @@ artifact_delete</code></pre>
             <article class="scope-panel no-panel">
               <h3>Not included</h3>
               <ul>
-                <li>Comments, annotations, replies, review status, notifications, or workspace collaboration. Plannotator provides these features.</li>
-                <li>A general-purpose Git service for arbitrary source-code repositories. Optional Git history exists only for Artifact Server artifacts.</li>
+                <li>Review status, notifications, or workspace collaboration. Plannotator provides these features. Artifact Server does store comment threads on its own artifact versions.</li>
+                <li>A general-purpose Git service for arbitrary source-code repositories. Optional Git handoff exists only for Artifact Server artifacts.</li>
                 <li>Installing packages or turning source code into a finished application.</li>
                 <li>Code inside an artifact that must run on the server.</li>
                 <li>Media conversion, thumbnails, ZIP extraction, Markdown rendering, source-code highlighting, custom PDF viewing, or specialized binary comparisons in the first release.</li>
@@ -3762,8 +3818,8 @@ artifact_delete</code></pre>
                   directories, the separate artifact website, SQLite and
                   local file storage, the modern stateless MCP route, web publishing,
                   <code>artifactserver connect</code> and the credential-hidden local stdio bridge,
-                  the two sharing modes, and optional Git repositories in the local data
-                  folder. Add secure command-line profiles and make
+                  the two sharing modes, with Git handoff off by default. Add secure
+                  command-line profiles and make
                   <code>artifactserver publish</code> the local-file path. Ship the
                   <code>publish-artifact</code> skill after its CLI and MCP routing is stable.
                   Reject MCP subscriptions until a real event service exists. Ship it as one running application.
@@ -3780,7 +3836,7 @@ artifact_delete</code></pre>
                   Google Cloud Storage, R2, compatible object stores, and a preview Azure Blob adapter through one
                   narrow interface. Add browser login, API-key and external-issuer modes for private
                   deployments, staged direct uploads, expired-staging cleanup, a Docker image, a
-                  Compose file, a Helm chart, backup and restore, and optional private Git history.
+                  Compose file, a Helm chart, backup and restore, and optional private Git handoff.
                   Add structured request logs, standard OTLP export for logs, metrics, and traces,
                   and separate process-health and dependency-readiness checks.
                   Ship the optional <code>operate-artifact-server</code> skill after install,
@@ -3865,7 +3921,7 @@ artifact_delete</code></pre>
             <article class="decision-item"><p>A retry with the same idempotency key returns the stored result. A new key creates a new version even when the manifest matches an earlier version.</p></article>
             <article class="decision-item"><p>An artifact may have up to 20 normalized tags for exact filtering. Tags belong to the artifact, persist across version changes and tombstones, and are replaced through one authorized, idempotent, audited operation. The first release has no tag hierarchy or per-version tags.</p></article>
             <article class="decision-item"><p>Comparisons use canonical manifests and changed text. Binary comparison shows metadata and links. Git is not required.</p></article>
-            <article class="decision-item"><p>Git history is an optional private copy. The normal object store remains authoritative, and Git failure never blocks or loses a saved version.</p></article>
+            <article class="decision-item"><p>Git handoff is an optional private copy that is off by default and never selected automatically. Configuring Cloudflare Artifacts makes it available but copies nothing until an administrator estimates and enables selected projects or explicitly selects all projects. Each artifact has its own repository. The normal object store remains authoritative, and Git failure or a copy budget never blocks or loses a saved version.</p></article>
             <article class="decision-item"><p>Account required and public link are the only two read settings. A public link opens only the current version; history and comparisons still require an account. Every admitted human member may manage project artifacts; services require explicit capabilities.</p></article>
             <article class="decision-item"><p>One installation represents one person, team, or company and contains projects. Every artifact belongs to one project. A new installation creates a default project. There is no organization switcher or separate Artifact Store object.</p></article>
             <article class="decision-item"><p>Projects use installation membership and have no separate member list or access-control list in the first release. Project identity is enforced by storage, authorization, HTTP, MCP, browser sessions, audit, backup, and restore.</p></article>
@@ -3891,7 +3947,7 @@ artifact_delete</code></pre>
             <ol>
               <li><strong>Private site delivery:</strong> current tests exercise the bootstrap token and version-scoped content cookie, but the complete supported-browser and per-deployment matrix remains open.</li>
               <li><strong>Version origins:</strong> local <code>*.localhost</code> behavior and a real Cloudflare wildcard TLS probe have evidence. Equivalent DNS, certificate, proxy, and hostile-host proof remains open for each deployment before support is advertised.</li>
-              <li><strong>Cloudflare Artifacts:</strong> confirm closed-beta availability, repository limits, retry behavior, retention, regional behavior, and production support. The product must work when it is disabled.</li>
+              <li><strong>Cloudflare Artifacts:</strong> complete bounded live binding, REST, smart-HTTP, token, project-switch, estimate, budget, namespace-isolation, run-manifest cleanup, backfill, disable, deletion, recovery, limits, jurisdiction, and cost probes before advertising the off-by-default provider. The product must remain complete without access, and tests must not touch another namespace.</li>
               <li><strong>WorkOS MCP:</strong> browser approval, resource-bound tokens, refresh, revocation, reconnect, DCR, and CIMD pass for Codex and Claude Code. Visual Studio Code and claude.ai are deferred client qualifications, not first-release gates.</li>
               <li><strong>Embedded self-hosted OAuth:</strong> decide whether Better Auth's beta MCP path is mature enough; API keys and compatible external issuers remain the default until it passes the same hostile tests.</li>
               <li><strong>Cross-cloud packages:</strong> selected live AWS, GCP, and Cloudflare lifecycle probes have evidence, but no direct-cloud package has complete signed conformance proof. The AWS private-ingress variant remains unqualified.</li>
