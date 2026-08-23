@@ -1,6 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { api, type Project } from "@/api/client";
+import {
+  api,
+  type DeploymentCapabilities,
+  type Project,
+  type ProjectGitHistoryEstimate,
+  type ProjectGitHistorySetting,
+} from "@/api/client";
 import { ErrorPanel, PageHeader, StatePanel, StatusBadge } from "@/components/product";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,15 +20,17 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatTimestamp } from "@/lib/presentation";
+import { formatBytes, formatTimestamp } from "@/lib/presentation";
 
 /** Project list and complete project lifecycle controls. */
 export function ProjectsScreen({
   canManage,
+  gitHistory,
   onProjectsChanged,
   projects,
 }: {
   readonly canManage: boolean;
+  readonly gitHistory: DeploymentCapabilities["gitHistory"];
   readonly onProjectsChanged: () => Promise<void>;
   readonly projects: readonly Project[];
 }) {
@@ -101,6 +109,7 @@ export function ProjectsScreen({
             {projects.map((project) => (
               <ProjectCard
                 canManage={canManage}
+                gitHistory={gitHistory}
                 key={project.id}
                 onChanged={onProjectsChanged}
                 project={project}
@@ -114,16 +123,75 @@ export function ProjectsScreen({
 
 function ProjectCard({
   canManage,
+  gitHistory,
   onChanged,
   project,
 }: {
   readonly canManage: boolean;
+  readonly gitHistory: DeploymentCapabilities["gitHistory"];
   readonly onChanged: () => Promise<void>;
   readonly project: Project;
 }) {
   const [error, setError] = useState<Error | null>(null);
+  const [estimate, setEstimate] = useState<ProjectGitHistoryEstimate | null>(null);
+  const [gitHistorySetting, setGitHistorySetting] =
+    useState<ProjectGitHistorySetting | null>(null);
+  const [gitHistoryPending, setGitHistoryPending] = useState(false);
   const [name, setName] = useState(project.name);
   const [pending, setPending] = useState(false);
+  const gitHistoryCanEnable = gitHistory.provider === "cloudflare-artifacts" &&
+    gitHistory.providerState !== "disabled" &&
+    gitHistory.providerState !== "misconfigured" &&
+    gitHistory.providerState !== "migration-required";
+
+  useEffect(() => {
+    let current = true;
+    void (async () => {
+      try {
+        const setting = await api.projectGitHistory(project.id);
+        if (current) setGitHistorySetting(setting);
+      } catch (caught) {
+        if (current) {
+          setError(caught instanceof Error
+            ? caught
+            : new Error("Git history status could not be loaded."));
+        }
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [project.id]);
+
+  const loadGitHistoryEstimate = async () => {
+    setGitHistoryPending(true);
+    setEstimate(null);
+    setError(null);
+    try {
+      setEstimate(await api.estimateProjectGitHistory(project.id));
+    } catch (caught) {
+      setError(caught instanceof Error
+        ? caught
+        : new Error("Git history estimate failed."));
+    } finally {
+      setGitHistoryPending(false);
+    }
+  };
+
+  const setGitHistoryEnabled = async (enabled: boolean) => {
+    setGitHistoryPending(true);
+    setError(null);
+    try {
+      setGitHistorySetting(await api.setProjectGitHistory(project.id, enabled));
+      setEstimate(null);
+    } catch (caught) {
+      setError(caught instanceof Error
+        ? caught
+        : new Error("Git history update failed."));
+    } finally {
+      setGitHistoryPending(false);
+    }
+  };
 
   const rename = async () => {
     setPending(true);
@@ -173,6 +241,111 @@ function ProjectCard({
       {error === null ? null : (
         <p className="text-sm text-destructive" role="alert">{error.message}</p>
       )}
+      <div className="border-t pt-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium">Git history</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {gitHistory.provider === null
+                ? "Cloudflare Git history is not configured for this installation."
+                : gitHistory.providerState === "misconfigured" ||
+                    gitHistory.providerState === "migration-required"
+                  ? "Cloudflare Git history needs operator attention before it can be enabled."
+                  : gitHistory.providerState === "degraded"
+                    ? "Configured; mirroring waits while Cloudflare is unavailable."
+                    : gitHistory.providerState === "checking"
+                      ? "Configured; Cloudflare availability is being checked."
+                      : "Optional Cloudflare mirror for this project."}
+            </p>
+          </div>
+          <StatusBadge tone={gitHistorySetting?.enabled === true ? "primary" : "neutral"}>
+            {gitHistorySetting === null
+              ? "Loading"
+              : gitHistorySetting.enabled
+                ? "On"
+                : "Off"}
+          </StatusBadge>
+        </div>
+        {canManage && gitHistorySetting !== null
+          ? gitHistorySetting.enabled
+            ? (
+              <Dialog>
+                <DialogTrigger
+                  render={<Button className="mt-3" size="xs" type="button" variant="ghost" />}
+                >
+                  Turn off
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Turn off Git history for {project.name}?</DialogTitle>
+                    <DialogDescription>
+                      New versions will stop mirroring. Existing repositories and history are
+                      preserved; removing them is a separate operator action.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter>
+                    <Button
+                      disabled={gitHistoryPending}
+                      onClick={() => void setGitHistoryEnabled(false)}
+                      type="button"
+                      variant="destructive"
+                    >
+                      {gitHistoryPending ? "Saving…" : "Turn off Git history"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )
+            : gitHistoryCanEnable
+              ? (
+                <Dialog>
+                  <DialogTrigger
+                    render={<Button className="mt-3" size="xs" type="button" variant="outline" />}
+                    onClick={() => void loadGitHistoryEstimate()}
+                  >
+                    Turn on
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Turn on Git history for {project.name}?</DialogTitle>
+                      <DialogDescription>
+                        Review the current saved-version estimate before enabling this project.
+                      </DialogDescription>
+                    </DialogHeader>
+                    {estimate === null
+                      ? (
+                        <p className="text-sm text-muted-foreground">
+                          {gitHistoryPending
+                            ? "Calculating the current project estimate…"
+                            : "The estimate could not be loaded."}
+                        </p>
+                      )
+                      : (
+                        <div className="grid grid-cols-2 gap-3 border p-4 text-sm">
+                          <p><span className="block text-muted-foreground">Repositories</span>{estimate.repositories}</p>
+                          <p><span className="block text-muted-foreground">Versions</span>{estimate.versions}</p>
+                          <p><span className="block text-muted-foreground">Copied bytes</span>{formatBytes(estimate.estimatedCopiedBytes)}</p>
+                          <p><span className="block text-muted-foreground">Pointer bytes</span>{formatBytes(estimate.estimatedPointerBytes)}</p>
+                          <p className="col-span-2 text-xs leading-5 text-muted-foreground">
+                            {estimate.notice}
+                          </p>
+                        </div>
+                      )}
+                    <DialogFooter>
+                      <Button
+                        disabled={gitHistoryPending || estimate === null}
+                        onClick={() => void setGitHistoryEnabled(true)}
+                        type="button"
+                      >
+                        {gitHistoryPending ? "Saving…" : "Confirm and turn on"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              )
+              : null
+          : null}
+      </div>
       <div className="mt-auto flex flex-wrap gap-2">
         <Button
           render={<a href={`/projects/${encodeURIComponent(project.id)}/artifacts`} />}
