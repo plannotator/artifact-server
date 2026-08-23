@@ -1,6 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { api, type Principal, type Project, type Session } from "@/api/client";
+import {
+  api,
+  ApiError,
+  type AccessContext,
+  type Principal,
+  type Project,
+  type Session,
+} from "@/api/client";
 import { ErrorPanel, StatePanel, StatusBadge } from "@/components/product";
 import { Button } from "@/components/ui/button";
 import { ApiKeysScreen } from "@/screens/api-keys-screen";
@@ -9,6 +16,7 @@ import { ArtifactsScreen } from "@/screens/artifacts-screen";
 import { MembersScreen } from "@/screens/members-screen";
 import { ProjectsScreen } from "@/screens/projects-screen";
 import { PublicLinksScreen } from "@/screens/public-links-screen";
+import { ReviewScreen } from "@/screens/review-screen";
 
 type Route =
   | { readonly kind: "projects" }
@@ -17,6 +25,12 @@ type Route =
     readonly artifactId: string;
     readonly kind: "artifact";
     readonly projectId: string;
+  }
+  | {
+    readonly artifactId: string;
+    readonly kind: "review";
+    readonly projectId: string;
+    readonly versionId: string;
   }
   | { readonly kind: "members" }
   | { readonly kind: "apiKeys" }
@@ -27,6 +41,9 @@ type Route =
 /** Artifact Server's trusted management application. */
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
+  const [accessContext, setAccessContext] = useState<AccessContext | null>(null);
+  const accessContextRef = useRef<AccessContext | null>(null);
+  const bootstrapInFlightRef = useRef(false);
   const [projects, setProjects] = useState<readonly Project[]>([]);
   const [sessionState, setSessionState] = useState<"loading" | "ready" | "unauthenticated">(
     "loading",
@@ -42,27 +59,56 @@ export function App() {
   };
 
   const bootstrap = async () => {
+    if (bootstrapInFlightRef.current) return;
+    bootstrapInFlightRef.current = true;
     setSessionState("loading");
     setError(null);
     try {
-      const loadedSession = await api.session();
+      const [loadedAccessContext, initialSession] = await Promise.all([
+        api.accessContext(),
+        api.session().then(
+          (value) => ({kind: "authenticated" as const, value}),
+          (cause: unknown) => ({cause, kind: "failed" as const}),
+        ),
+      ]);
+      setAccessContext(loadedAccessContext);
+      accessContextRef.current = loadedAccessContext;
+      let loadedSession: Session;
+      if (initialSession.kind === "authenticated") {
+        loadedSession = initialSession.value;
+      } else if (
+        loadedAccessContext.accessMode === "local_owner"
+        && initialSession.cause instanceof ApiError
+        && initialSession.cause.status === 401
+      ) {
+        await api.localOwnerSession();
+        loadedSession = await api.session();
+      } else {
+        throw initialSession.cause;
+      }
       setSession(loadedSession);
       await loadProjects();
       setSessionState("ready");
     } catch (caught) {
-      if (caught instanceof Error && "status" in caught && caught.status === 401) {
+      if (caught instanceof ApiError && caught.status === 401) {
         setSession(null);
         setSessionState("unauthenticated");
       } else {
         setError(caught instanceof Error ? caught : new Error("Session loading failed."));
         setSessionState("ready");
       }
+    } finally {
+      bootstrapInFlightRef.current = false;
     }
   };
 
   useEffect(() => {
     void bootstrap();
     const expire = () => {
+      if (accessContextRef.current?.accessMode === "local_owner") {
+        void bootstrap();
+        return;
+      }
       setSession(null);
       setSessionState("unauthenticated");
     };
@@ -106,9 +152,7 @@ export function App() {
             Sign in required
           </h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            Sign in with this installation's configured identity provider. For local use, run{" "}
-            <code className="font-mono text-foreground">artifactserver open</code> so Artifact
-            Server can authorize the browser without exposing its private credential.
+            Sign in with this installation&apos;s configured identity provider.
           </p>
           <Button
             className="mt-6"
@@ -129,20 +173,35 @@ export function App() {
   }
   if (session === null) return null;
 
+  const routeContent = (
+    <RouteContent
+      gitHistory={session.capabilities.gitHistory}
+      linkedArtifacts={session.capabilities.linkedArtifacts}
+      principal={session.principal}
+      projects={projects}
+      reloadProjects={loadProjects}
+      route={route}
+    />
+  );
+
+  if (route.kind === "review") {
+    return (
+      <main className="h-svh bg-background text-foreground" id="main-content">
+        {routeContent}
+      </main>
+    );
+  }
+
   return (
     <ApplicationShell
       dark={dark}
+      localOwner={accessContext?.accessMode === "local_owner"}
       onThemeChange={() => setDark((current) => !current)}
       principal={session.principal}
       projects={projects}
       route={route}
     >
-      <RouteContent
-        principal={session.principal}
-        projects={projects}
-        reloadProjects={loadProjects}
-        route={route}
-      />
+      {routeContent}
     </ApplicationShell>
   );
 }
@@ -150,6 +209,7 @@ export function App() {
 function ApplicationShell({
   children,
   dark,
+  localOwner,
   onThemeChange,
   principal,
   projects,
@@ -157,6 +217,7 @@ function ApplicationShell({
 }: {
   readonly children: React.ReactNode;
   readonly dark: boolean;
+  readonly localOwner: boolean;
   readonly onThemeChange: () => void;
   readonly principal: Principal;
   readonly projects: readonly Project[];
@@ -164,6 +225,7 @@ function ApplicationShell({
 }) {
   const [logoutError, setLogoutError] = useState<Error | null>(null);
   const selectedProjectId = route.kind === "artifacts" || route.kind === "artifact"
+      || route.kind === "review"
     ? route.projectId
     : "";
   const administrator = isAdministrator(principal);
@@ -267,9 +329,11 @@ function ApplicationShell({
             <Button onClick={onThemeChange} size="xs" type="button" variant="ghost">
               {dark ? "Light theme" : "Dark theme"}
             </Button>
-            <Button onClick={() => void logout()} size="xs" type="button" variant="outline">
-              Log out
-            </Button>
+            {localOwner ? null : (
+              <Button onClick={() => void logout()} size="xs" type="button" variant="outline">
+                Log out
+              </Button>
+            )}
           </div>
         </div>
         {logoutError === null ? null : (
@@ -286,17 +350,24 @@ function ApplicationShell({
 }
 
 function RouteContent({
+  gitHistory,
+  linkedArtifacts,
   principal,
   projects,
   reloadProjects,
   route,
 }: {
+  /** Optional Git provider availability; project selection remains separate. */
+  readonly gitHistory: Session["capabilities"]["gitHistory"];
+  /** Whether this deployment offers linked files at all (spec §4.3). */
+  readonly linkedArtifacts: boolean;
   readonly principal: Principal;
   readonly projects: readonly Project[];
   readonly reloadProjects: () => Promise<void>;
   readonly route: Route;
 }) {
   const project = route.kind === "artifacts" || route.kind === "artifact"
+      || route.kind === "review"
     ? projects.find((candidate) => candidate.id === route.projectId)
     : undefined;
   const administrator = isAdministrator(principal);
@@ -304,6 +375,8 @@ function RouteContent({
     || principal.capabilities.includes("project:manage");
   const canManageArtifacts = isDirectHuman(principal)
     || principal.capabilities.includes("artifact:manage:any");
+  const canComment = isDirectHuman(principal)
+    || principal.capabilities.includes("comment:write");
 
   switch (route.kind) {
     case "home":
@@ -324,6 +397,7 @@ function RouteContent({
       return (
         <ProjectsScreen
           canManage={canManageProjects}
+          gitHistory={gitHistory}
           onProjectsChanged={reloadProjects}
           projects={projects}
         />
@@ -339,7 +413,22 @@ function RouteContent({
           <ArtifactDetailScreen
             artifactId={route.artifactId}
             canManage={canManageArtifacts}
+            linkedArtifacts={linkedArtifacts}
             project={project}
+          />
+        );
+    case "review":
+      return project === undefined
+        ? <MissingProject />
+        : (
+          <ReviewScreen
+            artifactId={route.artifactId}
+            canComment={canComment}
+            canManage={canManageArtifacts}
+            linkedArtifacts={linkedArtifacts}
+            principalId={principal.id}
+            project={project}
+            versionId={route.versionId}
           />
         );
     case "members":
@@ -416,6 +505,23 @@ function parseRoute(pathname: string): Route {
         artifactId: decodeURIComponent(segments[3]),
         kind: "artifact",
         projectId: decodeURIComponent(segments[1]),
+      };
+    }
+    if (
+      segments.length === 7
+      && segments[0] === "projects"
+      && segments[2] === "artifacts"
+      && segments[4] === "versions"
+      && segments[6] === "review"
+      && segments[1] !== undefined
+      && segments[3] !== undefined
+      && segments[5] !== undefined
+    ) {
+      return {
+        artifactId: decodeURIComponent(segments[3]),
+        kind: "review",
+        projectId: decodeURIComponent(segments[1]),
+        versionId: decodeURIComponent(segments[5]),
       };
     }
   } catch {

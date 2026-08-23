@@ -4,7 +4,9 @@ const accessSettingSchema = z.enum(["account_required", "public_link"]);
 const membershipRoleSchema = z.enum(["administrator", "member"]);
 const principalKindSchema = z.enum(["human", "service"]);
 const capabilitySchema = z.enum([
+  "agent:connect",
   "artifact:create",
+  "comment:write",
   "content-session:issue",
   "artifact:manage:any",
   "artifact:publish:any",
@@ -15,15 +17,85 @@ const capabilitySchema = z.enum([
 const principalSchema = z.object({
   authorizedByPrincipalId: z.string().nullable(),
   capabilities: z.array(capabilitySchema),
+  displayName: z.string().optional(),
   id: z.string(),
   installationId: z.string(),
   kind: principalKindSchema,
   membershipRole: membershipRoleSchema,
 });
 
+const disabledGitHistoryCapability = {
+  limits: {
+    fileCopyBytes: 10 * 1024 * 1024,
+    logicalCopiedBytes: 0,
+    logicalReservedBytes: 0,
+    storageBudgetBytes: null,
+    versionCopyBytes: 50 * 1024 * 1024,
+  },
+  provider: null,
+  providerState: "disabled" as const,
+};
+const gitHistoryCapabilitySchema = z.object({
+  limits: z.object({
+    fileCopyBytes: z.number().int().nonnegative(),
+    logicalCopiedBytes: z.number().int().nonnegative(),
+    logicalReservedBytes: z.number().int().nonnegative(),
+    storageBudgetBytes: z.number().int().nonnegative().nullable(),
+    versionCopyBytes: z.number().int().nonnegative(),
+  }),
+  provider: z.literal("cloudflare-artifacts").nullable(),
+  providerState: z.enum([
+    "disabled",
+    "checking",
+    "available",
+    "degraded",
+    "misconfigured",
+    "migration-required",
+  ]),
+});
+
+/**
+ * What this deployment offers beyond the shared surface. A deployment that
+ * never learned the field is a deployment without the capability, so the
+ * default keeps every gated affordance hidden rather than guessed at.
+ */
+const deploymentCapabilitiesSchema = z.object({
+  gitHistory: gitHistoryCapabilitySchema.default(disabledGitHistoryCapability),
+  linkedArtifacts: z.boolean(),
+}).default({
+  gitHistory: disabledGitHistoryCapability,
+  linkedArtifacts: false,
+});
+
 const sessionSchema = z.object({
   authenticationMethod: z.enum(["bearer", "session"]),
+  capabilities: deploymentCapabilitiesSchema,
   principal: principalSchema,
+});
+
+const accessContextSchema = z.discriminatedUnion("accessMode", [
+  z.object({
+    accessMode: z.literal("local_owner"),
+    login: z.object({kind: z.literal("local_owner")}),
+  }),
+  z.object({
+    accessMode: z.literal("private_team"),
+    login: z.object({kind: z.enum(["oidc", "workos"])}),
+  }),
+]);
+
+const sourceFreshnessSchema = z.enum([
+  "in-sync",
+  "missing",
+  "modified",
+  "unreadable",
+]);
+
+/** The linked file behind an artifact, as the local deployment reports it. */
+const sourceBindingSchema = z.object({
+  lastVerifiedAt: z.string(),
+  path: z.string(),
+  status: sourceFreshnessSchema,
 });
 
 const projectSchema = z.object({
@@ -32,6 +104,19 @@ const projectSchema = z.object({
   id: z.string(),
   installationId: z.string(),
   name: z.string(),
+});
+const projectGitHistorySettingSchema = z.object({
+  enabled: z.boolean(),
+  projectId: z.string(),
+});
+const projectGitHistoryEstimateSchema = z.object({
+  estimatedCopiedBytes: z.number().int().nonnegative(),
+  estimatedPointerBytes: z.number().int().nonnegative(),
+  notice: z.string(),
+  operations: z.number().int().nonnegative(),
+  projectId: z.string(),
+  repositories: z.number().int().nonnegative(),
+  versions: z.number().int().nonnegative(),
 });
 
 const artifactSchema = z.object({
@@ -96,10 +181,16 @@ const apiErrorBodySchema = z.object({
 const noContentStatuses = new Set([204, 205]);
 
 export type AccessSetting = z.infer<typeof accessSettingSchema>;
+export type DeploymentCapabilities = z.infer<typeof deploymentCapabilitiesSchema>;
+export type SourceFreshness = z.infer<typeof sourceFreshnessSchema>;
+export type SourceBinding = z.infer<typeof sourceBindingSchema>;
 export type PrincipalCapability = z.infer<typeof capabilitySchema>;
 export type Principal = z.infer<typeof principalSchema>;
 export type Session = z.infer<typeof sessionSchema>;
+export type AccessContext = z.infer<typeof accessContextSchema>;
 export type Project = z.infer<typeof projectSchema>;
+export type ProjectGitHistorySetting = z.infer<typeof projectGitHistorySettingSchema>;
+export type ProjectGitHistoryEstimate = z.infer<typeof projectGitHistoryEstimateSchema>;
 export type Artifact = z.infer<typeof artifactSchema>;
 export type ManifestEntry = z.infer<typeof manifestEntrySchema>;
 export type Version = z.infer<typeof versionSchema>;
@@ -182,12 +273,30 @@ export interface ArtifactDetails {
   readonly current: ArtifactVersion;
   readonly links: {
     readonly artifact: string;
+    /** The artifact's own live origin; present only for a linked artifact. */
+    readonly live?: string | undefined;
     readonly management: string;
   };
+  /** Present only on a local deployment that linked this artifact to a file. */
+  readonly sourceBinding?: SourceBinding | undefined;
 }
 
 export interface ArtifactAction {
-  readonly action: "change_access" | "change_tags" | "delete" | "publish" | "restore";
+  readonly action:
+    | "capture"
+    | "change_access"
+    | "change_tags"
+    | "comment_create"
+    | "comment_delete"
+    | "comment_reopen"
+    | "comment_reply"
+    | "comment_resolve"
+    | "comment_update"
+    | "delete"
+    | "link"
+    | "publish"
+    | "relink"
+    | "restore";
   readonly artifactId: string;
   readonly authorizedByPrincipalId: string | null;
   readonly createdAt: string;
@@ -246,11 +355,46 @@ const artifactPageSchema: z.ZodType<ArtifactPage> = z.object({
 const artifactDetailsSchema: z.ZodType<ArtifactDetails> = z.object({
   artifact: artifactSchema,
   current: artifactVersionSchema,
-  links: z.object({ artifact: z.url(), management: z.url() }),
+  links: z.object({
+    artifact: z.url(),
+    live: z.url().optional(),
+    management: z.url(),
+  }),
+  sourceBinding: sourceBindingSchema.optional(),
 });
 
+/** The link and capture answer: a published version plus the binding it read. */
+const linkedPublicationSchema = z.object({
+  artifact: artifactSchema,
+  links: z.object({
+    artifact: z.url(),
+    live: z.url().optional(),
+    version: z.url(),
+  }),
+  replayed: z.boolean(),
+  sourceBinding: sourceBindingSchema,
+  version: versionSchema,
+});
+
+export type LinkedPublication = z.infer<typeof linkedPublicationSchema>;
+
 const actionSchema: z.ZodType<ArtifactAction> = z.object({
-  action: z.enum(["change_access", "change_tags", "delete", "publish", "restore"]),
+  action: z.enum([
+    "capture",
+    "change_access",
+    "change_tags",
+    "comment_create",
+    "comment_delete",
+    "comment_reopen",
+    "comment_reply",
+    "comment_resolve",
+    "comment_update",
+    "delete",
+    "link",
+    "publish",
+    "relink",
+    "restore",
+  ]),
   artifactId: z.string(),
   authorizedByPrincipalId: z.string().nullable(),
   createdAt: z.string(),
@@ -298,6 +442,184 @@ const comparisonSchema: z.ZodType<ArtifactComparison> = z.object({
   to: versionSchema,
   unchangedCount: z.number(),
 });
+
+const commentAnchorSchema = z.json();
+const commentThreadStateSchema = z.enum(["open", "resolved"]);
+
+const commentAuthorSchema = z.object({
+  authorizedByPrincipalId: z.string().nullable(),
+  displayName: z.string(),
+  principalId: z.string(),
+  principalKind: principalKindSchema,
+});
+
+const commentThreadSchema = z.object({
+  anchor: commentAnchorSchema,
+  artifactId: z.string(),
+  author: commentAuthorSchema,
+  body: z.string(),
+  createdAt: z.string(),
+  id: z.string(),
+  links: z.object({ self: z.url(), version: z.url() }),
+  path: z.string().nullable(),
+  projectId: z.string(),
+  replyCount: z.number(),
+  resolvedAt: z.string().nullable(),
+  resolvedBy: commentAuthorSchema.nullable(),
+  state: commentThreadStateSchema,
+  updatedAt: z.string(),
+  versionId: z.string(),
+});
+
+const commentReplySchema = z.object({
+  author: commentAuthorSchema,
+  body: z.string(),
+  createdAt: z.string(),
+  id: z.string(),
+  projectId: z.string(),
+  threadId: z.string(),
+  updatedAt: z.string(),
+});
+
+const commentThreadPageSchema = z.object({
+  items: z.array(commentThreadSchema),
+  nextCursor: z.string().nullable(),
+});
+
+const commentThreadDetailsSchema = z.object({
+  replies: z.array(commentReplySchema),
+  thread: commentThreadSchema,
+});
+
+const createdCommentThreadSchema = z.object({
+  replayed: z.boolean(),
+  thread: commentThreadSchema,
+});
+
+const createdCommentReplySchema = z.object({
+  replayed: z.boolean(),
+  reply: commentReplySchema,
+});
+
+/** Client-owned anchor JSON; Artifact Server stores and returns it unread. */
+export type CommentAnchor = z.infer<typeof commentAnchorSchema>;
+export type CommentThreadState = z.infer<typeof commentThreadStateSchema>;
+export type CommentAuthor = z.infer<typeof commentAuthorSchema>;
+export type CommentThread = z.infer<typeof commentThreadSchema>;
+export type CommentReply = z.infer<typeof commentReplySchema>;
+export type CommentThreadPage = z.infer<typeof commentThreadPageSchema>;
+export type CommentThreadDetails = z.infer<typeof commentThreadDetailsSchema>;
+export type CreatedCommentThread = z.infer<typeof createdCommentThreadSchema>;
+export type CreatedCommentReply = z.infer<typeof createdCommentReplySchema>;
+
+/** Every filter the comment listing route accepts, with null meaning unset. */
+export interface CommentThreadQuery {
+  readonly cursor: string | null;
+  /** Dispatched-thread visibility; unset leaves the server's own exclusion. */
+  readonly dispatched: DispatchedThreadFilter | null;
+  readonly limit: number | null;
+  readonly since: string | null;
+  readonly state: CommentThreadState | null;
+  readonly versionId: string | null;
+}
+
+/** One composed thread, ready to be created on one exact saved version. */
+export interface CommentDraft {
+  readonly anchor: CommentAnchor;
+  readonly body: string;
+  /** One manifest entry path, or null to anchor the whole version. */
+  readonly path: string | null;
+}
+
+/** One thread edit; omit a field to leave that part of the thread unchanged. */
+export interface CommentThreadEdit {
+  readonly anchor?: CommentAnchor;
+  readonly body?: string;
+  readonly state?: CommentThreadState;
+}
+
+const registeredAgentSchema = z.object({
+  agentSessionId: z.string().nullable(),
+  /** Derived from the agent's own claim polling; the poll is the heartbeat. */
+  connected: z.boolean(),
+  connectionKey: z.string(),
+  createdAt: z.string(),
+  displayName: z.string(),
+  id: z.string(),
+  kind: z.enum(["pi"]),
+  lastSeenAt: z.string(),
+  principalId: z.string(),
+  workingDirectory: z.string(),
+});
+
+const agentDispatchStateSchema = z.enum([
+  "addressed",
+  "canceled",
+  "claimed",
+  "delivered",
+  "failed",
+  "queued",
+]);
+
+const agentDispatchSchema = z.object({
+  addressedAt: z.string().nullable(),
+  agentDisplayName: z.string(),
+  agentId: z.string(),
+  canceledAt: z.string().nullable(),
+  claimedAt: z.string().nullable(),
+  createdAt: z.string(),
+  deliveredAt: z.string().nullable(),
+  failedAt: z.string().nullable(),
+  failureReason: z.string().nullable(),
+  id: z.string(),
+  idempotencyKey: z.string(),
+  leaseExpiresAt: z.string().nullable(),
+  note: z.string().nullable(),
+  projectId: z.string(),
+  sender: commentAuthorSchema,
+  state: agentDispatchStateSchema,
+  threadIds: z.array(z.string()),
+  updatedAt: z.string(),
+});
+
+const agentDispatchPageSchema = z.object({
+  items: z.array(agentDispatchSchema),
+  nextCursor: z.string().nullable(),
+});
+
+const createdAgentDispatchSchema = z.object({
+  dispatch: agentDispatchSchema,
+  replayed: z.boolean(),
+});
+
+export type RegisteredAgent = z.infer<typeof registeredAgentSchema>;
+export type AgentDispatchState = z.infer<typeof agentDispatchStateSchema>;
+export type AgentDispatch = z.infer<typeof agentDispatchSchema>;
+export type AgentDispatchPage = z.infer<typeof agentDispatchPageSchema>;
+export type CreatedAgentDispatch = z.infer<typeof createdAgentDispatchSchema>;
+
+/**
+ * Whether a comment listing hides, includes, or shows only the threads an
+ * active dispatch carries. Leaving it unset keeps the server default, which
+ * hides them: that is what makes a send consumptive.
+ */
+export type DispatchedThreadFilter = "exclude" | "include" | "only";
+
+/** One bundle of comment threads, sent to one agent as a single message. */
+export interface AgentDispatchDraft {
+  readonly agentId: string;
+  readonly note: string | null;
+  /** Ordered thread ids, all open and undispatched at send time. */
+  readonly threadIds: readonly string[];
+}
+
+/** Every filter the dispatch listing route accepts, with null meaning unset. */
+export interface AgentDispatchQuery {
+  readonly agentId: string | null;
+  readonly cursor: string | null;
+  readonly limit: number | null;
+  readonly state: AgentDispatchState | null;
+}
 
 const memberSchema = z.object({
   createdAt: z.string(),
@@ -428,6 +750,13 @@ async function request<T>(
   return parsed.data;
 }
 
+async function requestText(path: string): Promise<string> {
+  const response = await fetch(path, { credentials: "same-origin" });
+  notifySessionExpiry(response);
+  if (!response.ok) throw await parseFailure(response);
+  return await response.text();
+}
+
 async function requestNoContent(path: string, init: RequestInit): Promise<void> {
   const response = await fetch(path, {
     ...init,
@@ -455,6 +784,10 @@ function notifySessionExpiry(response: Response): void {
 }
 
 export const api = {
+  accessContext: () => request(accessContextSchema, "/auth/context"),
+  localOwnerSession: () => requestNoContent("/auth/local-owner", {
+    method: "POST",
+  }),
   session: () => request(sessionSchema, "/api/v1/session"),
   logout: () => requestNoContent("/api/v1/session/logout", {
     headers: mutationHeaders(),
@@ -511,6 +844,26 @@ export const api = {
     `/api/v1/projects/${encodeURIComponent(projectId)}/unarchive`,
     { headers: mutationHeaders(), method: "POST" },
   ).then(({ project }) => project),
+  projectGitHistory: (projectId: string) => request(
+    z.object({gitHistory: projectGitHistorySettingSchema}),
+    `/api/v1/projects/${encodeURIComponent(projectId)}/git-history`,
+  ).then(({gitHistory}) => gitHistory),
+  estimateProjectGitHistory: (projectId: string) => request(
+    z.object({estimate: projectGitHistoryEstimateSchema}),
+    `/api/v1/projects/${encodeURIComponent(projectId)}/git-history/estimate`,
+    {headers: mutationHeaders(), method: "POST"},
+  ).then(({estimate}) => estimate),
+  setProjectGitHistory: (projectId: string, enabled: boolean) => request(
+    z.object({gitHistory: projectGitHistorySettingSchema}),
+    `/api/v1/projects/${encodeURIComponent(projectId)}/git-history`,
+    {
+      body: JSON.stringify(enabled
+        ? {confirmEstimate: true, enabled: true}
+        : {enabled: false}),
+      headers: mutationHeaders(),
+      method: "PUT",
+    },
+  ).then(({gitHistory}) => gitHistory),
   artifacts: (projectId: string, cursor: string | null, tag: string) => {
     const query = new URLSearchParams({ limit: "25", projectId });
     if (cursor !== null) query.set("cursor", cursor);
@@ -622,6 +975,35 @@ export const api = {
       method: "DELETE",
     },
   ),
+  /**
+   * Save the linked file's current bytes as a new immutable version. Capturing
+   * a binding that is already in sync replays the current version instead of
+   * committing a second identical one.
+   */
+  captureArtifact: (
+    projectId: string,
+    artifactId: string,
+    expectedCurrentVersionId: string,
+    idempotencyKey: string,
+  ) => request(
+    linkedPublicationSchema,
+    `/api/v1/artifacts/${encodeURIComponent(artifactId)}/capture?${projectQuery(projectId)}`,
+    {
+      body: JSON.stringify({ expectedCurrentVersionId }),
+      headers: mutationHeaders(idempotencyKey),
+      method: "POST",
+    },
+  ),
+  /**
+   * Enter the artifact's live origin: the answer is a one-use bootstrap URL
+   * that exchanges itself for the content cookie, exactly like a version's
+   * content session, and then streams the file's current bytes.
+   */
+  liveSession: (projectId: string, artifactId: string) => request(
+    z.object({ bootstrapUrl: z.url(), expiresAt: z.string() }),
+    `/api/v1/artifacts/${encodeURIComponent(artifactId)}/live-sessions?${projectQuery(projectId)}`,
+    { headers: mutationHeaders(), method: "POST" },
+  ),
   contentSession: (
     projectId: string,
     artifactId: string,
@@ -643,6 +1025,149 @@ export const api = {
       { headers: mutationHeaders(), method: "POST" },
     );
   },
+  versionFile: (
+    projectId: string,
+    artifactId: string,
+    versionId: string,
+    path: string,
+  ) => requestText(
+    `/api/v1/artifacts/${encodeURIComponent(artifactId)}/versions/${encodeURIComponent(versionId)}/file?${new URLSearchParams({
+      path,
+      projectId,
+    })}`,
+  ),
+  comments: (
+    projectId: string,
+    artifactId: string,
+    query: CommentThreadQuery,
+  ) => {
+    const search = new URLSearchParams({ projectId });
+    if (query.cursor !== null) search.set("cursor", query.cursor);
+    if (query.dispatched !== null) search.set("dispatched", query.dispatched);
+    if (query.limit !== null) search.set("limit", String(query.limit));
+    if (query.since !== null) search.set("since", query.since);
+    if (query.state !== null) search.set("state", query.state);
+    if (query.versionId !== null) search.set("versionId", query.versionId);
+    return request(
+      commentThreadPageSchema,
+      `/api/v1/artifacts/${encodeURIComponent(artifactId)}/comments?${search}`,
+    );
+  },
+  comment: (projectId: string, artifactId: string, threadId: string) => request(
+    commentThreadDetailsSchema,
+    `/api/v1/artifacts/${encodeURIComponent(artifactId)}/comments/${encodeURIComponent(threadId)}?${projectQuery(projectId)}`,
+  ),
+  createComment: (
+    projectId: string,
+    artifactId: string,
+    versionId: string,
+    draft: CommentDraft,
+    idempotencyKey: string,
+  ) => request(
+    createdCommentThreadSchema,
+    `/api/v1/artifacts/${encodeURIComponent(artifactId)}/versions/${encodeURIComponent(versionId)}/comments?${projectQuery(projectId)}`,
+    {
+      body: JSON.stringify(
+        draft.path === null
+          ? { anchor: draft.anchor, body: draft.body }
+          : { anchor: draft.anchor, body: draft.body, path: draft.path },
+      ),
+      headers: mutationHeaders(idempotencyKey),
+      method: "POST",
+    },
+  ),
+  updateComment: (
+    projectId: string,
+    artifactId: string,
+    threadId: string,
+    edit: CommentThreadEdit,
+  ) => request(
+    z.object({ thread: commentThreadSchema }),
+    `/api/v1/artifacts/${encodeURIComponent(artifactId)}/comments/${encodeURIComponent(threadId)}?${projectQuery(projectId)}`,
+    {
+      body: JSON.stringify(edit),
+      headers: mutationHeaders(),
+      method: "PATCH",
+    },
+  ).then(({ thread }) => thread),
+  deleteComment: (projectId: string, artifactId: string, threadId: string) =>
+    requestNoContent(
+      `/api/v1/artifacts/${encodeURIComponent(artifactId)}/comments/${encodeURIComponent(threadId)}?${projectQuery(projectId)}`,
+      { headers: mutationHeaders(), method: "DELETE" },
+    ),
+  createCommentReply: (
+    projectId: string,
+    artifactId: string,
+    threadId: string,
+    body: string,
+    idempotencyKey: string,
+  ) => request(
+    createdCommentReplySchema,
+    `/api/v1/artifacts/${encodeURIComponent(artifactId)}/comments/${encodeURIComponent(threadId)}/replies?${projectQuery(projectId)}`,
+    {
+      body: JSON.stringify({ body }),
+      headers: mutationHeaders(idempotencyKey),
+      method: "POST",
+    },
+  ),
+  updateCommentReply: (
+    projectId: string,
+    artifactId: string,
+    threadId: string,
+    replyId: string,
+    body: string,
+  ) => request(
+    z.object({ reply: commentReplySchema }),
+    `/api/v1/artifacts/${encodeURIComponent(artifactId)}/comments/${encodeURIComponent(threadId)}/replies/${encodeURIComponent(replyId)}?${projectQuery(projectId)}`,
+    {
+      body: JSON.stringify({ body }),
+      headers: mutationHeaders(),
+      method: "PATCH",
+    },
+  ).then(({ reply }) => reply),
+  deleteCommentReply: (
+    projectId: string,
+    artifactId: string,
+    threadId: string,
+    replyId: string,
+  ) => requestNoContent(
+    `/api/v1/artifacts/${encodeURIComponent(artifactId)}/comments/${encodeURIComponent(threadId)}/replies/${encodeURIComponent(replyId)}?${projectQuery(projectId)}`,
+    { headers: mutationHeaders(), method: "DELETE" },
+  ),
+  agents: () => request(
+    z.object({ items: z.array(registeredAgentSchema) }),
+    "/api/v1/agents",
+  ).then(({ items }) => items),
+  agentDispatches: (projectId: string, query: AgentDispatchQuery) => {
+    const search = new URLSearchParams({ projectId });
+    if (query.agentId !== null) search.set("agentId", query.agentId);
+    if (query.cursor !== null) search.set("cursor", query.cursor);
+    if (query.limit !== null) search.set("limit", String(query.limit));
+    if (query.state !== null) search.set("state", query.state);
+    return request(agentDispatchPageSchema, `/api/v1/agent-dispatches?${search}`);
+  },
+  createAgentDispatch: (
+    projectId: string,
+    draft: AgentDispatchDraft,
+    idempotencyKey: string,
+  ) => request(
+    createdAgentDispatchSchema,
+    `/api/v1/agent-dispatches?${projectQuery(projectId)}`,
+    {
+      body: JSON.stringify({
+        agentId: draft.agentId,
+        note: draft.note,
+        threadIds: draft.threadIds,
+      }),
+      headers: mutationHeaders(idempotencyKey),
+      method: "POST",
+    },
+  ),
+  cancelAgentDispatch: (projectId: string, dispatchId: string) => request(
+    z.object({ dispatch: agentDispatchSchema }),
+    `/api/v1/agent-dispatches/${encodeURIComponent(dispatchId)}/cancel?${projectQuery(projectId)}`,
+    { headers: mutationHeaders(), method: "POST" },
+  ).then(({ dispatch }) => dispatch),
   members: () => request(
     z.object({ members: z.array(memberSchema) }),
     "/api/v1/members",

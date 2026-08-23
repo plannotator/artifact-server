@@ -34,6 +34,7 @@ const capabilities: readonly {
   { description: "Restore, change tags and access, or tombstone.", label: "Manage artifacts", value: "artifact:manage:any" },
   { description: "Open account-required artifact content.", label: "Issue content sessions", value: "content-session:issue" },
   { description: "Create, rename, archive, and unarchive projects.", label: "Manage projects", value: "project:manage" },
+  { description: "Register a coding agent and claim dispatched annotations.", label: "Connect agents", value: "agent:connect" },
 ];
 
 /** Format one instant as the browser's local wall-clock minute value. */

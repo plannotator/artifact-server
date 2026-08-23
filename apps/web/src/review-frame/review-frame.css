@@ -1,0 +1,31 @@
+/*
+ * The review frame styles itself from @plannotator/ui's precompiled stylesheet
+ * (its documented consumption path) rather than the application shell's
+ * Tailwind build: the viewer's chrome is authored against the package's own
+ * token set, and this document renders nothing else. The host's palette
+ * arrives over postMessage and is written onto :root at runtime, so both this
+ * document and the sandbox below it follow the shell's theme.
+ */
+@import "@plannotator/ui/styles.css";
+
+html,
+body,
+#review-root {
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  margin: 0;
+  overflow: hidden;
+}
+
+/*
+ * Image attachments are not part of an artifact comment: the thread body is
+ * the only field the API stores. HtmlViewer hard-codes the composer's
+ * attachment affordance, so it is suppressed here.
+ */
+[data-comment-popover] button[aria-label="Attachments"] {
+  display: none;
+}

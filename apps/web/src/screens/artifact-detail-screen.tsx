@@ -2,13 +2,18 @@ import { useEffect, useState } from "react";
 
 import {
   api,
+  ApiError,
   type ArtifactAction,
   type ArtifactComparison,
   type ArtifactDetails,
   type ArtifactVersion,
+  type CommentThread,
   type Project,
+  type SourceBinding,
   type Version,
 } from "@/api/client";
+import { useCommentPoll } from "@/components/comments/comment-poll";
+import { CommentsPanel } from "@/components/comments/comments-panel";
 import {
   ErrorPanel,
   MetadataRow,
@@ -34,27 +39,67 @@ import {
   actionLabel,
   formatBytes,
   formatTimestamp,
+  sourceDriftDescription,
+  sourceFreshnessLabel,
+  sourceFreshnessTone,
 } from "@/lib/presentation";
+
+const openThreadQuery = {
+  cursor: null,
+  // Unset: the server hides the threads an active send carries, so the version
+  // counts stop including an annotation as soon as it is sent.
+  dispatched: null,
+  limit: 100,
+  since: null,
+  state: "open",
+  versionId: null,
+} as const;
+
+function countOpenThreadsByVersion(
+  threads: readonly CommentThread[],
+): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>();
+  for (const thread of threads) {
+    counts.set(thread.versionId, (counts.get(thread.versionId) ?? 0) + 1);
+  }
+  return counts;
+}
 
 interface VersionListItem {
   readonly links: { readonly version: string };
   readonly version: Version;
 }
 
+/**
+ * The binding this screen may show: a linked file exists in the read, and this
+ * deployment offers linked files at all. A deployment without the capability
+ * shows no linked affordance anywhere, whatever a read happens to carry.
+ */
+function shownBinding(
+  details: ArtifactDetails | null,
+  linkedArtifacts: boolean,
+): SourceBinding | null {
+  if (!linkedArtifacts || details === null) return null;
+  return details.sourceBinding ?? null;
+}
+
 /** Complete artifact metadata, history, comparison, mutation, and tombstone surface. */
 export function ArtifactDetailScreen({
   artifactId,
   canManage,
+  linkedArtifacts,
   project,
 }: {
   readonly artifactId: string;
   readonly canManage: boolean;
+  readonly linkedArtifacts: boolean;
   readonly project: Project;
 }) {
   const [details, setDetails] = useState<ArtifactDetails | null>(null);
   const [versions, setVersions] = useState<readonly VersionListItem[]>([]);
   const [actions, setActions] = useState<readonly ArtifactAction[]>([]);
   const [actionsNextCursor, setActionsNextCursor] = useState<string | null>(null);
+  const [openThreads, setOpenThreads] = useState<readonly CommentThread[]>([]);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMoreActions, setLoadingMoreActions] = useState(false);
@@ -64,15 +109,18 @@ export function ArtifactDetailScreen({
     setLoading(true);
     setError(null);
     try {
-      const [loadedDetails, loadedVersions, loadedActions] = await Promise.all([
-        api.artifact(project.id, artifactId),
-        api.versions(project.id, artifactId),
-        api.actions(project.id, artifactId, null),
-      ]);
+      const [loadedDetails, loadedVersions, loadedActions, loadedThreads] =
+        await Promise.all([
+          api.artifact(project.id, artifactId),
+          api.versions(project.id, artifactId),
+          api.actions(project.id, artifactId, null),
+          api.comments(project.id, artifactId, openThreadQuery),
+        ]);
       setDetails(loadedDetails);
       setVersions(loadedVersions);
       setActions(loadedActions.actions);
       setActionsNextCursor(loadedActions.nextCursor);
+      setOpenThreads(loadedThreads.items);
     } catch (caught) {
       setError(caught instanceof Error ? caught : new Error("Artifact loading failed."));
     } finally {
@@ -83,6 +131,37 @@ export function ArtifactDetailScreen({
   useEffect(() => {
     void load();
   }, [artifactId, project.id]);
+
+  /**
+   * Re-read the artifact on its own. The read lazily refreshes a linked file's
+   * freshness, so the badge follows the file on disk, and it names the current
+   * version, which the implicit capture behind a comment can move.
+   */
+  const refreshDetails = async (): Promise<void> => {
+    try {
+      setDetails(await api.artifact(project.id, artifactId));
+    } catch {
+      // A failed refresh changes nothing on screen; Reload reports for itself.
+    }
+  };
+
+  // The linked file's freshness rides the comment surfaces' own poll cadence:
+  // one visibility-aware interval, running only while this artifact is linked.
+  useCommentPoll(refreshDetails, shownBinding(details, linkedArtifacts) !== null);
+
+  const loadOpenThreads = async () => {
+    try {
+      const page = await api.comments(project.id, artifactId, openThreadQuery);
+      setOpenThreads(page.items);
+      // A comment on a drifted binding captures first, so the current version
+      // and the freshness can both have moved with it.
+      await refreshDetails();
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught : new Error("Comment loading failed."),
+      );
+    }
+  };
 
   const loadMoreActions = async () => {
     if (actionsNextCursor === null) return;
@@ -152,6 +231,7 @@ export function ArtifactDetailScreen({
   }
 
   const publicArtifact = details.artifact.accessSetting === "public_link";
+  const openThreadCounts = countOpenThreadsByVersion(openThreads);
 
   return (
     <div className="flex flex-col gap-8">
@@ -197,11 +277,13 @@ export function ArtifactDetailScreen({
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="versions">Versions</TabsTrigger>
           <TabsTrigger value="compare">Compare</TabsTrigger>
+          <TabsTrigger value="comments">Comments</TabsTrigger>
           <TabsTrigger value="actions">Action history</TabsTrigger>
         </TabsList>
 
         <TabsContent className="pt-6" value="overview">
           <Overview
+            binding={shownBinding(details, linkedArtifacts)}
             canManage={canManage}
             details={details}
             onChanged={load}
@@ -214,6 +296,7 @@ export function ArtifactDetailScreen({
             artifactId={artifactId}
             canManage={canManage}
             currentVersionId={details.artifact.currentVersionId}
+            openThreadCounts={openThreadCounts}
             onChanged={load}
             onError={setError}
             onOpenPrivate={openPrivateVersion}
@@ -232,6 +315,17 @@ export function ArtifactDetailScreen({
             versions={versions}
           />
         </TabsContent>
+        <TabsContent className="pt-6" value="comments">
+          <CommentsPanel
+            artifactId={artifactId}
+            canManage={canManage}
+            canSend={canManage && project.archivedAt === null}
+            currentVersionId={details.artifact.currentVersionId}
+            onThreadsChanged={loadOpenThreads}
+            projectId={project.id}
+            versions={versions.map(({ version }) => version)}
+          />
+        </TabsContent>
         <TabsContent className="pt-6" value="actions">
           <ActionHistory
             actions={actions}
@@ -246,12 +340,14 @@ export function ArtifactDetailScreen({
 }
 
 function Overview({
+  binding,
   canManage,
   details,
   onChanged,
   onError,
   project,
 }: {
+  readonly binding: SourceBinding | null;
   readonly canManage: boolean;
   readonly details: ArtifactDetails;
   readonly onChanged: () => Promise<void>;
@@ -282,7 +378,35 @@ function Overview({
                 </span>
               )}
           </MetadataRow>
+          {binding === null
+            ? null
+            : (
+              <>
+                <MetadataRow label="Linked file">
+                  <span className="flex flex-wrap items-center gap-3">
+                    <code className="font-mono text-xs break-all">{binding.path}</code>
+                    <StatusBadge tone={sourceFreshnessTone(binding.status)}>
+                      {sourceFreshnessLabel(binding.status)}
+                    </StatusBadge>
+                  </span>
+                </MetadataRow>
+                <MetadataRow label="Source checked">
+                  {formatTimestamp(binding.lastVerifiedAt)}
+                </MetadataRow>
+              </>
+            )}
         </dl>
+        {binding === null
+          ? null
+          : (
+            <LinkedSourcePanel
+              binding={binding}
+              canManage={canManage}
+              details={details}
+              onChanged={onChanged}
+              onError={onError}
+            />
+          )}
         <details className="mt-5 border-t pt-5">
           <summary className="cursor-pointer text-xs font-semibold tracking-widest uppercase">
             Technical details
@@ -324,6 +448,75 @@ function Overview({
             </p>
           )}
       </aside>
+    </div>
+  );
+}
+
+/**
+ * The linked file's ambient state and the one write it offers. Drift is shown,
+ * never enforced: nothing here blocks reading, sharing, or commenting on the
+ * captured version, and capturing is always an explicit, attributed act.
+ */
+function LinkedSourcePanel({
+  binding,
+  canManage,
+  details,
+  onChanged,
+  onError,
+}: {
+  readonly binding: SourceBinding;
+  readonly canManage: boolean;
+  readonly details: ArtifactDetails;
+  readonly onChanged: () => Promise<void>;
+  readonly onError: (error: Error) => void;
+}) {
+  const [pending, setPending] = useState(false);
+  const readable = binding.status === "in-sync" || binding.status === "modified";
+
+  const capture = async () => {
+    setPending(true);
+    try {
+      await api.captureArtifact(
+        details.artifact.projectId,
+        details.artifact.id,
+        details.artifact.currentVersionId,
+        crypto.randomUUID(),
+      );
+      await onChanged();
+    } catch (caught) {
+      const failure = caught instanceof Error
+        ? caught
+        : new Error("Capture failed.");
+      // Somebody captured first, so the version this screen named is no longer
+      // current: re-read before the standard conflict presentation says so.
+      if (failure instanceof ApiError && failure.status === 409) {
+        await onChanged();
+      }
+      onError(failure);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border p-4">
+      <p className="min-w-0 max-w-xl text-sm leading-6 text-muted-foreground">
+        {sourceDriftDescription(binding.status, "captured")
+          ?? "Versions of this artifact are captured from a file on this machine. Shared links and comments read the captured version."}
+      </p>
+      {canManage
+        ? (
+          <Button
+            disabled={pending || !readable}
+            onClick={() => void capture()}
+            size="xs"
+            type="button"
+            variant="outline"
+          >
+            {pending ? "Capturing…" : "Capture now"}
+          </Button>
+        )
+        : null}
     </div>
   );
 }
@@ -534,6 +727,7 @@ function VersionHistory({
   onChanged,
   onError,
   onOpenPrivate,
+  openThreadCounts,
   projectId,
   publicCurrent,
   versions,
@@ -544,6 +738,7 @@ function VersionHistory({
   readonly onChanged: () => Promise<void>;
   readonly onError: (error: Error) => void;
   readonly onOpenPrivate: (versionId?: string) => Promise<void>;
+  readonly openThreadCounts: ReadonlyMap<string, number>;
   readonly projectId: string;
   readonly publicCurrent: boolean;
   readonly versions: readonly VersionListItem[];
@@ -568,6 +763,7 @@ function VersionHistory({
           onChanged={onChanged}
           onError={onError}
           onOpenPrivate={onOpenPrivate}
+          openThreadCount={openThreadCounts.get(version.id) ?? 0}
           projectId={projectId}
           publicCurrent={publicCurrent}
           version={version}
@@ -585,6 +781,7 @@ function VersionCard({
   onChanged,
   onError,
   onOpenPrivate,
+  openThreadCount,
   projectId,
   publicCurrent,
   version,
@@ -596,6 +793,7 @@ function VersionCard({
   readonly onChanged: () => Promise<void>;
   readonly onError: (error: Error) => void;
   readonly onOpenPrivate: (versionId?: string) => Promise<void>;
+  readonly openThreadCount: number;
   readonly projectId: string;
   readonly publicCurrent: boolean;
   readonly version: Version;
@@ -603,6 +801,12 @@ function VersionCard({
   const [manifest, setManifest] = useState<ArtifactVersion | null>(null);
   const [pending, setPending] = useState(false);
   const current = version.id === currentVersionId;
+  // Only an HTML entry can be annotated in place; other media comment on the
+  // whole version from this tab.
+  const reviewable = /\.x?html?$/iu.test(version.entryPath);
+  const reviewHref = `/projects/${encodeURIComponent(projectId)}/artifacts/${
+    encodeURIComponent(artifactId)
+  }/versions/${encodeURIComponent(version.id)}/review`;
 
   const inspect = async () => {
     setPending(true);
@@ -640,6 +844,15 @@ function VersionCard({
           <div className="flex items-center gap-3">
             <h3 className="font-heading text-lg font-semibold">Version {version.number}</h3>
             {current ? <StatusBadge tone="primary">Current</StatusBadge> : null}
+            {openThreadCount === 0
+              ? null
+              : (
+                <StatusBadge>
+                  {openThreadCount === 1
+                    ? "1 open comment"
+                    : `${openThreadCount} open comments`}
+                </StatusBadge>
+              )}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             Saved {formatTimestamp(version.createdAt)} by {version.publisherPrincipalId}
@@ -667,6 +880,17 @@ function VersionCard({
                 Open version
               </Button>
             )}
+          {reviewable
+            ? (
+              <Button
+                render={<a href={reviewHref} />}
+                size="xs"
+                variant="outline"
+              >
+                Review
+              </Button>
+            )
+            : null}
           <Button
             disabled={pending}
             onClick={() => void inspect()}

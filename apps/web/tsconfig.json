@@ -6,7 +6,8 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@plannotator/ui/*": ["./src/review-frame/plannotator/*"]
     },
     "rootDir": ".",
     "types": ["node", "vite/client"]

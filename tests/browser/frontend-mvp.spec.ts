@@ -1,31 +1,26 @@
 import {AxeBuilder} from "@axe-core/playwright";
-import {expect, test, type Browser, type BrowserContext, type Page} from "@playwright/test";
+import {expect, test} from "@playwright/test";
 import {z} from "zod";
 
 import {
   apiHeaders,
-  createTestInstallation,
   fetchVersion,
-  issueLocalBrowserLogin,
-  removeTestInstallation,
-  startTestServer,
-  type RunningTestServer,
-  type TestInstallation,
 } from "../support/runtime-harness.js";
 import {
   publishNew,
   publishVersion,
 } from "../support/publishing.js";
-
-interface BrowserFixture {
-  readonly context: BrowserContext;
-  readonly installation: TestInstallation;
-  readonly page: Page;
-  readonly server: RunningTestServer;
-}
+import {
+  browserStorage,
+  closeTopDialog,
+  localLogin,
+  startBrowserFixture,
+  stopBrowserFixture,
+  type BrowserFixture,
+} from "./browser-fixture.js";
 
 test.describe("Artifact Server frontend MVP", () => {
-  test("local login, projects, artifact opening, session expiry, deep links, and logout work", async ({browser}) => {
+  test("AUTH-023-B AUTH-026-B: local-owner access, projects, artifact opening, session recovery, and deep links work", async ({browser}) => {
     const fixture = await startBrowserFixture(browser);
     try {
       const privateArtifact = await publishNew(fixture.server, fixture.installation, {
@@ -88,11 +83,8 @@ test.describe("Artifact Server frontend MVP", () => {
 
       await fixture.context.clearCookies();
       await fixture.page.getByRole("button", {name: "Reload"}).click();
-      await expect(fixture.page.getByRole("heading", {name: "Sign in required"})).toBeVisible();
-
-      await localLogin(fixture);
-      await fixture.page.getByRole("button", {name: "Log out"}).click();
-      await expect(fixture.page.getByRole("heading", {name: "Sign in required"})).toBeVisible();
+      await expect(fixture.page.getByRole("heading", {name: "Private fixture"})).toBeVisible();
+      await expect(fixture.page.getByRole("button", {name: "Log out"})).toHaveCount(0);
 
       expect(publicArtifact.body.artifact.projectId).toBe("prj_default");
     } finally {
@@ -361,6 +353,16 @@ test.describe("Artifact Server frontend MVP", () => {
       await fixture.page.goto(`${fixture.server.baseUrl}/projects`);
       await fixture.page.reload();
       await expect(fixture.page.getByRole("heading", {name: "Projects"})).toBeVisible();
+      const defaultProjectCard = fixture.page.getByRole("article").filter({
+        has: fixture.page.getByRole("heading", {name: "Default"}),
+      });
+      await expect(defaultProjectCard.getByText("Git history", {exact: true})).toBeVisible();
+      await expect(defaultProjectCard.getByText("Off", {exact: true})).toBeVisible();
+      await expect(defaultProjectCard).toContainText(
+        "Cloudflare Git history is not configured for this installation.",
+      );
+      await expect(defaultProjectCard.getByRole("button", {name: "Turn on"}))
+        .toHaveCount(0);
       const accessibility = await new AxeBuilder({page: fixture.page})
         .withTags(["wcag2a", "wcag2aa"])
         .analyze();
@@ -409,57 +411,6 @@ test.describe("Artifact Server frontend MVP", () => {
     }
   });
 });
-
-async function startBrowserFixture(
-  browser: Browser,
-  options: {readonly timezoneId?: string} = {},
-): Promise<BrowserFixture> {
-  const installation = await createTestInstallation();
-  const server = await startTestServer(installation);
-  const context = await browser.newContext(options);
-  const page = await context.newPage();
-  return {context, installation, page, server};
-}
-
-async function stopBrowserFixture(fixture: BrowserFixture): Promise<void> {
-  await fixture.context.close();
-  await fixture.server.stop();
-  await removeTestInstallation(fixture.installation);
-}
-
-async function localLogin(
-  fixture: BrowserFixture,
-  waitForApplication = true,
-): Promise<void> {
-  const token = await issueLocalBrowserLogin(
-    fixture.server,
-    fixture.installation,
-  );
-  const login = new URL("/auth/local", fixture.server.baseUrl);
-  login.searchParams.set("token", token);
-  await fixture.page.goto(login.toString());
-  if (waitForApplication) {
-    await expect(fixture.page.getByRole("link", {name: "Artifact Server"})).toBeVisible();
-  }
-}
-
-async function closeTopDialog(page: Page): Promise<void> {
-  await page.keyboard.press("Escape");
-}
-
-async function browserStorage(page: Page): Promise<{
-  readonly indexedDatabaseNames: readonly string[];
-  readonly localStorageKeys: readonly string[];
-  readonly sessionStorageKeys: readonly string[];
-}> {
-  return page.evaluate(async () => ({
-    indexedDatabaseNames: (await indexedDB.databases())
-      .map((database) => database.name)
-      .filter((name): name is string => name !== undefined),
-    localStorageKeys: Object.keys(localStorage),
-    sessionStorageKeys: Object.keys(sessionStorage),
-  }));
-}
 
 async function createProject(
   fixture: BrowserFixture,
