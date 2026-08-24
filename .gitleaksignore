@@ -1,0 +1,22 @@
+# Reviewed false-positive fingerprints from the full-history scan on 2026-08-24.
+# These are test idempotency keys, Azurite's documented development credential,
+# and Azure role-name constants. They are not live credentials. New commits and
+# new locations remain subject to the complete-history scan.
+# Owner: Plannotator maintainers. Re-review before the first public release.
+c5554532a9acd8c94bf28060a38fbc80995cd09f:deploy/pulumi/azure/stack.ts:generic-api-key:27
+c0ba5fe73ea141a39713d282e4beec9544683b9e:tests/conformance/cmt-001-exact-version-thread.test.ts:generic-api-key:162
+c0ba5fe73ea141a39713d282e4beec9544683b9e:tests/conformance/cmt-001-exact-version-thread.test.ts:generic-api-key:170
+c0ba5fe73ea141a39713d282e4beec9544683b9e:tests/conformance/cmt-001-exact-version-thread.test.ts:generic-api-key:189
+eba636d2c4f05808d8b1edb06420ca3329cf313e:tests/conformance/cmt-001-exact-version-thread.test.ts:generic-api-key:162
+eba636d2c4f05808d8b1edb06420ca3329cf313e:tests/conformance/cmt-001-exact-version-thread.test.ts:generic-api-key:170
+eba636d2c4f05808d8b1edb06420ca3329cf313e:tests/conformance/cmt-001-exact-version-thread.test.ts:generic-api-key:189
+c0ba5fe73ea141a39713d282e4beec9544683b9e:tests/conformance/cmt-003-anchor-opacity.test.ts:generic-api-key:202
+c0ba5fe73ea141a39713d282e4beec9544683b9e:tests/conformance/cmt-003-anchor-opacity.test.ts:generic-api-key:246
+eba636d2c4f05808d8b1edb06420ca3329cf313e:tests/conformance/cmt-003-anchor-opacity.test.ts:generic-api-key:202
+eba636d2c4f05808d8b1edb06420ca3329cf313e:tests/conformance/cmt-003-anchor-opacity.test.ts:generic-api-key:246
+c0ba5fe73ea141a39713d282e4beec9544683b9e:tests/conformance/cmt-004-reply-rules.test.ts:generic-api-key:141
+eba636d2c4f05808d8b1edb06420ca3329cf313e:tests/conformance/cmt-004-reply-rules.test.ts:generic-api-key:141
+c0ba5fe73ea141a39713d282e4beec9544683b9e:tests/conformance/cmt-005-state-transitions.test.ts:generic-api-key:154
+eba636d2c4f05808d8b1edb06420ca3329cf313e:tests/conformance/cmt-005-state-transitions.test.ts:generic-api-key:154
+55363f446b616f7371f87b0de2802b3f2bdb11df:tests/conformance/mcp-modern-http.test.ts:generic-api-key:513
+c5554532a9acd8c94bf28060a38fbc80995cd09f:tests/integration/azure-blob-object-storage.test.ts:generic-api-key:15

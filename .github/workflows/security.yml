@@ -1,0 +1,143 @@
+name: Security Scanning
+
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 10 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  GITLEAKS_VERSION: 8.30.0
+  GITLEAKS_LINUX_X64_SHA256: 79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e
+  ZIZMOR_VERSION: 1.29.0
+  ZIZMOR_LINUX_X64_SHA256: dd96df044a6e8538d5f423790f453bdd03d49e5b2bcc38214acc41a2f1297839
+
+jobs:
+  gitleaks:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install verified Gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          install_dir="$RUNNER_TEMP/gitleaks-bin"
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' "$GITLEAKS_LINUX_X64_SHA256" "$archive" | sha256sum --check --strict
+          mkdir -p "$install_dir"
+          tar -xzf "$archive" -C "$install_dir" gitleaks
+          "$install_dir/gitleaks" version
+          echo "$install_dir" >> "$GITHUB_PATH"
+
+      - name: Verify Gitleaks detector health
+        shell: bash
+        run: |
+          set -euo pipefail
+          synthetic_prefix='glpat'
+          synthetic_body='abcdefghijklmnopqrst'
+          set +e
+          printf 'token = "%s-%s"\n' "$synthetic_prefix" "$synthetic_body" \
+            | gitleaks stdin --config .gitleaks.toml --no-banner --redact=100 >/dev/null 2>&1
+          detector_exit=$?
+          set -e
+          if [[ "$detector_exit" -ne 1 ]]; then
+            echo "Gitleaks failed its synthetic detection test (exit $detector_exit)." >&2
+            exit 1
+          fi
+
+      - name: Scan complete repository history
+        shell: bash
+        run: |
+          set -euo pipefail
+          gitleaks git . --config .gitleaks.toml --log-opts='--all' --redact=100 --no-banner
+          {
+            echo '### Gitleaks'
+            echo '- Scope: complete repository history'
+            echo '- Detector health: synthetic token detected before analysis'
+            echo '- Result: no secret findings'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install verified zizmor
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/zizmor.tar.gz"
+          install_dir="$RUNNER_TEMP/zizmor-bin"
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' "$ZIZMOR_LINUX_X64_SHA256" "$archive" | sha256sum --check --strict
+          mkdir -p "$install_dir"
+          tar -xzf "$archive" -C "$install_dir" zizmor
+          "$install_dir/zizmor" --version
+          echo "$install_dir" >> "$GITHUB_PATH"
+
+      - name: Verify zizmor detector health
+        shell: bash
+        run: |
+          set -euo pipefail
+          unsafe_expression='$'"{{ github.event.issue.title }}"
+          set +e
+          printf '%s\n' \
+            'name: Synthetic unsafe workflow' \
+            'on: issues' \
+            'jobs:' \
+            '  test:' \
+            '    runs-on: ubuntu-latest' \
+            '    steps:' \
+            "      - run: echo \"$unsafe_expression\"" \
+            | zizmor --offline --persona regular --strict-collection --format=json --no-progress --color=never - \
+              > "$RUNNER_TEMP/zizmor-health.json" 2>/dev/null
+          detector_exit=$?
+          set -e
+          if [[ "$detector_exit" -lt 11 || "$detector_exit" -gt 14 ]] \
+            || ! jq -e 'any(.ident == "template-injection")' "$RUNNER_TEMP/zizmor-health.json" >/dev/null; then
+            echo "zizmor failed its synthetic detection test (exit $detector_exit)." >&2
+            exit 1
+          fi
+
+      - name: Audit GitHub configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          zizmor --offline --persona regular --strict-collection --no-progress --color=never .
+          {
+            echo '### zizmor'
+            echo '- Scope: GitHub workflows and Dependabot configuration'
+            echo '- Detector health: synthetic template injection detected before analysis'
+            echo '- Result: no findings'
+          } >> "$GITHUB_STEP_SUMMARY"

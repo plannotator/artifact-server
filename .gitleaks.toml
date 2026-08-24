@@ -1,0 +1,4 @@
+title = "Artifact Server Gitleaks configuration"
+
+[extend]
+useDefault = true
