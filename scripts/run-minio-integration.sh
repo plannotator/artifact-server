@@ -49,6 +49,7 @@ ARTIFACT_SERVER_S3_SECRET_KEY="${secret_key}" \
 ARTIFACT_SERVER_MINIO_CONTAINER="${container_name}" \
 ARTIFACT_SERVER_MINIO_IMAGE="${minio_image}" \
 ARTIFACT_SERVER_MINIO_VOLUME="${volume_name}" \
+NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--max-old-space-size=4096" \
 pnpm exec vitest run --coverage --config vitest.integration.config.ts \
   --reporter=default \
   --reporter=json \
