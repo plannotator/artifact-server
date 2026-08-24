@@ -6,6 +6,8 @@ import type {BlobStore, StagingStore} from "../../src/core/ports.js";
 import type {StoredObjectKind} from
   "../../src/storage/cloud-object-storage.js";
 
+const NATIVE_PROVIDER_IO_TEST_TIMEOUT_MS = 90_000;
+
 /** Storage ports required by the shared native-provider contract. */
 export interface NativeStorageAdapters {
   readonly blobs: BlobStore;
@@ -82,7 +84,7 @@ export function defineNativeObjectStorageContract(
         .rejects.toBeDefined();
       await expect(storage.staging.remove(uploadId, storageToken))
         .resolves.toBeUndefined();
-    });
+    }, NATIVE_PROVIDER_IO_TEST_TIMEOUT_MS);
 
     test("false declarations fail without replacing immutable bytes", async () => {
       const storage = contract.create("installation-immutability");
