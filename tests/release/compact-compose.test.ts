@@ -1,6 +1,7 @@
 import {execFile} from "node:child_process";
 import {createHash, randomUUID} from "node:crypto";
 import {
+  chmod,
   cp,
   mkdir,
   mkdtemp,
@@ -619,6 +620,7 @@ async function publishFixture(
       ),
     ]);
   }
+  await chmod(directory, 0o755);
   const environment = {
     ...project.environment,
     ARTIFACT_SERVER_API_TOKEN: apiToken,
