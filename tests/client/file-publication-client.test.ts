@@ -15,6 +15,8 @@ import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import {afterAll, beforeAll, describe, expect, test} from "vitest";
 import {z} from "zod";
 
+import {fetchLoopbackContent} from "../support/fetch-loopback-content.js";
+
 import {
   type FilePublicationCommand,
   type FilePublicationFailure,
@@ -79,7 +81,7 @@ describe("file publication client", () => {
       name: "report.pdf",
       tags: ["client-test"],
     });
-    const openedReport = await fetch(report.result.links.version);
+    const openedReport = await fetchLoopbackContent(report.result.links.version);
     expect(openedReport.headers.get("content-type")).toBe("application/pdf");
     expect(Buffer.from(await openedReport.arrayBuffer())).toEqual(firstReport);
 
@@ -119,7 +121,7 @@ describe("file publication client", () => {
     expect(version.success).toBe(true);
     if (!version.success) return;
     expect(version.result.version).toMatchObject({number: 2});
-    const openedVersion = await fetch(version.result.links.version);
+    const openedVersion = await fetchLoopbackContent(version.result.links.version);
     expect(Buffer.from(await openedVersion.arrayBuffer())).toEqual(secondReport);
   });
 

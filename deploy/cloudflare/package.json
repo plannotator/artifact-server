@@ -22,7 +22,7 @@
     "wrangler": "wrangler"
   },
   "dependencies": {
-    "alchemy": "2.0.0-beta.72",
+    "alchemy": "2.0.0-beta.74",
     "effect": "4.0.0-rc.108"
   },
   "devDependencies": {

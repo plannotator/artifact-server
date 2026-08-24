@@ -14,12 +14,19 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "@chevrotain/cst-dts-gen@10.5.0>lodash": "4.18.0",
+      "@chevrotain/gast@10.5.0>lodash": "4.18.0",
+      "@prisma/dev>@hono/node-server": "1.19.10",
+      "@prisma/dev>hono": "4.12.25",
+      "chevrotain@10.5.0>lodash": "4.18.0"
+    }
   },
   "scripts": {
     "build": "pnpm --filter @artifact-server/web build && tsc -p tsconfig.build.json",
     "capture:web": "pnpm build && tsx tests/browser/capture-frontend-mvp.ts",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm conformance:validate && pnpm conformance:tests && pnpm check:cloudflare",
+    "check": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm conformance:validate && pnpm conformance:tests && pnpm check:cloudflare",
     "check:cloudflare": "pnpm --filter @artifact-server/cloudflare-deployment check",
     "conformance:tests": "ruby scripts/check-conformance-test-ids.rb",
     "conformance:validate": "ruby scripts/validate-conformance.rb spec/conformance.yml --report",

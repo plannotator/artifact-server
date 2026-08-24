@@ -2,6 +2,7 @@ import {afterEach, beforeEach, describe, expect, test} from "vitest";
 import {z} from "zod";
 
 import {defaultProjectId} from "../../src/core/model.js";
+import {fetchLoopbackContent} from "../support/fetch-loopback-content.js";
 import {
   apiHeaders,
   createTestInstallation,
@@ -301,7 +302,7 @@ describe("project-scoped artifacts", () => {
       artifact: {id: first.body.artifact.id, projectId: created.id},
       current: {version: {id: first.body.version.id, projectId: created.id}},
     });
-    expect((await fetch(first.body.links.version)).status).toBe(200);
+    expect((await fetchLoopbackContent(first.body.links.version)).status).toBe(200);
 
     const unarchived = await apiFetch(
       `/api/v1/projects/${created.id}/unarchive`,

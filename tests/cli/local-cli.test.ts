@@ -17,6 +17,8 @@ import path from "node:path";
 import {afterEach, describe, expect, test} from "vitest";
 import {z} from "zod";
 
+import {fetchLoopbackContent} from "../support/fetch-loopback-content.js";
+
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const runningProcesses = new Set<ChildProcessWithoutNullStreams>();
 const assignedAddressSchema = z.object({port: z.number().int().positive()});
@@ -488,7 +490,7 @@ async function waitForFile(
 }
 
 function fetchPublishedContent(contentUrl: string): Promise<Response> {
-  return fetch(contentUrl);
+  return fetchLoopbackContent(contentUrl);
 }
 
 function availablePort(): Promise<number> {

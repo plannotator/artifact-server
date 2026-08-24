@@ -22,6 +22,8 @@ import path from "node:path";
 import {afterEach, describe, expect, test} from "vitest";
 import {z} from "zod";
 
+import {fetchLoopbackContent} from "../support/fetch-loopback-content.js";
+
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const cliExecutable = path.join(repositoryRoot, "node_modules/.bin/tsx");
 const cliEntrypoint = path.join(repositoryRoot, "src/cli/main.ts");
@@ -153,7 +155,9 @@ describe("authenticated CLI profiles and remote publication", () => {
       );
       expect(firstPublication.exitCode).toBe(0);
       const firstResult = publicationSchema.parse(JSON.parse(firstPublication.stdout));
-      expect(await fetch(firstResult.links.version).then((response) => response.text()))
+      expect(await fetchLoopbackContent(firstResult.links.version).then((response) =>
+        response.text()
+      ))
         .toBe("remote profile publication\n");
 
       const directoryPublication = await runCli(
@@ -172,7 +176,7 @@ describe("authenticated CLI profiles and remote publication", () => {
       const directoryResult = publicationSchema.parse(
         JSON.parse(directoryPublication.stdout),
       );
-      expect(await fetch(directoryResult.links.version).then((response) =>
+      expect(await fetchLoopbackContent(directoryResult.links.version).then((response) =>
         response.text()
       )).toBe("<h1>Remote site</h1>");
 
