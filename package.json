@@ -81,7 +81,7 @@
     "@modelcontextprotocol/server": "2.0.0",
     "@workos-inc/node": "10.9.0",
     "commander": "15.0.0",
-    "effect": "4.0.0-rc.108",
+    "effect": "4.0.0-rc.110",
     "hono": "4.13.1",
     "jose": "6.2.9",
     "jsonc-parser": "3.3.1",

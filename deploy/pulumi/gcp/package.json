@@ -19,7 +19,7 @@
     "@pulumi/gcp": "9.34.1",
     "@pulumi/pulumi": "3.257.0",
     "@pulumi/random": "4.21.1",
-    "effect": "4.0.0-rc.108"
+    "effect": "4.0.0-rc.110"
   },
   "devDependencies": {
     "@types/node": "24.13.3",
