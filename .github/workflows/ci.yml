@@ -81,6 +81,15 @@ jobs:
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
 
+      - name: Prepare attestation-capable BuildKit
+        run: |
+          docker buildx create \
+            --driver docker-container \
+            --driver-opt image=moby/buildkit@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8 \
+            --name artifact-server-ci \
+            --use
+          docker buildx inspect --bootstrap
+
       - name: Run the iteration gate
         env:
           NODE_OPTIONS: --max-old-space-size=4096

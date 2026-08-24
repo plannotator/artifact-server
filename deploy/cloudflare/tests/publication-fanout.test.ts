@@ -119,8 +119,8 @@ describe("Cloudflare D1 publication fan-out", () => {
       await stageUpload(files),
       await stageUpload(declaredFiles("rollback")),
     ];
-    const raced = await Promise.all(racingPlans.map((plan) =>
-      worker.fetch(plan.commitUrl, {
+    const racedStatuses = await Promise.all(racingPlans.map(async (plan) => {
+      const response = await worker.fetch(plan.commitUrl, {
         body: JSON.stringify({target: {
           accessSetting: "account_required",
           kind: "new_artifact",
@@ -129,10 +129,12 @@ describe("Cloudflare D1 publication fan-out", () => {
         }}),
         headers: mutationHeaders("cloudflare-fanout-rollback-1"),
         method: "POST",
-      })
-    ));
-    const statuses = raced.map(({status}) => status)
-      .toSorted((left, right) => left - right);
+      });
+      const status = response.status;
+      await response.arrayBuffer();
+      return status;
+    }));
+    const statuses = racedStatuses.toSorted((left, right) => left - right);
     expect(statuses[0]).toBe(201);
     expect(statuses[1]).toBe(409);
 
@@ -213,7 +215,9 @@ async function stageUpload(
       headers: bearerHeaders(),
       method: "PUT",
     });
-    return put.status;
+    const status = put.status;
+    await put.arrayBuffer();
+    return status;
   }));
   expect(uploaded.filter((status) => status !== 200)).toEqual([]);
   return plan;
