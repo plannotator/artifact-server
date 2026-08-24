@@ -73,7 +73,7 @@
     "@aws-sdk/lib-storage": "3.1109.0",
     "@azure/identity": "4.13.1",
     "@azure/storage-blob": "12.33.0",
-    "@effect/platform-node-shared": "4.0.0-rc.108",
+    "@effect/platform-node-shared": "4.0.0-rc.110",
     "@effect/sql-pg": "4.0.0-rc.108",
     "@google-cloud/storage": "8.0.0",
     "@hono/node-server": "2.1.0",
