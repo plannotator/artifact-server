@@ -82,4 +82,6 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Run the iteration gate
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: pnpm verify:iteration
