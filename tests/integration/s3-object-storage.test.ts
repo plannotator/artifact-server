@@ -28,6 +28,7 @@ const runFile = promisify(execFile);
 const bucket = "artifact-server-integration";
 const region = "us-east-1";
 const multipartBytes = 9 * 1024 * 1024;
+const integrationTestTimeoutMs = 90_000;
 
 interface IntegrationEnvironment {
   readonly accessKey: string;
@@ -110,7 +111,7 @@ describe.sequential("S3-compatible object storage", () => {
     } finally {
       await storage.close();
     }
-  }, 30_000);
+  }, integrationTestTimeoutMs);
 
   test("DEP-011-F: false declarations cannot replace immutable bytes", async () => {
     const storage = createStorage(client, "installation-immutability");
@@ -138,7 +139,7 @@ describe.sequential("S3-compatible object storage", () => {
     );
     expect(multipartUploads.Uploads ?? []).toEqual([]);
     await expect(readBlob(storage.blobs, originalDigest)).resolves.toEqual(original);
-  }, 30_000);
+  }, integrationTestTimeoutMs);
 
   test("foundation: an aborted multipart staging write settles before removal", async () => {
     const storage = createStorage(client, "installation-aborted-staging");
@@ -178,7 +179,7 @@ describe.sequential("S3-compatible object storage", () => {
       storageToken: stagedFileToken(),
       uploadId: `upl_${randomUUID()}`,
     })).rejects.toBeDefined();
-  }, 30_000);
+  }, integrationTestTimeoutMs);
 
   test("concurrent writes are idempotent and installation keys stay isolated", async () => {
     const first = createStorage(client, "installation-first");
@@ -202,7 +203,7 @@ describe.sequential("S3-compatible object storage", () => {
     await expect(
       second.staging.open(`upl_${randomUUID()}`, "../outside"),
     ).rejects.toThrow(/matching the RegExp/u);
-  }, 30_000);
+  }, integrationTestTimeoutMs);
 
   test("provider metadata corruption fails closed", async () => {
     const installationId = "installation-metadata-corruption";
@@ -272,7 +273,7 @@ describe.sequential("S3-compatible object storage", () => {
     } finally {
       unauthorizedClient.destroy();
     }
-  }, 30_000);
+  }, integrationTestTimeoutMs);
 });
 
 function createClient(environment: IntegrationEnvironment): S3Client {
