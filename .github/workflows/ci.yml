@@ -81,6 +81,27 @@ jobs:
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
 
+      - name: Enable the containerd image store
+        run: |
+          artifactserver_daemon_config=$(mktemp)
+          if [[ -s /etc/docker/daemon.json ]]; then
+            jq \
+              '.features = ((.features // {}) + {"containerd-snapshotter": true})' \
+              /etc/docker/daemon.json > "$artifactserver_daemon_config"
+          else
+            printf '%s\n' \
+              '{"features":{"containerd-snapshotter":true}}' \
+              > "$artifactserver_daemon_config"
+          fi
+          sudo install -d -m 0755 /etc/docker
+          sudo install -m 0644 \
+            "$artifactserver_daemon_config" \
+            /etc/docker/daemon.json
+          rm -f -- "$artifactserver_daemon_config"
+          sudo systemctl restart docker
+          docker info --format '{{json .DriverStatus}}' \
+            | grep -F 'io.containerd.snapshotter.v1'
+
       - name: Prepare attestation-capable BuildKit
         run: |
           docker buildx create \
