@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="440" viewBox="0 0 1200 440" role="img" aria-labelledby="title description">
+  <title id="title">Artifact Server optional Git handoff to Cloudflare Artifacts</title>
+  <desc id="description">Artifact Server remains the source of truth. When an administrator opts in, each artifact receives a private Cloudflare Artifacts repository and each saved version becomes a Git commit.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07080d"/>
+      <stop offset="0.56" stop-color="#10132a"/>
+      <stop offset="1" stop-color="#171025"/>
+    </linearGradient>
+    <linearGradient id="handoff" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7666ff"/>
+      <stop offset="0.54" stop-color="#37b8ff"/>
+      <stop offset="1" stop-color="#f48120"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#7666ff" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#7666ff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft-shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#000000" flood-opacity="0.36"/>
+    </filter>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity="0.045" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10Z" fill="#a6accc"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="440" rx="22" fill="url(#background)"/>
+  <rect width="1200" height="440" rx="22" fill="url(#grid)"/>
+  <circle cx="586" cy="216" r="190" fill="url(#glow)"/>
+  <rect x="1" y="1" width="1198" height="438" rx="21" fill="none" stroke="#ffffff" stroke-opacity="0.11" stroke-width="2"/>
+
+  <text x="48" y="54" fill="#a99cff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="700" letter-spacing="2.8">OPTIONAL GIT HANDOFF</text>
+  <text x="48" y="88" fill="#ffffff" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="24" font-weight="700">Portable history without a second source of truth</text>
+  <text x="1152" y="57" fill="#c6c9d8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" text-anchor="end">OFF BY DEFAULT</text>
+
+  <g filter="url(#soft-shadow)">
+    <rect x="48" y="128" width="274" height="196" rx="16" fill="#11131b" stroke="#7163ff" stroke-opacity="0.82"/>
+    <g transform="translate(76 160)">
+      <rect x="0" y="30" width="40" height="40" rx="10" fill="#7767ff"/>
+      <circle cx="58" cy="18" r="13" fill="#b8aeff"/>
+      <path d="M54 71 75 37 96 71Z" fill="#f4f2ff"/>
+    </g>
+    <text x="76" y="258" fill="#ffffff" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="20" font-weight="700">Artifact Server</text>
+    <text x="76" y="282" fill="#9da2b8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" letter-spacing="1.4">SOURCE OF TRUTH</text>
+    <text x="76" y="304" fill="#c9ccda" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12">Publish · review · restore · deliver</text>
+  </g>
+
+  <path d="M340 226H458" fill="none" stroke="#a6accc" stroke-width="2" stroke-dasharray="6 8" marker-end="url(#arrow)"/>
+  <g transform="translate(370 187)">
+    <rect width="88" height="26" rx="13" fill="#202332" stroke="#ffffff" stroke-opacity="0.12"/>
+    <text x="44" y="17" fill="#d5d8e6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10" font-weight="700" text-anchor="middle">OPT IN</text>
+  </g>
+
+  <g filter="url(#soft-shadow)">
+    <rect x="476" y="128" width="306" height="196" rx="16" fill="#11131b" stroke="#ffffff" stroke-opacity="0.18"/>
+    <text x="504" y="165" fill="#ffffff" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="18" font-weight="700">Saved versions</text>
+    <text x="504" y="188" fill="#9da2b8" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12">One deterministic commit per version</text>
+    <path d="M516 241H735" fill="none" stroke="url(#handoff)" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="526" cy="241" r="11" fill="#7666ff" stroke="#dedaff" stroke-width="3"/>
+    <circle cx="625" cy="241" r="11" fill="#37b8ff" stroke="#d9f5ff" stroke-width="3"/>
+    <circle cx="724" cy="241" r="11" fill="#f48120" stroke="#ffe3c3" stroke-width="3"/>
+    <text x="526" y="278" fill="#c9ccda" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" text-anchor="middle">V1</text>
+    <text x="625" y="278" fill="#c9ccda" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" text-anchor="middle">V2</text>
+    <text x="724" y="278" fill="#c9ccda" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" text-anchor="middle">V3</text>
+    <text x="504" y="306" fill="#9da2b8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" letter-spacing="1">ASYNC · RETRY SAFE</text>
+  </g>
+
+  <path d="M800 226H884" fill="none" stroke="#a6accc" stroke-width="2" stroke-dasharray="6 8" marker-end="url(#arrow)"/>
+
+  <g filter="url(#soft-shadow)">
+    <rect x="902" y="128" width="250" height="196" rx="16" fill="#fffaf4"/>
+    <g transform="translate(938 162) scale(4.25)" fill="#f48120">
+      <path d="M16.5088 16.8447c.1475-.5068.0908-.9707-.1553-1.3154-.2246-.3164-.6045-.499-1.0615-.5205l-8.6592-.1123a.1559.1559 0 0 1-.1333-.0713c-.0283-.042-.0351-.0986-.021-.1553.0278-.084.1123-.1484.2036-.1562l8.7359-.1123c1.0351-.0489 2.1601-.8868 2.5537-1.9136l.499-1.3013c.0215-.0561.0293-.1128.0147-.168-.5625-2.5463-2.835-4.4453-5.5499-4.4453-2.5039 0-4.6284 1.6177-5.3876 3.8614-.4927-.3658-1.1187-.5625-1.794-.499-1.2026.119-2.1665 1.083-2.2861 2.2856-.0283.31-.0069.6128.0635.894C1.5683 13.171 0 14.7754 0 16.752c0 .1748.0142.3515.0352.5273.0141.083.0844.1475.1689.1475h15.9814c.0909 0 .1758-.0645.2032-.1553l.12-.4268zm2.7568-5.5634c-.0771 0-.1611 0-.2383.0112-.0566 0-.1054.0415-.127.0976l-.3378 1.1744c-.1475.5068-.0918.9707.1543 1.3164.2256.3164.6055.498 1.0625.5195l1.8437.1133c.0557 0 .1055.0263.1329.0703.0283.043.0351.1074.0214.1562-.0283.084-.1132.1485-.204.1553l-1.921.1123c-1.041.0488-2.1582.8867-2.5527 1.914l-.1406.3585c-.0283.0713.0215.1416.0986.1416h6.5977c.0771 0 .1474-.0489.169-.126.1122-.4082.1757-.837.1757-1.2803 0-2.6025-2.125-4.727-4.7344-4.727"/>
+    </g>
+    <text x="930" y="268" fill="#18120e" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="18" font-weight="750">Cloudflare Artifacts</text>
+    <text x="930" y="292" fill="#6f625b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" letter-spacing="1.1">PRIVATE GIT REPOSITORY</text>
+    <text x="930" y="312" fill="#6f625b" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11">Standard Git clone handoff</text>
+  </g>
+
+  <g transform="translate(48 364)">
+    <rect width="190" height="38" rx="19" fill="#1b1d29" stroke="#ffffff" stroke-opacity="0.12"/>
+    <circle cx="20" cy="19" r="5" fill="#7666ff"/>
+    <text x="34" y="24" fill="#d8dbea" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="700">1 REPO / ARTIFACT</text>
+  </g>
+  <g transform="translate(254 364)">
+    <rect width="176" height="38" rx="19" fill="#1b1d29" stroke="#ffffff" stroke-opacity="0.12"/>
+    <circle cx="20" cy="19" r="5" fill="#37b8ff"/>
+    <text x="34" y="24" fill="#d8dbea" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="700">PROJECT OPT IN</text>
+  </g>
+  <g transform="translate(446 364)">
+    <rect width="188" height="38" rx="19" fill="#1b1d29" stroke="#ffffff" stroke-opacity="0.12"/>
+    <circle cx="20" cy="19" r="5" fill="#f48120"/>
+    <text x="34" y="24" fill="#d8dbea" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="700">READ-ONLY CLONE</text>
+  </g>
+  <text x="1152" y="389" fill="#858ba4" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" text-anchor="end">Primary storage and delivery remain independent.</text>
+</svg>
