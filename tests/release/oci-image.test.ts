@@ -1,6 +1,6 @@
 import {execFile} from "node:child_process";
 import {randomBytes} from "node:crypto";
-import {mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
+import {chmod, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import {request} from "node:http";
 import {tmpdir} from "node:os";
 import path from "node:path";
@@ -380,6 +380,7 @@ async function verifyArchitectureRuntime(input: {
         "test ! -e node_modules/vitest",
         "test ! -e node_modules/oxlint",
         "test -s dist/web/index.html",
+        "test -s dist/web/workbench.html",
         "find dist/web/assets -type f -name '*.js' -print -quit | grep -q .",
         "find dist/web/assets -type f -name '*.css' -print -quit | grep -q .",
         "test -r /usr/local/share/ca-certificates/aws-rds-global-bundle.pem",
@@ -540,6 +541,7 @@ async function publishFixture(input: {
   const fixtureDirectory = await mkdtemp(path.join(tmpdir(), "artifact-server-oci-fixture-"));
   runtimeResources.directories.add(fixtureDirectory);
   await writeFile(path.join(fixtureDirectory, "proof.txt"), input.text);
+  await chmod(fixtureDirectory, 0o755);
   const environment = {ARTIFACT_SERVER_API_TOKEN: input.apiToken};
   const result = await docker([
     "run", ...hardenedRunArguments("arm64"),
