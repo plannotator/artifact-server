@@ -18,6 +18,7 @@ const contentDomain = "content.example.test";
  */
 const publishedFileCount = 40;
 const rollbackArtifactName = "Chunked rollback";
+const uploadBatchSize = 5;
 
 const uploadPlanSchema = z.object({
   commitUrl: z.url(),
@@ -205,7 +206,16 @@ async function stageUpload(
   }
   const plan = uploadPlanSchema.parse(JSON.parse(body));
   const sourceByPath = new Map(files.map((file) => [file.path, file.source]));
-  const uploaded = await Promise.all(plan.files.map(async (plannedFile) => {
+  await uploadPlannedFiles(plan.files, sourceByPath);
+  return plan;
+}
+
+async function uploadPlannedFiles(
+  files: z.infer<typeof uploadPlanSchema>["files"],
+  sourceByPath: ReadonlyMap<string, string>,
+): Promise<void> {
+  const batch = files.slice(0, uploadBatchSize);
+  await Promise.all(batch.map(async (plannedFile) => {
     const source = sourceByPath.get(plannedFile.path);
     if (source === undefined) {
       throw new Error(`The upload plan named an unknown file ${plannedFile.path}.`);
@@ -215,12 +225,17 @@ async function stageUpload(
       headers: bearerHeaders(),
       method: "PUT",
     });
-    const status = put.status;
-    await put.arrayBuffer();
-    return status;
+    const putBody = await put.text();
+    if (put.status !== 200) {
+      throw new Error(
+        `Uploading ${plannedFile.path} failed with ${put.status}: ${putBody}`,
+      );
+    }
   }));
-  expect(uploaded.filter((status) => status !== 200)).toEqual([]);
-  return plan;
+  const remaining = files.slice(uploadBatchSize);
+  if (remaining.length > 0) {
+    await uploadPlannedFiles(remaining, sourceByPath);
+  }
 }
 
 async function findD1DatabaseFile(directory: string): Promise<string> {
