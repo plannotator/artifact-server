@@ -4,23 +4,23 @@
 
   <rect width="680" height="104" fill="#090a0d"/>
 
-  <g transform="translate(25 31)" aria-hidden="true">
-    <rect x="0" y="17" width="24" height="24" rx="6" fill="#7767ff"/>
-    <circle cx="35" cy="8" r="8" fill="#b8aeff"/>
-    <path d="M31 42 43 22 55 42Z" fill="#f7f5ff"/>
+  <g transform="translate(16 15)" aria-hidden="true">
+    <rect x="0" y="29" width="34" height="34" rx="8.5" fill="#7767ff"/>
+    <circle cx="50" cy="12" r="12" fill="#b8aeff"/>
+    <path d="M44 72 61 40 78 72Z" fill="#f7f5ff"/>
   </g>
 
   <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
-    <text x="92" y="52" fill="#8b93a3" font-size="11" font-weight="500" letter-spacing="2.2">ARTIFACT SERVER</text>
-    <text x="92" y="78" fill="#f5f6f8" font-size="18" font-weight="450" letter-spacing="-0.2">Created with Plannotator.</text>
+    <text x="110" y="38" fill="#8b93a3" font-size="15" font-weight="500" letter-spacing="2.5">ARTIFACT SERVER</text>
+    <text x="110" y="81" fill="#f5f6f8" font-size="26" font-weight="450" letter-spacing="-0.4">Created with Plannotator.</text>
 
-    <text x="526" y="66" fill="#b6afff" font-size="15" font-weight="500">Star Plannotator</text>
+    <text x="496" y="43" fill="#b6afff" font-size="20" font-weight="500">Star Plannotator</text>
   </g>
 
-  <path d="M493 37 498 47 509 49 501 57 503 68 493 63 483 68 485 57 477 49 488 47Z" fill="#ffd16f" stroke="#7767ff" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"/>
+  <path d="M463 17 470 32 487 34 475 46 478 64 463 56 448 64 451 46 439 34 456 32Z" fill="#ffd16f" stroke="#7767ff" stroke-width="2" stroke-linejoin="round" aria-hidden="true"/>
 
-  <g transform="translate(647 61)" fill="none" stroke="#8b7cff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" aria-hidden="true">
-    <path d="M0 0H14"/>
-    <path d="m9-5 5 5-5 5"/>
+  <g transform="translate(649 38)" fill="none" stroke="#8b7cff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2.5" aria-hidden="true">
+    <path d="M0 0H18"/>
+    <path d="m11-7 7 7-7 7"/>
   </g>
 </svg>
