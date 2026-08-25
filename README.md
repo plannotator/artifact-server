@@ -50,31 +50,22 @@ Artifact Server gives this collaboration a home. Teams can store artifacts by pr
 
 [![AI agents connect to Artifact Server through its built-in MCP server](./docs/assets/agent-native-mcp.svg)](./docs/mcp.md)
 
-Artifact Server includes an MCP server at `POST /mcp` and a portable Agent Skill. Agents can publish artifacts, create versions, manage projects and tags, read comments, and share exact review links.
+Artifact Server includes a built-in MCP server and a portable Agent Skill. Agents can publish, organize, review, comment on, and share versioned artifacts.
 
-Connect an agent to a running local installation:
+Connect the agent and install the skill:
 
 ```sh
 artifactserver connect
-```
-
-From this source checkout, use `pnpm artifactserver connect --data .artifact-server`. This command connects the agent to the same development service as `pnpm dev`. A team deployment exposes its MCP endpoint at `https://your-server.example/mcp`.
-
-Install the Artifact Server skill in Claude, Codex, Cursor, or another Agent Skills client:
-
-```sh
 npx skills add plannotator/artifact-server
 ```
 
-Then ask the agent to publish finished work. In clients that expose skills as slash commands:
+Then ask:
 
 ```text
 /artifact-server upload that HTML design doc
 ```
 
-The skill uses the CLI for local files. It uses MCP for server data and work that already exists in the agent. After publication, the agent returns the full-screen review link first.
-
-[Connect an agent with MCP](./docs/mcp.md) for setup, supported operations, permissions, and review-link behavior.
+The agent returns the full-screen review link first. [Read the MCP guide](./docs/mcp.md) for source checkouts, remote servers, permissions, and supported operations.
 
 ## Cloudflare and Artifact Server
 
