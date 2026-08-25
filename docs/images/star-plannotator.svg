@@ -1,93 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="720" height="160" viewBox="0 0 720 160" role="img" aria-labelledby="title description">
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="92" viewBox="0 0 680 92" role="img" aria-labelledby="title description">
   <title id="title">Like Artifact Server? Star Plannotator on GitHub</title>
-  <desc id="description">HTML, Markdown, image, and video cards flow into a lavender star beside a link to the Plannotator repository.</desc>
-  <style>
-    :root {
-      color-scheme: light dark;
-      --surface: #ffffff;
-      --surface-strong: #f0efff;
-      --line: #d5d3ec;
-      --line-strong: #9a94dc;
-      --ink: #25263a;
-      --muted: #74768d;
-      --violet: #756ee8;
-      --blue: #6e9ff2;
-      --green: #58aa94;
-      --gold: #ffc65b;
-      --shadow: #d9d5ff;
-    }
+  <desc id="description">A compact link from Artifact Server to the Plannotator repository.</desc>
 
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --surface: #15161d;
-        --surface-strong: #222238;
-        --line: #333445;
-        --line-strong: #7770d4;
-        --ink: #f1f1f7;
-        --muted: #999bad;
-        --violet: #9a93ff;
-        --blue: #76a9ff;
-        --green: #65bca4;
-        --gold: #ffd16f;
-        --shadow: #252442;
-      }
-    }
+  <rect width="680" height="92" fill="#0b0a0d"/>
 
-    .headline {
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 24px;
-      font-weight: 720;
-      letter-spacing: -0.025em;
-    }
-
-    .cta {
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 22px;
-      font-weight: 760;
-      letter-spacing: -0.02em;
-    }
-
-    .repo {
-      font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-      font-size: 11px;
-    }
-  </style>
-
-  <rect x="14" y="18" width="692" height="130" rx="27" fill="var(--shadow)" opacity="0.72"/>
-  <rect x="8" y="8" width="692" height="130" rx="27" fill="var(--surface)" stroke="var(--line)" stroke-width="2"/>
-  <path d="M35 120C98 139 151 124 204 132" fill="none" stroke="var(--violet)" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 8" opacity="0.42"/>
-
-  <g transform="translate(42 20) scale(0.82)">
-    <g transform="rotate(-6 52 45)">
-      <rect x="5" y="5" width="77" height="54" rx="9" fill="var(--surface-strong)" stroke="var(--line-strong)" stroke-width="1.5"/>
-      <circle cx="15" cy="15" r="2.3" fill="var(--violet)"/>
-      <circle cx="23" cy="15" r="2.3" fill="var(--blue)"/>
-      <path d="M15 47L31 31L41 40L53 25L72 47Z" fill="var(--blue)" opacity="0.68"/>
-      <circle cx="61" cy="19" r="5" fill="var(--gold)"/>
-    </g>
-
-    <g transform="translate(47 34) rotate(5 44 35)">
-      <rect x="4" y="4" width="83" height="61" rx="10" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
-      <text x="15" y="25" fill="var(--violet)" font-family="ui-monospace,monospace" font-size="14" font-weight="800">#</text>
-      <path d="M34 20H73M15 34H73M15 44H62M15 54H68" stroke="var(--muted)" stroke-width="3" stroke-linecap="round" opacity="0.65"/>
-    </g>
-
-    <g transform="translate(8 67) rotate(-3 43 29)">
-      <rect x="4" y="4" width="82" height="52" rx="10" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
-      <rect x="13" y="13" width="64" height="30" rx="7" fill="var(--surface-strong)"/>
-      <path d="M39 20L54 28L39 36Z" fill="var(--violet)"/>
-      <path d="M17 47H73" stroke="var(--line)" stroke-width="3" stroke-linecap="round"/>
-      <path d="M17 47H43" stroke="var(--green)" stroke-width="3" stroke-linecap="round"/>
-    </g>
-
-    <path d="M137 37C154 38 159 48 165 59M135 80C151 78 158 72 165 63M111 111C139 108 151 89 166 66" fill="none" stroke="var(--violet)" stroke-width="2" stroke-linecap="round" stroke-dasharray="3 6" opacity="0.7"/>
-    <path d="M171 45L177 58L191 60L181 70L184 84L171 77L158 84L161 70L151 60L165 58Z" fill="var(--gold)" stroke="var(--violet)" stroke-width="2" stroke-linejoin="round"/>
+  <g transform="translate(24 25)" aria-hidden="true">
+    <rect x="0" y="17" width="24" height="24" rx="6" fill="#7767ff"/>
+    <circle cx="35" cy="8" r="8" fill="#b8aeff"/>
+    <path d="M31 42 43 22 55 42Z" fill="#f7f5ff"/>
   </g>
 
-  <g transform="translate(280 35)">
-    <text class="headline" x="0" y="25" fill="var(--ink)">Like the artifact room?</text>
-    <text class="cta" x="0" y="62" fill="var(--violet)">Star Plannotator</text>
-    <path d="M170 56H189M184 51L190 56L184 61" fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <text class="repo" x="0" y="92" fill="var(--muted)">github.com/backnotprop/plannotator</text>
-  </g>
+  <text x="96" y="39" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="700">Like Artifact Server?</text>
+  <text x="96" y="63" fill="#aaa4b1" font-family="Arial, Helvetica, sans-serif" font-size="13">Review it with Plannotator.</text>
+
+  <path d="M383 31 388 41 399 43 391 51 393 62 383 57 373 62 375 51 367 43 378 41Z" fill="#ffd16f" stroke="#7767ff" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"/>
+  <text x="414" y="52" fill="#9a93ff" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">Star Plannotator ↗</text>
 </svg>
