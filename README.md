@@ -27,11 +27,9 @@ Run it on a laptop for one developer. Deploy it for a private team on Cloudflare
 
 ## Why Artifact Server
 
-HTML—and increasingly images and videos—has become practical for much more than websites. Teams use these formats to create plans, mockups, prototypes, code reviews, and other artifacts throughout the development process.
+Teams now use HTML, images, and video for plans, mockups, prototypes, code reviews, and other work created during product development. That work often stays trapped in the tool that created it.
 
-Too much of this work stays locked inside the platform that created it. Teams deserve to own their artifacts, data, and design process.
-
-Artifact Server gives this collaboration a home. Teams can store artifacts by project, share them, comment on exact versions, and return to earlier results. You can self-host Artifact Server and keep control of the files and data.
+Artifact Server gives teams a self-hosted place to organize and collaborate on that work. Store artifacts by project, share them, comment on exact versions, and revisit earlier results while keeping control of the files and data.
 
 ## Built for AI agents
 
