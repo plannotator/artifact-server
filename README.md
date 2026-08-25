@@ -92,19 +92,6 @@ Cloudflare is optional. Artifact Server also runs locally, on Compose, on Kubern
 
 [![Artifact Server supports Cloudflare, Docker Compose, Kubernetes, AWS, and Google Cloud](./docs/assets/supported-deployments.svg)](./docs/deployment.md)
 
-## Run it locally
-
-Local mode stores metadata in SQLite and files on disk. It grants owner access only from the same loopback origin. It requires Node.js 24.12+ and pnpm 10.34.3.
-
-```sh
-git clone https://github.com/plannotator/artifact-server.git
-cd artifact-server
-pnpm install
-pnpm dev
-```
-
-Open the printed URL. Packaged installs use `artifactserver open` instead.
-
 ## Deploy it for a team
 
 Every remote deployment uses one trusted application origin and one isolated wildcard content domain.
@@ -121,6 +108,19 @@ Every remote deployment uses one trusted application origin and one isolated wil
 Azure teams deploy through the Helm chart on AKS; there is no separate Azure installer. Azure Blob Storage is available as a preview adapter and has not passed live Azure qualification.
 
 [Read the deployment guide](./docs/deployment.md) for shared requirements, storage choices, authentication, and backups.
+
+## Run it locally
+
+Local mode stores metadata in SQLite and files on disk. It grants owner access only from the same loopback origin. It requires Node.js 24.12+ and pnpm 10.34.3.
+
+```sh
+git clone https://github.com/plannotator/artifact-server.git
+cd artifact-server
+pnpm install
+pnpm dev
+```
+
+Open the printed URL. Packaged installs use `artifactserver open` instead.
 
 ## Usage
 
