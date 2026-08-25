@@ -18,9 +18,11 @@
     "overrides": {
       "@chevrotain/cst-dts-gen@10.5.0>lodash": "4.18.0",
       "@chevrotain/gast@10.5.0>lodash": "4.18.0",
-      "@prisma/dev>@hono/node-server": "1.19.10",
-      "@prisma/dev>hono": "4.12.25",
-      "chevrotain@10.5.0>lodash": "4.18.0"
+      "@prisma/dev>@hono/node-server": "1.19.15",
+      "@prisma/dev>hono": "4.13.1",
+      "@prisma/dev>valibot": "1.4.2",
+      "chevrotain@10.5.0>lodash": "4.18.0",
+      "gaxios>uuid": "11.1.1"
     }
   },
   "scripts": {
@@ -85,15 +87,15 @@
     "@aws-sdk/lib-storage": "3.1109.0",
     "@azure/identity": "4.13.1",
     "@azure/storage-blob": "12.33.0",
-    "@effect/platform-node-shared": "4.0.0-rc.108",
-    "@effect/sql-pg": "4.0.0-rc.108",
-    "@google-cloud/storage": "8.0.0",
+    "@effect/platform-node-shared": "4.0.0-rc.110",
+    "@effect/sql-pg": "4.0.0-rc.110",
+    "@google-cloud/storage": "8.0.1",
     "@hono/node-server": "2.1.0",
     "@modelcontextprotocol/client": "2.0.0",
     "@modelcontextprotocol/server": "2.0.0",
     "@workos-inc/node": "10.9.0",
     "commander": "15.0.0",
-    "effect": "4.0.0-rc.108",
+    "effect": "4.0.0-rc.110",
     "hono": "4.13.1",
     "jose": "6.2.9",
     "jsonc-parser": "3.3.1",
