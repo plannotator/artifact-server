@@ -227,13 +227,25 @@ adopt from that research:
   input, `session.abort` for interrupt (unused here), steering advertised
   `false`, and a V2-plugin-API version-pinning caveat to resolve before
   shipping.
-- **The MCP mailbox as a third bridge.** Artifact Server already has an MCP
-  server; a `dispatch_inbox` MCP tool (list my queued dispatches, claim,
-  report) lets Claude Code or any MCP-capable agent join the loop with no
-  extension at all — with honestly weaker evidence (`evidence: "mailbox"`:
-  delivery means "the agent polled its inbox") and weaker presence (no
-  long-poll heartbeat; connected-ness derives from recent tool calls). The
-  capability object is what lets the UI show this difference truthfully.
+- **Claude Code joins at two tiers.** Baseline: a `dispatch_inbox` MCP tool
+  (list my queued dispatches, claim, report) lets any MCP-capable agent join
+  with no extension — honestly weaker (`evidence: "mailbox"`: delivery means
+  "the agent polled its inbox"; presence derives from recent tool calls, no
+  heartbeat). Upgrade: a **Claude Channel** bridge
+  (code.claude.com/docs/en/channels-reference) — a local MCP server that
+  long-polls the claims route exactly like the Pi bridge (so it has the
+  heartbeat, and real presence) and pushes each claimed bundle into the
+  opted-in session as a `notifications/claude/channel` event. Channel
+  semantics queue events while Claude is busy, which is functionally our
+  follow-up-only delivery rule; Claude replies and resolves through the same
+  MCP comment tools. Caveats to record honestly: Channels are a research
+  preview behind user/org opt-in, events land only while the enabled session
+  is open, and writing the notification proves transport admission, not
+  model processing — so `evidence: "channel"` sits between `mailbox` and
+  `native`, and the bundle text passes the same Unicode sanitization plus
+  the channel sender-gating guidance. The capability object
+  (`evidence: "native" | "channel" | "mailbox"`) is what lets the UI show
+  each tier truthfully.
 
 ## 4.4 Cross-product reuse (Workspaces)
 
