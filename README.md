@@ -159,3 +159,15 @@ The [`project`](./project) directory contains specifications, conformance eviden
 - [Project records index](./project/README.md)
 
 Public guides live in the [documentation index](./docs/README.md).
+
+---
+
+<p align="center">
+  <a href="https://github.com/backnotprop/plannotator"><img src="./docs/images/star-plannotator.svg" alt="Artifact Server is created with Plannotator" width="380"></a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://plannotator.ai/workspaces"><img src="./docs/images/plannotator-workspaces.svg" alt="Plannotator Workspaces is the planning layer for your software factory" width="380"></a>
+</p>
+
+<p align="center">
+  created by <a href="https://x.com/backnotprop">backnotprop</a>
+</p>
