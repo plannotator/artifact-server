@@ -24,12 +24,13 @@ import {
 } from "../core/errors.js";
 import {
   accessSettings,
+  agentBeaconStates,
   agentDispatchStates,
   artifactActionKinds,
   commentThreadStates,
   dispatchedThreadFilters,
   fileDispositions,
-  registeredAgentKinds,
+  parseStoredAgentCapabilities,
   routingModes,
   uploadStatuses,
   type AgentDispatchCreation,
@@ -46,6 +47,7 @@ import {
   type CommentAuthor,
   type CommentReplyCreation,
   type CommentReplyRecord,
+  type CommentThreadClearing,
   type CommentThreadCreation,
   type CommentThreadDeletion,
   type CommentThreadPage,
@@ -58,6 +60,7 @@ import {
   defaultProjectName,
   type PublishedVersion,
   type ProjectRecord,
+  type RegisteredAgentPresence,
   type RegisteredAgentRecord,
   type StagedUpload,
   type StagedUploadFile,
@@ -70,6 +73,7 @@ import type {
   CancelAgentDispatch,
   ChangeArtifactAccessSetting,
   ChangeArtifactTags,
+  ClearCommentThreads,
   CommentRepository,
   CommitArtifactVersion,
   CommitNewArtifact,
@@ -78,6 +82,7 @@ import type {
   CreateCommentReply,
   CreateCommentThread,
   CreateContentBootstrap,
+  CreatePreviewLease,
   CreateProject,
   CreateStagedUpload,
   DeleteArtifact,
@@ -93,6 +98,7 @@ import type {
   MarkDispatchFailed,
   PublicationSource,
   ProjectRepository,
+  RecordAgentActivity,
   RegisterAgent,
   RenameProject,
   RestoreArtifactVersion,
@@ -103,9 +109,11 @@ import type {
 } from "../core/ports.js";
 import {principalKinds, type PrincipalKind} from "../core/identity.js";
 import type {
+  ProjectGitHistoryProgress,
   StoredProjectGitHistorySetting,
   StoreProjectGitHistorySetting,
 } from "../application/project-git-history.js";
+import {normalizeArtifactSearchText} from "../application/artifact-tags.js";
 import {
   agentDispatchLeaseMilliseconds,
   agentUnavailableStalenessMilliseconds,
@@ -121,6 +129,18 @@ import {
   publicLinkInventoryRowSchema,
   publicLinkPageFromRows,
 } from "./public-link-inventory-row.js";
+import {
+  gitHistoryCopyPolicyDigest,
+  gitHistoryJobId,
+  gitHistoryJobKinds,
+  type GitHistoryBudgetReservation,
+  type GitHistoryJob,
+  type GitHistoryMapping,
+  type GitHistoryMirrorStore,
+  type GitRepositoryCoordinates,
+} from "../git-history/git-history-mirror.js";
+import {defaultGitHistoryMaximumCopiedFiles} from
+  "../git-history/git-history-capability.js";
 
 const accessSettingSchema = z.enum([
   accessSettings.accountRequired,
@@ -150,6 +170,57 @@ const artifactActionKindSchema = z.enum([
 ]);
 const nonnegativeIntegerSchema = z.coerce.number().int().nonnegative();
 const positiveIntegerSchema = z.coerce.number().int().positive();
+const gitHistoryJobRowSchema = z.object({
+  artifactId: z.string(),
+  attempts: z.coerce.number().int().nonnegative(),
+  fileCopyBytes: z.coerce.number().int().nonnegative(),
+  id: z.string(),
+  kind: z.enum([gitHistoryJobKinds.deleteRepository, gitHistoryJobKinds.mirrorVersion]),
+  maximumCopiedFiles: z.coerce.number().int().positive(),
+  projectId: z.string(),
+  storageBudgetBytes: z.coerce.number().int().nonnegative().nullable(),
+  versionCopyBytes: z.coerce.number().int().nonnegative(),
+  versionId: z.string().nullable(),
+}).transform((row): GitHistoryJob => ({
+  artifactId: row.artifactId,
+  attempts: row.attempts,
+  id: row.id,
+  kind: row.kind,
+  limits: row.kind === gitHistoryJobKinds.mirrorVersion
+    ? {
+      fileCopyBytes: row.fileCopyBytes,
+      maximumCopiedFiles: row.maximumCopiedFiles,
+      storageBudgetBytes: row.storageBudgetBytes,
+      versionCopyBytes: row.versionCopyBytes,
+    }
+    : null,
+  projectId: row.projectId,
+  versionId: row.versionId,
+}));
+const gitHistoryRepositoryRowSchema = z.object({
+  artifactId: z.string(),
+  defaultBranch: z.literal("main"),
+  projectId: z.string(),
+  provider: z.literal("cloudflare-artifacts"),
+  remoteUrl: z.string(),
+  repositoryName: z.string(),
+  status: z.enum(["provisioned", "deleting", "deleted"]),
+});
+const gitHistoryPurgePlanRowSchema = z.object({
+  alreadyDeletedRepositories: nonnegativeIntegerSchema,
+  enabledProjects: nonnegativeIntegerSchema,
+  logicalCopiedBytes: nonnegativeIntegerSchema,
+  repositories: nonnegativeIntegerSchema,
+  repositoriesToDelete: nonnegativeIntegerSchema,
+});
+const gitHistoryMappingRowSchema = z.object({
+  artifactId: z.string(),
+  commitId: z.string(),
+  copiedBytes: z.coerce.number().int().nonnegative(),
+  projectId: z.string(),
+  repositoryName: z.string(),
+  versionId: z.string(),
+});
 const artifactRowSchema = z.object({
   accessSetting: accessSettingSchema,
   createdAt: z.string(),
@@ -298,6 +369,12 @@ const projectGitHistoryEstimateRowSchema = z.object({
   repositories: nonnegativeIntegerSchema,
   versions: nonnegativeIntegerSchema,
 });
+const projectGitHistoryProgressRowSchema = z.object({
+  budgetLimitedJobs: nonnegativeIntegerSchema,
+  mappedVersions: nonnegativeIntegerSchema,
+  pendingJobs: nonnegativeIntegerSchema,
+  unmappedVersions: nonnegativeIntegerSchema,
+});
 const commentPrincipalKindSchema = z.enum([
   principalKinds.human,
   principalKinds.service,
@@ -341,18 +418,29 @@ const commentReplyRowSchema = z.object({
   threadId: z.string(),
   updatedAt: z.string(),
 });
+const agentBeaconStateSchema = z.enum([
+  agentBeaconStates.idle,
+  agentBeaconStates.replying,
+  agentBeaconStates.thinking,
+]);
 const registeredAgentRowSchema = z.object({
+  activityAt: z.string().nullable(),
+  activityState: agentBeaconStateSchema.nullable(),
   agentSessionId: z.string().nullable(),
+  capabilitiesJson: z.string().nullable(),
   connectionKey: z.string(),
   createdAt: z.string(),
   displayName: z.string(),
   id: z.string(),
   installationId: z.string(),
-  kind: z.enum([registeredAgentKinds.pi]),
+  kind: z.string(),
   lastSeenAt: z.string(),
   principalId: z.string(),
   workingDirectory: z.string(),
-});
+}).transform(({capabilitiesJson, ...agent}) => ({
+  ...agent,
+  capabilities: parseStoredAgentCapabilities(capabilitiesJson),
+}));
 const agentDispatchStateSchema = z.enum([
   agentDispatchStates.addressed,
   agentDispatchStates.canceled,
@@ -395,6 +483,18 @@ const threadIdsSchema = z.array(z.string());
 const resolvedCountRowSchema = z.object({
   resolvedCount: nonnegativeIntegerSchema,
 });
+const latestDispatchTransitionRowSchema = z.object({
+  latestAt: z.string().nullable(),
+});
+const workingDispatchCandidateRowSchema = z.object({
+  id: z.string(),
+  threadIdsJson: z.string(),
+});
+const clearableThreadRowSchema = z.object({
+  dispatchState: agentDispatchStateSchema.nullable(),
+  id: z.string(),
+  versionId: z.string(),
+});
 
 interface PageResult<Item> {
   readonly items: readonly Item[];
@@ -419,6 +519,7 @@ export class PostgresArtifactRepository implements
   ArtifactRepository,
   CommentRepository,
   ContentSessionRepository,
+  GitHistoryMirrorStore,
   ProjectRepository,
   StagedUploadRepository
 {
@@ -507,6 +608,58 @@ export class PostgresArtifactRepository implements
     }));
   }
 
+  async readProjectGitHistoryProgress(
+    projectId: string,
+  ): Promise<ProjectGitHistoryProgress> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(`
+        SELECT
+          (SELECT COUNT(*)
+            FROM versions version
+            JOIN artifacts artifact
+              ON artifact.installation_id = version.installation_id
+              AND artifact.project_id = version.project_id
+              AND artifact.id = version.artifact_id
+            JOIN git_history_mappings mapping
+              ON mapping.installation_id = version.installation_id
+              AND mapping.project_id = version.project_id
+              AND mapping.artifact_id = version.artifact_id
+              AND mapping.version_id = version.id
+              AND mapping.status = 'recorded'
+            WHERE version.installation_id = $1 AND version.project_id = $2
+              AND artifact.deleted_at IS NULL
+          ) AS "mappedVersions",
+          (SELECT COUNT(*)
+            FROM versions version
+            JOIN artifacts artifact
+              ON artifact.installation_id = version.installation_id
+              AND artifact.project_id = version.project_id
+              AND artifact.id = version.artifact_id
+            LEFT JOIN git_history_mappings mapping
+              ON mapping.installation_id = version.installation_id
+              AND mapping.project_id = version.project_id
+              AND mapping.artifact_id = version.artifact_id
+              AND mapping.version_id = version.id
+              AND mapping.status = 'recorded'
+            WHERE version.installation_id = $1 AND version.project_id = $2
+              AND artifact.deleted_at IS NULL AND mapping.version_id IS NULL
+          ) AS "unmappedVersions",
+          (SELECT COUNT(*) FROM git_history_jobs
+            WHERE installation_id = $1 AND project_id = $2
+              AND kind = 'mirror-version' AND state IN ('queued', 'claimed')
+          ) AS "pendingJobs",
+          (SELECT COUNT(*) FROM git_history_jobs
+            WHERE installation_id = $1 AND project_id = $2
+              AND kind = 'mirror-version' AND state = 'queued'
+              AND last_error = 'budget_limited'
+          ) AS "budgetLimitedJobs"
+      `, [installationId, projectId]);
+      return projectGitHistoryProgressRowSchema.parse(rows[0]);
+    }));
+  }
+
   async estimateProjectGitHistory(
     projectId: string,
     limits: {readonly fileCopyBytes: number; readonly versionCopyBytes: number},
@@ -567,28 +720,468 @@ export class PostgresArtifactRepository implements
     setting: StoreProjectGitHistorySetting,
   ): Promise<StoredProjectGitHistorySetting> {
     const installationId = this.#installationId;
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        const rows = yield* sql.unsafe<object>(`
+          INSERT INTO git_history_project_settings (
+            installation_id, project_id, enabled,
+            file_copy_limit_bytes, version_copy_limit_bytes,
+            maximum_copied_files, storage_budget_bytes,
+            updated_by_principal_id, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (installation_id, project_id) DO UPDATE SET
+            enabled = EXCLUDED.enabled,
+            file_copy_limit_bytes = EXCLUDED.file_copy_limit_bytes,
+            version_copy_limit_bytes = EXCLUDED.version_copy_limit_bytes,
+            maximum_copied_files = EXCLUDED.maximum_copied_files,
+            storage_budget_bytes = EXCLUDED.storage_budget_bytes,
+            updated_by_principal_id = EXCLUDED.updated_by_principal_id,
+            updated_at = EXCLUDED.updated_at
+          RETURNING project_id AS "projectId", enabled,
+            updated_by_principal_id AS "updatedByPrincipalId",
+            updated_at AS "updatedAt"
+        `, [
+          installationId,
+          setting.projectId,
+          setting.enabled,
+          setting.limits.fileCopyBytes,
+          setting.limits.versionCopyBytes,
+          defaultGitHistoryMaximumCopiedFiles,
+          setting.limits.storageBudgetBytes,
+          setting.updatedByPrincipalId,
+          setting.updatedAt,
+        ]);
+        if (setting.enabled) {
+          yield* sql.unsafe(`
+            UPDATE git_history_jobs
+            SET storage_budget_bytes = $1, last_error = NULL,
+              available_at = $2, updated_at = $2
+            WHERE installation_id = $3 AND project_id = $4
+              AND kind = 'mirror-version' AND state = 'queued'
+              AND last_error = 'budget_limited'
+          `, [
+            setting.limits.storageBudgetBytes,
+            setting.updatedAt,
+            installationId,
+            setting.projectId,
+          ]);
+          const versions = yield* sql.unsafe<{
+            readonly artifactId: string;
+            readonly projectId: string;
+            readonly versionId: string;
+          }>(`
+            SELECT version.artifact_id AS "artifactId",
+              version.project_id AS "projectId", version.id AS "versionId"
+            FROM versions version
+            JOIN artifacts artifact
+              ON artifact.installation_id = version.installation_id
+              AND artifact.project_id = version.project_id
+              AND artifact.id = version.artifact_id
+            LEFT JOIN git_history_mappings mapping
+              ON mapping.installation_id = version.installation_id
+              AND mapping.project_id = version.project_id
+              AND mapping.artifact_id = version.artifact_id
+              AND mapping.version_id = version.id
+              AND mapping.status = 'recorded'
+            WHERE version.installation_id = $1 AND version.project_id = $2
+              AND artifact.deleted_at IS NULL AND mapping.version_id IS NULL
+            ORDER BY version.artifact_id, version.number
+          `, [installationId, setting.projectId]);
+          for (const version of versions) {
+            yield* this.#insertGitHistoryMirrorJob(
+              version.projectId,
+              version.artifactId,
+              version.versionId,
+              setting.updatedAt,
+              setting.limits,
+              defaultGitHistoryMaximumCopiedFiles,
+            );
+          }
+        }
+        return projectGitHistorySettingRowSchema.parse(rows[0]);
+      }));
+    }));
+  }
+
+  async claimGitHistoryJob(
+    now: string,
+    leaseExpiresAt: string,
+  ): Promise<GitHistoryJob | null> {
+    const installationId = this.#installationId;
     return this.#database.run(Effect.gen(function*() {
       const sql = yield* SqlClient;
-      const rows = yield* sql.unsafe<object>(`
-        INSERT INTO git_history_project_settings (
-          installation_id, project_id, enabled,
-          updated_by_principal_id, updated_at
-        ) VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (installation_id, project_id) DO UPDATE SET
-          enabled = EXCLUDED.enabled,
-          updated_by_principal_id = EXCLUDED.updated_by_principal_id,
-          updated_at = EXCLUDED.updated_at
-        RETURNING project_id AS "projectId", enabled,
-          updated_by_principal_id AS "updatedByPrincipalId",
-          updated_at AS "updatedAt"
+      return yield* sql.withTransaction(Effect.gen(function*() {
+        yield* sql.unsafe(`
+          UPDATE git_history_jobs SET state = 'queued', lease_expires_at = NULL,
+            available_at = $1, updated_at = $1
+          WHERE installation_id = $2 AND state = 'claimed'
+            AND lease_expires_at <= $1
+        `, [now, installationId]);
+        const rows = yield* sql.unsafe<object>(`
+          SELECT job.id, job.project_id AS "projectId",
+            job.artifact_id AS "artifactId", job.version_id AS "versionId",
+            job.kind, job.attempts,
+            COALESCE(job.file_copy_limit_bytes, 0) AS "fileCopyBytes",
+            COALESCE(job.version_copy_limit_bytes, 0) AS "versionCopyBytes",
+            COALESCE(job.maximum_copied_files, 1) AS "maximumCopiedFiles",
+            job.storage_budget_bytes AS "storageBudgetBytes"
+          FROM git_history_jobs job
+          LEFT JOIN git_history_project_settings setting
+            ON setting.installation_id = job.installation_id
+            AND setting.project_id = job.project_id
+          WHERE job.installation_id = $1 AND job.state = 'queued'
+            AND job.available_at <= $2
+            AND (job.kind = 'delete-repository' OR setting.enabled = TRUE)
+            AND NOT EXISTS (
+              SELECT 1 FROM git_history_jobs claimed
+              WHERE claimed.installation_id = job.installation_id
+                AND claimed.artifact_id = job.artifact_id
+                AND claimed.state = 'claimed'
+            )
+          ORDER BY job.created_at, job.id
+          FOR UPDATE OF job SKIP LOCKED LIMIT 1
+        `, [installationId, now]);
+        const job = gitHistoryJobRowSchema.nullable().parse(rows[0] ?? null);
+        if (job === null) return null;
+        yield* sql.unsafe(`
+          UPDATE git_history_jobs SET state = 'claimed', attempts = attempts + 1,
+            lease_expires_at = $1, updated_at = $2
+          WHERE installation_id = $3 AND id = $4
+        `, [leaseExpiresAt, now, installationId, job.id]);
+        return {...job, attempts: job.attempts + 1};
+      }));
+    }));
+  }
+
+  async findGitHistoryRepository(
+    projectId: string,
+    artifactId: string,
+  ): Promise<GitRepositoryCoordinates | null> {
+    const rows = await this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.unsafe<object>(`
+        SELECT project_id AS "projectId", artifact_id AS "artifactId",
+          provider, repository_name AS "repositoryName",
+          remote_url AS "remoteUrl", default_branch AS "defaultBranch", status
+        FROM git_history_repositories
+        WHERE installation_id = $1 AND project_id = $2 AND artifact_id = $3
+      `, [this.#installationId, projectId, artifactId]);
+    }));
+    return gitHistoryRepositoryRowSchema.nullable().parse(rows[0] ?? null);
+  }
+
+  async recordGitHistoryRepository(
+    coordinates: GitRepositoryCoordinates,
+    recordedAt: string,
+  ): Promise<GitRepositoryCoordinates> {
+    const installationId = this.#installationId;
+    const rows = await this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.unsafe<object>(`
+        INSERT INTO git_history_repositories (
+          installation_id, project_id, artifact_id, provider,
+          repository_name, remote_url, default_branch, status,
+          created_at, updated_at
+        ) SELECT $1, $2, $3, $4, $5, $6, $7,
+          CASE WHEN artifact.deleted_at IS NULL THEN 'provisioned' ELSE 'deleting' END,
+          $8, $8
+        FROM artifacts artifact
+        WHERE artifact.installation_id = $1 AND artifact.project_id = $2
+          AND artifact.id = $3
+        ON CONFLICT (installation_id, artifact_id) DO UPDATE SET
+          updated_at = git_history_repositories.updated_at
+        RETURNING project_id AS "projectId", artifact_id AS "artifactId",
+          provider, repository_name AS "repositoryName",
+          remote_url AS "remoteUrl", default_branch AS "defaultBranch", status
       `, [
-        installationId,
-        setting.projectId,
-        setting.enabled,
-        setting.updatedByPrincipalId,
-        setting.updatedAt,
+        installationId, coordinates.projectId, coordinates.artifactId,
+        coordinates.provider, coordinates.repositoryName,
+        coordinates.remoteUrl, coordinates.defaultBranch, recordedAt,
       ]);
-      return projectGitHistorySettingRowSchema.parse(rows[0]);
+    }));
+    const stored = gitHistoryRepositoryRowSchema.parse(rows[0]);
+    if (stored.repositoryName !== coordinates.repositoryName ||
+      stored.remoteUrl !== coordinates.remoteUrl) {
+      throw new Error("Git history repository coordinates changed during creation.");
+    }
+    return stored;
+  }
+
+  async findGitHistoryMapping(
+    projectId: string,
+    artifactId: string,
+    versionId: string,
+  ): Promise<GitHistoryMapping | null> {
+    const installationId = this.#installationId;
+    const rows = await this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.unsafe<object>(`
+        SELECT project_id AS "projectId", artifact_id AS "artifactId",
+          version_id AS "versionId", repository_name AS "repositoryName",
+          commit_id AS "commitId", copied_bytes AS "copiedBytes"
+        FROM git_history_mappings
+        WHERE installation_id = $1 AND project_id = $2 AND artifact_id = $3
+          AND version_id = $4 AND status = 'recorded'
+      `, [installationId, projectId, artifactId, versionId]);
+    }));
+    return gitHistoryMappingRowSchema.nullable().parse(rows[0] ?? null);
+  }
+
+  async reserveGitHistoryBudget(
+    jobId: string,
+    logicalBytes: number,
+    storageBudgetBytes: number | null,
+    updatedAt: string,
+  ): Promise<GitHistoryBudgetReservation> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen(function*() {
+        if (storageBudgetBytes !== null) {
+          yield* sql.unsafe(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            [`artifact-server:git-budget:${installationId}`],
+          );
+        }
+        const existing = yield* sql.unsafe<{readonly state: string}>(`
+          SELECT state FROM git_history_budget_reservations
+          WHERE installation_id = $1 AND job_id = $2
+        `, [installationId, jobId]);
+        if (existing.length > 0) return {_tag: "AlreadyReserved"} as const;
+        if (storageBudgetBytes !== null) {
+          const usedRows = yield* sql.unsafe<{readonly logicalBytes: number}>(`
+            SELECT COALESCE(SUM(logical_bytes), 0) AS "logicalBytes"
+            FROM git_history_budget_reservations
+            WHERE installation_id = $1 AND state IN ('reserved', 'committed')
+          `, [installationId]);
+          const used = nonnegativeIntegerSchema.parse(
+            usedRows[0]?.logicalBytes ?? 0,
+          );
+          if (used + logicalBytes > storageBudgetBytes) {
+            return {_tag: "BudgetLimited"} as const;
+          }
+        }
+        yield* sql.unsafe(`
+          INSERT INTO git_history_budget_reservations (
+            installation_id, job_id, logical_bytes, state, updated_at
+          ) VALUES ($1, $2, $3, 'reserved', $4)
+        `, [installationId, jobId, logicalBytes, updatedAt]);
+        return {_tag: "Reserved"} as const;
+      }));
+    }));
+  }
+
+  async completeGitHistoryMirror(
+    job: GitHistoryJob,
+    mapping: GitHistoryMapping,
+    completedAt: string,
+  ): Promise<"mirrored" | "artifact-deleted"> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen(function*() {
+        const eligible = yield* sql.unsafe<object>(`
+          SELECT 1 FROM artifacts artifact
+          JOIN git_history_jobs job
+            ON job.installation_id = $1 AND job.id = $2
+          WHERE artifact.installation_id = $1 AND artifact.project_id = $3
+            AND artifact.id = $4 AND artifact.deleted_at IS NULL
+            AND job.state = 'claimed'
+          FOR UPDATE OF artifact, job
+        `, [installationId, job.id, mapping.projectId, mapping.artifactId]);
+        if (eligible.length === 0) {
+          yield* sql.unsafe(`
+            UPDATE git_history_budget_reservations
+            SET state = 'released', updated_at = $1
+            WHERE installation_id = $2 AND job_id = $3 AND state = 'reserved'
+          `, [completedAt, installationId, job.id]);
+          yield* sql.unsafe(`
+            UPDATE git_history_jobs SET state = 'done', lease_expires_at = NULL,
+              last_error = 'artifact_deleted', updated_at = $1
+            WHERE installation_id = $2 AND id = $3
+          `, [completedAt, installationId, job.id]);
+          yield* sql.unsafe(`
+            INSERT INTO git_history_jobs (
+              id, installation_id, project_id, artifact_id, version_id,
+              kind, state, attempts, available_at, created_at, updated_at
+            ) SELECT $1, installation_id, project_id, artifact_id, NULL,
+              'delete-repository', 'queued', 0, $2, $2, $2
+            FROM git_history_repositories
+            WHERE installation_id = $3 AND project_id = $4 AND artifact_id = $5
+              AND status <> 'deleted'
+            ON CONFLICT (id) DO NOTHING
+          `, [
+            gitHistoryJobId(gitHistoryJobKinds.deleteRepository, mapping.artifactId, null),
+            completedAt,
+            installationId,
+            mapping.projectId,
+            mapping.artifactId,
+          ]);
+          yield* sql.unsafe(`
+            UPDATE git_history_repositories SET status = 'deleting', updated_at = $1
+            WHERE installation_id = $2 AND project_id = $3 AND artifact_id = $4
+              AND status <> 'deleted'
+          `, [completedAt, installationId, mapping.projectId, mapping.artifactId]);
+          return "artifact-deleted" as const;
+        }
+        yield* sql.unsafe(`
+          INSERT INTO git_history_mappings (
+            installation_id, project_id, artifact_id, version_id,
+            repository_name, commit_id, attempts, copied_bytes,
+            status, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'recorded', $9)
+          ON CONFLICT (installation_id, project_id, artifact_id, version_id)
+          DO NOTHING
+        `, [
+          installationId, mapping.projectId, mapping.artifactId,
+          mapping.versionId, mapping.repositoryName, mapping.commitId,
+          job.attempts, mapping.copiedBytes, completedAt,
+        ]);
+        yield* sql.unsafe(`
+          UPDATE git_history_budget_reservations
+          SET state = 'committed', updated_at = $1
+          WHERE installation_id = $2 AND job_id = $3 AND state = 'reserved'
+        `, [completedAt, installationId, job.id]);
+        yield* sql.unsafe(`
+          UPDATE git_history_jobs SET state = 'done', lease_expires_at = NULL,
+            last_error = NULL, updated_at = $1
+          WHERE installation_id = $2 AND id = $3
+        `, [completedAt, installationId, job.id]);
+        return "mirrored" as const;
+      }));
+    }));
+  }
+
+  async releaseGitHistoryJob(
+    job: GitHistoryJob,
+    classification: string,
+    availableAt: string,
+  ): Promise<void> {
+    const installationId = this.#installationId;
+    await this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      yield* sql.unsafe(`
+        UPDATE git_history_jobs SET state = 'queued', lease_expires_at = NULL,
+          last_error = $1, available_at = $2, updated_at = $2
+        WHERE installation_id = $3 AND id = $4 AND state = 'claimed'
+      `, [classification, availableAt, installationId, job.id]);
+    }));
+  }
+
+  async completeGitHistoryDeletion(
+    job: GitHistoryJob,
+    completedAt: string,
+  ): Promise<void> {
+    const installationId = this.#installationId;
+    await this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      yield* sql.withTransaction(Effect.gen(function*() {
+        yield* sql.unsafe(`
+          UPDATE git_history_repositories SET status = 'deleted', updated_at = $1
+          WHERE installation_id = $2 AND artifact_id = $3
+        `, [completedAt, installationId, job.artifactId]);
+        yield* sql.unsafe(`
+          UPDATE git_history_mappings SET status = 'deleted'
+          WHERE installation_id = $1 AND artifact_id = $2
+        `, [installationId, job.artifactId]);
+        yield* sql.unsafe(`
+          UPDATE git_history_budget_reservations
+          SET state = 'released', updated_at = $1
+          WHERE installation_id = $2 AND job_id IN (
+            SELECT id FROM git_history_jobs
+            WHERE installation_id = $2 AND artifact_id = $3
+          )
+        `, [completedAt, installationId, job.artifactId]);
+        yield* sql.unsafe(`
+          UPDATE git_history_jobs SET state = 'done', lease_expires_at = NULL,
+            last_error = NULL, updated_at = $1
+          WHERE installation_id = $2 AND id = $3
+        `, [completedAt, installationId, job.id]);
+      }));
+    }));
+  }
+
+  async readGitHistoryPurgePlan(): Promise<{
+    readonly alreadyDeletedRepositories: number;
+    readonly enabledProjects: number;
+    readonly logicalCopiedBytes: number;
+    readonly repositories: number;
+    readonly repositoriesToDelete: number;
+  }> {
+    const installationId = this.#installationId;
+    const rows = await this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.unsafe(`
+        SELECT
+          COUNT(*) AS "repositories",
+          COUNT(*) FILTER (WHERE status = 'deleted')
+            AS "alreadyDeletedRepositories",
+          COUNT(*) FILTER (WHERE status <> 'deleted')
+            AS "repositoriesToDelete",
+          COALESCE((SELECT SUM(copied_bytes) FROM git_history_mappings
+            WHERE installation_id = $1 AND status = 'recorded'), 0)
+            AS "logicalCopiedBytes",
+          (SELECT COUNT(*) FROM git_history_project_settings
+            WHERE installation_id = $1 AND enabled = TRUE) AS "enabledProjects"
+        FROM git_history_repositories
+        WHERE installation_id = $1
+      `, [installationId]);
+    }));
+    return gitHistoryPurgePlanRowSchema.parse(rows[0]);
+  }
+
+  async listGitHistoryRepositoriesForPurge(
+    afterArtifactId: string | null,
+    limit: number,
+  ): Promise<readonly GitRepositoryCoordinates[]> {
+    const installationId = this.#installationId;
+    const rows = await this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.unsafe(`
+        SELECT artifact_id AS "artifactId", default_branch AS "defaultBranch",
+          project_id AS "projectId", provider, remote_url AS "remoteUrl",
+          repository_name AS "repositoryName", status
+        FROM git_history_repositories
+        WHERE installation_id = $1 AND status <> 'deleted'
+          AND ($2::text IS NULL OR artifact_id > $2)
+        ORDER BY artifact_id
+        LIMIT $3
+      `, [installationId, afterArtifactId, limit]);
+    }));
+    return gitHistoryRepositoryRowSchema.array().parse(rows);
+  }
+
+  async completeGitHistoryPurge(
+    coordinates: GitRepositoryCoordinates,
+    completedAt: string,
+  ): Promise<void> {
+    const installationId = this.#installationId;
+    await this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      yield* sql.withTransaction(Effect.gen(function*() {
+        yield* sql.unsafe(`
+          UPDATE git_history_repositories SET status = 'deleted', updated_at = $1
+          WHERE installation_id = $2 AND artifact_id = $3
+        `, [completedAt, installationId, coordinates.artifactId]);
+        yield* sql.unsafe(`
+          UPDATE git_history_mappings SET status = 'deleted'
+          WHERE installation_id = $1 AND artifact_id = $2
+        `, [installationId, coordinates.artifactId]);
+        yield* sql.unsafe(`
+          UPDATE git_history_budget_reservations
+          SET state = 'released', updated_at = $1
+          WHERE installation_id = $2 AND job_id IN (
+            SELECT id FROM git_history_jobs
+            WHERE installation_id = $2 AND artifact_id = $3
+          )
+        `, [completedAt, installationId, coordinates.artifactId]);
+        yield* sql.unsafe(`
+          UPDATE git_history_jobs SET state = 'done', lease_expires_at = NULL,
+            last_error = NULL, updated_at = $1
+          WHERE installation_id = $2 AND artifact_id = $3
+        `, [completedAt, installationId, coordinates.artifactId]);
+      }));
     }));
   }
 
@@ -663,11 +1256,11 @@ export class PostgresArtifactRepository implements
           command.createdAt,
         );
         yield* sql`INSERT INTO artifacts (
-          installation_id, project_id, id, name, access_setting,
+          installation_id, project_id, id, name, search_name, access_setting,
           current_version_id, created_at, deleted_at
         ) VALUES (
           ${installationId}, ${command.projectId}, ${command.artifactId}, ${command.name},
-          ${command.accessSetting}, NULL,
+          ${normalizeArtifactSearchText(command.name)}, ${command.accessSetting}, NULL,
           ${command.createdAt}, NULL
         )`;
         yield* this.#replaceTags(command.artifactId, command.tags);
@@ -698,6 +1291,12 @@ export class PostgresArtifactRepository implements
           versionId: command.versionId,
         });
         yield* this.#sealStagedUpload(command.source, command.versionId);
+        yield* this.#queueGitHistoryMirrorIfEnabled(
+          command.projectId,
+          command.artifactId,
+          command.versionId,
+          command.createdAt,
+        );
         return yield* this.#readPublishedVersion(
           command.projectId,
           command.versionId,
@@ -792,6 +1391,12 @@ export class PostgresArtifactRepository implements
           versionId: command.versionId,
         });
         yield* this.#sealStagedUpload(command.source, command.versionId);
+        yield* this.#queueGitHistoryMirrorIfEnabled(
+          command.projectId,
+          command.artifactId,
+          command.versionId,
+          command.createdAt,
+        );
         return yield* this.#readPublishedVersion(
           command.projectId,
           command.versionId,
@@ -920,6 +1525,11 @@ export class PostgresArtifactRepository implements
           tagsJson: null,
           versionId: command.expectedCurrentVersionId,
         });
+        yield* this.#queueGitHistoryDeletionIfPresent(
+          command.projectId,
+          command.artifactId,
+          command.createdAt,
+        );
         return yield* this.#readDeletionResult(
           command.projectId,
           command.artifactId,
@@ -1045,19 +1655,28 @@ export class PostgresArtifactRepository implements
          FROM artifacts
          WHERE installation_id = $1 AND project_id = $2
            AND deleted_at IS NULL
-           AND ($3::text IS NULL OR EXISTS (
+           AND ($3::text IS NULL
+             OR strpos(search_name, $3) > 0
+             OR EXISTS (
+               SELECT 1 FROM artifact_tags searched_tags
+               WHERE searched_tags.installation_id = artifacts.installation_id
+                 AND searched_tags.artifact_id = artifacts.id
+                 AND searched_tags.tag = $3
+             ))
+           AND ($4::text IS NULL OR EXISTS (
              SELECT 1 FROM artifact_tags
              WHERE artifact_tags.installation_id = artifacts.installation_id
                AND artifact_tags.artifact_id = artifacts.id
-               AND artifact_tags.tag = $3
+               AND artifact_tags.tag = $4
            ))
-           AND ($4::text IS NULL OR created_at < $4
-             OR (created_at = $4 AND id < $5))
+           AND ($5::text IS NULL OR created_at < $5
+             OR (created_at = $5 AND id < $6))
          ORDER BY created_at DESC, id DESC
-         LIMIT $6`,
+         LIMIT $7`,
         [
           installationId,
           command.projectId,
+          command.search ?? null,
           command.tag,
           command.cursor?.createdAt ?? null,
           command.cursor?.id ?? null,
@@ -1396,6 +2015,46 @@ export class PostgresArtifactRepository implements
            AND s.content_token = $3 AND s.expires_at > $4
            AND a.deleted_at IS NULL`,
         [installationId, tokenDigest, contentToken, requestTime],
+      );
+      return contentRecordRowSchema.nullable().parse(rows[0] ?? null);
+    }));
+  }
+
+  async createPreviewLease(command: CreatePreviewLease): Promise<ContentSessionRecord> {
+    const installationId = this.#installationId;
+    await this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      yield* sql`INSERT INTO content_sessions (
+        installation_id, project_id, token_digest, principal_id, artifact_id, version_id,
+        content_token, created_at, expires_at
+      ) VALUES (
+        ${installationId}, ${command.projectId}, ${command.tokenDigest}, ${command.principalId},
+        ${command.artifactId}, ${command.versionId}, ${command.contentToken},
+        ${command.createdAt}, ${command.expiresAt}
+      )`;
+    }));
+    return command;
+  }
+
+  async findPreviewLease(
+    tokenDigest: string,
+    requestTime: string,
+  ): Promise<ContentSessionRecord | null> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(
+        `SELECT s.token_digest AS "tokenDigest",
+          s.principal_id AS "principalId", s.artifact_id AS "artifactId",
+          s.project_id AS "projectId", s.version_id AS "versionId",
+          s.content_token AS "contentToken", s.created_at AS "createdAt",
+          s.expires_at AS "expiresAt"
+        FROM content_sessions s
+        JOIN artifacts a
+          ON a.installation_id = s.installation_id AND a.id = s.artifact_id
+        WHERE s.installation_id = $1 AND s.token_digest = $2
+          AND s.expires_at > $3 AND a.deleted_at IS NULL`,
+        [installationId, tokenDigest, requestTime],
       );
       return contentRecordRowSchema.nullable().parse(rows[0] ?? null);
     }));
@@ -1802,6 +2461,72 @@ export class PostgresArtifactRepository implements
     }));
   }
 
+  async clearThreads(
+    command: ClearCommentThreads,
+  ): Promise<CommentThreadClearing> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        const rows = yield* sql.unsafe<object>(
+          `SELECT thread.id AS "id", thread.version_id AS "versionId",
+             dispatch.state AS "dispatchState"
+           FROM comment_threads thread
+           LEFT JOIN agent_dispatches dispatch
+             ON dispatch.id = thread.dispatch_id
+           WHERE thread.installation_id = $1 AND thread.project_id = $2
+             AND thread.artifact_id = $3
+             AND ($4::text IS NULL OR thread.version_id = $4)
+             AND ($5::text = 'all' OR thread.state = 'resolved')
+           ORDER BY thread.created_at ASC, thread.id ASC`,
+          [
+            installationId,
+            command.projectId,
+            command.artifactId,
+            command.versionId,
+            command.scope,
+          ],
+        );
+        let deleted = 0;
+        let skippedDispatched = 0;
+        for (const row of z.array(clearableThreadRowSchema).parse(rows)) {
+          // Clearing never yanks work out from under an agent: a thread held
+          // by an active dispatch stays, and the caller learns how many did.
+          if (
+            row.dispatchState === agentDispatchStates.queued ||
+            row.dispatchState === agentDispatchStates.claimed
+          ) {
+            skippedDispatched += 1;
+            continue;
+          }
+          yield* sql`DELETE FROM comment_replies
+            WHERE installation_id = ${installationId}
+              AND thread_id = ${row.id}`;
+          yield* sql`DELETE FROM comment_threads
+            WHERE installation_id = ${installationId} AND id = ${row.id}
+              AND project_id = ${command.projectId}
+              AND artifact_id = ${command.artifactId}`;
+          const commentAction = commentActionIdentity(row.id);
+          yield* this.#insertAction(
+            {
+              actionId: commentAction.actionId,
+              artifactId: command.artifactId,
+              authorizedByPrincipalId: command.authorizedByPrincipalId,
+              createdAt: command.clearedAt,
+              idempotencyKey: commentAction.idempotencyKey,
+              principalId: command.principalId,
+              projectId: command.projectId,
+            },
+            artifactActionKinds.commentDelete,
+            row.versionId,
+          );
+          deleted += 1;
+        }
+        return {deleted, skippedDispatched};
+      }));
+    }));
+  }
+
   async createReply(command: CreateCommentReply): Promise<CommentReplyCreation> {
     const installationId = this.#installationId;
     return this.#database.run(Effect.gen({self: this}, function*() {
@@ -2009,13 +2734,13 @@ export class PostgresArtifactRepository implements
         const upserted = yield* sql`INSERT INTO registered_agents (
             installation_id, id, connection_key, display_name, kind,
             working_directory, agent_session_id, principal_id,
-            created_at, last_seen_at
+            created_at, last_seen_at, capabilities_json
           ) VALUES (
             ${installationId}, ${command.id}, ${command.connectionKey},
             ${command.displayName}, ${command.kind},
             ${command.workingDirectory}, ${command.agentSessionId},
             ${command.principalId}, ${command.registeredAt},
-            ${command.registeredAt}
+            ${command.registeredAt}, ${JSON.stringify(command.capabilities)}
           )
           ON CONFLICT (installation_id, principal_id, connection_key)
           DO UPDATE SET
@@ -2023,7 +2748,8 @@ export class PostgresArtifactRepository implements
             kind = EXCLUDED.kind,
             working_directory = EXCLUDED.working_directory,
             agent_session_id = EXCLUDED.agent_session_id,
-            last_seen_at = EXCLUDED.last_seen_at
+            last_seen_at = EXCLUDED.last_seen_at,
+            capabilities_json = EXCLUDED.capabilities_json
           RETURNING id`;
         const registered = dispatchIdentityRowSchema.nullable().parse(
           upserted[0] ?? null,
@@ -2048,12 +2774,12 @@ export class PostgresArtifactRepository implements
   async listAgents(
     installationId: string,
     now: string,
-  ): Promise<readonly RegisteredAgentRecord[]> {
+  ): Promise<readonly RegisteredAgentPresence[]> {
     this.#assertInstallationScope(installationId);
     const reapBefore = isoBefore(now, registeredAgentRetentionMilliseconds);
-    return this.#database.run(Effect.gen(function*() {
+    return this.#database.run(Effect.gen({self: this}, function*() {
       const sql = yield* SqlClient;
-      return yield* sql.withTransaction(Effect.gen(function*() {
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
         // Rows are disposable liveness records: reap what stopped polling.
         yield* sql`DELETE FROM registered_agents
           WHERE installation_id = ${installationId}
@@ -2064,8 +2790,96 @@ export class PostgresArtifactRepository implements
            ORDER BY agent.created_at ASC, agent.id ASC`,
           [installationId],
         );
-        return z.array(registeredAgentRowSchema).parse(rows);
+        const agents = z.array(registeredAgentRowSchema).parse(rows);
+        const presences: RegisteredAgentPresence[] = [];
+        for (const agent of agents) {
+          presences.push(yield* this.#agentPresence(agent));
+        }
+        return presences;
       }));
+    }));
+  }
+
+  /**
+   * Presence facts per spec §3.2, joined lazily at read: the working
+   * dispatch is the newest claimed/delivered one whose bundle threads are
+   * not all resolved, and no activity state is ever written here.
+   */
+  #agentPresence(
+    agent: RegisteredAgentRecord,
+  ): Effect.Effect<RegisteredAgentPresence, unknown, SqlClient> {
+    const installationId = this.#installationId;
+    return Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      const latestRows = yield* sql.unsafe<object>(
+        `SELECT MAX(dispatch.updated_at) AS "latestAt"
+         FROM agent_dispatches dispatch
+         WHERE dispatch.installation_id = $1 AND dispatch.agent_id = $2`,
+        [installationId, agent.id],
+      );
+      const latest = latestDispatchTransitionRowSchema.parse(
+        latestRows[0] ?? {latestAt: null},
+      );
+      const candidates = z.array(workingDispatchCandidateRowSchema).parse(
+        yield* sql.unsafe<object>(
+          `SELECT dispatch.id AS "id",
+             dispatch.thread_ids_json AS "threadIdsJson"
+           FROM agent_dispatches dispatch
+           WHERE dispatch.installation_id = $1 AND dispatch.agent_id = $2
+             AND dispatch.state IN ('claimed', 'delivered')
+           ORDER BY dispatch.updated_at DESC, dispatch.id DESC`,
+          [installationId, agent.id],
+        ),
+      );
+      let activeDispatchId: string | null = null;
+      for (const candidate of candidates) {
+        if (yield* this.#holdsUnresolvedThread(candidate.threadIdsJson)) {
+          activeDispatchId = candidate.id;
+          break;
+        }
+      }
+      return {
+        activeDispatchId,
+        agent,
+        latestDispatchTransitionAt: latest.latestAt,
+      };
+    });
+  }
+
+  #holdsUnresolvedThread(
+    threadIdsJson: string,
+  ): Effect.Effect<boolean, unknown, SqlClient> {
+    const installationId = this.#installationId;
+    return Effect.gen(function*() {
+      const threadIds = threadIdsSchema.parse(JSON.parse(threadIdsJson));
+      if (threadIds.length === 0) return false;
+      const sql = yield* SqlClient;
+      const placeholders = [...threadIds.keys()]
+        .map((index) => `$${index + 2}`)
+        .join(", ");
+      const counted = yield* sql.unsafe<object>(
+        `SELECT COUNT(*) AS "resolvedCount" FROM comment_threads thread
+         WHERE thread.installation_id = $1 AND thread.state = 'resolved'
+           AND thread.id IN (${placeholders})`,
+        [installationId, ...threadIds],
+      );
+      const resolved = resolvedCountRowSchema.parse(counted[0] ?? null);
+      return resolved.resolvedCount !== threadIds.length;
+    });
+  }
+
+  async recordActivity(command: RecordAgentActivity): Promise<void> {
+    this.#assertInstallationScope(command.installationId);
+    const installationId = this.#installationId;
+    await this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      // Beacons are display metadata: the newest write wins unconditionally,
+      // and the read side applies TTL decay and the liveness gate.
+      yield* sql`UPDATE registered_agents
+        SET activity_state = ${command.state},
+          activity_at = ${command.observedAt}
+        WHERE installation_id = ${installationId}
+          AND id = ${command.agentId}`;
     }));
   }
 
@@ -3344,6 +4158,119 @@ export class PostgresArtifactRepository implements
     });
   }
 
+  #queueGitHistoryMirrorIfEnabled(
+    projectId: string,
+    artifactId: string,
+    versionId: string,
+    createdAt: string,
+  ): Effect.Effect<void, unknown, SqlClient> {
+    const installationId = this.#installationId;
+    return Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(`
+        SELECT file_copy_limit_bytes AS "fileCopyBytes",
+          version_copy_limit_bytes AS "versionCopyBytes",
+          maximum_copied_files AS "maximumCopiedFiles",
+          storage_budget_bytes AS "storageBudgetBytes"
+        FROM git_history_project_settings
+        WHERE installation_id = $1 AND project_id = $2 AND enabled = TRUE
+      `, [installationId, projectId]);
+      const limits = z.object({
+        fileCopyBytes: nonnegativeIntegerSchema,
+        maximumCopiedFiles: positiveIntegerSchema,
+        storageBudgetBytes: nonnegativeIntegerSchema.nullable(),
+        versionCopyBytes: nonnegativeIntegerSchema,
+      }).nullable().parse(rows[0] ?? null);
+      if (limits === null) return;
+      yield* this.#insertGitHistoryMirrorJob(
+        projectId,
+        artifactId,
+        versionId,
+        createdAt,
+        {
+          fileCopyBytes: limits.fileCopyBytes,
+          logicalCopiedBytes: 0,
+          logicalReservedBytes: 0,
+          storageBudgetBytes: limits.storageBudgetBytes,
+          versionCopyBytes: limits.versionCopyBytes,
+        },
+        limits.maximumCopiedFiles,
+      );
+    });
+  }
+
+  #insertGitHistoryMirrorJob(
+    projectId: string,
+    artifactId: string,
+    versionId: string,
+    createdAt: string,
+    limits: StoreProjectGitHistorySetting["limits"],
+    maximumCopiedFiles: number,
+  ): Effect.Effect<void, unknown, SqlClient> {
+    const installationId = this.#installationId;
+    return Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      yield* sql.unsafe(`
+        INSERT INTO git_history_jobs (
+          installation_id, id, project_id, artifact_id, version_id,
+          kind, state, attempts, file_copy_limit_bytes,
+          version_copy_limit_bytes, maximum_copied_files,
+          storage_budget_bytes, copy_policy_digest, lease_expires_at,
+          available_at, last_error, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, 'mirror-version', 'queued', 0,
+          $6, $7, $8, $9, $10, NULL, $11, NULL, $11, $11)
+        ON CONFLICT (installation_id, id) DO NOTHING
+      `, [
+        installationId,
+        gitHistoryJobId(gitHistoryJobKinds.mirrorVersion, artifactId, versionId),
+        projectId,
+        artifactId,
+        versionId,
+        limits.fileCopyBytes,
+        limits.versionCopyBytes,
+        maximumCopiedFiles,
+        limits.storageBudgetBytes,
+        gitHistoryCopyPolicyDigest(limits, maximumCopiedFiles),
+        createdAt,
+      ]);
+    });
+  }
+
+  #queueGitHistoryDeletionIfPresent(
+    projectId: string,
+    artifactId: string,
+    createdAt: string,
+  ): Effect.Effect<void, unknown, SqlClient> {
+    const installationId = this.#installationId;
+    return Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<{readonly artifactId: string}>(`
+        SELECT artifact_id AS "artifactId" FROM git_history_repositories
+        WHERE installation_id = $1 AND project_id = $2 AND artifact_id = $3
+          AND status <> 'deleted'
+      `, [installationId, projectId, artifactId]);
+      if (rows.length === 0) return;
+      yield* sql.unsafe(`
+        INSERT INTO git_history_jobs (
+          installation_id, id, project_id, artifact_id, version_id,
+          kind, state, attempts, available_at, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, NULL, 'delete-repository', 'queued', 0,
+          $5, $5, $5)
+        ON CONFLICT (installation_id, id) DO NOTHING
+      `, [
+        installationId,
+        gitHistoryJobId(gitHistoryJobKinds.deleteRepository, artifactId, null),
+        projectId,
+        artifactId,
+        createdAt,
+      ]);
+      yield* sql.unsafe(`
+        UPDATE git_history_repositories SET status = 'deleting', updated_at = $1
+        WHERE installation_id = $2 AND project_id = $3 AND artifact_id = $4
+      `, [createdAt, installationId, projectId, artifactId]);
+    });
+  }
+
   #readRegisteredAgentRow(
     agentId: string,
   ): Effect.Effect<RegisteredAgentRecord, unknown, SqlClient> {
@@ -3741,7 +4668,10 @@ const registeredAgentColumns = `SELECT
     agent.agent_session_id AS "agentSessionId",
     agent.principal_id AS "principalId",
     agent.created_at AS "createdAt",
-    agent.last_seen_at AS "lastSeenAt"
+    agent.last_seen_at AS "lastSeenAt",
+    agent.capabilities_json AS "capabilitiesJson",
+    agent.activity_state AS "activityState",
+    agent.activity_at AS "activityAt"
   FROM registered_agents agent`;
 
 const agentDispatchColumns = `SELECT

@@ -2,6 +2,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -74,7 +75,7 @@ const inspectorGapPixels = 12;
 const catalogRefreshConfirmationMilliseconds = 1_600;
 
 interface VersionListItem {
-  readonly links: {readonly version: string};
+  readonly links: {readonly review: string; readonly version: string};
   readonly version: Version;
 }
 
@@ -228,11 +229,11 @@ function ArtifactReview({
   readonly theme: ReviewTheme;
 }) {
   const initialLocation = useMemo(readReviewLocation, []);
-  const initialProject = projects.find((project) => project.id === initialLocation.projectId)
-    ?? projects.find((project) => project.archivedAt === null)
-    ?? projects[0]
-    ?? null;
-  const [projectId, setProjectId] = useState(initialProject?.id ?? "");
+  const initialProjectId = initialLocation.projectId
+    ?? projects.find((project) => project.archivedAt === null)?.id
+    ?? projects[0]?.id
+    ?? "";
+  const [projectId, setProjectId] = useState(initialProjectId);
   const [items, setItems] = useState<ArtifactPage["artifacts"]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(
@@ -245,6 +246,7 @@ function ArtifactReview({
     initialLocation.path,
   );
   const [query, setQuery] = useState("");
+  const searchQuery = useDeferredValue(query.trim());
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<Error | null>(null);
   const [catalogRefreshState, setCatalogRefreshState] = useState<CatalogRefreshState>(
@@ -270,6 +272,7 @@ function ArtifactReview({
   const focusControlsRestoreRef = useRef<HTMLButtonElement>(null);
   const previewPanelRef = useRef<HTMLElement>(null);
   const catalogRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const catalogRequestGenerationRef = useRef(0);
   const catalogWidthApplyRef = useRef<(width: number) => void>(() => undefined);
   const inspectorWidthApplyRef = useRef<(width: number) => void>(() => undefined);
   const catalogResize = useReviewResizablePanel({
@@ -305,6 +308,7 @@ function ArtifactReview({
     inspectorWidthApplyRef.current = (width) => inspectorMotion.width.set(width);
   }, [catalogMotion.width, inspectorMotion.width]);
   const followCommentVersion = useCallback((versionId: string): void => {
+    setDetailError(null);
     setSelectedVersionId(versionId);
     setSelectedPath(null);
   }, []);
@@ -328,45 +332,54 @@ function ArtifactReview({
   }, [htmlAnnotateModeActive]);
 
   const selectedProject = projects.find((project) => project.id === projectId) ?? null;
-  const selectedIndex = items.findIndex(({artifact}) => artifact.id === selectedArtifactId);
-  const selectedItem = selectedIndex < 0 ? null : items[selectedIndex] ?? null;
-  const filteredItems = items.filter(({artifact}) => {
-    const needle = query.trim().toLocaleLowerCase("en-US");
-    if (needle === "") return true;
-    return artifact.name.toLocaleLowerCase("en-US").includes(needle)
-      || artifact.tags.some((tag) => tag.toLocaleLowerCase("en-US").includes(needle));
-  });
-
+  const catalogItems = useMemo<ArtifactPage["artifacts"]>(() => {
+    if (
+      details === null
+      || searchQuery !== ""
+      || items.some(({artifact}) => artifact.id === details.artifact.id)
+    ) return items;
+    return [{
+      artifact: details.artifact,
+      links: details.links,
+      versionCount: versions.length,
+    }, ...items];
+  }, [details, items, searchQuery, versions.length]);
+  const selectedIndex = catalogItems.findIndex(
+    ({artifact}) => artifact.id === selectedArtifactId,
+  );
+  const selectedItem = selectedIndex < 0 ? null : catalogItems[selectedIndex] ?? null;
   const loadArtifacts = useCallback(async (
     cursor: string | null,
     replace: boolean,
   ): Promise<ArtifactListLoadResult> => {
     if (projectId === "") return "skipped";
+    const requestGeneration = ++catalogRequestGenerationRef.current;
     setListLoading(true);
     setListError(null);
     try {
-      const page = await api.artifacts(projectId, cursor, "");
+      const page = await api.artifacts(projectId, cursor, "", searchQuery);
+      if (requestGeneration !== catalogRequestGenerationRef.current) return "skipped";
       setItems((current) => replace ? page.artifacts : [...current, ...page.artifacts]);
       setNextCursor(page.nextCursor);
       if (replace) {
-        const requested = page.artifacts.find(
-          ({artifact}) => artifact.id === initialLocation.artifactId,
-        );
         setSelectedArtifactId((current) => {
-          const retained = page.artifacts.some(({artifact}) => artifact.id === current);
-          return retained ? current : (requested?.artifact.id ?? page.artifacts[0]?.artifact.id ?? null);
+          return current ?? page.artifacts[0]?.artifact.id ?? null;
         });
       }
       return "loaded";
     } catch (caught) {
-      setListError(
-        caught instanceof Error ? caught : new Error("Artifact list failed."),
-      );
+      if (requestGeneration === catalogRequestGenerationRef.current) {
+        setListError(
+          caught instanceof Error ? caught : new Error("Artifact list failed."),
+        );
+      }
       return "failed";
     } finally {
-      setListLoading(false);
+      if (requestGeneration === catalogRequestGenerationRef.current) {
+        setListLoading(false);
+      }
     }
-  }, [initialLocation.artifactId, projectId]);
+  }, [projectId, searchQuery]);
 
   const refreshArtifacts = useCallback(async (): Promise<void> => {
     if (listLoading) return;
@@ -423,11 +436,13 @@ function ArtifactReview({
         setDetails(loadedDetails);
         setVersions(loadedVersions);
         setSelectedVersionId((selected) => {
-          const retained = loadedVersions.some(({version}) => version.id === selected);
-          return retained ? selected : loadedDetails.current.version.id;
+          return selected ?? loadedDetails.current.version.id;
         });
       } catch (caught) {
         if (!current) return;
+        setDetails(null);
+        setVersions([]);
+        setSelectedVersion(null);
         setDetailError(
           caught instanceof Error ? caught : new Error("Artifact details failed."),
         );
@@ -525,10 +540,6 @@ function ArtifactReview({
     }
   };
 
-  const publicCurrent = details !== null
-    && selectedVersionId === details.current.version.id
-    && details.artifact.accessSetting === "public_link";
-  const baseHref = publicCurrent ? details.current.links.version : null;
   const canComment = selectedProject?.archivedAt === null
     && (
       (
@@ -541,8 +552,21 @@ function ArtifactReview({
     session.principal.kind === "human"
     && session.principal.authorizedByPrincipalId === null
   ) || session.principal.capabilities.includes("project:manage");
+  const canManageArtifacts = selectedProject?.archivedAt === null && (
+    (
+      session.principal.kind === "human"
+      && session.principal.authorizedByPrincipalId === null
+    )
+    || session.principal.capabilities.includes("artifact:manage:any")
+  );
+  const canDeleteAnyComment = (
+    session.principal.kind === "human"
+    && session.principal.authorizedByPrincipalId === null
+    && session.principal.membershipRole === "administrator"
+  ) || session.principal.capabilities.includes("artifact:manage:any");
   const previewKind = reviewPreviewKind(selectedVersion, selectedPath);
   const selectArtifact = (artifactId: string, versionId?: string): void => {
+    setDetailError(null);
     setSelectedArtifactId(artifactId);
     setSelectedVersionId(versionId ?? null);
     setSelectedPath(null);
@@ -583,6 +607,52 @@ function ArtifactReview({
     setItems((current) => current.map((item) => item.artifact.id === artifact.id
       ? {...item, artifact}
       : item));
+  };
+  const makeVersionCurrent = async (
+    versionId: string,
+    expectedCurrentVersionId: string,
+  ): Promise<boolean> => {
+    if (details === null) return false;
+    setDetailError(null);
+    try {
+      const restored = await api.restore(
+        details.artifact.projectId,
+        details.artifact.id,
+        expectedCurrentVersionId,
+        versionId,
+        crypto.randomUUID(),
+      );
+      updateArtifact(restored.artifact);
+      const [loadedDetails, loadedVersions] = await Promise.all([
+        api.artifact(details.artifact.projectId, details.artifact.id),
+        api.versions(details.artifact.projectId, details.artifact.id),
+      ]);
+      setDetails(loadedDetails);
+      setVersions(loadedVersions);
+      return true;
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 409) {
+        try {
+          const [loadedDetails, loadedVersions] = await Promise.all([
+            api.artifact(details.artifact.projectId, details.artifact.id),
+            api.versions(details.artifact.projectId, details.artifact.id),
+          ]);
+          setDetails(loadedDetails);
+          setVersions(loadedVersions);
+          updateArtifact(loadedDetails.artifact);
+        } catch {
+          // Keep the original conflict visible when refreshing pointer state fails.
+        }
+        setDetailError(new Error(
+          "The current version changed before this action completed. Nothing was changed; the latest version state has been reloaded.",
+        ));
+        return false;
+      }
+      setDetailError(
+        caught instanceof Error ? caught : new Error("The version could not be made current."),
+      );
+      return false;
+    }
   };
   const enterFocusMode = (): void => {
     window.history.pushState(null, "", reviewHref({
@@ -834,21 +904,23 @@ function ArtifactReview({
                 ? "Artifact catalog refreshed."
                 : ""}
           </span>
-          <label className="as-search">
-            <span className="as-visually-hidden">Search artifacts</span>
-            <HugeiconsIcon aria-hidden="true" icon={Search01Icon} strokeWidth={1.8} />
-            <input
-              onChange={(event) => setQuery(event.currentTarget.value)}
-              placeholder="Search artifacts…"
-              type="search"
-              value={query}
-            />
-            {query === "" ? null : (
-              <button aria-label="Clear search" onClick={() => setQuery("")} type="button">
-                <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.8} />
-              </button>
-            )}
-          </label>
+          <div className="as-search-group">
+            <label className="as-search">
+              <span className="as-visually-hidden">Search artifacts</span>
+              <HugeiconsIcon aria-hidden="true" icon={Search01Icon} strokeWidth={1.8} />
+              <input
+                onChange={(event) => setQuery(event.currentTarget.value)}
+                placeholder="Search artifacts…"
+                type="search"
+                value={query}
+              />
+              {query === "" ? null : (
+                <button aria-label="Clear search" onClick={() => setQuery("")} type="button">
+                  <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.8} />
+                </button>
+              )}
+            </label>
+          </div>
         </div>
 
         <div className="as-catalog__list">
@@ -858,13 +930,13 @@ function ArtifactReview({
           {listLoading && items.length === 0 ? (
             <InlineState description="Reading this project." title="Loading artifacts" />
           ) : null}
-          {!listLoading && listError === null && filteredItems.length === 0 ? (
+          {!listLoading && listError === null && catalogItems.length === 0 ? (
             <InlineState
               description={query === "" ? "Publish from the CLI to populate this project." : "Try a name or tag with a wider match."}
               title={query === "" ? "No artifacts yet" : "No matching artifacts"}
             />
           ) : null}
-          {filteredItems.map(({artifact, versionCount}) => (
+          {catalogItems.map(({artifact, versionCount}) => (
             <button
               aria-current={artifact.id === selectedArtifactId ? "true" : undefined}
               className="as-artifact-card"
@@ -965,6 +1037,8 @@ function ArtifactReview({
                     details={details}
                     key={`focus-share-${details?.artifact.id ?? "empty"}`}
                     onArtifactChanged={updateArtifact}
+                    selectedPath={selectedPath}
+                    selectedVersion={selectedVersion}
                     triggerClassName="as-button as-focus-controls__button"
                   />
                   <button
@@ -1018,7 +1092,12 @@ function ArtifactReview({
                   </IconButton>
                 </header>
                 <div className="as-focus-comments__body">
-                  <ReviewCommentsInspector canComment={canComment} session={comments} />
+                  <ReviewCommentsInspector
+                    canComment={canComment}
+                    canDeleteAny={canDeleteAnyComment}
+                    principalId={session.principal.id}
+                    session={comments}
+                  />
                 </div>
               </aside>
             </>
@@ -1057,6 +1136,8 @@ function ArtifactReview({
                 details={details}
                 key={`header-share-${details?.artifact.id ?? "empty"}`}
                 onArtifactChanged={updateArtifact}
+                selectedPath={selectedPath}
+                selectedVersion={selectedVersion}
                 triggerClassName="as-button as-button--secondary"
               />
               <button
@@ -1084,13 +1165,17 @@ function ArtifactReview({
               <PreviewWelcome />
             ) : detailLoading && details === null ? (
               <PreviewWelcome description="Loading artifact metadata and immutable history." title="Reading artifact" />
+            ) : detailError !== null && selectedVersion === null ? (
+              <PreviewWelcome
+                description="The project, artifact, or version named by this Review URL is unavailable."
+                title="Review target unavailable"
+              />
             ) : (
               <ReviewPreview
                 annotateModeActive={htmlAnnotateModeActive}
                 annotations={comments.annotations}
                 artifactId={selectedArtifactId}
                 artifactName={details?.artifact.name ?? selectedItem?.artifact.name ?? "Artifact"}
-                baseHref={baseHref}
                 isLight={theme === "dawn"}
                 onOpenRawArtifact={() => void openRawArtifact()}
                 onAnnotateModeChange={setHtmlAnnotateModeActive}
@@ -1134,7 +1219,7 @@ function ArtifactReview({
                 disabled={selectedIndex <= 0}
                 label="Previous artifact"
                 onClick={() => {
-                  const previous = items[selectedIndex - 1];
+                  const previous = catalogItems[selectedIndex - 1];
                   if (previous !== undefined) {
                     selectArtifact(previous.artifact.id, previous.artifact.currentVersionId);
                   }
@@ -1143,13 +1228,13 @@ function ArtifactReview({
                 <HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={1.8} />
               </IconButton>
               <span className="as-tabular">
-                {selectedIndex < 0 ? "0" : selectedIndex + 1} / {items.length}
+                {selectedIndex < 0 ? "0" : selectedIndex + 1} / {catalogItems.length}
               </span>
               <IconButton
-                disabled={selectedIndex < 0 || selectedIndex >= items.length - 1}
+                disabled={selectedIndex < 0 || selectedIndex >= catalogItems.length - 1}
                 label="Next artifact"
                 onClick={() => {
-                  const next = items[selectedIndex + 1];
+                  const next = catalogItems[selectedIndex + 1];
                   if (next !== undefined) {
                     selectArtifact(next.artifact.id, next.artifact.currentVersionId);
                   }
@@ -1214,6 +1299,8 @@ function ArtifactReview({
             ) : inspectorTab === "comments" ? (
               <ReviewCommentsInspector
                 canComment={canComment}
+                canDeleteAny={canDeleteAnyComment}
+                principalId={session.principal.id}
                 session={comments}
               />
             ) : inspectorTab === "files" ? (
@@ -1224,8 +1311,11 @@ function ArtifactReview({
               />
             ) : (
               <VersionsInspector
+                canManage={canManageArtifacts}
                 currentVersionId={details.artifact.currentVersionId}
+                onMakeCurrent={makeVersionCurrent}
                 onSelect={(versionId) => {
+                  setDetailError(null);
                   setSelectedVersionId(versionId);
                   setSelectedPath(null);
                 }}
@@ -1414,12 +1504,19 @@ function FilesInspector({
 }
 
 function VersionsInspector({
+  canManage,
   currentVersionId,
+  onMakeCurrent,
   onSelect,
   selectedVersionId,
   versions,
 }: {
+  readonly canManage: boolean;
   readonly currentVersionId: string;
+  readonly onMakeCurrent: (
+    versionId: string,
+    expectedCurrentVersionId: string,
+  ) => Promise<boolean>;
   readonly onSelect: (versionId: string) => void;
   readonly selectedVersionId: string | null;
   readonly versions: readonly VersionListItem[];
@@ -1430,25 +1527,84 @@ function VersionsInspector({
         <ol className="as-version-list">
           {versions.map(({version}) => (
             <li key={version.id}>
-              <button
-                aria-current={selectedVersionId === version.id ? "true" : undefined}
-                data-selected={selectedVersionId === version.id}
-                onClick={() => onSelect(version.id)}
-                type="button"
-              >
-                <span>
-                  <strong>Version {version.number}</strong>
-                  <time dateTime={version.createdAt}>{formatTimestamp(version.createdAt)}</time>
-                </span>
-                <span className="as-version-list__state">
-                  {version.id === currentVersionId ? "current" : compactId(version.id)}
-                </span>
-              </button>
+              <div className="as-version-list__row">
+                <button
+                  aria-current={selectedVersionId === version.id ? "true" : undefined}
+                  className="as-version-list__select"
+                  data-selected={selectedVersionId === version.id}
+                  onClick={() => onSelect(version.id)}
+                  type="button"
+                >
+                  <span>
+                    <strong>Version {version.number}</strong>
+                    <time dateTime={version.createdAt}>{formatTimestamp(version.createdAt)}</time>
+                  </span>
+                  <span className="as-version-list__state">
+                    {version.id === currentVersionId ? "current" : compactId(version.id)}
+                  </span>
+                </button>
+                {!canManage || version.id === currentVersionId ? null : (
+                  <MakeCurrentControl
+                    expectedCurrentVersionId={currentVersionId}
+                    onConfirm={onMakeCurrent}
+                    version={version}
+                  />
+                )}
+              </div>
             </li>
           ))}
         </ol>
       </InspectorSection>
     </div>
+  );
+}
+
+function MakeCurrentControl({
+  expectedCurrentVersionId,
+  onConfirm,
+  version,
+}: {
+  readonly expectedCurrentVersionId: string;
+  readonly onConfirm: (
+    versionId: string,
+    expectedCurrentVersionId: string,
+  ) => Promise<boolean>;
+  readonly version: Version;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const confirm = async (): Promise<void> => {
+    setPending(true);
+    await onConfirm(version.id, expectedCurrentVersionId);
+    setPending(false);
+    setOpen(false);
+  };
+  return (
+    <Dialog.Root onOpenChange={setOpen} open={open}>
+      <Dialog.Trigger className="as-version-list__make-current">
+        Make current
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Backdrop className="as-confirm-dialog__backdrop" />
+        <Dialog.Popup className="as-confirm-dialog">
+          <Dialog.Title>Make Version {version.number} current?</Dialog.Title>
+          <Dialog.Description>
+            The stable artifact link will point to Version {version.number}. No saved version is changed or duplicated.
+          </Dialog.Description>
+          <div className="as-confirm-dialog__actions">
+            <Dialog.Close className="as-button" disabled={pending}>Cancel</Dialog.Close>
+            <button
+              className="as-button as-button--primary"
+              disabled={pending}
+              onClick={() => void confirm()}
+              type="button"
+            >
+              {pending ? "Making current…" : "Make current"}
+            </button>
+          </div>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

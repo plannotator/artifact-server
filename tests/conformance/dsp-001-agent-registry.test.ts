@@ -69,9 +69,14 @@ describe("registered agent registry", () => {
     const afterRegistration = agentListSchema.parse(
       await (await agents.listAgents()).json(),
     );
-    expect(afterRegistration.items).toEqual([
-      {...registered, connected: true},
-    ]);
+    expect(afterRegistration.items).toEqual([{
+      ...registered,
+      activeDispatchId: null,
+      activity: "idle",
+      beacon: null,
+      connected: true,
+      lastActivityAt: registered.lastSeenAt,
+    }]);
 
     // Liveness is derived, not stored: the row stays listed and simply stops
     // reading as connected once its last claim poll falls out of the window.
@@ -79,7 +84,14 @@ describe("registered agent registry", () => {
     const afterSilence = agentListSchema.parse(
       await (await agents.listAgents()).json(),
     );
-    expect(afterSilence.items).toEqual([{...registered, connected: false}]);
+    expect(afterSilence.items).toEqual([{
+      ...registered,
+      activeDispatchId: null,
+      activity: "disconnected",
+      beacon: null,
+      connected: false,
+      lastActivityAt: registered.lastSeenAt,
+    }]);
 
     // The claim poll is the heartbeat, so an empty poll restores liveness.
     const emptyPoll = await agents.claim(registered.id);
@@ -89,7 +101,11 @@ describe("registered agent registry", () => {
     );
     expect(afterPolling.items).toEqual([{
       ...registered,
+      activeDispatchId: null,
+      activity: "idle",
+      beacon: null,
       connected: true,
+      lastActivityAt: clock.now().toISOString(),
       lastSeenAt: clock.now().toISOString(),
     }]);
 
@@ -105,7 +121,11 @@ describe("registered agent registry", () => {
     );
     expect(duringHeldPoll.items).toEqual([{
       ...registered,
+      activeDispatchId: null,
+      activity: "idle",
+      beacon: null,
       connected: true,
+      lastActivityAt: heartbeatStamp,
       lastSeenAt: heartbeatStamp,
     }]);
     expect((await heldPoll).status).toBe(204);
@@ -114,7 +134,11 @@ describe("registered agent registry", () => {
     );
     expect(afterHeldPoll.items).toEqual([{
       ...registered,
+      activeDispatchId: null,
+      activity: "idle",
+      beacon: null,
       connected: true,
+      lastActivityAt: heartbeatStamp,
       lastSeenAt: heartbeatStamp,
     }]);
 
@@ -151,7 +175,14 @@ describe("registered agent registry", () => {
     const afterRestart = agentListSchema.parse(
       await (await agents.listAgents()).json(),
     );
-    expect(afterRestart.items).toEqual([{...reRegistered, connected: true}]);
+    expect(afterRestart.items).toEqual([{
+      ...reRegistered,
+      activeDispatchId: null,
+      activity: "idle",
+      beacon: null,
+      connected: true,
+      lastActivityAt: reRegistered.lastSeenAt,
+    }]);
 
     const claimed = await agents.claim(registered.id);
     expect(claimed.status).toBe(200);

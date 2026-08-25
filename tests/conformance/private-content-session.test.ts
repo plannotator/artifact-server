@@ -5,6 +5,7 @@ import {
   commitStagedUpload,
   createStagedUpload,
   publishNew,
+  publishVersion,
   uploadEveryStagedFile,
   type TestSiteFile,
 } from "../support/publishing.js";
@@ -19,6 +20,12 @@ import {
 
 const bootstrapResponseSchema = z.object({
   bootstrapUrl: z.url(),
+  expiresAt: z.string(),
+  versionId: z.string(),
+});
+
+const previewLeaseResponseSchema = z.object({
+  baseUrl: z.url(),
   expiresAt: z.string(),
   versionId: z.string(),
 });
@@ -256,6 +263,64 @@ describe("private content sessions", () => {
     expect(setCookie).toContain("Secure");
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).not.toContain("Domain=");
+  });
+
+  test("CMT-018-B CMT-018-F: an authenticated exact-version preview lease is read-only, restart-safe, and version-bound", async () => {
+    const first = await publishNew(server, installation, {
+      accessSetting: "account_required",
+      content: "<!doctype html><link rel=\"stylesheet\" href=\"styles/site.css\"><title>Lease version one</title>",
+      idempotencyKey: "preview-lease-private-v1",
+      name: "Preview lease fixture",
+    });
+    const endpoint = `${server.baseUrl}/api/v1/artifacts/${first.body.artifact.id}/versions/${first.body.version.id}/preview-leases?projectId=${first.body.artifact.projectId}`;
+    expect((await fetch(endpoint, {method: "POST"})).status).toBe(401);
+
+    const issueResponse = await fetch(endpoint, {
+      headers: {Authorization: `Bearer ${installation.apiToken}`},
+      method: "POST",
+    });
+    expect(issueResponse.status).toBe(201);
+    const lease = previewLeaseResponseSchema.parse(await issueResponse.json());
+    expect(lease.versionId).toBe(first.body.version.id);
+    expect(new URL(lease.baseUrl).hostname).toMatch(/^review-[a-z0-9_-]+\.localhost$/u);
+    expect(new URL(lease.baseUrl).hostname.split(".")[0]).toHaveLength(63);
+    expect(lease.baseUrl).not.toContain("__artifact_bootstrap");
+
+    await publishVersion(server, installation, {
+      artifactId: first.body.artifact.id,
+      content: "<!doctype html><title>Lease version two</title>",
+      expectedCurrentVersionId: first.body.version.id,
+      idempotencyKey: "preview-lease-private-v2",
+    });
+    await server.stop();
+    server = await startTestServer(installation);
+
+    const exact = await fetchVersion(server, lease.baseUrl);
+    expect(exact.status).toBe(200);
+    expect(await exact.text()).toContain("Lease version one");
+    expect(exact.headers.get("access-control-allow-origin")).toBe("*");
+    expect(exact.headers.get("cache-control")).toBe("private, no-store");
+    expect(exact.headers.get("cross-origin-resource-policy")).toBe("cross-origin");
+    expect(exact.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(exact.headers.get("set-cookie")).toBeNull();
+
+    const missing = await fetchVersion(
+      server,
+      new URL("/styles/site.css", lease.baseUrl).toString(),
+    );
+    expect(missing.status).toBe(404);
+    const forged = new URL(lease.baseUrl);
+    forged.hostname = `review-${"x".repeat(40)}.localhost`;
+    expect((await fetchVersion(server, forged.toString())).status).toBe(401);
+    const write = await fetchVersion(server, lease.baseUrl, "POST");
+    expect(write.status).toBe(405);
+    expect(write.headers.get("allow")).toBe("GET, HEAD");
+    const applicationRoute = await fetchVersion(
+      server,
+      new URL("/api/v1/artifacts", lease.baseUrl).toString(),
+    );
+    expect(applicationRoute.status).toBe(404);
+    expect((await fetchVersion(server, first.body.links.version)).status).toBe(401);
   });
 });
 

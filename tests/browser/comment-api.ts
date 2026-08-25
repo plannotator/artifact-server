@@ -34,7 +34,42 @@ const createdThreadSchema = z.object({
   thread: threadSchema,
 });
 
+const replySchema = z.object({
+  body: z.string(),
+  id: z.string(),
+  threadId: z.string(),
+});
+
+const createdReplySchema = z.object({
+  replayed: z.boolean(),
+  reply: replySchema,
+});
+
 export type CommentThread = z.infer<typeof threadSchema>;
+
+/** Seed one reply through the same HTTP contract used by agents and Review. */
+export async function createReplyOverApi(
+  fixture: BrowserFixture,
+  input: {
+    readonly artifactId: string;
+    readonly body: string;
+    readonly idempotencyKey: string;
+    readonly projectId?: string;
+    readonly threadId: string;
+  },
+): Promise<z.infer<typeof replySchema>> {
+  const projectId = input.projectId ?? "prj_default";
+  const response = await fetch(
+    `${fixture.server.baseUrl}/api/v1/artifacts/${input.artifactId}/comments/${input.threadId}/replies?projectId=${projectId}`,
+    {
+      body: JSON.stringify({body: input.body}),
+      headers: apiHeaders(fixture.installation, input.idempotencyKey),
+      method: "POST",
+    },
+  );
+  expect(response.status).toBe(201);
+  return createdReplySchema.parse(await response.json()).reply;
+}
 
 /**
  * Seed one thread the way an agent does: over the API, with a service token,

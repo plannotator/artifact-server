@@ -1,6 +1,7 @@
-import type { CommentThread } from "@/api/client";
+import type { AgentPresence, CommentThread } from "@/api/client";
 import { bundleOfThreads } from "@/components/dispatch/dispatch-bundle";
-import { SendToAgentDialog } from "@/components/dispatch/send-to-agent-dialog";
+import type { DispatchFeedback } from "@/components/dispatch/dispatch-toast";
+import { SendToAgentControl } from "@/components/dispatch/send-to-agent-dialog";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -8,11 +9,17 @@ import { Button } from "@/components/ui/button";
  * one bundle, never several.
  */
 export function DispatchSelectionBar({
+  agents,
+  feedback,
   onClear,
   onSent,
   projectId,
   threads,
 }: {
+  /** The surface's polled presence list, or null while it is still reading. */
+  readonly agents: readonly AgentPresence[] | null;
+  /** The surface's undo toast, where the send reports its outcome. */
+  readonly feedback: DispatchFeedback;
   readonly onClear: () => void;
   readonly onSent: () => Promise<void>;
   readonly projectId: string;
@@ -30,10 +37,13 @@ export function DispatchSelectionBar({
           ? "1 annotation selected"
           : `${threads.length} annotations selected`}
       </p>
-      <SendToAgentDialog
+      <SendToAgentControl
+        agents={agents}
         buttonVariant="default"
+        feedback={feedback}
         label={`Send ${threads.length} to agent`}
         onSent={onSent}
+        oneAgentLabel={(name) => `Send ${threads.length} to ${name}`}
         projectId={projectId}
         resolveBundle={() => Promise.resolve(bundleOfThreads(threads))}
       />

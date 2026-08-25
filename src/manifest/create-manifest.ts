@@ -60,7 +60,8 @@ export function parseManifestPath(candidate: string): string {
         segment.length === 0 ||
         segment === "." ||
         segment === ".." ||
-        segment.toLocaleLowerCase("en-US") === ".git",
+        segment.toLocaleLowerCase("en-US") === ".git" ||
+        segment.toLocaleLowerCase("en-US") === ".artifactserver",
     )
   ) {
     throw invalidPath(candidate);

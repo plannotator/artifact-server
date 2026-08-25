@@ -3,4 +3,6 @@ packages:
   - apps/*
   - deploy/cloudflare
   - deploy/pulumi/*
+  - integrations/bridge-core
+  - integrations/opencode
   - integrations/pi

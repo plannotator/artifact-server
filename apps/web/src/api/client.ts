@@ -108,6 +108,14 @@ const projectSchema = z.object({
 const projectGitHistorySettingSchema = z.object({
   enabled: z.boolean(),
   projectId: z.string(),
+  state: z.enum([
+    "backfilling",
+    "budget-limited",
+    "degraded",
+    "disabled",
+    "ready",
+    "waiting",
+  ]),
 });
 const projectGitHistoryEstimateSchema = z.object({
   estimatedCopiedBytes: z.number().int().nonnegative(),
@@ -159,7 +167,7 @@ const manifestSchema = z.object({
 });
 
 const artifactVersionSchema = z.object({
-  links: z.object({ version: z.url() }),
+  links: z.object({ review: z.url(), version: z.url() }),
   manifest: manifestSchema,
   version: versionSchema,
 });
@@ -623,6 +631,45 @@ export interface AgentDispatchQuery {
   readonly state: AgentDispatchState | null;
 }
 
+const agentActivitySchema = z.enum(["disconnected", "idle", "working"]);
+const agentBeaconSchema = z.enum(["thinking", "replying"]);
+
+/**
+ * One registered agent with its derived presence. The activity fields ship
+ * with the presence-capable server; they stay optional so a panel pointed at
+ * an older deployment still renders liveness from `connected` alone.
+ */
+const agentPresenceSchema = z.object({
+  activeDispatchId: z.string().nullable().optional(),
+  activity: agentActivitySchema.optional(),
+  agentSessionId: z.string().nullable(),
+  beacon: agentBeaconSchema.nullable().optional(),
+  /** Derived from the agent's own claim polling; the poll is the heartbeat. */
+  connected: z.boolean(),
+  connectionKey: z.string(),
+  createdAt: z.string(),
+  displayName: z.string(),
+  id: z.string(),
+  /** A validated slug; display metadata only, nothing branches on it. */
+  kind: z.string(),
+  lastActivityAt: z.string().optional(),
+  lastSeenAt: z.string(),
+  principalId: z.string(),
+  workingDirectory: z.string(),
+});
+
+export type AgentActivity = z.infer<typeof agentActivitySchema>;
+export type AgentBeacon = z.infer<typeof agentBeaconSchema>;
+export type AgentPresence = z.infer<typeof agentPresenceSchema>;
+
+/** What one bulk clear removed, and what an active send kept out of reach. */
+const commentClearResultSchema = z.object({
+  deleted: z.number().int().nonnegative(),
+  skippedDispatched: z.number().int().nonnegative(),
+});
+
+export type CommentClearResult = z.infer<typeof commentClearResultSchema>;
+
 const memberSchema = z.object({
   createdAt: z.string(),
   displayName: z.string(),
@@ -888,10 +935,16 @@ export const api = {
       method: "PUT",
     },
   ).then(({gitHistory}) => gitHistory),
-  artifacts: (projectId: string, cursor: string | null, tag: string) => {
+  artifacts: (
+    projectId: string,
+    cursor: string | null,
+    tag: string,
+    search = "",
+  ) => {
     const query = new URLSearchParams({ limit: "25", projectId });
     if (cursor !== null) query.set("cursor", cursor);
     if (tag.trim() !== "") query.set("tag", tag.trim());
+    if (search.trim() !== "") query.set("search", search.trim());
     return request(artifactPageSchema, `/api/v1/artifacts?${query}`);
   },
   artifact: (projectId: string, artifactId: string) => request(
@@ -902,7 +955,7 @@ export const api = {
     z.object({
       artifactId: z.string(),
       versions: z.array(z.object({
-        links: z.object({ version: z.url() }),
+        links: z.object({ review: z.url(), version: z.url() }),
         version: versionSchema,
       })),
     }),
@@ -1049,6 +1102,19 @@ export const api = {
       { headers: mutationHeaders(), method: "POST" },
     );
   },
+  previewLease: (
+    projectId: string,
+    artifactId: string,
+    versionId: string,
+  ) => request(
+    z.object({
+      baseUrl: z.url(),
+      expiresAt: z.string(),
+      versionId: z.string(),
+    }),
+    `/api/v1/artifacts/${encodeURIComponent(artifactId)}/versions/${encodeURIComponent(versionId)}/preview-leases?${projectQuery(projectId)}`,
+    {headers: mutationHeaders(), method: "POST"},
+  ),
   versionFile: (
     projectId: string,
     artifactId: string,
@@ -1271,4 +1337,29 @@ export const api = {
     `/api/v1/api-keys/${encodeURIComponent(keyId)}/revoke`,
     { headers: mutationHeaders(), method: "POST" },
   ).then(({ apiKey }) => apiKey),
+  /** The registered agents with their derived presence, for live surfaces. */
+  agentPresence: () => request(
+    z.object({ items: z.array(agentPresenceSchema) }),
+    "/api/v1/agents",
+  ).then(({ items }) => items),
+  /**
+   * Delete this artifact's resolved (or all) comment threads in one action.
+   * Threads an active send carries are skipped and counted, never deleted.
+   */
+  clearComments: (
+    projectId: string,
+    artifactId: string,
+    state: "all" | "resolved",
+    versionId: string | null,
+  ) => request(
+    commentClearResultSchema,
+    `/api/v1/projects/${encodeURIComponent(projectId)}/artifacts/${encodeURIComponent(artifactId)}/comments/clear`,
+    {
+      body: JSON.stringify(
+        versionId === null ? { state } : { state, versionId },
+      ),
+      headers: mutationHeaders(),
+      method: "POST",
+    },
+  ),
 };

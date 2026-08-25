@@ -29,6 +29,8 @@ import {checkExternalStorageIntegrity} from
 import {createS3ObjectStorageProviderFactory} from
   "../../src/storage/s3-object-storage.js";
 import {PostgresDatabase} from "../../src/storage/postgres-database.js";
+import {requiredPostgresSchemaVersion} from
+  "../../src/storage/postgres-migrations.js";
 import {PostgresArtifactRepository} from "../../src/storage/postgres-artifact-repository.js";
 import {PostgresIdentityRepository} from "../../src/storage/postgres-identity-repository.js";
 import {defaultProjectId} from "../../src/core/model.js";
@@ -93,7 +95,18 @@ const projectGitHistoryEstimateResponseSchema = z.object({
 }).strict();
 
 const projectGitHistoryResponseSchema = z.object({
-  gitHistory: z.object({enabled: z.boolean(), projectId: z.string()}).strict(),
+  gitHistory: z.object({
+    enabled: z.boolean(),
+    projectId: z.string(),
+    state: z.enum([
+      "backfilling",
+      "budget-limited",
+      "degraded",
+      "disabled",
+      "ready",
+      "waiting",
+    ]),
+  }).strict(),
 }).strict();
 
 const sessionResponseSchema = z.object({
@@ -259,15 +272,15 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(JSON.parse(before.output)).toMatchObject({
       compatibility: "missing",
       currentVersion: 0,
-      requiredVersion: 8,
+      requiredVersion: requiredPostgresSchemaVersion,
     });
 
     const applied = await runExternalCli(["migrate", "apply"], migrationEnvironment);
     expect(applied.exitCode).toBe(0);
     expect(JSON.parse(applied.output)).toMatchObject({
       compatibility: "current",
-      currentVersion: 8,
-      requiredVersion: 8,
+      currentVersion: requiredPostgresSchemaVersion,
+      requiredVersion: requiredPostgresSchemaVersion,
     });
 
     const after = await runExternalCli(["migrate", "status"], migrationEnvironment);
@@ -308,7 +321,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     }
   });
 
-  test("GIT-010 GIT-012 GIT-013 GIT-014 foundation: Postgres preserves provider identity and the project switch across restart", async () => {
+  test("GIT-010 GIT-013 foundation: Postgres enables Git history and preserves provider identity", async () => {
     const identity = {
       apiToken: managedTestKey("postgres-git-history"),
       installationId: "postgres-git-history",
@@ -362,7 +375,11 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     );
     expect(enableResponse.status).toBe(200);
     expect(projectGitHistoryResponseSchema.parse(await enableResponse.json())).toEqual({
-      gitHistory: {enabled: true, projectId: defaultProjectId},
+      gitHistory: {
+        enabled: true,
+        projectId: defaultProjectId,
+        state: "waiting",
+      },
     });
     await server.stop();
 
@@ -385,7 +402,11 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     );
     expect(settingResponse.status).toBe(200);
     expect(projectGitHistoryResponseSchema.parse(await settingResponse.json())).toEqual({
-      gitHistory: {enabled: true, projectId: defaultProjectId},
+      gitHistory: {
+        enabled: true,
+        projectId: defaultProjectId,
+        state: "degraded",
+      },
     });
 
     const database = await PostgresDatabase.inspect({
@@ -422,7 +443,10 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
           WHERE installation_id = ${identity.installationId}
         `.withoutTransform;
       }));
-      expect(settings).toEqual([{enabled: true, project_id: defaultProjectId}]);
+      expect(settings).toEqual([{
+        enabled: true,
+        project_id: defaultProjectId,
+      }]);
     } finally {
       await database.close();
     }
@@ -484,12 +508,17 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
           "ALTER TABLE actions DROP COLUMN project_id CASCADE",
           "ALTER TABLE idempotency_records DROP COLUMN project_id CASCADE",
           "ALTER TABLE versions DROP COLUMN project_id CASCADE",
+          "ALTER TABLE artifacts DROP COLUMN search_name",
           "ALTER TABLE artifacts DROP COLUMN project_id CASCADE",
           "ALTER TABLE login_attempts DROP COLUMN nonce",
           "DROP TABLE comment_replies",
           "DROP TABLE comment_threads",
           "DROP TABLE agent_dispatches",
           "DROP TABLE registered_agents",
+          "DROP TABLE git_history_budget_reservations",
+          "DROP TABLE git_history_mappings",
+          "DROP TABLE git_history_jobs",
+          "DROP TABLE git_history_repositories",
           "DROP TABLE git_history_provider_identity",
           "DROP TABLE git_history_project_settings",
           "DROP TABLE projects",
@@ -519,7 +548,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(JSON.parse(pending.output)).toMatchObject({
       compatibility: "pending",
       currentVersion: 1,
-      requiredVersion: 8,
+      requiredVersion: requiredPostgresSchemaVersion,
     });
     const migrated = await runExternalCli(["migrate", "apply"], {
       ARTIFACT_SERVER_DATABASE_URL: migrationEnvironment.databaseUrl,
@@ -528,7 +557,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(migrated.exitCode).toBe(0);
     expect(JSON.parse(migrated.output)).toMatchObject({
       compatibility: "current",
-      currentVersion: 8,
+      currentVersion: requiredPostgresSchemaVersion,
     });
 
     const restored = await startExternalStorageProcess(migrationEnvironment, identity);
@@ -580,7 +609,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(repeated.exitCode).toBe(0);
     expect(JSON.parse(repeated.output)).toMatchObject({
       compatibility: "current",
-      currentVersion: 8,
+      currentVersion: requiredPostgresSchemaVersion,
     });
   });
 
@@ -1161,7 +1190,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     })).status).toBe(401);
   });
 
-  test("external-storage foundation: Postgres serves management, history, comparison, idempotency, and private content", async () => {
+  test("external-storage preview lease foundation: Postgres serves management, history, comparison, idempotency, and private content", async () => {
     expect.hasAssertions();
     const repositoryIdentity = {
       apiToken: managedTestKey("repository-runtime"),
@@ -1269,6 +1298,18 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     const bootstrap = z.object({bootstrapUrl: z.url()}).parse(
       await bootstrapResponse.json(),
     );
+    const previewLeaseResponse = await fetch(
+      `${server.baseUrl}/api/v1/artifacts/${first.body.artifact.id}/versions/${first.body.version.id}/preview-leases?projectId=${defaultProjectId}`,
+      {
+        headers: bearerHeaders(repositoryIdentity.apiToken),
+        method: "POST",
+      },
+    );
+    expect(previewLeaseResponse.status).toBe(201);
+    const previewLease = z.object({
+      baseUrl: z.url(),
+      versionId: z.literal(first.body.version.id),
+    }).parse(await previewLeaseResponse.json());
     await server.stop();
     server = await startInProcessExternalStorageServer(environment, repositoryIdentity);
     const exchange = await fetchContentThroughServer(
@@ -1288,6 +1329,26 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     );
     expect(privateContent.status).toBe(200);
     expect(await privateContent.text()).toBe("<p>repository version two</p>");
+
+    const historicalPreview = await fetchContentThroughServer(
+      server.baseUrl,
+      new URL("index.html", previewLease.baseUrl).toString(),
+    );
+    expect(historicalPreview.status).toBe(200);
+    expect(historicalPreview.headers.get("access-control-allow-origin")).toBe("*");
+    expect(historicalPreview.headers.get("cross-origin-resource-policy"))
+      .toBe("cross-origin");
+    expect(await historicalPreview.text()).toBe("<p>repository version one</p>");
+    const forgedPreviewUrl = new URL("index.html", previewLease.baseUrl);
+    const [leaseLabel, ...contentDomainLabels] = forgedPreviewUrl.hostname.split(".");
+    if (leaseLabel === undefined) throw new Error("Preview lease hostname has no label.");
+    forgedPreviewUrl.hostname = `${leaseLabel.slice(0, -1)}${
+      leaseLabel.endsWith("a") ? "b" : "a"
+    }.${contentDomainLabels.join(".")}`;
+    expect((await fetchContentThroughServer(
+      server.baseUrl,
+      forgedPreviewUrl.toString(),
+    )).status).toBe(401);
 
     const versions = await authenticatedFetch(
       server.baseUrl,
@@ -1987,6 +2048,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       const connectionKey = `dispatch-connection-${randomUUID()}`;
       const registration = {
         agentSessionId: "pi-session-one",
+        capabilities: {beacon: false, evidence: "native"},
         connectionKey,
         displayName: "site",
         installationId: dispatchIdentity.installationId,
@@ -2194,7 +2256,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       expect((await repository.listAgents(
         dispatchIdentity.installationId,
         at(700_000),
-      )).map(({id}) => id)).toEqual([agent.id]);
+      )).map(({agent: listed}) => listed.id)).toEqual([agent.id]);
 
       const firstPage = await repository.listDispatches({
         agentId: null,

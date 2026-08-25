@@ -1,5 +1,5 @@
 import {spawn, type ChildProcessWithoutNullStreams} from "node:child_process";
-import {randomUUID} from "node:crypto";
+import {randomBytes, randomUUID} from "node:crypto";
 import {
   mkdir,
   mkdtemp,
@@ -203,7 +203,8 @@ export async function runExternalStorageBaseline(
   const configuration = externalStorageBaselineConfigSchema.parse(input);
   const environment = readExternalStorageEnvironment();
   const installationId = `performance-${randomUUID()}`;
-  const apiToken = `external-storage-performance-${randomUUID()}-${randomUUID()}`;
+  const apiToken =
+    `as_key_key_${randomUUID()}_${randomBytes(32).toString("base64url")}`;
   const bucket = `artifact-perf-${randomUUID().replaceAll("-", "").slice(0, 24)}`;
   const s3Client = createS3Client(environment);
   const runningProcesses = new Set<ExternalStorageProcess>();
@@ -471,6 +472,8 @@ function startExternalStorageProcess(
         ARTIFACT_SERVER_CONTENT_DOMAIN: "content.example.net",
         ARTIFACT_SERVER_DATABASE_URL: environment.databaseUrl,
         ARTIFACT_SERVER_INSTALLATION_ID: identity.installationId,
+        ARTIFACT_SERVER_OIDC_CLIENT_ID: "external-storage-performance",
+        ARTIFACT_SERVER_OIDC_ISSUER: "https://oidc.performance.example",
         ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS: "0",
         ARTIFACT_SERVER_S3_ACCESS_KEY_ID: environment.accessKey,
         ARTIFACT_SERVER_S3_BUCKET: identity.bucket,
@@ -546,7 +549,14 @@ function waitForExternalStorageProcess(
     };
     const exit = () => {
       cleanup();
-      reject(new Error("An external-storage process exited before readiness."));
+      const diagnostic = output.trim().split("\n").slice(-8).join("\n");
+      reject(
+        new Error(
+          `An external-storage process exited before readiness.${
+            diagnostic === "" ? "" : `\n${diagnostic}`
+          }`,
+        ),
+      );
     };
     const cleanup = () => {
       clearTimeout(timeout);

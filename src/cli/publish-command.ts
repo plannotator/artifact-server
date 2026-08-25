@@ -1,27 +1,23 @@
-import {randomBytes} from "node:crypto";
-import {readFile} from "node:fs/promises";
 import path from "node:path";
 
 import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
 import {Option, type Command} from "commander";
-import {Effect, Redacted} from "effect";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
-import {z} from "zod";
+import {Effect} from "effect";
 
 import {
-  type FilePublicationCommand,
   type FilePublicationFailure,
+  type FilePublicationIntent,
   type FilePublicationResult,
-  publishPath,
+  prepareFilePublication,
+  type PreparedFilePublication,
+  publishPreparedPath,
 } from "../client/file-publication-client.js";
-import {resolveVerifiedProfileCredential} from "./cli-auth-commands.js";
 import {
-  readCliProfileState,
-  resolveCliProfile,
-  type CliProfile,
-} from "./cli-profile-store.js";
-import {runCliEffect} from "./run-cli-effect.js";
-import {createSystemCredentialStore} from "./system-credential-store.js";
+  authenticatedCliHttpClientLayer,
+  resolveCliServerConnection,
+  type CliServerConnection,
+} from "./cli-server-connection.js";
+import {resumePublicationOperation} from "./publication-operation-store.js";
 
 interface PublishOptions {
   readonly artifact?: string;
@@ -43,17 +39,6 @@ interface PublishOptions {
 export interface PublishCommandOptions {
   readonly defaultProfileDirectory: string;
 }
-
-interface PublicationConnection {
-  readonly apiToken: Redacted.Redacted;
-  readonly origin: string;
-  readonly profile?: CliProfile;
-}
-
-const bearerCredentialSchema = z.string()
-  .min(32)
-  .max(200)
-  .regex(/^[A-Za-z0-9._~-]+$/u);
 
 /** Add the file-first publication command to the Artifact Server CLI. */
 export function configurePublishCommand(
@@ -103,31 +88,43 @@ export function configurePublishCommand(
       ),
     )
     .action(async (inputPath: string, options: PublishOptions) => {
-      let connection = await resolvePublicationConnection(options);
-      const command = publicationCommand(inputPath, options);
-      let outcome = await executePublication(connection, command);
+      let connection = await resolveCliServerConnection(options, "publish");
+      const intent = publicationCommand(inputPath, options);
+      const prepared = await preparePublication(intent);
+      const operation = await resumePublicationOperation(
+        path.resolve(options.profileData),
+        connection.origin,
+        prepared.operationScopeDigest,
+        prepared.operationDigest,
+      );
+      let outcome = await executePublication(
+        connection,
+        operation.idempotencyKey,
+        prepared,
+      );
       if (
         !outcome.success
         && outcome.error._tag === "FilePublicationProtocolError"
         && outcome.error.status === 401
         && connection.profile?.authentication === "oauth"
       ) {
-        connection = await resolveProfileConnection(
-          path.resolve(options.profileData),
-          connection.profile,
-          true,
+        connection = await resolveCliServerConnection(options, "publish", true);
+        outcome = await executePublication(
+          connection,
+          operation.idempotencyKey,
+          prepared,
         );
-        outcome = await executePublication(connection, command);
       }
       if (!outcome.success) throw cliPublicationError(outcome.error);
       console.log(JSON.stringify(outcome.result, null, 2));
+      await operation.complete();
     });
 }
 
 function publicationCommand(
   inputPath: string,
   options: PublishOptions,
-): FilePublicationCommand {
+): FilePublicationIntent {
   const hasArtifact = options.artifact !== undefined;
   const hasExpectedVersion = options.expectedVersion !== undefined;
   if (hasArtifact !== hasExpectedVersion) {
@@ -136,12 +133,10 @@ function publicationCommand(
     );
   }
 
-  const idempotencyKey = randomBytes(24).toString("base64url");
-  const common: Omit<FilePublicationCommand, "entryPath" | "target"> =
+  const common: Omit<FilePublicationIntent, "entryPath" | "target"> =
     options.project === undefined
-      ? {idempotencyKey, inputPath, routingMode: options.routing}
+      ? {inputPath, routingMode: options.routing}
       : {
-        idempotencyKey,
         inputPath,
         projectId: options.project,
         routingMode: options.routing,
@@ -180,160 +175,41 @@ function publicationCommand(
   }, options.entry);
 }
 
-async function resolvePublicationConnection(
-  options: PublishOptions,
-): Promise<PublicationConnection> {
-  const explicitToken = await loadExplicitApiToken(options);
-  const dataDirectory = path.resolve(options.profileData);
-  if (explicitToken !== undefined) {
-    if (options.server === undefined) {
-      throw new Error(
-        "ARTIFACT_SERVER_API_TOKEN and --token-file require --server or ARTIFACT_SERVER_URL so the credential has one explicit destination.",
-      );
-    }
-    return {
-      apiToken: explicitToken,
-      origin: options.server,
-    };
-  }
-
-  if (options.profile !== undefined) {
-    const profile = options.server === undefined
-      ? await runCliEffect(resolveCliProfile(dataDirectory, {
-        name: options.profile,
-      }))
-      : await runCliEffect(resolveCliProfile(dataDirectory, {
-        name: options.profile,
-        origin: options.server,
-      }));
-    return resolveProfileConnection(dataDirectory, profile);
-  }
-
-  if (options.server !== undefined && !isLoopbackServer(options.server)) {
-    const profile = await runCliEffect(resolveCliProfile(dataDirectory, {
-      origin: options.server,
-    }));
-    return resolveProfileConnection(dataDirectory, profile);
-  }
-
-  if (options.server === undefined) {
-    const state = await runCliEffect(readCliProfileState(dataDirectory));
-    const defaultProfile = state.profiles.find(
-      (profile) => profile.id === state.defaultProfileId,
-    );
-    if (defaultProfile !== undefined) {
-      return resolveProfileConnection(dataDirectory, defaultProfile);
-    }
-  }
-
-  return {
-    apiToken: await loadLocalApiToken(options),
-    origin: options.server ?? "http://localhost:8787",
-  };
-}
-
-async function resolveProfileConnection(
-  dataDirectory: string,
-  profile: CliProfile,
-  forceRefresh = false,
-): Promise<PublicationConnection> {
-  const resolved = await runCliEffect(resolveVerifiedProfileCredential(
-    dataDirectory,
-    profile,
-    createSystemCredentialStore(),
-    forceRefresh,
-  ).pipe(Effect.provide(FetchHttpClient.layer)));
-  return {
-    apiToken: resolved.bearer,
-    origin: profile.origin,
-    profile,
-  };
-}
-
-async function loadExplicitApiToken(
-  options: PublishOptions,
-): Promise<Redacted.Redacted | undefined> {
-  const environmentToken = process.env["ARTIFACT_SERVER_API_TOKEN"];
-  if (options.tokenFile === undefined && environmentToken !== undefined) {
-    const parsed = bearerCredentialSchema.safeParse(environmentToken);
-    if (!parsed.success) {
-      throw new Error("ARTIFACT_SERVER_API_TOKEN is invalid.");
-    }
-    return Redacted.make(parsed.data, {label: "artifact-server-api-token"});
-  }
-  if (options.tokenFile === undefined) return undefined;
-
-  const tokenPath = path.resolve(options.tokenFile);
-  let candidate: string;
-  try {
-    candidate = (await readFile(tokenPath, "utf8")).trim();
-  } catch {
-    throw new Error(
-      `Artifact Server API token not found at ${tokenPath}.`,
-    );
-  }
-  const parsed = bearerCredentialSchema.safeParse(candidate);
-  if (!parsed.success) {
-    throw new Error(`The API token in ${tokenPath} is invalid.`);
-  }
-  return Redacted.make(parsed.data, {label: "artifact-server-api-token"});
-}
-
-async function loadLocalApiToken(
-  options: PublishOptions,
-): Promise<Redacted.Redacted> {
-  const tokenPath = path.resolve(
-    path.join(options.data, "local-api-token"),
-  );
-  let candidate: string;
-  try {
-    candidate = (await readFile(tokenPath, "utf8")).trim();
-  } catch {
-    throw new Error(
-      `Local Artifact Server API token not found at ${tokenPath}. Run artifactserver up or artifactserver start first.`,
-    );
-  }
-  const parsed = bearerCredentialSchema.safeParse(candidate);
-  if (!parsed.success) {
-    throw new Error(`The local API token in ${tokenPath} is invalid.`);
-  }
-  return Redacted.make(parsed.data, {label: "artifact-server-api-token"});
-}
-
 async function executePublication(
-  connection: PublicationConnection,
-  command: FilePublicationCommand,
+  connection: CliServerConnection,
+  idempotencyKey: string,
+  prepared: PreparedFilePublication,
 ): Promise<
   | {readonly error: FilePublicationFailure; readonly success: false}
   | {readonly result: FilePublicationResult; readonly success: true}
 > {
   return Effect.runPromise(
-    publishPath(
+    publishPreparedPath(
       {
         apiToken: connection.apiToken,
         serverOrigin: connection.origin,
       },
-      command,
+      idempotencyKey,
+      prepared,
     ).pipe(
       Effect.match({
         onFailure: (error) => ({error, success: false} as const),
         onSuccess: (result) => ({result, success: true} as const),
       }),
-      Effect.provide(FetchHttpClient.layer),
+      Effect.provide(authenticatedCliHttpClientLayer),
       Effect.provide(NodeFileSystem.layer),
     ),
   );
 }
 
-function isLoopbackServer(candidate: string): boolean {
-  try {
-    const hostname = new URL(candidate).hostname;
-    return hostname === "localhost"
-      || hostname === "127.0.0.1"
-      || hostname === "[::1]";
-  } catch {
-    return false;
-  }
+async function preparePublication(
+  intent: FilePublicationIntent,
+): Promise<PreparedFilePublication> {
+  return Effect.runPromise(
+    prepareFilePublication(intent).pipe(
+      Effect.provide(NodeFileSystem.layer),
+    ),
+  );
 }
 
 function collectTag(value: string, previous: readonly string[]): readonly string[] {
@@ -341,9 +217,9 @@ function collectTag(value: string, previous: readonly string[]): readonly string
 }
 
 function withEntryPath(
-  command: Omit<FilePublicationCommand, "entryPath">,
+  command: Omit<FilePublicationIntent, "entryPath">,
   entryPath: string | undefined,
-): FilePublicationCommand {
+): FilePublicationIntent {
   if (entryPath === undefined) return command;
   return {...command, entryPath};
 }

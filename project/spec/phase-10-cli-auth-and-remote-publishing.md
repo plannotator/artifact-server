@@ -120,6 +120,20 @@ decoding remain in that client. Output contains the project, artifact, exact
 version, and canonical browser links; it does not contain upload URLs, local
 paths, credentials, or retry state.
 
+Before the first upload request, the CLI writes a private pending-operation
+record under the user-local profile directory. The record binds one random
+idempotency key to the exact server origin, command scope, and prepared file
+manifest. It contains no credential, local path, or file byte. The CLI keeps
+the record when a request or response is lost and removes it only after it has
+printed the committed result.
+
+Running the same command after a process or network failure reuses the pending
+key. The server can therefore return the original commit result without
+creating another artifact or version, even when the CLI must create a new
+staging upload. If the source bytes or effective publication target changed
+while that operation is pending, the CLI fails closed and tells the user to
+restore the original input. It does not silently start a second publication.
+
 ## Implementation boundaries
 
 - `cli-profile-store` owns only non-secret profile metadata and atomic files.

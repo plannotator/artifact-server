@@ -10,7 +10,7 @@ import {
   maximumQuotedSelectionCharacters,
   renderBundleMessage,
   resolveBridgeCredentials,
-} from "../../integrations/pi/bridge-core.js";
+} from "../../integrations/bridge-core/index.js";
 
 const emptyEnvironment = {
   agentDisplayName: undefined,

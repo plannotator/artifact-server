@@ -147,6 +147,15 @@ An account-required site must authorize its HTML and every relative asset withou
 
 Private responses are not stored in a shared CDN cache in the first release. The current public version may use immutable CDN caching.
 
+The embedded Review viewer does not rely on this top-level cookie. For a private
+or historical multi-file version, the authenticated application issues a
+short-lived preview lease bound to the exact project, artifact, version, and
+viewer. The opaque lease is carried in a dedicated content hostname and permits
+only read requests for paths in that immutable version. Review injects that
+origin as the document base, so relative assets load without exposing an
+application session or granting cross-version access. Raw links continue to use
+the bootstrap and content-cookie flow above.
+
 Publishing a new current version or changing a public artifact back to account required stops new unauthenticated origin requests to the previous public version and purges supported CDN caches. It cannot revoke bytes that someone already downloaded or copied while the version was public. The interface must say this before making an artifact public.
 
 ## Browser security contract
@@ -532,7 +541,7 @@ Every applicable release must prove:
 
 These items can change implementation cost or hosting viability and must be resolved before their named release:
 
-1. **Private multi-file delivery:** current tests exercise bootstrap tokens and version-scoped content cookies, but the complete supported-browser and per-deployment `GATE-001` matrix remains open.
+1. **Private multi-file delivery:** top-level bootstrap tokens and version-scoped content cookies have focused tests. Exact-version Review leases and the complete supported-browser and per-deployment `GATE-001` matrix remain open until their recorded qualification completes.
 2. **Wildcard content hosts:** local `*.localhost` behavior and a real Cloudflare wildcard TLS probe have evidence. Equivalent DNS, certificate, proxy, and hostile-host proof remains open for each deployment before support is advertised.
 3. **Hosted database growth:** load-test D1 and choose the control-plane and second-shard design before hosted scale requires it.
 4. **Cloudflare Artifacts:** complete the live binding, REST, smart-HTTP, token, backfill, disable, deletion, recovery, limits, and cost probes before advertising the off-by-default provider. The core product remains supported without access.

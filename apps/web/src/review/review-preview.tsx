@@ -16,6 +16,7 @@ import {
 } from "@/review-frame/protocol";
 
 interface PreviewDocument {
+  readonly baseHref: string;
   readonly entryPath: string;
   readonly html: string;
 }
@@ -38,7 +39,6 @@ export function ReviewPreview({
   annotations,
   artifactId,
   artifactName,
-  baseHref,
   isLight,
   onOpenRawArtifact,
   onAnnotateModeChange,
@@ -56,7 +56,6 @@ export function ReviewPreview({
   readonly annotations: readonly ReviewAnnotation[];
   readonly artifactId: string;
   readonly artifactName: string;
-  readonly baseHref: string | null;
   readonly isLight: boolean;
   readonly onOpenRawArtifact: () => void;
   readonly onAnnotateModeChange: (active: boolean) => void;
@@ -114,7 +113,6 @@ export function ReviewPreview({
         annotateModeActive={annotateModeActive}
         annotations={annotations}
         artifactId={artifactId}
-        baseHref={baseHref}
         entry={entry}
         isLight={isLight}
         key={identity}
@@ -192,7 +190,6 @@ function HtmlPreview({
   annotateModeActive,
   annotations,
   artifactId,
-  baseHref,
   entry,
   isLight,
   onAnnotateModeChange,
@@ -208,7 +205,6 @@ function HtmlPreview({
   readonly annotateModeActive: boolean;
   readonly annotations: readonly ReviewAnnotation[];
   readonly artifactId: string;
-  readonly baseHref: string | null;
   readonly entry: PreviewEntry;
   readonly isLight: boolean;
   readonly onAnnotateModeChange: (active: boolean) => void;
@@ -241,13 +237,29 @@ function HtmlPreview({
     let current = true;
     void (async () => {
       try {
-        const html = await api.versionFile(
-          projectId,
-          artifactId,
-          version.version.id,
-          entry.path,
-        );
-        if (current) setPreviewDocument({entryPath: entry.path, html});
+        const [html, resolvedBase] = await Promise.all([
+          api.versionFile(
+            projectId,
+            artifactId,
+            version.version.id,
+            entry.path,
+          ),
+          api.previewLease(projectId, artifactId, version.version.id).then(
+            (lease) => {
+              if (lease.versionId !== version.version.id) {
+                throw new Error("The preview lease resolved a different version.");
+              }
+              return lease.baseUrl;
+            },
+          ),
+        ]);
+        if (current) {
+          setPreviewDocument({
+            baseHref: documentBaseUrl(resolvedBase, entry.path),
+            entryPath: entry.path,
+            html,
+          });
+        }
       } catch (cause) {
         if (!current) return;
         setError(
@@ -314,7 +326,7 @@ function HtmlPreview({
     postToFrame({
       annotateModeActive,
       annotations: [...annotations],
-      baseHref,
+      baseHref: previewDocument.baseHref,
       entryPath: previewDocument.entryPath,
       html: previewDocument.html,
       isLight,
@@ -323,7 +335,7 @@ function HtmlPreview({
       type: "as-review-init",
       v: reviewProtocolVersion,
     });
-  }, [annotateModeActive, annotations, baseHref, frameReady, isLight, postToFrame, previewDocument, readOnly]);
+  }, [annotateModeActive, annotations, frameReady, isLight, postToFrame, previewDocument, readOnly]);
 
   useEffect(() => {
     if (!initialisedRef.current) return;
@@ -380,6 +392,14 @@ function HtmlPreview({
       title={`${version.version.artifactId} version ${version.version.number}`}
     />
   );
+}
+
+function documentBaseUrl(versionBaseUrl: string, entryPath: string): string {
+  const entryUrl = new URL(
+    entryPath.split("/").map(encodeURIComponent).join("/"),
+    versionBaseUrl,
+  );
+  return new URL(".", entryUrl).toString();
 }
 
 function NativeMediaPreview({

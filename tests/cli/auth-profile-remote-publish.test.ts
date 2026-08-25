@@ -4,6 +4,7 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   stat,
@@ -55,6 +56,89 @@ afterEach(async () => {
 });
 
 describe("authenticated CLI profiles and remote publication", () => {
+  test("CLI-003-B CLI-003-F: resumes a lost commit response across CLI process restarts", async () => {
+    const temporaryDirectory = await mkdtemp(
+      path.join(tmpdir(), "artifact-server-cli-publication-recovery-"),
+    );
+    const serverData = path.join(temporaryDirectory, "server");
+    const profileData = path.join(temporaryDirectory, "profiles");
+    const fixture = path.join(temporaryDirectory, "report.html");
+    await writeFile(fixture, "<h1>Recover this exact publication</h1>");
+    const port = await availablePort();
+    const server = startServer(serverData, port);
+    let proxy: LostCommitResponseProxy | null = null;
+    try {
+      await waitForReady(server, port);
+      const token = (await readFile(
+        path.join(serverData, "local-api-token"),
+        "utf8",
+      )).trim();
+      const serverOrigin = `http://127.0.0.1:${port}`;
+      proxy = await startLostCommitResponseProxy(serverOrigin);
+      const environment = {
+        ...process.env,
+        ARTIFACT_SERVER_API_TOKEN: token,
+        ARTIFACT_SERVER_URL: proxy.origin,
+      };
+      const publicationArguments = [
+        "publish",
+        fixture,
+        "--name",
+        "Recoverable report",
+        "--profile-data",
+        profileData,
+        "--public",
+      ];
+
+      const lost = await runCli(publicationArguments, environment);
+      expect(proxy.errors()).toEqual([]);
+      expect(lost.exitCode).not.toBe(0);
+      expect(lost.stderr).toContain("Artifact Server could not be reached");
+      expect(proxy.droppedResponses()).toBe(1);
+      const operationDirectory = path.join(profileData, "publication-operations");
+      const pendingOperations = await readdir(operationDirectory);
+      expect(pendingOperations).toHaveLength(1);
+      const pendingOperation = pendingOperations[0];
+      expect(pendingOperation).toBeDefined();
+      expect((await stat(path.join(
+        operationDirectory,
+        pendingOperation ?? "missing",
+      ))).mode & 0o777).toBe(0o600);
+      expect((await stat(operationDirectory)).mode & 0o777).toBe(0o700);
+
+      await writeFile(fixture, "<h1>This is a different publication</h1>");
+      const changedInput = await runCli(publicationArguments, environment);
+      expect(changedInput.exitCode).not.toBe(0);
+      expect(changedInput.stderr).toContain(
+        "input changed while an earlier attempt is still pending",
+      );
+      expect(await readdir(operationDirectory)).toHaveLength(1);
+      await writeFile(fixture, "<h1>Recover this exact publication</h1>");
+
+      const recovered = await runCli(publicationArguments, environment);
+      expect({exitCode: recovered.exitCode, stderr: recovered.stderr}).toEqual({
+        exitCode: 0,
+        stderr: "",
+      });
+      expect(publicationSchema.extend({replayed: z.literal(true)}).parse(
+        JSON.parse(recovered.stdout),
+      ).version.number).toBe(1);
+      expect(await readdir(operationDirectory)).toHaveLength(0);
+
+      const listed = await fetch(`${serverOrigin}/api/v1/artifacts?limit=100`, {
+        headers: {Authorization: `Bearer ${token}`},
+      });
+      expect(listed.status).toBe(200);
+      expect(z.object({artifacts: z.array(z.unknown())}).parse(
+        await listed.json(),
+      ).artifacts).toHaveLength(1);
+    } finally {
+      if (proxy !== null) await proxy.stop();
+      await stopProcess(server);
+      await rm(temporaryDirectory, {force: true, recursive: true});
+    }
+  }, 30_000);
+
   test("CLI-002-B PUB-012-B: stores a verified profile outside the project and publishes through it after restart", async () => {
     const temporaryDirectory = await mkdtemp(
       path.join(tmpdir(), "artifact-server-cli-profile-"),
@@ -427,6 +511,89 @@ interface ProcessResult {
   readonly exitCode: number;
   readonly stderr: string;
   readonly stdout: string;
+}
+
+interface LostCommitResponseProxy {
+  readonly origin: string;
+  droppedResponses(): number;
+  errors(): readonly string[];
+  stop(): Promise<void>;
+}
+
+async function startLostCommitResponseProxy(
+  upstreamOrigin: string,
+): Promise<LostCommitResponseProxy> {
+  let origin = "";
+  let droppedResponses = 0;
+  const errors: string[] = [];
+  const server = createHttpServer(async (request, response) => {
+    try {
+      const target = new URL(request.url ?? "/", upstreamOrigin);
+      const requestBody = await readTextBody(request);
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(request.headers)) {
+        if (
+          value === undefined
+          || name === "host"
+          || name === "connection"
+          || name === "content-length"
+          || name === "transfer-encoding"
+        ) continue;
+        headers.set(name, Array.isArray(value) ? value.join(", ") : value);
+      }
+      const requestInit: RequestInit = requestBody.length === 0
+        ? {headers, method: request.method ?? "GET"}
+        : {body: requestBody, headers, method: request.method ?? "GET"};
+      const upstream = await fetch(target, requestInit);
+      const body = await upstream.text();
+      if (
+        request.method === "POST"
+        && target.pathname.endsWith("/commit")
+        && droppedResponses === 0
+      ) {
+        droppedResponses += 1;
+        response.destroy();
+        return;
+      }
+      let responseBody = body;
+      if (request.method === "POST" && target.pathname === "/api/v1/uploads") {
+        const decoded = z.object({
+          commitUrl: z.url(),
+          files: z.array(z.object({uploadUrl: z.url()}).passthrough()),
+        }).passthrough().parse(JSON.parse(body));
+        responseBody = JSON.stringify({
+          ...decoded,
+          commitUrl: replaceOrigin(decoded.commitUrl, origin),
+          files: decoded.files.map((file) => Object.assign({}, file, {
+            uploadUrl: replaceOrigin(file.uploadUrl, origin),
+          })),
+        });
+      }
+      response.writeHead(upstream.status, {"Content-Type": "application/json"});
+      response.end(responseBody);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : "Proxy failure");
+      response.writeHead(502, {"Content-Type": "text/plain"});
+      response.end(error instanceof Error ? error.message : "Proxy failure");
+    }
+  });
+  await listenHttp(server);
+  const address = assignedAddressSchema.parse(server.address());
+  origin = `http://127.0.0.1:${address.port}`;
+  return {
+    droppedResponses: () => droppedResponses,
+    errors: () => errors,
+    origin,
+    stop: () => closeHttp(server),
+  };
+}
+
+function replaceOrigin(value: string, origin: string): string {
+  const url = new URL(value);
+  const replacement = new URL(origin);
+  url.protocol = replacement.protocol;
+  url.host = replacement.host;
+  return url.toString();
 }
 
 function runCli(

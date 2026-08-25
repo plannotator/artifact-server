@@ -1,6 +1,6 @@
 version: 1
 product: Artifact Server
-updated: "2026-08-23"
+updated: "2026-08-25"
 evidence_root: "../.."
 
 source:
@@ -72,6 +72,8 @@ allowed_modules:
   - agent-skills
   - artifact-comments
   - agent-dispatch
+  - agent-bridge
+  - agent-presence
   - local-workspace
   - kanban
   - plannotator-integration
@@ -348,6 +350,49 @@ requirements:
         run: project/evidence/local-foundation.json
         recorded_at: "2026-08-17T03:17:21.421Z"
 
+  - id: ART-009
+    kind: behavior
+    behavior: Project artifact search runs before pagination and returns artifacts whose normalized name contains the normalized search text or whose tags contain that exact normalized text, while a Review keeps its exact selected preview when it is outside the result set.
+    owner: artifact-core
+    source: {file: artifact-server-product-spec.html, anchor: artifact}
+    acceptance:
+      behavior: {id: ART-009-B, description: "Search a project by case- and whitespace-normalized artifact-name substring and exact normalized tag, including an artifact absent from the loaded catalog page, while the selected Review preview remains unchanged."}
+      failure: {id: ART-009-F, description: "A partial tag, another project, or a nonmatching name is not returned, and an empty result cannot replace the selected Review artifact or version."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local HTTP and browser evidence proves project-wide search and preview preservation. Equivalent evidence for each team deployment remains unrecorded.
+    depends_on: [ART-002, ART-008, PRJ-002]
+    evidence:
+      - deployment: local
+        tests: [ART-009-B, ART-009-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-25T19:14:39.424Z"
+      - deployment: local
+        tests: [ART-009-B, ART-009-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-25T19:16:53.330Z"
+
+  - id: ART-010
+    kind: behavior
+    behavior: Review offers a confirmed Make current action for a historical version, submits the expected current-version ID, reports conflicts without moving the pointer, and keeps the reviewer on the exact selected version after success or conflict.
+    owner: artifact-core
+    source: {file: artifact-server-product-spec.html, anchor: artifact}
+    acceptance:
+      behavior: {id: ART-010-B, description: "Confirm Make current for a historical version, observe only the current pointer move, and remain on the exact historical Review URL and preview."}
+      failure: {id: ART-010-F, description: "Publish concurrently after confirmation opens; Make current fails with a conflict, refreshes pointer state, and neither changes the concurrent current version nor navigates the reviewer."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local browser evidence proves conflict-safe Make current behavior and exact Review preservation. Equivalent evidence for each team deployment remains unrecorded.
+    depends_on: [ART-004, ART-005, CMT-016]
+    evidence:
+      - deployment: local
+        tests: [ART-010-B, ART-010-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-25T19:16:53.330Z"
+
   - id: MAN-001
     kind: behavior
     behavior: A canonical manifest contains a sorted list of normalized paths, fingerprints, sizes, media types, disposition, entry file, routing mode, and serving metadata.
@@ -383,7 +428,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: artifact}
     acceptance:
       behavior: {id: MAN-003-B, description: "Publish nested portable paths and serve every file only at its normalized manifest location."}
-      failure: {id: MAN-003-F, description: "Reject absolute paths, dot segments, empty segments, backslashes, NUL bytes, .git components, and encoded separators."}
+      failure: {id: MAN-003-F, description: "Reject absolute paths, dot segments, empty segments, backslashes, NUL bytes, .git components, reserved .artifactserver metadata components, and encoded separators."}
     deployments: *all
     status: behavior_verified
     depends_on: []
@@ -674,10 +719,20 @@ requirements:
       behavior: {id: PUB-013-B, description: "Publish through HTTP, CLI, and MCP, receive the same three link roles, open the review URL directly in the exact version's full-screen Review, and observe MCP text and instructions leading with that review URL."}
       failure: {id: PUB-013-F, description: "A review URL cannot follow the moving current pointer, omit focus view, contain a bootstrap token or credential, replace the immutable raw URL, or leave an agent to infer which link to share first."}
     deployments: *all
-    status: implementing
-    proof_gap: Focused local HTTP, CLI, MCP, and browser checks are being added; deployment evidence has not yet been recorded for every target.
-    depends_on: [PUB-002, VER-001, MCP-003, CMT-015]
-    evidence: []
+    status: behavior_verified
+    proof_gap: Local HTTP, CLI, MCP, and browser checks pass. Equivalent publication and handoff evidence has not yet been recorded for every team deployment.
+    depends_on: [PUB-002, VER-001, MCP-003]
+    evidence:
+      - deployment: local
+        tests: [PUB-013-B, PUB-013-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-25T17:51:55.551Z"
+      - deployment: local
+        tests: [PUB-013-B, PUB-013-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-25T17:52:50.473Z"
 
   - id: CLI-001
     kind: security
@@ -710,6 +765,25 @@ requirements:
         result: pass
         run: project/evidence/local-foundation.json
         recorded_at: "2026-08-17T03:17:21.421Z"
+
+  - id: CLI-003
+    kind: behavior
+    behavior: artifactserver publish persists one private operation identity before network mutation, reuses it after lost responses and process restarts, and reconciles the original commit result without creating a duplicate artifact or version.
+    owner: cli
+    source: {file: phase-10-cli-auth-and-remote-publishing.md, anchor: publication-path}
+    acceptance:
+      behavior: {id: CLI-003-B, description: "Commit a publication, lose the response, restart the CLI process, retry the same command, receive the replayed original result, and observe exactly one artifact and version."}
+      failure: {id: CLI-003-F, description: "A changed input or target, corrupt pending record, concurrent operation, or different server cannot reuse or replace a pending identity and cannot create a duplicate while the earlier result is unresolved."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local real-process and real-HTTP proof covers a dropped commit response, restart recovery, changed-input refusal, and duplicate prevention. Equivalent recovery evidence is not yet attached for every team deployment.
+    depends_on: [CLI-002, PUB-006, PUB-008]
+    evidence:
+      - deployment: local
+        tests: [CLI-003-B, CLI-003-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-25T18:29:58.000Z"
 
   - id: AUD-001
     kind: security
@@ -989,7 +1063,8 @@ requirements:
       behavior: {id: GIT-001-B, description: "Run with the provider variable absent and set to off; observe the disabled capability shape, identical artifact behavior, and no Git implementation load or provider request."}
       failure: {id: GIT-001-F, description: "Missing, invalid, or inaccessible optional Git configuration cannot prevent the server from starting, publishing, opening, or comparing, and cannot trigger automatic provider selection."}
     deployments: *all
-    status: specified
+    status: implementing
+    proof_gap: Provider-off behavior, explicit configuration, and fail-open application startup are implemented for Node and Workers runtimes. The complete no-load/no-call and malformed-configuration acceptance matrix across every deployment remains unproved.
     depends_on: [DIF-001]
     evidence: []
 
@@ -1002,7 +1077,8 @@ requirements:
       behavior: {id: GIT-002-B, description: "Publish with Git enabled and confirm the browser link works before or independently of the recorded Git commit."}
       failure: {id: GIT-002-F, description: "Retry and worker failures cannot create conflicting version-to-commit mappings or change the primary version."}
     deployments: *all
-    status: specified
+    status: implementing
+    proof_gap: SQLite, Postgres, and D1 atomically enqueue provider-neutral mirror jobs after primary publication, and deterministic mapping adoption prevents duplicate version commits across retries and restarts. Concurrent multi-worker convergence and the complete cross-deployment persistence matrix remain unproved.
     depends_on: [PUB-005]
     evidence: []
 
@@ -1015,7 +1091,8 @@ requirements:
       behavior: {id: GIT-003-B, description: "Disable the configured Git provider during publish and confirm the version opens and the copy can retry later."}
       failure: {id: GIT-003-F, description: "Git errors cannot roll back or corrupt the committed database and blob records."}
     deployments: *all
-    status: specified
+    status: implementing
+    proof_gap: Provider failures and logical budget exhaustion are isolated from primary publication and delivery, with durable retry and restart recovery proved on the local runtime. Sustained outage, database rollback, and all-deployment hostile recovery remain unproved.
     depends_on: [GIT-002]
     evidence: []
 
@@ -1028,7 +1105,8 @@ requirements:
       behavior: {id: GIT-004-B, description: "Publish above and below the configured per-file and per-version Git copy limits and verify deterministic copied-file and pointer representation across a retry and configuration change."}
       failure: {id: GIT-004-F, description: "Excluded bytes cannot be silently omitted without path, media type, size, and fingerprint metadata, and a retry cannot change a commit because current limits differ from the job snapshot."}
     deployments: *all
-    status: specified
+    status: implementing
+    proof_gap: Mirror jobs snapshot copy limits, produce deterministic copied files and pointer metadata, and preserve the representation across a retry. Configuration changes after enqueue, maximum manifest size, and full adapter coverage remain unproved.
     depends_on: [GIT-002]
     evidence: []
 
@@ -1041,7 +1119,8 @@ requirements:
       behavior: {id: GIT-005-B, description: "Make an artifact public and confirm that only its current content path is available without authentication."}
       failure: {id: GIT-005-F, description: "Probe Git protocols, repository paths, commit IDs, and earlier versions from a public session and receive no access."}
     deployments: *all
-    status: specified
+    status: implementing
+    proof_gap: Authenticated, short-lived clone credentials are scoped to one provisioned repository and public-link sessions are rejected. The complete Git-protocol, timing, log-redaction, and earlier-version probe matrix remains unproved.
     depends_on: [GIT-001, AUTH-004]
     evidence: []
 
@@ -1054,7 +1133,8 @@ requirements:
       behavior: {id: GIT-006-B, description: "Run the Git provider conformance suite against every advertised provider for its deployment."}
       failure: {id: GIT-006-F, description: "A deployment cannot advertise optional Git until its provider passes persistence, retry, upgrade, backup, and isolation tests."}
     deployments: *all
-    status: specified
+    status: implementing
+    proof_gap: Cloudflare Artifacts is the only accepted provider, and both the Node REST and remote Workers-binding paths passed isolated live creation, deterministic commit, token, smart-HTTP, read, and cleanup qualification. Upgrade, backup, and the complete common provider suite remain unproved.
     depends_on: [GIT-003]
     evidence: []
 
@@ -1067,7 +1147,8 @@ requirements:
       behavior: {id: GIT-007-B, description: "Record verified Cloudflare Artifacts behavior and pass the optional Git provider suite without making it authoritative."}
       failure: {id: GIT-007-F, description: "Every deployment remains complete and supported with Cloudflare Artifacts disabled or unavailable."}
     deployments: *all
-    status: specified
+    status: implementing
+    proof_gap: The provider remains explicit, private, off by default, and non-authoritative; checked-in evidence records successful isolated REST and Workers-binding qualification. Pricing, retention, regional behavior, sustained outage recovery, and Cloudflare production-support posture remain operator considerations rather than fully proved release evidence.
     depends_on: [GIT-006]
     evidence: []
 
@@ -1080,7 +1161,8 @@ requirements:
       behavior: {id: GIT-008-B, description: "Enable one project after several versions exist and observe complete ordered repository history while new publishes continue and an unselected project remains untouched."}
       failure: {id: GIT-008-F, description: "Crash and restart project reconciliation and race it with a new publish without losing a version, duplicating a commit mapping, exhausting foreground work, copying another project, or changing primary data."}
     deployments: *all
-    status: specified
+    status: implementing
+    proof_gap: Project enablement inserts bounded oldest-first jobs for existing versions, leaves other projects untouched, and resumes a failed mirror after restart without a duplicate mapping. Crash timing, foreground-work bounds, and complete SQLite/Postgres/D1 concurrency coverage remain unproved.
     depends_on: [GIT-002, GIT-007]
     evidence: []
 
@@ -1093,7 +1175,8 @@ requirements:
       behavior: {id: GIT-009-B, description: "Disable one project during backfill and the provider while idle, publish and delete while off, verify applicable calls stop and durable state remains, then re-enable the same project and provider and complete missing mirror and deletion work without duplicate commits."}
       failure: {id: GIT-009-F, description: "A policy or configuration change cannot silently delete remote repositories, discard queued deletion work, or write persisted coordinates through a different provider, account, or namespace; an unsupported replacement reports migration-required while core behavior continues."}
     deployments: *all
-    status: specified
+    status: implementing
+    proof_gap: Project disablement preserves repositories and durable mappings, same-provider re-enable resumes work, artifact deletion queues repository deletion, and provider identity changes fail as migration-required. Provider-wide disablement during deletion and the complete cross-deployment lifecycle matrix remain unproved.
     depends_on: [GIT-008]
     evidence: []
 
@@ -1107,7 +1190,7 @@ requirements:
       failure: {id: GIT-010-F, description: "Provider credentials, credential-bearing remotes, queue internals, or raw provider errors cannot appear in capability output, and no optional Git state can make readiness fail."}
     deployments: *all
     status: implementing
-    proof_gap: Node configuration, durable SQLite/Postgres provider identity, and a read-only REST probe now drive secret-free disabled, checking, available, degraded, misconfigured, and migration-required discovery through authenticated HTTP and MCP without joining readiness. Project states, D1/Workers binding composition, sustained provider qualification, and the complete cross-deployment acceptance remain unproved.
+    proof_gap: Node and Workers runtimes expose secret-free provider and project states through authenticated HTTP and MCP without joining readiness; SQLite, Postgres, and D1 persist provider identity, and both Cloudflare control planes passed live qualification. The complete state-transition, redaction, and cross-deployment readiness matrix remains unproved.
     depends_on: [GIT-001, GIT-003]
     evidence: []
 
@@ -1120,7 +1203,8 @@ requirements:
       behavior: {id: GIT-011-B, description: "Plan with no provider writes, apply with exact installation confirmation, interrupt the purge, and resume until every persisted repository is confirmed absent."}
       failure: {id: GIT-011-F, description: "Reject a wrong confirmation or mismatched provider, never expose a purge through HTTP or MCP, and never delete primary artifacts, versions, blobs, backups, or the Cloudflare namespace."}
     deployments: *all
-    status: specified
+    status: implementing
+    proof_gap: Compact and external-storage operator commands provide read-only plans, exact installation and provider confirmation, bounded resumable deletion, and focused proof that planning makes no provider call and a partial purge resumes. The transient D1 operator path is typechecked but has not run against a dedicated live qualification database, and complete primary-data and backup invariance remain unproved.
     depends_on: [GIT-006, GIT-009]
     evidence: []
 
@@ -1134,7 +1218,7 @@ requirements:
       failure: {id: GIT-012-F, description: "A missing estimate confirmation, unconfigured or invalid provider, unauthorized caller, project request, path, hostname, or ambient credential cannot enable a project or change another project's setting."}
     deployments: *all
     status: implementing
-    proof_gap: SQLite, Postgres, and D1 carry the durable off-by-default project setting and on-demand estimate, with authorized, naturally idempotent HTTP/MCP operations and browser controls. Bounded backfill, provider mirroring, and complete cross-deployment proof remain unproved.
+    proof_gap: The real project setting, estimate confirmation, repository mirroring, and disablement are implemented through the Projects UI, authenticated HTTP, and MCP over SQLite, Postgres, and D1. The complete authorization, natural-idempotency, hostile-input, and cross-deployment parity matrix remains unproved.
     depends_on: [GIT-001, GIT-008, AUTH-001, PRD-004, MCP-008, MCP-009]
     evidence: []
 
@@ -1148,7 +1232,7 @@ requirements:
       failure: {id: GIT-013-F, description: "A request-selected namespace, changed persisted location, wrong namespace prefix, missing opt-in, exceeded test bound, failed teardown, or cleanup manifest cannot cause writes or deletion in another namespace, another run, or the account at large."}
     deployments: *all
     status: implementing
-    proof_gap: Node SQLite/Postgres runtimes persist and compare a namespace-scoped provider identity before later probes, but D1/Workers binding identity, repository-coordinate enforcement, bounded live-test run manifests, cleanup recovery, and the full isolation acceptance remain unproved.
+    proof_gap: SQLite, Postgres, and D1 persist immutable provider identity; both provider adapters are namespace scoped; and bounded REST and Workers-binding runs used unique repository prefixes and left the dedicated qualification namespace empty without deleting it. Wrong-prefix refusal, interrupted live cleanup recovery, and the complete isolation matrix remain unproved.
     depends_on: [GIT-006, GIT-009, GIT-011]
     evidence: []
 
@@ -1162,7 +1246,7 @@ requirements:
       failure: {id: GIT-014-F, description: "Concurrent workers, retries, a lowered budget, provider pricing drift, or a hard provider limit cannot silently exceed configured logical capacity, rewrite mapped commits, block readiness, or change a saved primary version."}
     deployments: *all
     status: implementing
-    proof_gap: Node configuration exposes deterministic per-file, per-version, and optional storage-budget bounds, and SQLite, Postgres, and D1 compute the project planning estimate. Exact worker copy selection, atomic reservations, budget accounting, and recovery remain unproved.
+    proof_gap: SQLite, Postgres, and D1 compute planning estimates, snapshot deterministic copy bounds, atomically reserve logical copied bytes, expose budget-limited, and can resume after an explicit budget increase. Multi-worker race proof, lowered-budget behavior, provider-pricing drift, and complete deployment coverage remain unproved.
     depends_on: [GIT-004, GIT-012]
     evidence: []
 
@@ -1951,6 +2035,25 @@ requirements:
     depends_on: [MCP-016, MCP-017, MCP-018]
     evidence: []
 
+  - id: MCP-020
+    kind: security
+    behavior: Local MCP connect and disconnect preflight client and private registration state, journal every intended client change before mutation, resume forward or roll back after interruption, and refuse to overwrite independently changed client configuration.
+    owner: mcp
+    source: {file: artifact-server-mcp-baseline.md, anchor: transactional-client-onboarding}
+    acceptance:
+      behavior: {id: MCP-020-B, description: "Interrupt onboarding after the client mutation, restart the process, resume from the private journal, and finish with one exact client registration and no pending journal."}
+      failure: {id: MCP-020-F, description: "A failed client mutation rolls back cleanly, while an independently changed client or private registration state is preserved, blocks recovery, and retains the journal without being overwritten."}
+    deployments: [local]
+    status: behavior_verified
+    proof_gap: Real-process adapter proof covers native-client interruption, rollback, and conflict preservation. Current released Codex, Claude Code, Cursor, and VS Code host versions still require the full MCP-016 and MCP-019 qualification matrix.
+    depends_on: [MCP-016, MCP-019]
+    evidence:
+      - deployment: local
+        tests: [MCP-020-B, MCP-020-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-25T18:29:58.000Z"
+
   - id: SKL-001
     kind: behavior
     behavior: Artifact Server ships one portable artifact-server skill that routes routine artifact work and explicit server-operation work to separate internal references.
@@ -2304,6 +2407,87 @@ requirements:
         run: project/evidence/browser.json
         recorded_at: "2026-08-23T23:50:31.798Z"
 
+  - id: CMT-016
+    kind: behavior
+    behavior: A Review URL resolves its named project, artifact, and version directly, independent of catalog pagination, and preserves that exact identity through loading, refresh, and browser history.
+    owner: artifact-comments
+    source: {file: artifact-comments-spec.md, anchor: review-route-resolution}
+    acceptance:
+      behavior: {id: CMT-016-B, description: "Open an exact Review URL for an artifact beyond the first catalog page and for one historical version, and observe the named artifact and version after initial load, refresh, and browser history navigation."}
+      failure: {id: CMT-016-F, description: "An unknown, deleted, foreign-project, or mismatched artifact or version produces an explicit unavailable state and never selects the first loaded artifact, the current version, or another project as a fallback."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local browser evidence proves direct current and historical resolution, refresh and history preservation, and explicit failure without fallback. Equivalent evidence is not yet recorded for every team deployment.
+    depends_on: [ART-002, VER-001, CMT-015]
+    evidence:
+      - deployment: local
+        tests: [CMT-016-B, CMT-016-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-25T17:52:50.473Z"
+
+  - id: CMT-017
+    kind: behavior
+    behavior: Review sharing leads with the exact selected full-screen Review URL, including the selected immutable version and valid selected file path, while the moving latest link and immutable raw link remain explicitly secondary.
+    owner: artifact-comments
+    source: {file: artifact-comments-spec.md, anchor: exact-version-sharing}
+    acceptance:
+      behavior: {id: CMT-017-B, description: "Share a current version, a historical version, and a selected nested file; the primary copied link and agent prompt preserve the exact version, focus view, and valid file path, while Latest and Raw are labeled secondary links."}
+      failure: {id: CMT-017-F, description: "Sharing cannot silently substitute the current version, omit a selected valid path, label a moving link as exact, expose a bootstrap credential, or enable Share while the selected version is unresolved."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local browser evidence proves exact-version-first sharing for current, historical, and nested-file selections. Equivalent evidence is not yet recorded for every team deployment.
+    depends_on: [CMT-016, PUB-013, VER-001]
+    evidence:
+      - deployment: local
+        tests: [CMT-017-B, CMT-017-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-25T17:52:50.473Z"
+
+  - id: CMT-018
+    kind: security
+    behavior: The sandboxed Review viewer loads relative and root-relative files for a private or historical multi-file version through a short-lived read-only preview lease bound to that exact version, without receiving an application credential or weakening raw-content sessions.
+    owner: artifact-comments
+    source: {file: artifact-comments-spec.md, anchor: private-multi-file-review}
+    acceptance:
+      behavior: {id: CMT-018-B, description: "Review private current and historical HTML whose nested entry loads relative CSS, JavaScript, images, fonts, module imports, and same-version fetches; every request stays on the leased exact-version content origin in supported browsers and local and team deployments."}
+      failure: {id: CMT-018-F, description: "A missing, expired, forged, cross-version, cross-artifact, non-manifest, mutating, or application-origin lease request fails closed; artifact JavaScript receives no application cookie, API credential, reusable cross-version authority, or access to another version's bytes."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local browser and service evidence proves exact-version private historical rendering and lease rejection. The complete supported-browser and per-team-deployment matrix remains unrecorded.
+    depends_on: [AUTH-015, CMT-014, CNT-005, SEC-001]
+    evidence:
+      - deployment: local
+        tests: [CMT-018-B, CMT-018-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-25T17:51:55.551Z"
+      - deployment: local
+        tests: [CMT-018-B, CMT-018-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-25T17:52:50.473Z"
+
+  - id: CMT-019
+    kind: behavior
+    behavior: Canonical Review displays each complete root-and-reply conversation and supports creating, editing, and deleting replies through the existing reply, authorship, resolution, and polling contracts.
+    owner: artifact-comments
+    source: {file: artifact-comments-spec.md, anchor: complete-review-conversations}
+    acceptance:
+      behavior: {id: CMT-019-B, description: "Open Review on a thread with an existing reply, see the reply without expansion, then create, edit, and delete a reply and observe the complete updated conversation."}
+      failure: {id: CMT-019-F, description: "Resolved threads cannot offer reply creation, another author's reply cannot offer unauthorized editing, and reload or polling cannot show a reply count without the stored replies."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local browser evidence proves complete Review conversations and reply mutation behavior. Equivalent evidence for each team deployment remains unrecorded.
+    depends_on: [CMT-004, CMT-005, CMT-008, CMT-012, CMT-016]
+    evidence:
+      - deployment: local
+        tests: [CMT-019-B, CMT-019-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-25T19:16:53.330Z"
+
   - id: DSP-001
     kind: behavior
     behavior: An agent registers itself with one upsert on its connection key within its own principal, listing derives whether it is connected from its claim polling, and a stale agent row is removed without touching dispatch history.
@@ -2519,6 +2703,173 @@ requirements:
         result: pass
         run: project/evidence/local-foundation.json
         recorded_at: "2026-08-18T20:30:21.763Z"
+
+  - id: BRP-001
+    kind: behavior
+    behavior: The extracted bridge core is host-agnostic. It drives a fake host through register, claim, deliver, reply, and resolve against a real server, and its module graph reaches no Pi code.
+    owner: agent-bridge
+    source: {file: agent-presence-and-bridge-spec.md, anchor: the-reusable-bridge-protocol}
+    acceptance:
+      behavior: {id: BRP-001-B, description: "A fake host port drives the extracted core through registration with capabilities, a claim, a delivered report, and comment reply and resolve against a spawned server, and the dispatch reaches addressed."}
+      failure: {id: BRP-001-F, description: "The bridge core module graph resolves to no Pi module and no host-specific dependency; only host-neutral imports appear."}
+    deployments: [local]
+    status: behavior_verified
+    proof_gap: Verified with fake hosts against the local deployment; two adapters (Pi and OpenCode) now consume the package, but the OpenCode side is proven through a fake plugin context rather than a live opencode binary.
+    depends_on: [DSP-011, DSP-012]
+    evidence:
+      - deployment: local
+        tests: [BRP-001-B, BRP-001-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-25T21:29:14.000Z"
+
+  - id: PRS-001
+    kind: behavior
+    behavior: Agent listings derive activity and the active dispatch from durable dispatch state without requiring an activity beacon.
+    owner: agent-presence
+    source: {file: agent-presence-and-bridge-spec.md, anchor: conformance-sketch-ids-reserved-all-specified}
+    acceptance:
+      behavior: {id: PRS-001-B, description: "A fresh connected agent reads idle, a claimed or delivered bundle reads working with its dispatch ID, and resolving the complete bundle returns the agent to idle."}
+      failure: {id: PRS-001-F, description: "A stale heartbeat reads disconnected even while a claim exists, and repeated reads do not write or extend activity state."}
+    deployments: [local]
+    status: behavior_verified
+    depends_on: [DSP-001, DSP-007]
+    evidence:
+      - deployment: local
+        tests: [PRS-001-B, PRS-001-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-25T21:42:39.000Z"
+
+  - id: PRS-002
+    kind: behavior
+    behavior: An optional activity beacon refines a connected agent's state, expires after 60 seconds, and never makes a stale agent appear connected.
+    owner: agent-presence
+    source: {file: agent-presence-and-bridge-spec.md, anchor: conformance-sketch-ids-reserved-all-specified}
+    acceptance:
+      behavior: {id: PRS-002-B, description: "Thinking and replying beacons surface as working, overwrite in place, decay after 60 seconds to derived activity, and an idle beacon clears the refinement immediately."}
+      failure: {id: PRS-002-F, description: "A beacon for an agent with a stale heartbeat is accepted as best-effort input but never decorates that agent as connected or working."}
+    deployments: [local]
+    status: behavior_verified
+    depends_on: [PRS-001]
+    evidence:
+      - deployment: local
+        tests: [PRS-002-B, PRS-002-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-25T21:42:39.000Z"
+
+  - id: PRS-003
+    kind: security
+    behavior: Only the principal that registered an agent can submit its activity beacon, and refused requests disclose no foreign agent identity.
+    owner: agent-presence
+    source: {file: agent-presence-and-bridge-spec.md, anchor: conformance-sketch-ids-reserved-all-specified}
+    acceptance:
+      behavior: {id: PRS-003-B, description: "An agent-connect principal beacons its own registered agent and the finer activity state appears in the authenticated agent listing."}
+      failure: {id: PRS-003-F, description: "Another principal receives the same not-found result for a foreign and fabricated agent ID, a human principal is denied, and no refused beacon changes listing state."}
+    deployments: [local]
+    status: behavior_verified
+    depends_on: [PRS-002, DSP-002]
+    evidence:
+      - deployment: local
+        tests: [PRS-003-B, PRS-003-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-25T21:42:39.000Z"
+
+  - id: PRS-005
+    kind: behavior
+    behavior: Bulk comment clearing stays scoped to one artifact, records deletions, skips actively dispatched work, and reports deleted and skipped counts.
+    owner: agent-presence
+    source: {file: agent-presence-and-bridge-spec.md, anchor: conformance-sketch-ids-reserved-all-specified}
+    acceptance:
+      behavior: {id: PRS-005-B, description: "Clearing resolved or all threads deletes exactly the eligible artifact threads, records one ledger action per deletion, and repeating the operation is safe."}
+      failure: {id: PRS-005-F, description: "Actively dispatched threads are skipped and counted, insufficient authority deletes nothing, and MCP returns the same result shape as HTTP."}
+    deployments: [local]
+    status: behavior_verified
+    depends_on: [CMT-005, CMT-011, DSP-003]
+    evidence:
+      - deployment: local
+        tests: [PRS-005-B, PRS-005-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-25T21:42:39.000Z"
+
+  - id: PRS-004
+    kind: behavior
+    behavior: With exactly one connected agent the send button dispatches immediately with no dialog and offers an undo that cancels from queued or claimed. An undo after a terminal state reports the conflict honestly.
+    owner: agent-presence
+    source: {file: agent-presence-and-bridge-spec.md, anchor: frictionless-send-no-confirmation-dialog}
+    acceptance:
+      behavior: {id: PRS-004-B, description: "One connected agent sends on a single click with no dialog, the undo toast cancels the queued dispatch server-side, and the dialog still opens for a bundle note or a multi-agent choice."}
+      failure: {id: PRS-004-F, description: "An undo against a dispatch that reached a terminal state surfaces the state conflict in the toast and does not silently re-cancel."}
+    deployments: [local]
+    status: behavior_verified
+    proof_gap: Proven in the browser suite against the local deployment; the dialog paths for zero and multiple agents are exercised in the same spec rather than separate requirements.
+    depends_on: [DSP-005, PRS-001]
+    evidence:
+      - deployment: local
+        tests: [PRS-004-B, PRS-004-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-25T21:56:38.766Z"
+
+  - id: PRS-006
+    kind: behavior
+    behavior: Presence renders as the agent's branded avatar whose ring carries the state, with a popover stating the state in words, motion only on live states, and a static fallback under reduced motion.
+    owner: agent-presence
+    source: {file: agent-presence-and-bridge-spec.md, anchor: presence-in-the-ui}
+    acceptance:
+      behavior: {id: PRS-006-B, description: "The avatar ring tracks idle, working, and replying from real server state and the popover appears on hover and focus with the state in words."}
+      failure: {id: PRS-006-F, description: "Under reduced motion no animation runs and the states stay distinguishable, and a disconnected agent disables send with a reason."}
+    deployments: [local]
+    status: behavior_verified
+    proof_gap: Ring states are asserted via data attributes and computed styles in the browser suite; visual appearance is reviewed by hand.
+    depends_on: [PRS-001, PRS-002]
+    evidence:
+      - deployment: local
+        tests: [PRS-006-B, PRS-006-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-25T21:56:38.766Z"
+
+  - id: PRS-007
+    kind: behavior
+    behavior: Agent registration accepts any valid kind slug, normalizes declared capabilities to known keys, ignores unknown capability keys, and answers with protocol version 1.
+    owner: agent-presence
+    source: {file: agent-presence-and-bridge-spec.md, anchor: the-reusable-bridge-protocol}
+    acceptance:
+      behavior: {id: PRS-007-B, description: "Any valid kind slug registers, round-trips through the agent listing with its normalized capabilities, and the registration response carries protocol version 1."}
+      failure: {id: PRS-007-F, description: "A kind that is not a valid slug is refused with a validation failure and registers nothing."}
+    deployments: [local]
+    status: behavior_verified
+    proof_gap: Slug widening is exercised through HTTP against SQLite; the Postgres and D1 migrations that drop the kind CHECK constraint are covered by their runtime suites' registration paths but no dedicated widening test runs against external storage.
+    depends_on: [DSP-001]
+    evidence:
+      - deployment: local
+        tests: [PRS-007-B, PRS-007-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-25T21:29:14.000Z"
+
+  - id: BRP-002
+    kind: behavior
+    behavior: Any MCP-capable agent joins the dispatch loop at the mailbox tier through one inbox tool with implicit registration, a rendered sanitized bundle on claim, honest delivery reports, and strict per-principal isolation.
+    owner: agent-bridge
+    source: {file: agent-presence-and-bridge-spec.md, anchor: prior-art-the-live-session-bridge-research}
+    acceptance:
+      behavior: {id: BRP-002-B, description: "An MCP principal lists its inbox with implicit mailbox registration, claims the oldest dispatch as a rendered sanitized bundle byte-identical to the shared render contract, reports delivered, and the agent listing shows the mailbox tier; comment reply and resolve over MCP drive the dispatch to addressed."}
+      failure: {id: BRP-002-F, description: "A second principal never sees the first principal's dispatches, a claim with an empty inbox answers cleanly, and a delivered report for a dispatch the caller does not hold is refused without state change."}
+    deployments: [local]
+    status: behavior_verified
+    proof_gap: The render mirror in src/mcp is pinned byte-for-byte against the package render by the acceptance test rather than shared as one module; drift fails the test but the duplication itself is accepted and documented.
+    depends_on: [BRP-001, DSP-004, CMT-012]
+    evidence:
+      - deployment: local
+        tests: [BRP-002-B, BRP-002-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-25T22:23:33.625Z"
 
   - id: PLN-001
     kind: behavior
@@ -3594,15 +3945,16 @@ requirements:
 
   - id: GATE-001
     kind: release_gate
-    behavior: Private multi-file delivery must prove the single-use bootstrap and version-scoped content-cookie design in supported browsers before the private-team release.
+    behavior: Private multi-file delivery must prove both top-level raw-content sessions and exact-version embedded Review leases in supported browsers before the private-team release.
     owner: content-delivery
     source: {file: artifact-server-product-spec.html, anchor: decisions}
     acceptance:
-      behavior: {id: GATE-001-B, description: "Complete the full private HTML, asset, navigation, expiry, logout, version, and browser compatibility prototype with recorded results."}
-      failure: {id: GATE-001-F, description: "Third-party cookie assumptions, reusable URL credentials, application cookies on content hosts, asset authorization gaps, or cross-version cookie reach block the team release."}
+      behavior: {id: GATE-001-B, description: "Complete the private current and historical HTML, asset, navigation, expiry, logout, exact-version isolation, local and team deployment, and supported-browser matrix with recorded results."}
+      failure: {id: GATE-001-F, description: "Third-party cookie assumptions, application credentials in artifact frames, reusable cross-version authority, asset authorization gaps, or cross-version lease or cookie reach block the team release."}
     deployments: *external_storage
-    status: specified
-    depends_on: [AUTH-015, AUTH-016, AUTH-017]
+    status: implementing
+    proof_gap: Top-level raw-content sessions have focused HTTP evidence. Exact-version Review leases pass local browser qualification in Chromium, Firefox, and WebKit and pass a Postgres/S3 restart probe, but the complete navigation, expiry, logout, and browser matrix has not been recorded on every team deployment.
+    depends_on: [AUTH-015, AUTH-016, AUTH-017, CMT-018]
     evidence: []
 
   - id: GATE-002

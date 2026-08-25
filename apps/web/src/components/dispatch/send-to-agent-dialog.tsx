@@ -1,11 +1,19 @@
 import { useId, useRef, useState } from "react";
 
-import { api, type RegisteredAgent } from "@/api/client";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+
+import { api, type AgentPresence } from "@/api/client";
 import type { DispatchBundle } from "@/components/dispatch/dispatch-bundle";
 import {
   maximumDispatchBundleSize,
   maximumDispatchNoteCharacters,
 } from "@/components/dispatch/dispatch-limits";
+import type { DispatchFeedback } from "@/components/dispatch/dispatch-toast";
+import {
+  PresenceGlyph,
+  presenceRing,
+} from "@/components/dispatch/presence-avatar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,32 +36,48 @@ function annotationCount(count: number): string {
 /**
  * Send annotations to one connected agent as a single bundle.
  *
- * The control resolves its bundle when it opens, so the agent list and the
- * annotations are read against the same moment. Confirming creates exactly one
- * dispatch: one idempotency key is minted for the attempt and reused for every
- * retry of it, so a lost response can never send the bundle twice. Choosing a
- * different agent starts a new attempt, because a replayed key would answer
- * with the dispatch the first agent already holds.
+ * With exactly one connected agent the button itself is the send: one click
+ * dispatches immediately, the button names the destination with the agent's
+ * presence avatar, and the surface's undo toast replaces confirmation. The
+ * dialog remains only where there is a choice to make — no agent connected
+ * (how to connect one), two or more agents (the picker), or the split-button
+ * caret that opens it to add a bundle note.
+ *
+ * Confirming creates exactly one dispatch: one idempotency key is minted for
+ * the attempt and reused for every retry of it, so a lost response can never
+ * send the bundle twice. Choosing a different agent starts a new attempt,
+ * because a replayed key would answer with the dispatch the first agent
+ * already holds.
  */
-export function SendToAgentDialog({
+export function SendToAgentControl({
+  agents,
   buttonSize = "xs",
   buttonVariant = "outline",
+  feedback,
   label,
   onSent,
+  oneAgentLabel,
   projectId,
   resolveBundle,
 }: {
+  /** The polled presence list, or null while the surface is still reading it. */
+  readonly agents: readonly AgentPresence[] | null;
   readonly buttonSize?: "default" | "sm" | "xs";
   readonly buttonVariant?: "default" | "outline" | "secondary";
+  /** Where a one-click send reports itself, for the undo toast. */
+  readonly feedback: DispatchFeedback;
   readonly label: string;
   readonly onSent: () => Promise<void>;
+  /** Replaces the label when exactly one agent is connected, naming it. */
+  readonly oneAgentLabel?: (name: string) => string;
   readonly projectId: string;
   readonly resolveBundle: () => Promise<DispatchBundle>;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(false);
-  const [agents, setAgents] = useState<readonly RegisteredAgent[]>([]);
+  const [quickPending, setQuickPending] = useState(false);
+  const [dialogAgents, setDialogAgents] = useState<readonly AgentPresence[]>([]);
   const [bundle, setBundle] = useState<DispatchBundle | null>(null);
   const [agentId, setAgentId] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -63,8 +87,13 @@ export function SendToAgentDialog({
   const dialogId = useId();
   const trimmedNote = note.trim();
   const noteTooLong = trimmedNote.length > maximumDispatchNoteCharacters;
-  const connectedAgents = agents.filter((agent) => agent.connected);
+  const connectedAgents = dialogAgents.filter((agent) => agent.connected);
   const threadIds = bundle?.threadIds ?? [];
+
+  const knownConnected = agents?.filter((agent) => agent.connected) ?? null;
+  const onlyAgent = knownConnected !== null && knownConnected.length === 1
+    ? knownConnected[0] ?? null
+    : null;
 
   const prepare = async () => {
     setLoading(true);
@@ -72,10 +101,10 @@ export function SendToAgentDialog({
     attemptKey.current = null;
     try {
       const [listedAgents, resolved] = await Promise.all([
-        api.agents(),
+        api.agentPresence(),
         resolveBundle(),
       ]);
-      setAgents(listedAgents);
+      setDialogAgents(listedAgents);
       setBundle(resolved);
       setAgentId(listedAgents.find((agent) => agent.connected)?.id ?? null);
       setNow(Date.now());
@@ -91,7 +120,7 @@ export function SendToAgentDialog({
   const changeOpen = (nextOpen: boolean) => {
     setOpen(nextOpen);
     if (!nextOpen) {
-      setAgents([]);
+      setDialogAgents([]);
       setBundle(null);
       setAgentId(null);
       setNote("");
@@ -113,7 +142,8 @@ export function SendToAgentDialog({
     setPending(true);
     setError(null);
     try {
-      await api.createAgentDispatch(
+      const chosen = dialogAgents.find((agent) => agent.id === agentId) ?? null;
+      const created = await api.createAgentDispatch(
         projectId,
         {
           agentId,
@@ -124,6 +154,9 @@ export function SendToAgentDialog({
       );
       attemptKey.current = null;
       changeOpen(false);
+      if (chosen !== null) {
+        feedback.sent({ agent: chosen, dispatch: created.dispatch });
+      }
       await onSent();
     } catch (caught) {
       setError(
@@ -134,13 +167,107 @@ export function SendToAgentDialog({
     }
   };
 
+  /**
+   * The one-click path: resolve the bundle and dispatch it in one motion.
+   * Success and failure both report through the surface's toast — including
+   * an agent whose heartbeat went stale between paint and click.
+   */
+  const quickSend = async (agent: AgentPresence) => {
+    setQuickPending(true);
+    try {
+      const resolved = await resolveBundle();
+      if (resolved.threadIds.length === 0) {
+        feedback.sendFailed(
+          new Error("Nothing to send: no open annotations remain."),
+        );
+        return;
+      }
+      const created = await api.createAgentDispatch(
+        projectId,
+        {
+          agentId: agent.id,
+          note: null,
+          threadIds: resolved.threadIds,
+        },
+        crypto.randomUUID(),
+      );
+      feedback.sent({ agent, dispatch: created.dispatch });
+      await onSent();
+    } catch (caught) {
+      feedback.sendFailed(
+        caught instanceof Error ? caught : new Error("Sending failed."),
+      );
+    } finally {
+      setQuickPending(false);
+    }
+  };
+
   return (
     <Dialog onOpenChange={changeOpen} open={open}>
-      <DialogTrigger
-        render={<Button size={buttonSize} type="button" variant={buttonVariant} />}
-      >
-        {label}
-      </DialogTrigger>
+      {onlyAgent === null
+        ? (
+          <DialogTrigger
+            render={(
+              <Button
+                aria-busy={agents === null}
+                className={knownConnected !== null && knownConnected.length === 0
+                  ? "opacity-60"
+                  : undefined}
+                size={buttonSize}
+                title={knownConnected !== null && knownConnected.length === 0
+                  ? "Connect an agent"
+                  : undefined}
+                type="button"
+                variant={buttonVariant}
+              />
+            )}
+          >
+            {agents === null
+              ? (
+                <span
+                  aria-hidden
+                  className="size-3 animate-spin rounded-full border border-current border-t-transparent motion-reduce:animate-none"
+                />
+              )
+              : null}
+            {label}
+          </DialogTrigger>
+        )
+        : (
+          <span className="inline-flex">
+            <Button
+              disabled={quickPending}
+              onClick={() => void quickSend(onlyAgent)}
+              size={buttonSize}
+              type="button"
+              variant={buttonVariant}
+            >
+              <PresenceGlyph
+                className="-my-1"
+                kind={onlyAgent.kind}
+                ring={presenceRing(onlyAgent)}
+              />
+              {quickPending
+                ? "Sending…"
+                : oneAgentLabel === undefined
+                  ? label
+                  : oneAgentLabel(onlyAgent.displayName)}
+            </Button>
+            <DialogTrigger
+              render={(
+                <Button
+                  aria-label="Send with a note"
+                  className="-ml-px px-1.5"
+                  size={buttonSize}
+                  type="button"
+                  variant={buttonVariant}
+                />
+              )}
+            >
+              <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={1.8} />
+            </DialogTrigger>
+          </span>
+        )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Send to agent</DialogTitle>
@@ -184,7 +311,7 @@ export function SendToAgentDialog({
                   <legend className="mb-2 text-xs font-semibold tracking-wide uppercase">
                     Connected agents
                   </legend>
-                  {agents.map((agent) => (
+                  {dialogAgents.map((agent) => (
                     <label
                       className="flex items-start gap-3 border p-3"
                       key={agent.id}
@@ -197,6 +324,11 @@ export function SendToAgentDialog({
                         onChange={() => selectAgent(agent.id)}
                         type="radio"
                         value={agent.id}
+                      />
+                      <PresenceGlyph
+                        className="mt-0.5"
+                        kind={agent.kind}
+                        ring={presenceRing(agent)}
                       />
                       <span className="min-w-0">
                         <span className="block font-heading text-sm font-semibold">

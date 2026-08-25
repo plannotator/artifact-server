@@ -1,0 +1,23 @@
+{
+  "name": "@plannotator/agent-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Host-agnostic Artifact Server agent bridge core: registration, the claim long-poll, bundle rendering, and comment operations behind a narrow HostPort.",
+  "type": "module",
+  "main": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "files": [
+    "index.ts"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}

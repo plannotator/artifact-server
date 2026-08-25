@@ -11,20 +11,29 @@ import type {PublishResponse} from "./publishing.js";
 /** Wire shape of one registered agent, exactly as the HTTP routes answer it. */
 export const registeredAgentSchema = z.object({
   agentSessionId: z.string().nullable(),
+  capabilities: z.object({
+    beacon: z.boolean(),
+    evidence: z.enum(["channel", "mailbox", "native"]),
+  }).strict(),
   connectionKey: z.string(),
   createdAt: z.iso.datetime(),
   displayName: z.string(),
   id: z.string().startsWith("agt_"),
-  kind: z.literal("pi"),
+  kind: z.string().regex(/^[a-z][a-z0-9-]{0,39}$/),
   lastSeenAt: z.iso.datetime(),
   principalId: z.string(),
   workingDirectory: z.string(),
 }).strict();
 export const agentRegistrationSchema = z.object({
   agent: registeredAgentSchema,
+  protocolVersion: z.literal(1),
 }).strict();
 export const connectedAgentSchema = registeredAgentSchema.extend({
+  activeDispatchId: z.string().nullable(),
+  activity: z.enum(["disconnected", "idle", "working"]),
+  beacon: z.enum(["replying", "thinking"]).nullable(),
   connected: z.boolean(),
+  lastActivityAt: z.iso.datetime(),
 }).strict();
 export const agentListSchema = z.object({
   items: z.array(connectedAgentSchema),
@@ -147,12 +156,15 @@ export class ApiClient {
   /** Register or re-register one self-naming agent. */
   async registerAgent(body: {
     readonly agentSessionId?: string | null;
+    /** As declared on the wire, unknown keys included. */
+    readonly capabilities?: object;
     readonly connectionKey: string;
     readonly displayName: string;
+    readonly kind?: string;
     readonly workingDirectory: string;
   }): Promise<RegisteredAgent> {
     const response = await this.fetch("/api/v1/agents", {
-      body: JSON.stringify({...body, kind: "pi"}),
+      body: JSON.stringify({kind: "pi", ...body}),
       method: "POST",
     });
     if (response.status !== 200) {

@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {z} from "zod";
 
 import {
   api,
   type CommentAnchor,
+  type CommentReply,
   type CommentThread,
+  type CommentThreadDetails,
   type CommentThreadQuery,
 } from "@/api/client";
+import {CommentComposer} from "@/components/comments/comment-composer";
+import {maximumCommentBodyCharacters} from "@/components/comments/comment-limits";
 import {
   mergeThreads,
   threadWatermark,
@@ -21,6 +25,7 @@ import {
 } from "@/review-frame/protocol";
 
 const threadPageSize = 100;
+const conversationLoadConcurrency = 6;
 
 function threadQuery(versionId: string, since: string | null): CommentThreadQuery {
   return {
@@ -43,12 +48,44 @@ function toAnnotation(thread: CommentThread): ReviewAnnotation {
   };
 }
 
+async function loadConversations(
+  projectId: string,
+  artifactId: string,
+  threads: readonly CommentThread[],
+): Promise<readonly CommentThreadDetails[]> {
+  const conversations = new Map<string, CommentThreadDetails>();
+  const worker = async (index: number): Promise<void> => {
+    const thread = threads[index];
+    if (thread === undefined) return;
+    const details = await api.comment(projectId, artifactId, thread.id);
+    conversations.set(thread.id, details);
+    await worker(index + conversationLoadConcurrency);
+  };
+  await Promise.all(
+    Array.from(
+      {length: Math.min(conversationLoadConcurrency, threads.length)},
+      (_, index) => worker(index),
+    ),
+  );
+  return threads.flatMap((thread) => {
+    const details = conversations.get(thread.id);
+    return details === undefined ? [] : [details];
+  });
+}
+
 export interface ReviewCommentSession {
   readonly annotations: readonly ReviewAnnotation[];
   readonly changeState: (thread: CommentThread) => Promise<void>;
+  readonly createReply: (
+    thread: CommentThread,
+    body: string,
+    idempotencyKey: string,
+  ) => Promise<boolean>;
+  readonly deleteReply: (reply: CommentReply) => Promise<void>;
   readonly error: Error | null;
   readonly loading: boolean;
   readonly reload: () => Promise<void>;
+  readonly repliesByThread: ReadonlyMap<string, readonly CommentReply[]>;
   readonly selectedThreadId: string | null;
   readonly selectThread: (threadId: string | null) => void;
   readonly submit: (
@@ -59,6 +96,7 @@ export interface ReviewCommentSession {
   readonly threads: readonly CommentThread[];
   readonly unanchoredIds: readonly string[];
   readonly updateUnanchored: (threadIds: readonly string[]) => void;
+  readonly updateReply: (reply: CommentReply, body: string) => Promise<boolean>;
 }
 
 /** Keep one Review version's saved threads and Plannotator projections in sync. */
@@ -74,17 +112,26 @@ export function useReviewComments({
   readonly versionId: string | null;
 }): ReviewCommentSession {
   const [threads, setThreads] = useState<readonly CommentThread[]>([]);
+  const [repliesByThread, setRepliesByThread] = useState<ReadonlyMap<
+    string,
+    readonly CommentReply[]
+  >>(new Map());
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [unanchoredIds, setUnanchoredIds] = useState<readonly string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const watermarkRef = useRef<string | null>(null);
+  const reloadGenerationRef = useRef(0);
+  const threadUpdatedAtRef = useRef<ReadonlyMap<string, string>>(new Map());
   const ownership = useCommentListOwnership();
   const active = artifactId !== null && projectId !== "" && versionId !== null;
 
   const reload = useCallback(async (): Promise<void> => {
+    const generation = reloadGenerationRef.current + 1;
+    reloadGenerationRef.current = generation;
     if (artifactId === null || projectId === "" || versionId === null) {
       setThreads([]);
+      setRepliesByThread(new Map());
       setSelectedThreadId(null);
       setUnanchoredIds([]);
       setError(null);
@@ -99,19 +146,30 @@ export function useReviewComments({
           artifactId,
           threadQuery(versionId, null),
         );
-        setThreads(page.items);
+        const conversations = await loadConversations(
+          projectId,
+          artifactId,
+          page.items,
+        );
+        if (reloadGenerationRef.current !== generation) return;
+        setThreads(conversations.map(({thread}) => thread));
+        setRepliesByThread(new Map(
+          conversations.map(({replies, thread}) => [thread.id, replies]),
+        ));
       });
     } catch (caught) {
+      if (reloadGenerationRef.current !== generation) return;
       setError(
         caught instanceof Error ? caught : new Error("Comment loading failed."),
       );
     } finally {
-      setLoading(false);
+      if (reloadGenerationRef.current === generation) setLoading(false);
     }
   }, [artifactId, ownership, projectId, versionId]);
 
   useEffect(() => {
     setThreads([]);
+    setRepliesByThread(new Map());
     setSelectedThreadId(null);
     setUnanchoredIds([]);
     void reload();
@@ -119,6 +177,9 @@ export function useReviewComments({
 
   useEffect(() => {
     watermarkRef.current = threadWatermark(threads);
+    threadUpdatedAtRef.current = new Map(
+      threads.map((thread) => [thread.id, thread.updatedAt]),
+    );
     if (
       selectedThreadId !== null
       && !threads.some((thread) => thread.id === selectedThreadId)
@@ -138,7 +199,27 @@ export function useReviewComments({
         threadQuery(versionId, watermarkRef.current),
       );
       if (page.items.length === 0 || !ownership.settled(token)) return;
-      setThreads((current) => mergeThreads(current, page.items));
+      const changedThreads = page.items.filter((thread) =>
+        threadUpdatedAtRef.current.get(thread.id) !== thread.updatedAt
+      );
+      if (changedThreads.length === 0) return;
+      const conversations = await loadConversations(
+        projectId,
+        artifactId,
+        changedThreads,
+      );
+      if (!ownership.settled(token)) return;
+      setThreads((current) => mergeThreads(
+        current,
+        conversations.map(({thread}) => thread),
+      ));
+      setRepliesByThread((current) => {
+        const nextReplies = new Map(current);
+        for (const conversation of conversations) {
+          nextReplies.set(conversation.thread.id, conversation.replies);
+        }
+        return nextReplies;
+      });
     } catch {
       // A failed background refresh leaves the last readable thread set intact.
     }
@@ -196,6 +277,67 @@ export function useReviewComments({
     }
   }, [artifactId, ownership, projectId, reload]);
 
+  const createReply = useCallback(async (
+    thread: CommentThread,
+    body: string,
+    idempotencyKey: string,
+  ): Promise<boolean> => {
+    if (artifactId === null || projectId === "" || thread.state !== "open") return false;
+    setError(null);
+    try {
+      await ownership.own(() => api.createCommentReply(
+        projectId,
+        artifactId,
+        thread.id,
+        body,
+        idempotencyKey,
+      ));
+      await reload();
+      return true;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught : new Error("Reply creation failed."));
+      return false;
+    }
+  }, [artifactId, ownership, projectId, reload]);
+
+  const updateReply = useCallback(async (
+    reply: CommentReply,
+    body: string,
+  ): Promise<boolean> => {
+    if (artifactId === null || projectId === "") return false;
+    setError(null);
+    try {
+      await ownership.own(() => api.updateCommentReply(
+        projectId,
+        artifactId,
+        reply.threadId,
+        reply.id,
+        body,
+      ));
+      await reload();
+      return true;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught : new Error("Reply edit failed."));
+      return false;
+    }
+  }, [artifactId, ownership, projectId, reload]);
+
+  const deleteReply = useCallback(async (reply: CommentReply): Promise<void> => {
+    if (artifactId === null || projectId === "") return;
+    setError(null);
+    try {
+      await ownership.own(() => api.deleteCommentReply(
+        projectId,
+        artifactId,
+        reply.threadId,
+        reply.id,
+      ));
+      await reload();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught : new Error("Reply deletion failed."));
+    }
+  }, [artifactId, ownership, projectId, reload]);
+
   const annotations = useMemo(
     () => threads.filter((thread) => thread.state === "open").map(toAnnotation),
     [threads],
@@ -204,24 +346,32 @@ export function useReviewComments({
   return {
     annotations,
     changeState,
+    createReply,
+    deleteReply,
     error,
     loading,
     reload,
+    repliesByThread,
     selectedThreadId,
     selectThread: setSelectedThreadId,
     submit,
     threads,
     unanchoredIds,
     updateUnanchored: setUnanchoredIds,
+    updateReply,
   };
 }
 
 /** Review-native thread list kept beside, never over, the artifact. */
 export function ReviewCommentsInspector({
+  canDeleteAny,
   canComment,
+  principalId,
   session,
 }: {
+  readonly canDeleteAny: boolean;
   readonly canComment: boolean;
+  readonly principalId: string;
   readonly session: ReviewCommentSession;
 }) {
   const unanchored = new Set(session.unanchoredIds);
@@ -264,6 +414,18 @@ export function ReviewCommentsInspector({
                 <span data-state={thread.state}>{thread.state}</span>
               </header>
               <p>{thread.body}</p>
+              <ol className="as-comment-replies">
+                {(session.repliesByThread.get(thread.id) ?? []).map((reply) => (
+                  <ReviewReply
+                    canDeleteAny={canDeleteAny}
+                    key={reply.id}
+                    onDelete={session.deleteReply}
+                    onUpdate={session.updateReply}
+                    principalId={principalId}
+                    reply={reply}
+                  />
+                ))}
+              </ol>
               <footer>
                 <span>
                   <time dateTime={thread.updatedAt}>{formatTimestamp(thread.updatedAt)}</time>
@@ -293,10 +455,93 @@ export function ReviewCommentsInspector({
                   ) : null}
                 </div>
               </footer>
+              {canComment && thread.state === "open" ? (
+                <div className="as-comment-reply-composer">
+                  <CommentComposer
+                    cancelLabel={null}
+                    initialBody=""
+                    inputId={`review-reply-${thread.id}`}
+                    label="Reply"
+                    maximumCharacters={maximumCommentBodyCharacters}
+                    onCancel={null}
+                    onSubmit={(body, idempotencyKey) => session.createReply(
+                      thread,
+                      body,
+                      idempotencyKey,
+                    )}
+                    submitLabel="Post reply"
+                  />
+                </div>
+              ) : null}
             </article>
           </li>
         ))}
       </ol>
     </div>
+  );
+}
+
+function ReviewReply({
+  canDeleteAny,
+  onDelete,
+  onUpdate,
+  principalId,
+  reply,
+}: {
+  readonly canDeleteAny: boolean;
+  readonly onDelete: (reply: CommentReply) => Promise<void>;
+  readonly onUpdate: (reply: CommentReply, body: string) => Promise<boolean>;
+  readonly principalId: string;
+  readonly reply: CommentReply;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const editorId = useId();
+  const ownReply = reply.author.principalId === principalId;
+  const remove = async (): Promise<void> => {
+    setDeleting(true);
+    await onDelete(reply);
+    setDeleting(false);
+  };
+  return (
+    <li>
+      <header>
+        <strong>{reply.author.displayName}</strong>
+        <time dateTime={reply.updatedAt}>{formatTimestamp(reply.updatedAt)}</time>
+      </header>
+      {editing ? (
+        <CommentComposer
+          cancelLabel="Cancel"
+          initialBody={reply.body}
+          inputId={editorId}
+          label="Edit reply"
+          maximumCharacters={maximumCommentBodyCharacters}
+          onCancel={() => setEditing(false)}
+          onSubmit={async (body) => {
+            const changed = await onUpdate(reply, body);
+            if (changed) setEditing(false);
+            return changed;
+          }}
+          submitLabel="Save reply"
+        />
+      ) : <p>{reply.body}</p>}
+      {editing || (!ownReply && !canDeleteAny) ? null : (
+        <div className="as-comment-reply__actions">
+          {ownReply ? (
+            <button className="as-button" onClick={() => setEditing(true)} type="button">
+              Edit
+            </button>
+          ) : null}
+          <button
+            className="as-button"
+            disabled={deleting}
+            onClick={() => void remove()}
+            type="button"
+          >
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      )}
+    </li>
   );
 }

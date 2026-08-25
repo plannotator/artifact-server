@@ -57,8 +57,10 @@ describe("local Artifact Server CLI", () => {
     const dataDirectory = path.join(parentDirectory, "data");
     const browserCommand = path.join(parentDirectory, "capture-browser");
     const capturedUrl = path.join(parentDirectory, "browser-url");
+    const linkedFile = path.join(parentDirectory, "managed-link.md");
     let servicePid: number | undefined;
     try {
+      await writeFile(linkedFile, "# linked through managed local discovery\n");
       await writeFile(
         browserCommand,
         '#!/bin/sh\nprintf "%s" "$1" > "$ARTIFACT_SERVER_BROWSER_CAPTURE"\n',
@@ -69,6 +71,8 @@ describe("local Artifact Server CLI", () => {
         {
           ARTIFACT_SERVER_BROWSER_CAPTURE: capturedUrl,
           ARTIFACT_SERVER_BROWSER_COMMAND: browserCommand,
+          ARTIFACT_SERVER_LINKED_FILES: "on",
+          ARTIFACT_SERVER_LINK_ROOTS: parentDirectory,
         },
       );
       expect(result.exitCode).toBe(0);
@@ -89,6 +93,14 @@ describe("local Artifact Server CLI", () => {
       servicePid = serviceRecord.pid;
       expect((await fetch(new URL("/health", serviceRecord.origin))).status).toBe(200);
       expect((await fetch(loginUrl)).status).toBe(200);
+      const linked = await runCommandToExit([
+        "link",
+        linkedFile,
+        "--data",
+        dataDirectory,
+      ]);
+      expect(linked.exitCode).toBe(0);
+      expect(linked.output).toContain('"sourceBinding"');
     } finally {
       if (servicePid !== undefined) {
         try {
@@ -451,7 +463,17 @@ function runCliToExit(
 }
 
 function runPublishCliToExit(arguments_: readonly string[]): Promise<ProcessResult> {
-  return runCommandToExit(["publish", ...arguments_]);
+  const dataFlag = arguments_.indexOf("--data");
+  const dataDirectory = arguments_.at(dataFlag + 1);
+  if (dataFlag < 0 || dataDirectory === undefined) {
+    throw new Error("Local publication tests require an explicit data directory.");
+  }
+  return runCommandToExit([
+    "publish",
+    ...arguments_,
+    "--token-file",
+    path.join(dataDirectory, "local-api-token"),
+  ]);
 }
 
 function runCommandToExit(

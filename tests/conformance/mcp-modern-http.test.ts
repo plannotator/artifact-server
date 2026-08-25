@@ -183,6 +183,7 @@ describe("modern MCP HTTP", () => {
       "project_git_history_status",
       "project_git_history_estimate",
       "project_set_git_history",
+      "artifact_history_clone_token",
       "artifact_list",
       "artifact_get",
       "artifact_open",
@@ -204,6 +205,8 @@ describe("modern MCP HTTP", () => {
       "comment_resolve",
       "comment_update",
       "comment_delete",
+      "comment_clear",
+      "dispatch_inbox",
     ]);
     expect(tools.some((tool) => tool.name.includes("inline"))).toBe(false);
     expect(tools.find((tool) => tool.name === "artifact_delete")?.annotations)

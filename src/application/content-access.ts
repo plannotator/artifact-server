@@ -3,7 +3,7 @@ import {
   DateTime,
   Effect,
   Layer,
-  type Redacted,
+  Redacted,
 } from "effect";
 
 import {
@@ -25,6 +25,7 @@ import {
 } from "../core/model.js";
 import type {
   CreateContentBootstrap,
+  CreatePreviewLease,
   ExchangeContentBootstrap,
 } from "../core/ports.js";
 import {
@@ -39,6 +40,13 @@ import {
 
 const bootstrapLifetimeMilliseconds = 2 * 60 * 1_000;
 const contentSessionLifetimeMilliseconds = 15 * 60 * 1_000;
+/** Distinguishes short-lived Review leases from immutable content tokens. */
+export const previewLeaseTokenPrefix = "review-";
+
+/** Return whether a content-host token represents a Review preview lease. */
+export function isPreviewLeaseToken(token: string): boolean {
+  return token.startsWith(previewLeaseTokenPrefix);
+}
 
 /** Secret material generated for private-content authorization. */
 export interface IssuedContentSecret {
@@ -63,6 +71,13 @@ export interface ContentAccessRepository {
   readonly findContentSession: (
     tokenDigest: string,
     contentToken: string,
+    requestTime: string,
+  ) => Effect.Effect<ContentSessionRecord | null, ArtifactRepositoryFailure>;
+  readonly createPreviewLease: (
+    command: CreatePreviewLease,
+  ) => Effect.Effect<ContentSessionRecord, ArtifactRepositoryFailure>;
+  readonly findPreviewLease: (
+    tokenDigest: string,
     requestTime: string,
   ) => Effect.Effect<ContentSessionRecord | null, ArtifactRepositoryFailure>;
   readonly findCurrentVersion: (
@@ -105,6 +120,13 @@ export interface IssuedContentSession {
   readonly token: Redacted.Redacted;
 }
 
+/** One short-lived content-host lease for embedded exact-version Review. */
+export interface IssuedPreviewLease {
+  readonly expiresAt: string;
+  readonly token: Redacted.Redacted;
+  readonly versionId: string;
+}
+
 /** Input for issuing one private-content bootstrap. */
 export interface IssueContentBootstrapCommand {
   readonly artifactId: string;
@@ -129,6 +151,21 @@ export interface AuthorizeVersionContentCommand {
   readonly sessionToken: Redacted.Redacted | null;
 }
 
+/** Input for issuing one embedded Review lease for an exact saved version. */
+export interface IssuePreviewLeaseCommand {
+  readonly artifactId: string;
+  readonly principal: Principal;
+  readonly projectId: string | null;
+  readonly versionId: string;
+}
+
+/** Input for authorizing one manifest path through a Review lease hostname. */
+export interface AuthorizePreviewContentCommand {
+  readonly fallback: VersionContentFallback;
+  readonly path: string;
+  readonly token: Redacted.Redacted;
+}
+
 /** Expected failures from private and public content access. */
 export type ContentAccessFailure =
   | ArtifactNotFound
@@ -140,6 +177,9 @@ export type ContentAccessFailure =
   | ProjectManagementFailure;
 
 interface ContentAccessOperations {
+  readonly authorizePreviewContent: (
+    command: AuthorizePreviewContentCommand,
+  ) => Effect.Effect<VersionContent | null, ContentAccessFailure>;
   readonly authorizeVersionContent: (
     command: AuthorizeVersionContentCommand,
   ) => Effect.Effect<VersionContent | null, ContentAccessFailure>;
@@ -149,6 +189,9 @@ interface ContentAccessOperations {
   readonly issueContentBootstrap: (
     command: IssueContentBootstrapCommand,
   ) => Effect.Effect<IssuedContentBootstrap, ContentAccessFailure>;
+  readonly issuePreviewLease: (
+    command: IssuePreviewLeaseCommand,
+  ) => Effect.Effect<IssuedPreviewLease, ContentAccessFailure>;
   readonly resolvePublicArtifact: (
     artifactId: string,
   ) => Effect.Effect<PublishedVersion, ContentAccessFailure>;
@@ -182,8 +225,8 @@ function makeContentAccessService(
   authorization: AuthorizationOperations,
   projects: ProjectManagementService["Service"],
 ): ContentAccessOperations {
-  const issueContentBootstrap = Effect.fn(
-    "ContentAccessService.issueContentBootstrap",
+  const resolveAuthorizedTarget = Effect.fn(
+    "ContentAccessService.resolveAuthorizedTarget",
   )(function*(command: IssueContentBootstrapCommand) {
     const project = command.projectId === null
       ? yield* projects.resolveActiveProject({
@@ -219,6 +262,13 @@ function makeContentAccessService(
         new VersionNotFound({message: "The saved version does not exist on this artifact."}),
       );
     }
+    return {artifact: current.artifact, project, target};
+  });
+
+  const issueContentBootstrap = Effect.fn(
+    "ContentAccessService.issueContentBootstrap",
+  )(function*(command: IssueContentBootstrapCommand) {
+    const {artifact, project, target} = yield* resolveAuthorizedTarget(command);
 
     const now = yield* dependencies.clock.now;
     const secret = dependencies.secrets.issue();
@@ -226,7 +276,7 @@ function makeContentAccessService(
       DateTime.addDuration(now, bootstrapLifetimeMilliseconds),
     );
     yield* dependencies.repository.createContentBootstrap({
-      artifactId: current.artifact.id,
+      artifactId: artifact.id,
       contentToken: target.contentToken,
       createdAt: DateTime.formatIso(now),
       expiresAt,
@@ -241,6 +291,41 @@ function makeContentAccessService(
       token: secret.token,
       versionId: target.id,
     };
+  });
+
+  const issuePreviewLease = Effect.fn(
+    "ContentAccessService.issuePreviewLease",
+  )(function*(command: IssuePreviewLeaseCommand) {
+    const {artifact, project, target} = yield* resolveAuthorizedTarget({
+      artifactId: command.artifactId,
+      principal: command.principal,
+      projectId: command.projectId,
+      target: {kind: "version", versionId: command.versionId},
+    });
+    const now = yield* dependencies.clock.now;
+    const issued = dependencies.secrets.issue();
+    // A DNS label may contain at most 63 characters. The provider digest is
+    // uniform lowercase hexadecimal, so 56 characters plus the `review-`
+    // discriminator gives the lease 224 bits of entropy and a valid label on
+    // every deployment without case-folding secret material in DNS.
+    const token = Redacted.make(
+      `${previewLeaseTokenPrefix}${issued.digest.slice(0, 56)}`,
+      {label: "preview-lease-token"},
+    );
+    const expiresAt = DateTime.formatIso(
+      DateTime.addDuration(now, contentSessionLifetimeMilliseconds),
+    );
+    yield* dependencies.repository.createPreviewLease({
+      artifactId: artifact.id,
+      contentToken: target.contentToken,
+      createdAt: DateTime.formatIso(now),
+      expiresAt,
+      principalId: command.principal.id,
+      projectId: project.id,
+      tokenDigest: dependencies.secrets.digest(token),
+      versionId: target.id,
+    });
+    return {expiresAt, token, versionId: target.id};
   });
 
   const exchangeContentBootstrap = Effect.fn(
@@ -297,6 +382,30 @@ function makeContentAccessService(
     return session === null ? yield* sessionRequired() : content;
   });
 
+  const authorizePreviewContent = Effect.fn(
+    "ContentAccessService.authorizePreviewContent",
+  )(function*(command: AuthorizePreviewContentCommand) {
+    const now = DateTime.formatIso(yield* dependencies.clock.now);
+    const lease = yield* dependencies.repository.findPreviewLease(
+      dependencies.secrets.digest(command.token),
+      now,
+    );
+    if (lease === null) return yield* sessionRequired();
+    const content = yield* dependencies.repository.findVersionContent(
+      lease.contentToken,
+      command.path,
+      command.fallback,
+    );
+    if (content === null) return null;
+    if (
+      content.projectId !== lease.projectId
+      || content.artifactId !== lease.artifactId
+      || content.versionId !== lease.versionId
+    ) return yield* sessionRequired();
+    yield* Effect.annotateCurrentSpan({"artifact.project.id": content.projectId});
+    return content;
+  });
+
   const resolvePublicArtifact = Effect.fn(
     "ContentAccessService.resolvePublicArtifact",
   )(function*(artifactId: string) {
@@ -316,9 +425,11 @@ function makeContentAccessService(
   });
 
   return ContentAccessService.of({
+    authorizePreviewContent,
     authorizeVersionContent,
     exchangeContentBootstrap,
     issueContentBootstrap,
+    issuePreviewLease,
     resolvePublicArtifact,
   });
 }

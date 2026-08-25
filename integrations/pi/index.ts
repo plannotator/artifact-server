@@ -3,9 +3,9 @@
  *
  * Registers this Pi session with an Artifact Server installation, receives
  * annotation bundles as follow-up work through the claim loop in
- * `bridge-core.ts`, and registers the `artifact_comments` tool the agent uses
- * to reply to and resolve each thread. All logic lives in the core; this file
- * only wires it to the live extension API.
+ * `@plannotator/agent-bridge`, and registers the `artifact_comments` tool the
+ * agent uses to reply to and resolve each thread. All logic lives in the
+ * shared core; this file only wires it to the live extension API.
  */
 
 import {homedir, hostname} from "node:os";
@@ -13,6 +13,7 @@ import {homedir, hostname} from "node:os";
 import {Type} from "typebox";
 
 import {
+  ActivityBeacon,
   type BridgeHandle,
   type BridgeNoticeKind,
   chooseDisplayName,
@@ -20,11 +21,11 @@ import {
   createCommentOperations,
   type EnvironmentConfiguration,
   type FollowUpDelivery,
-  type PiPort,
+  type HostPort,
   resolveBridgeCredentials,
   startBridge,
   ThreadLocationCache,
-} from "./bridge-core.js";
+} from "@plannotator/agent-bridge";
 
 /**
  * A compaction flag older than this is treated as expired: a cancelled
@@ -182,11 +183,14 @@ export default function artifactServerBridge(pi: PiExtensionApi): void {
     await stopBridge(false);
     const environment = environmentConfiguration();
     const credentials = await resolveBridgeCredentials(environment, homedir());
+    // One beacon per session: replies and resolves through the tool count
+    // against the bundles this session's bridge delivered.
+    const beacon = new ActivityBeacon();
     comments = credentials === null
       ? null
-      : createCommentOperations(credentials, fetch, locations);
+      : createCommentOperations(credentials, fetch, locations, beacon);
 
-    const port: PiPort = {
+    const port: HostPort = {
       isCompacting: () =>
         compactionStartedAt !== null &&
         Date.now() - compactionStartedAt < compactionFlagLifetimeMilliseconds,
@@ -203,12 +207,14 @@ export default function artifactServerBridge(pi: PiExtensionApi): void {
 
     bridge = startBridge({
       agentSessionId: ctx.sessionManager.getSessionId(),
+      beacon,
       credentials,
       displayName: chooseDisplayName(environment, ctx.cwd),
       fetchImplementation: fetch,
+      host: port,
       hostname: hostname(),
+      kind: "pi",
       locations,
-      pi: port,
       workingDirectory: ctx.cwd,
     });
   });

@@ -31,6 +31,21 @@ export interface StoredProjectGitHistorySetting {
 export interface ProjectGitHistorySetting {
   readonly enabled: boolean;
   readonly projectId: string;
+  readonly state:
+    | "backfilling"
+    | "budget-limited"
+    | "degraded"
+    | "disabled"
+    | "ready"
+    | "waiting";
+}
+
+/** Bounded durable counts used to derive one project's effective state. */
+export interface ProjectGitHistoryProgress {
+  readonly budgetLimitedJobs: number;
+  readonly mappedVersions: number;
+  readonly pendingJobs: number;
+  readonly unmappedVersions: number;
 }
 
 /** Current-inventory planning summary shown before project enablement. */
@@ -47,6 +62,7 @@ export interface ProjectGitHistoryEstimate {
 /** Persistence input for changing one project's Git history switch. */
 export interface StoreProjectGitHistorySetting {
   readonly enabled: boolean;
+  readonly limits: GitHistoryLimits;
   readonly projectId: string;
   readonly updatedAt: string;
   readonly updatedByPrincipalId: string;
@@ -64,6 +80,9 @@ export interface ProjectGitHistoryRepository {
   readonly readProjectGitHistorySetting: (
     projectId: string,
   ) => Effect.Effect<StoredProjectGitHistorySetting | null, ArtifactRepositoryFailure>;
+  readonly readProjectGitHistoryProgress: (
+    projectId: string,
+  ) => Effect.Effect<ProjectGitHistoryProgress, ArtifactRepositoryFailure>;
   readonly storeProjectGitHistorySetting: (
     setting: StoreProjectGitHistorySetting,
   ) => Effect.Effect<StoredProjectGitHistorySetting, ArtifactRepositoryFailure>;
@@ -78,6 +97,9 @@ export interface ProjectGitHistoryStore {
   readonly readProjectGitHistorySetting: (
     projectId: string,
   ) => Promise<StoredProjectGitHistorySetting | null>;
+  readonly readProjectGitHistoryProgress: (
+    projectId: string,
+  ) => Promise<ProjectGitHistoryProgress>;
   readonly storeProjectGitHistorySetting: (
     setting: StoreProjectGitHistorySetting,
   ) => Promise<StoredProjectGitHistorySetting>;
@@ -124,7 +146,7 @@ interface ProjectGitHistoryOperations {
   ) => Effect.Effect<ProjectGitHistorySetting, ProjectGitHistoryFailure>;
 }
 
-/** Owns the intentionally small off-by-default Git history setting per project. */
+/** Owns deployment-neutral project selection and bounded history backfill. */
 export class ProjectGitHistoryService extends Context.Service<
   ProjectGitHistoryService,
   ProjectGitHistoryOperations
@@ -156,6 +178,36 @@ function makeProjectGitHistoryService(
   authorization: AuthorizationOperations,
   projects: ProjectManagementService["Service"],
 ): ProjectGitHistoryOperations {
+  const projectSettingProjection = Effect.fn(
+    "ProjectGitHistoryService.projectSettingProjection",
+  )(function*(projectId: string, enabled: boolean) {
+    if (!enabled) return {enabled, projectId, state: "disabled" as const};
+    const capability = dependencies.provider.read();
+    if (
+      capability.providerState === "degraded" ||
+      capability.providerState === "misconfigured" ||
+      capability.providerState === "migration-required"
+    ) {
+      return {enabled, projectId, state: "degraded" as const};
+    }
+    const progress = yield* dependencies.repository
+      .readProjectGitHistoryProgress(projectId);
+    if (progress.budgetLimitedJobs > 0) {
+      return {enabled, projectId, state: "budget-limited" as const};
+    }
+    if (capability.providerState !== "available") {
+      return {enabled, projectId, state: "waiting" as const};
+    }
+    if (progress.unmappedVersions === 0 && progress.pendingJobs === 0) {
+      return {enabled, projectId, state: "ready" as const};
+    }
+    return {
+      enabled,
+      projectId,
+      state: progress.mappedVersions === 0 ? "waiting" as const : "backfilling" as const,
+    };
+  });
+
   const requireConfigured = Effect.fn("ProjectGitHistoryService.requireConfigured")(
     function*() {
       const capability = dependencies.provider.read();
@@ -178,10 +230,10 @@ function makeProjectGitHistoryService(
       yield* projects.getProject(command);
       const stored = yield* dependencies.repository
         .readProjectGitHistorySetting(command.projectId);
-      return {
-        enabled: stored?.enabled ?? false,
-        projectId: command.projectId,
-      };
+      return yield* projectSettingProjection(
+        command.projectId,
+        stored?.enabled ?? false,
+      );
     },
   );
 
@@ -210,16 +262,26 @@ function makeProjectGitHistoryService(
       const existing = yield* dependencies.repository
         .readProjectGitHistorySetting(command.projectId);
       if ((existing?.enabled ?? false) === command.enabled) {
-        return {enabled: command.enabled, projectId: command.projectId};
+        return yield* projectSettingProjection(command.projectId, command.enabled);
       }
-      if (command.enabled) yield* requireConfigured();
+      const capability = command.enabled
+        ? yield* requireConfigured()
+        : dependencies.provider.read();
+      if (command.enabled) {
+        if (capability.providerState !== "available") {
+          return yield* new CapabilityUnavailable({
+            message: "Git history is configured but the provider is not currently available.",
+          });
+        }
+      }
       const setting = yield* dependencies.repository.storeProjectGitHistorySetting({
         enabled: command.enabled,
+        limits: capability.limits,
         projectId: command.projectId,
         updatedAt: DateTime.formatIso(yield* dependencies.clock.now),
         updatedByPrincipalId: command.principal.id,
       });
-      return {enabled: setting.enabled, projectId: setting.projectId};
+      return yield* projectSettingProjection(setting.projectId, setting.enabled);
     },
   );
 

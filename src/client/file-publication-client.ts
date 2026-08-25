@@ -207,6 +207,9 @@ export interface FilePublicationCommand {
   readonly target: FilePublicationTarget;
 }
 
+/** A publication request before its durable operation identity is assigned. */
+export type FilePublicationIntent = Omit<FilePublicationCommand, "idempotencyKey">;
+
 /** Connection values for one Artifact Server installation. */
 export interface FilePublicationClientConfig {
   readonly apiToken: Redacted.Redacted;
@@ -229,6 +232,18 @@ interface PreparedPublication {
   readonly entryPath: string;
   readonly files: readonly PreparedFile[];
   readonly routingMode: "spa" | "static";
+}
+
+/**
+ * One validated local publication snapshot. Callers can persist the digest as
+ * the identity of a retry without retaining local paths or file bytes.
+ */
+export interface PreparedFilePublication {
+  readonly operationDigest: string;
+  readonly operationScopeDigest: string;
+  readonly publication: PreparedPublication;
+  readonly projectId?: string;
+  readonly target: CommitPublicationTarget;
 }
 
 interface CreateUploadRequestBody {
@@ -280,41 +295,105 @@ export const publishPath = Effect.fn("FilePublicationClient.publishPath")(
     FilePublicationFailure,
     FileSystem.FileSystem | HttpClient.HttpClient
   > {
+    const prepared = yield* prepareFilePublication(command);
+    return yield* publishPreparedPath(
+      config,
+      command.idempotencyKey,
+      prepared,
+    );
+  },
+);
+
+/** Inspect, hash, and canonicalize a local file publication before mutation. */
+export const prepareFilePublication = Effect.fn(
+  "FilePublicationClient.prepareFilePublication",
+)(function*(
+  command: FilePublicationIntent,
+): Effect.fn.Return<PreparedFilePublication, FilePublicationInputError> {
+  const publication = yield* preparePublication(command);
+  const target = effectiveCommitTarget(command.target, publication.defaultName);
+  const operationScopeDigest = createHash("sha256").update(JSON.stringify({
+    entryPath: publication.entryPath,
+    inputPath: path.resolve(command.inputPath),
+    projectId: command.projectId ?? null,
+    routingMode: publication.routingMode,
+    target,
+  })).digest("hex");
+  const operationDigest = createHash("sha256").update(JSON.stringify({
+    entryPath: publication.entryPath,
+    files: publication.files.map((file) => ({
+      mediaType: file.mediaType,
+      path: file.path,
+      sha256: file.sha256,
+      size: file.size,
+    })),
+    projectId: command.projectId ?? null,
+    routingMode: publication.routingMode,
+    target,
+  })).digest("hex");
+  return command.projectId === undefined
+    ? {operationDigest, operationScopeDigest, publication, target}
+    : {
+      operationDigest,
+      operationScopeDigest,
+      projectId: command.projectId,
+      publication,
+      target,
+    };
+});
+
+/** Publish one previously validated local snapshot with a durable operation key. */
+export const publishPreparedPath = Effect.fn(
+  "FilePublicationClient.publishPreparedPath",
+)(function*(
+  config: FilePublicationClientConfig,
+  idempotencyKey: string,
+  prepared: PreparedFilePublication,
+): Effect.fn.Return<
+  FilePublicationResult,
+  FilePublicationFailure,
+  FileSystem.FileSystem | HttpClient.HttpClient
+> {
     const serverOrigin = yield* parseServerOrigin(config.serverOrigin);
-    const prepared = yield* preparePublication(command);
+    const publication = prepared.publication;
     const upload = yield* createUpload(
       serverOrigin,
       config.apiToken,
-      prepared,
-      command.projectId,
+      publication,
+      prepared.projectId,
     );
-    yield* validateUploadPlan(serverOrigin, prepared, upload);
+    yield* validateUploadPlan(serverOrigin, publication, upload);
     yield* Effect.forEach(
       upload.files,
       (plannedFile) => uploadPreparedFile(
         config.apiToken,
         plannedFile,
-        requiredPreparedFile(prepared.files, plannedFile.path),
+        requiredPreparedFile(publication.files, plannedFile.path),
         upload.uploadId,
       ),
       {concurrency: uploadConcurrency, discard: true},
     );
-    const target: CommitPublicationTarget = command.target.kind === "new_artifact"
-      ? {
-        accessSetting: command.target.accessSetting,
-        kind: command.target.kind,
-        name: command.target.name ?? prepared.defaultName,
-        tags: command.target.tags,
-      }
-      : command.target;
     return yield* commitUpload(
       config.apiToken,
-      command.idempotencyKey,
-      target,
+      idempotencyKey,
+      prepared.target,
       upload.commitUrl,
     );
-  },
-);
+});
+
+function effectiveCommitTarget(
+  target: FilePublicationTarget,
+  defaultName: string,
+): CommitPublicationTarget {
+  return target.kind === "new_artifact"
+    ? {
+      accessSetting: target.accessSetting,
+      kind: target.kind,
+      name: target.name ?? defaultName,
+      tags: target.tags,
+    }
+    : target;
+}
 
 /** Infer a deterministic browser media type from one file name. */
 export function mediaTypeForPath(filePath: string): string {
@@ -324,7 +403,7 @@ export function mediaTypeForPath(filePath: string): string {
 
 const preparePublication = Effect.fn("FilePublicationClient.preparePublication")(
   function*(
-    command: FilePublicationCommand,
+    command: FilePublicationIntent,
   ): Effect.fn.Return<PreparedPublication, FilePublicationInputError> {
     const absoluteInputPath = path.resolve(command.inputPath);
     const prepared = yield* Effect.tryPromise({

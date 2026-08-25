@@ -305,6 +305,34 @@ version and commenting surface.
 The first shell slice adds no product-specific keyboard shortcuts; normal
 browser focus and button semantics remain intact.
 
+### Review route resolution
+
+The project, artifact, and version named in a Review URL are authoritative. The
+application resolves the artifact and version through their direct API routes;
+the paginated catalog is navigation context only. A target that is not in the
+loaded catalog may be shown as a pinned selected row after it resolves. An
+unknown, deleted, cross-project, or mismatched target produces an explicit
+unavailable state. It never selects the first catalog row or the current version
+as a substitute.
+
+### Exact-version sharing
+
+Share receives the resolved selected version, not only the artifact's current
+state. Its primary action copies the server-issued exact Review URL with
+`view=focus`; the browser adds a selected manifest path when it is not the entry
+path. The stable moving artifact link is labeled **Latest**, and the immutable
+content-origin link is labeled **Raw**. Agent prompts lead with the same exact
+Review URL. Share remains unavailable until the selected version resolves.
+
+### Complete Review conversations
+
+Review displays every reply under its root comment without a second expansion
+step. An authorized reviewer can create replies on open threads, edit their own
+replies, and delete replies allowed by the existing authorship and artifact
+management rules. Reload and incremental polling refresh both thread summaries
+and reply bodies, so Review never shows a reply count without the corresponding
+conversation.
+
 `apps/web/src/api/client.ts` gains the eight comment calls plus the file read, with zod schemas mirroring section 7.
 
 ## 9a. Review viewer architecture
@@ -321,10 +349,12 @@ app shell (strict CSP, unchanged)
 ```
 
 - `/review-frame` is a second Vite entry in `apps/web`, served by both the Node asset handler and the Cloudflare worker with its own headers: a content-permissive CSP (inline scripts and styles allowed, wide `img-src`/`font-src`/`media-src` — the content domain serves artifacts with no CSP at all today, so this grants the sandbox nothing new) and `frame-ancestors 'self'`. The app shell's own strict CSP is untouched; `default-src 'self'` already permits framing a same-origin document.
-- The app fetches the HTML bytes over the section-7 file route and hands them to `/review-frame` by `postMessage`; `/review-frame` renders `HtmlViewer`, which builds the injected `srcdoc`. Sub-resources of multi-file artifacts resolve via an injected `<base>` to the content domain for `public_link` artifacts; for `account_required` multi-file artifacts they do not load in the viewer (the page still renders) — full-fidelity private sub-resources remain the future `PLN-009/010` review-origin work. Self-contained single-file HTML, the dominant comment target, is unaffected.
+- The app fetches HTML over the section-7 file route and hands the bytes to `/review-frame` by `postMessage`; `/review-frame` renders `HtmlViewer`, which builds the injected `srcdoc`.
+- Public current versions use their immutable version origin as the injected base. Private and historical versions use a short-lived preview lease. The lease token is an opaque content-host label, is bound to one exact immutable version and principal, permits only `GET` and `HEAD`, and can return only paths in that version's manifest. The base includes the selected HTML entry's directory so both relative and root-relative references stay on the leased version origin.
+- Preview leases are persisted as exact-version content sessions but are resolved by their own host-label route. They are never set as cookies, never appear in the Review URL, do not authorize application APIs or another version, expire after the bounded preview lifetime, and return private `no-store` responses. The raw exact-version bootstrap and host-only `SameSite=Strict` content cookie remain unchanged for top-level raw navigation.
 - Host↔frame protocol (versioned, source-checked both ways): parent → frame `init {html, theme tokens, annotations, readOnly}`, `annotations-changed`, `focus {threadId}`; frame → parent `ready`, `draft {anchor, originalText, targets}`, `submit {anchor, body, targets}`, `select {threadId}`, `resize`. The frame never sees a credential; every comment API call happens in the app document.
 - Anchors ride the bridge's fail-closed `HtmlElementAnchor` builder unchanged and are stored in the Workspaces wire shape (`originalText`, `htmlAnchor`, `htmlAdditionalTargets`, top-level `point` 0..1), so the server's opaque-anchor rule needs nothing new.
-- What this does not touch: content sessions stay `SameSite=Strict`, host-only, top-level only; content responses gain no `frame-ancestors` for the app; no new cookie kinds; `SEC-001`'s hostile-artifact posture is preserved because artifact JavaScript executes only inside the opaque-origin sandbox (same boundary Plannotator ships).
+- What this does not touch: raw content sessions stay `SameSite=Strict`, host-only, and top-level only; preview leases create no cookie; content responses gain no application credential; `SEC-001`'s hostile-artifact posture is preserved because artifact JavaScript executes only inside the opaque-origin sandbox and the lease can read only the exact bytes already being reviewed.
 
 ## 10. What is out, and how it is sliced
 

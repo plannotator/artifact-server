@@ -1,8 +1,8 @@
 /**
- * Artifact Server ↔ Pi bridge core.
+ * Artifact Server agent-bridge core.
  *
- * A pure library with no Pi imports: everything Pi-shaped arrives through the
- * explicit {@link PiPort} contract, and every network call goes through the
+ * A pure, host-agnostic library: everything host-shaped arrives through the
+ * explicit {@link HostPort} contract, and every network call goes through the
  * injected fetch implementation. The bridge is fail-open by design — a
  * missing configuration leaves it dormant after one notice, a dead backend
  * only produces bounded backoff, and no failure is ever thrown back into the
@@ -17,25 +17,25 @@ import {setTimeout as scheduledDelay} from "node:timers/promises";
 import {z} from "zod";
 
 // ---------------------------------------------------------------------------
-// Pi-facing port
+// Host-facing port
 // ---------------------------------------------------------------------------
 
-/** The only delivery option the bridge may ever hand to Pi. */
+/** The only delivery option the bridge may ever hand to the host. */
 export interface FollowUpDelivery {
   readonly deliverAs: "followUp";
 }
 
-/** Notification severities mirrored from Pi's `ctx.ui.notify`. */
+/** Notification severities the host surfaces to its user. */
 export type BridgeNoticeKind = "error" | "info" | "warning";
 
 /**
- * The narrow Pi surface the bridge core uses. The Pi-facing entry wires it to
- * a live extension handle; tests inject a recording object. A synchronous
- * throw from any port method is treated as a lost host handle (Pi invalidates
- * captured handles after `/reload`, `/new`, `/resume`, and `/fork`), which
- * ends the claim loop without raising into the host.
+ * The narrow host surface the bridge core uses. The host-facing entry wires
+ * it to a live extension handle; tests inject a recording object. A
+ * synchronous throw from any port method is treated as a lost host handle
+ * (hosts invalidate captured handles across session replacement and reload),
+ * which ends the claim loop without raising into the host.
  */
-export interface PiPort {
+export interface HostPort {
   /** True while the host session is compacting and cannot accept a prompt. */
   isCompacting(): boolean;
   /** Surface one short informational notice to the user. */
@@ -158,6 +158,27 @@ export function connectionKeyFor(
 }
 
 // ---------------------------------------------------------------------------
+// Untrusted-text sanitization
+// ---------------------------------------------------------------------------
+
+/**
+ * Bidirectional controls (U+202A–202E, U+2066–2069) and zero-width or
+ * otherwise invisible characters (U+200B–200F, U+2060, U+FEFF) that hostile
+ * comment text could use to reorder or hide what the host agent reads.
+ */
+const invisibleDirectivePattern =
+  /[\u202A-\u202E\u2066-\u2069\u200B-\u200F\u2060\uFEFF]/gu;
+
+/**
+ * Strip bidirectional-override and invisible Unicode from one piece of
+ * untrusted text before it is composed into a bundle message. Pure and
+ * idempotent; every visible character passes through unchanged.
+ */
+export function sanitizeBundleText(text: string): string {
+  return text.replace(invisibleDirectivePattern, "");
+}
+
+// ---------------------------------------------------------------------------
 // Bundle rendering
 // ---------------------------------------------------------------------------
 
@@ -182,7 +203,7 @@ export interface RenderableBundle {
 }
 
 function quotedSelectionFragment(selection: string): string {
-  const collapsed = selection.replace(/\s+/gu, " ").trim();
+  const collapsed = sanitizeBundleText(selection).replace(/\s+/gu, " ").trim();
   const bounded = collapsed.length <= maximumQuotedSelectionCharacters
     ? collapsed
     : `${collapsed.slice(0, maximumQuotedSelectionCharacters - 1)}…`;
@@ -192,7 +213,9 @@ function quotedSelectionFragment(selection: string): string {
 /**
  * Render one bundle as one message in the recorded template. The message
  * always starts with the constant `Artifact Server:` prefix, so no rendered
- * message can ever begin with a slash and be intercepted as a Pi command.
+ * message can ever begin with a slash and be intercepted as a host command,
+ * and every untrusted field is stripped of bidirectional and invisible
+ * Unicode before composition.
  */
 export function renderBundleMessage(bundle: RenderableBundle): string {
   const lines: string[] = [];
@@ -200,7 +223,7 @@ export function renderBundleMessage(bundle: RenderableBundle): string {
     `Artifact Server: ${bundle.senderDisplayName} sent ` +
       `${bundle.items.length} annotation(s) to address.`,
   );
-  const note = bundle.note?.trim() ?? "";
+  const note = sanitizeBundleText(bundle.note ?? "").trim();
   if (note !== "") lines.push(note);
   lines.push("");
   bundle.items.forEach((item, index) => {
@@ -211,7 +234,7 @@ export function renderBundleMessage(bundle: RenderableBundle): string {
       ? ""
       : ` ${quotedSelectionFragment(item.quotedSelection)}`;
     lines.push(`${index + 1}. ${place}${quoted}`);
-    for (const bodyLine of item.body.split("\n")) {
+    for (const bodyLine of sanitizeBundleText(item.body).split("\n")) {
       lines.push(`   ${bodyLine}`);
     }
     lines.push(`   (thread ${item.threadId})`);
@@ -230,9 +253,24 @@ export function renderBundleMessage(bundle: RenderableBundle): string {
 // HTTP client
 // ---------------------------------------------------------------------------
 
+/** The protocol version this client implements. */
+export const clientProtocolVersion = 1;
+
+/**
+ * The capability set this client advertises at registration: the best-effort
+ * activity beacon, and native delivery evidence (the host itself accepts
+ * each message before the bridge reports `delivered`).
+ */
+export const clientCapabilities = {
+  beacon: true,
+  evidence: "native",
+} as const;
+
 const registeredAgentSchema = z.object({id: z.string()}).loose();
-const agentRegistrationSchema = z.object({agent: registeredAgentSchema})
-  .loose();
+const agentRegistrationSchema = z.object({
+  agent: registeredAgentSchema,
+  protocolVersion: z.number().optional(),
+}).loose();
 const dispatchSchema = z.object({
   id: z.string(),
   note: z.string().nullable(),
@@ -285,7 +323,7 @@ export type ClaimedDispatch = z.infer<typeof dispatchSchema>;
 /** A semantic bundle failure the bridge reports back as `failed`. */
 export class BundleFetchError extends Error {}
 
-/** Raised internally when a Pi port call throws — the host handle is gone. */
+/** Raised internally when a host port call throws — the handle is gone. */
 class HostHandleLostError extends Error {}
 
 interface HttpSession {
@@ -601,11 +639,16 @@ export interface CommentOperations {
   resolve(threadId: string): Promise<void>;
 }
 
-/** Build the comment operations the `artifact_comments` tool wraps. */
+/**
+ * Build the comment operations the `artifact_comments` tool wraps. Pass the
+ * bridge's {@link ActivityBeacon} so a successful reply or resolve reports
+ * the matching activity transition; without one, no beacon is sent.
+ */
 export function createCommentOperations(
   credentials: BridgeCredentials,
   fetchImplementation: typeof fetch,
   cache: ThreadLocationCache,
+  beacon?: ActivityBeacon,
 ): CommentOperations {
   const session: HttpSession = {credentials, fetchImplementation};
   return {
@@ -642,6 +685,7 @@ export function createCommentOperations(
           `Replying to thread ${threadId} answered ${answer}`,
         );
       }
+      beacon?.replySent(threadId);
     },
     async resolve(threadId) {
       const location = await locateThread(session, cache, threadId);
@@ -657,8 +701,83 @@ export function createCommentOperations(
           `Resolving thread ${threadId} answered ${answer}`,
         );
       }
+      beacon?.threadResolved(threadId);
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Activity beacon
+// ---------------------------------------------------------------------------
+
+/** The fine-grained states the best-effort activity beacon reports. */
+export type BeaconActivityState = "idle" | "replying" | "thinking";
+
+type BeaconSender = (
+  state: BeaconActivityState,
+  dispatchId: string | null,
+) => void;
+
+/**
+ * Turns the bridge's natural work boundaries into at most one activity
+ * beacon per state transition: a bundle the host accepted reports
+ * `thinking`, the first comment reply for that bundle reports `replying`,
+ * and resolving the bundle's last thread reports `idle`. The beacon is
+ * display metadata sent fire-and-forget — an unattached or failing sender
+ * drops the beacon silently, and no send is ever awaited, retried, or
+ * surfaced to the host. Share one instance between {@link startBridge} and
+ * {@link createCommentOperations} so replies and resolves count against the
+ * delivered bundle.
+ */
+export class ActivityBeacon {
+  readonly #pending = new Map<
+    string,
+    {replied: boolean; readonly threads: Set<string>}
+  >();
+  #send: BeaconSender | null = null;
+
+  /** Wired by the bridge once registration has produced an agent id. */
+  attach(send: BeaconSender): void {
+    this.#send = send;
+  }
+
+  /** The host accepted a bundle: report `thinking` and track its threads. */
+  bundleAccepted(dispatchId: string, threadIds: readonly string[]): void {
+    this.#pending.set(dispatchId, {
+      replied: false,
+      threads: new Set(threadIds),
+    });
+    this.#emit("thinking", dispatchId);
+  }
+
+  /** A reply landed: the first one per tracked bundle reports `replying`. */
+  replySent(threadId: string): void {
+    for (const [dispatchId, entry] of this.#pending) {
+      if (entry.replied || !entry.threads.has(threadId)) continue;
+      entry.replied = true;
+      this.#emit("replying", dispatchId);
+      return;
+    }
+  }
+
+  /** A thread resolved: emptying the last tracked bundle reports `idle`. */
+  threadResolved(threadId: string): void {
+    if (this.#pending.size === 0) return;
+    for (const [dispatchId, entry] of this.#pending) {
+      entry.threads.delete(threadId);
+      if (entry.threads.size === 0) this.#pending.delete(dispatchId);
+    }
+    if (this.#pending.size === 0) this.#emit("idle", null);
+  }
+
+  #emit(state: BeaconActivityState, dispatchId: string | null): void {
+    if (this.#send === null) return;
+    try {
+      this.#send(state, dispatchId);
+    } catch {
+      // Fail open: a beacon can be lost, never felt.
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -703,17 +822,26 @@ const defaultTimers: BridgeTimers = {
   sleep: realSleep,
 };
 
-/** Everything one bridge session needs; only Pi and the network are live. */
+/** Everything one bridge session needs; only the host and network are live. */
 export interface StartBridgeOptions {
   readonly agentSessionId: string | null;
+  /**
+   * The activity-beacon coordinator, shared with
+   * {@link createCommentOperations} so reply and resolve transitions count
+   * against delivered bundles. Omitted, the bridge still beacons `thinking`
+   * on each accepted bundle through a private instance.
+   */
+  readonly beacon?: ActivityBeacon;
   /** Null when nothing resolved: the bridge stays dormant after one notice. */
   readonly credentials: BridgeCredentials | null;
   readonly displayName: string;
   readonly fetchImplementation: typeof fetch;
+  readonly host: HostPort;
   readonly hostname: string;
+  /** The registered agent kind, a lowercase slug naming the host harness. */
+  readonly kind: string;
   readonly locations?: ThreadLocationCache;
   readonly log?: (message: string) => void;
-  readonly pi: PiPort;
   readonly timers?: BridgeTimers;
   readonly waitSeconds?: number;
   readonly workingDirectory: string;
@@ -725,6 +853,12 @@ export interface BridgeHandle {
   readonly dormant: boolean;
   /** The registered agent id, once registration has succeeded. */
   agentId(): string | null;
+  /**
+   * The protocol version the server reported at registration, once known.
+   * A server that predates the handshake reports nothing and is treated as
+   * version 1.
+   */
+  protocolVersion(): number | null;
   /**
    * End the loop and abort the held poll. The courtesy disconnect (which
    * deletes the registration row) is sent only when `disconnect` is true —
@@ -754,13 +888,14 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
   const log = options.log ?? (() => undefined);
   if (options.credentials === null) {
     try {
-      options.pi.notify(dormantNotice, "info");
+      options.host.notify(dormantNotice, "info");
     } catch {
       log("The dormancy notice could not be shown.");
     }
     return {
       agentId: () => null,
       dormant: true,
+      protocolVersion: () => null,
       stop: () => Promise.resolve(),
     };
   }
@@ -775,9 +910,11 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
     Math.trunc(options.waitSeconds ?? defaultClaimWaitSeconds),
   );
   const cache = options.locations ?? new ThreadLocationCache();
+  const beacon = options.beacon ?? new ActivityBeacon();
   const controller = new AbortController();
   let stopped = false;
   let agentId: string | null = null;
+  let protocolVersion: number | null = null;
 
   const callPort = <Value>(action: () => Value): Value => {
     try {
@@ -788,25 +925,53 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
   };
 
   const register = async (): Promise<string> => {
-    const response = await apiFetch(session, "/api/v1/agents", {
+    const registration = {
+      agentSessionId: options.agentSessionId,
+      connectionKey: connectionKeyFor(
+        options.hostname,
+        options.workingDirectory,
+      ),
+      displayName: options.displayName,
+      kind: options.kind,
+      workingDirectory: options.workingDirectory,
+    };
+    let response = await apiFetch(session, "/api/v1/agents", {
       body: JSON.stringify({
-        agentSessionId: options.agentSessionId,
-        connectionKey: connectionKeyFor(
-          options.hostname,
-          options.workingDirectory,
-        ),
-        displayName: options.displayName,
-        kind: "pi",
-        workingDirectory: options.workingDirectory,
+        ...registration,
+        capabilities: clientCapabilities,
       }),
       method: "POST",
       signal: controller.signal,
     });
+    if (response.status === 422) {
+      // A server that predates the capability handshake refuses the field
+      // outright; register without it and treat the server as version 1.
+      response = await apiFetch(session, "/api/v1/agents", {
+        body: JSON.stringify(registration),
+        method: "POST",
+        signal: controller.signal,
+      });
+    }
     if (!response.ok) {
       const answer = await failureDescription(response);
       throw new Error(`Agent registration answered ${answer}`);
     }
-    return agentRegistrationSchema.parse(await response.json()).agent.id;
+    const answer = agentRegistrationSchema.parse(await response.json());
+    protocolVersion = answer.protocolVersion ?? 1;
+    const registeredId = answer.agent.id;
+    // The beacon is fire-and-forget by contract: the send is never awaited,
+    // and any refusal or transport failure is dropped without notice.
+    beacon.attach((state, dispatchId) => {
+      void apiFetch(session, `/api/v1/agents/${registeredId}/activity`, {
+        body: JSON.stringify(
+          dispatchId === null ? {state} : {dispatchId, state},
+        ),
+        method: "POST",
+        signal: controller.signal,
+      }).then((answered) => answered.body?.cancel(), () => undefined)
+        .catch(() => undefined);
+    });
+    return registeredId;
   };
 
   const claimNext = async (agent: string): Promise<ClaimedDispatch | null> => {
@@ -863,7 +1028,7 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
 
   const holdWhileCompacting = async (): Promise<void> => {
     let heldMilliseconds = 0;
-    while (callPort(() => options.pi.isCompacting())) {
+    while (callPort(() => options.host.isCompacting())) {
       if (stopped) return;
       if (heldMilliseconds >= maximumCompactionHoldMilliseconds) {
         throw new BundleFetchError(
@@ -893,13 +1058,14 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
     }
     if (stopped) return;
     callPort(() => {
-      options.pi.notify(
+      options.host.notify(
         `Artifact Server: delivering ${dispatch.threadIds.length} ` +
           `annotation(s) from ${dispatch.sender.displayName}.`,
         "info",
       );
-      options.pi.sendUserMessage(message, {deliverAs: "followUp"});
+      options.host.sendUserMessage(message, {deliverAs: "followUp"});
     });
+    beacon.bundleAccepted(dispatch.id, dispatch.threadIds);
     await reportOutcome(dispatch.id, agent, "delivered", null);
   };
 
@@ -918,7 +1084,9 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
       } catch (error) {
         if (stopped || controller.signal.aborted) break;
         if (error instanceof HostHandleLostError) {
-          log(`The Pi handle is gone; ending the claim loop: ${error.message}`);
+          log(
+            `The host handle is gone; ending the claim loop: ${error.message}`,
+          );
           break;
         }
         backoff = backoff === 0
@@ -958,7 +1126,12 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
     }
   };
 
-  return {agentId: () => agentId, dormant: false, stop};
+  return {
+    agentId: () => agentId,
+    dormant: false,
+    protocolVersion: () => protocolVersion,
+    stop,
+  };
 }
 
 function describeError(cause: unknown): string {

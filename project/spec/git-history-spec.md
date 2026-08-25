@@ -1,6 +1,6 @@
 # Optional Git handoff and version history
 
-**Status:** Accepted ([ADR 0026](./decisions/0026-cloudflare-artifacts-configurable-git-handoff.md)); implementation underway — Node configuration, durable provider identity, a read-only REST availability probe, HTTP/MCP discovery, and the simple per-project enablement slice implement parts of `GIT-010`, `GIT-012`, `GIT-013`, and `GIT-014`; all acceptance evidence remains empty until the complete requirement behaviors pass (August 23, 2026)
+**Status:** Accepted and implemented across the provider-neutral mirror core, SQLite, Postgres, D1, Node REST, and Workers-binding paths. Isolated live qualification passed for both Cloudflare control planes on August 25, 2026. Requirements remain in `implementing` state until the complete cross-deployment hostile matrix and release evidence are attached.
 **Date:** August 23, 2026
 **Owner:** Artifact Server product engineering
 **Companion documents:** [Product specification](./artifact-server-product-spec.md) ("Versions, comparisons, and optional Git"), [Phase 9 Track D](./phase-9-distribution-and-history.md), [Conformance ledger](./conformance.yml), [ADR 0026](./decisions/0026-cloudflare-artifacts-configurable-git-handoff.md)
@@ -92,6 +92,10 @@ Each commit's tree holds exactly:
 - the version's files at or below the copy limit, at their manifest paths;
 - `.artifactserver/version.json` — installation ID, project ID, artifact ID, version ID, version number, manifest digest, entry path, version `createdAt`, and the publishing principal ID. Artifact Server identities only; no value supplied by artifact content ever appears in commit metadata, messages, or this file beyond the manifest paths themselves;
 - `.artifactserver/pointers.json` — one pointer entry per excluded file: path, media type, size, SHA-256. No bytes (`GIT-004`).
+
+`.artifactserver` is a reserved manifest path segment. Publication rejects it
+case-insensitively at any depth, and the provider refuses a legacy commit that
+would replace either metadata file.
 
 Copy selection is deterministic: inspect manifest entries in canonical path
 order, copy a file only when it is at or below the per-file limit and its bytes
@@ -315,10 +319,11 @@ artifactserver history purge --apply --confirm-installation ins_<id>
 
 `--plan` reads only persisted repository coordinates and reports the provider,
 installation ID, persisted account/namespace identity, repository count,
-logical copied bytes, and already-deleted count. It makes no provider request
+logical copied bytes, already-deleted count, and enabled-project count. It makes no provider request
 and reveals no remote credential. `--apply` requires the same non-off provider,
 location identity, and credential family that owns the persisted coordinates,
-plus an exact installation-ID confirmation. It deletes repositories in bounded
+plus an exact installation-ID confirmation. It refuses to run until Git history
+is disabled for every project. It deletes repositories in bounded
 pages through the ordinary idempotent `deleteRepository` operation and marks
 coordinates and mappings deleted only after the provider confirms absence.
 

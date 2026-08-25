@@ -465,7 +465,7 @@ describe("Cloudflare D1 comments", () => {
       try {
         expect(schemaVersionRowSchema.parse(upgraded.prepare(
           "SELECT version FROM artifact_server_schema WHERE component = 'runtime'",
-        ).get()).version).toBe(7);
+        ).get()).version).toBe(9);
         const columns = z.array(tableColumnRowSchema)
           .parse(upgraded.prepare("PRAGMA table_info(login_attempts)").all())
           .map(({name}) => name);
@@ -532,14 +532,27 @@ async function findD1DatabaseFile(directory: string): Promise<string> {
     recursive: true,
     withFileTypes: true,
   });
-  const found = entries.find((entry) =>
-    entry.isFile() && entry.name.endsWith(".sqlite") &&
-    entry.parentPath.includes("D1")
-  );
+  const found = entries
+    .filter((entry) =>
+      entry.isFile() && entry.name.endsWith(".sqlite") &&
+      entry.parentPath.includes("D1")
+    )
+    .map((entry) => join(entry.parentPath, entry.name))
+    .find((candidate) => {
+      const database = new DatabaseSync(candidate, {readOnly: true});
+      try {
+        return database.prepare(`
+          SELECT name FROM sqlite_master
+          WHERE type = 'table' AND name = 'artifact_server_schema'
+        `).get() !== undefined;
+      } finally {
+        database.close();
+      }
+    });
   if (found === undefined) {
     throw new Error("The Worker did not persist a local D1 database file.");
   }
-  return join(found.parentPath, found.name);
+  return found;
 }
 
 async function publishArtifact(

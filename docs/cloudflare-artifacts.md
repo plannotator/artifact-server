@@ -1,87 +1,132 @@
-# Cloudflare Artifacts Git history
+# Optional Git history with Cloudflare Artifacts
 
-[Cloudflare Artifacts](https://developers.cloudflare.com/artifacts/) provides version storage through Workers bindings, a REST API, and Git smart HTTP.
+[Cloudflare Artifacts](https://developers.cloudflare.com/artifacts/) can keep a private Git copy of selected Artifact Server projects. Artifact Server remains the source of truth for publishing, Review, comments, delivery, restore, and recovery.
 
-Artifact Server uses Cloudflare Artifacts as an optional Git handoff. Artifact Server remains the source of truth for publication, review, delivery, and recovery.
+![Cloudflare Artifacts provides optional Git-backed history](./assets/cloudflare-artifacts-git-handoff.svg)
 
-![Cloudflare Artifacts provides version storage through Workers bindings](./assets/cloudflare-artifacts-git-handoff.svg)
+> Cloudflare Artifacts is currently a closed beta. Request access before you configure this integration. Git history is off by default and Artifact Server remains complete without it.
 
 ## How it works
 
-- Git history is off by default.
-- An operator configures one Cloudflare Artifacts namespace for the installation.
-- A project administrator enables Git history for one project.
-- Each artifact receives one private repository.
-- Each saved artifact version maps to one deterministic commit.
-- Provider errors do not block artifact publication or delivery.
-- Disabling Git history does not delete repositories.
+- An administrator enables Git history one project at a time after reviewing a copy estimate.
+- Artifact Server creates one private repository per artifact, only when the first version is ready to mirror.
+- Every saved version becomes one deterministic commit on `main` and one immutable `v/<versionId>` tag.
+- Large files stay in primary object storage and appear in Git as pointer metadata.
+- Publication never waits for Git. Provider failures retry in a durable outbox and do not affect saved artifacts.
 
-One repository per artifact gives each artifact an independent history, token, lifecycle, and deletion boundary.
+Disabling a project stops new copies but preserves its repositories and mappings. Re-enabling the same project resumes and backfills missing versions. Deleting an artifact queues deletion of that artifact's repository.
 
-Cloudflare bills aggregate storage and operations. It does not bill by repository count.
+## Choose an isolated namespace
+
+Create one dedicated namespace for each Artifact Server environment. Do not reuse a namespace owned by another product or installation.
+
+```sh
+pnpm --dir deploy/cloudflare exec wrangler artifacts namespaces create artifact-server-production
+```
+
+Use separate namespaces for production, development, and live qualification. Artifact Server persists the account and namespace identity after the first successful check. Changing either value after repositories exist reports `migration-required` instead of writing to a different location.
 
 ## Configure a Node deployment
 
-Set the provider:
+Node deployments use the namespace-scoped REST control plane and Git smart HTTP. Put an Artifacts Read/Edit token in a secret file; a raw token environment variable is rejected.
 
 ```sh
 ARTIFACT_SERVER_GIT_HISTORY_PROVIDER=cloudflare-artifacts
-```
-
-Set the Cloudflare account and namespace:
-
-```sh
-ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_ACCOUNT_ID=example-account-id
+ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_ACCOUNT_ID=<account-id>
 ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_NAMESPACE=artifact-server-production
 ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_API_TOKEN_FILE=/run/secrets/cloudflare-artifacts-token
 ```
 
-The token needs Cloudflare Artifacts Read and Edit permissions. Artifact Server does not accept a raw token environment variable.
+Optional copy controls:
 
-The namespace must belong only to one Artifact Server installation environment. Use different namespaces for production, development, and live tests.
+| Variable | Default | Effect |
+| --- | ---: | --- |
+| `ARTIFACT_SERVER_GIT_HISTORY_COPY_LIMIT_BYTES` | `10485760` | Files above this size become pointers. |
+| `ARTIFACT_SERVER_GIT_HISTORY_VERSION_COPY_LIMIT_BYTES` | `52428800` | Deterministic excess in one version becomes pointers. |
+| `ARTIFACT_SERVER_GIT_HISTORY_STORAGE_BUDGET_BYTES` | unset | Pauses new mirror writes before the logical copy budget is exceeded. |
 
-## Configure copy limits
+Restart the application after changing installation configuration. A missing, invalid, or unavailable provider reports a Git-specific state and does not make Artifact Server unready.
 
-Artifact Server copies files within explicit bounds:
+## Configure the Cloudflare deployment
 
-| Variable | Default | Purpose |
+Set `cloudflareArtifactsNamespace` in the Cloudflare deployment input. Alchemy binds the existing namespace as `ARTIFACTS`; no REST token is used by the Worker.
+
+```ts
+{
+  cloudflareArtifactsNamespace: "artifact-server-production"
+}
+```
+
+The Worker persists and checks the Cloudflare account and namespace identity before it enables provider writes.
+
+## Enable a project
+
+Open **Projects**, find the project, and select **Enable Git history**. Artifact Server shows the current repository, version, and byte estimate before confirmation. The setting starts off for every existing and new project.
+
+Project state progresses through `waiting`, `backfilling`, and `ready`. `degraded` means the provider needs attention. `budget-limited` means primary publishing still works, but new Git writes are paused by the configured budget.
+
+HTTP and MCP expose the same operations:
+
+| Intent | HTTP | MCP |
 | --- | --- | --- |
-| `ARTIFACT_SERVER_GIT_HISTORY_COPY_LIMIT_BYTES` | `10485760` | Maximum copied bytes for one file. |
-| `ARTIFACT_SERVER_GIT_HISTORY_VERSION_COPY_LIMIT_BYTES` | `52428800` | Maximum copied bytes for one version. |
-| `ARTIFACT_SERVER_GIT_HISTORY_STORAGE_BUDGET_BYTES` | Not set | Optional application budget for copied bytes. |
+| Read status | `GET /api/v1/projects/:projectId/git-history` | `project_git_history_status` |
+| Estimate | `POST /api/v1/projects/:projectId/git-history/estimate` | `project_git_history_estimate` |
+| Enable or disable | `PUT /api/v1/projects/:projectId/git-history` | `project_set_git_history` |
 
-Files above a copy limit remain in primary storage. The Git commit contains deterministic pointer metadata for those files.
+## Clone history
 
-## Enable one project
+Authenticated members can request a short-lived, read-only token for one provisioned artifact. Public links never grant Git access.
 
-Provider configuration makes the integration available. It does not copy project data.
+```sh
+artifactserver history clone --project prj_example art_example ./artifact-history
+artifactserver history checkout-project prj_example ./project-history
+```
 
-A project administrator follows this sequence:
+The project command clones provisioned repositories with bounded concurrency and writes `.artifactserver/project.json`. Artifacts that have not been provisioned are reported without failing successful clones.
 
-1. Read the provider and project status.
-2. Request the storage estimate.
-3. Review the estimated copied and pointer bytes.
-4. Enable Git history for the project.
-5. Monitor backfill and provider health.
+## Remove all derived history
 
-The Artifact Server review interface, HTTP API, and MCP expose the same project setting.
+Disabling Git history is reversible and does not delete repositories. Permanent installation-wide removal is a separate operator action. Always inspect the read-only plan first:
 
-## Keep account data separate
+Disable Git history for every project before applying a purge. The command refuses to delete repositories while any project remains enabled.
 
-Use a dedicated namespace for Artifact Server. Do not use a namespace that belongs to another product.
+```sh
+artifactserver history purge --plan --mode compact --data /srv/artifact-server
+artifactserver history purge --apply --mode compact --data /srv/artifact-server \
+  --confirm-installation inst_example
+```
 
-Live tests require a namespace that starts with `artifact-server-test-`. Each test run uses a unique repository prefix and bounded cleanup.
+Use `--mode external-storage` inside a Postgres deployment with its normal database and installation environment. The command uses persisted coordinates, requires an exact installation ID and matching provider identity, deletes in bounded pages, and resumes after interruption. It never deletes primary artifacts or the Cloudflare namespace.
 
-This design gives production, development, tests, and unrelated Cloudflare projects separate cleanup boundaries.
+For a Cloudflare D1 deployment, run the transient operator Worker from the source checkout. It binds only the named D1 database and Artifacts namespace and is not part of the deployed application:
 
-## Availability and release gate
+```sh
+ARTIFACT_SERVER_CLOUDFLARE_ACCOUNT_ID=<account-id> \
+ARTIFACT_SERVER_CLOUDFLARE_D1_DATABASE_ID=<database-id> \
+ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_NAMESPACE=artifact-server-production \
+ARTIFACT_SERVER_INSTALLATION_ID=inst_example \
+pnpm purge:cloudflare-artifacts -- --plan
 
-The current code provides configuration validation, provider health discovery, estimates, and per-project enablement.
+# After reviewing the plan:
+pnpm purge:cloudflare-artifacts -- --apply \
+  --confirm-installation inst_example
+```
 
-Repository writes, clone tokens, deletion, recovery, and live Cloudflare qualification remain behind conformance requirement `GATE-004`.
+The apply request is sent once. Each confirmed repository deletion is recorded in D1 before the next repository, so the same command safely resumes a partial run.
 
-Cloudflare controls access to Cloudflare Artifacts. Confirm account access before you enable the provider.
+## Qualify your account
 
-Read the current Cloudflare [pricing](https://developers.cloudflare.com/artifacts/platform/pricing/) and [limits](https://developers.cloudflare.com/artifacts/platform/limits/).
+The repository includes bounded live suites for both supported Cloudflare control planes. They refuse to run without explicit opt-in and use only the dedicated `artifact-server-test-qualification` namespace.
 
-Read the [Git history specification](../project/spec/git-history-spec.md) and [ADR 0026](../project/spec/decisions/0026-cloudflare-artifacts-configurable-git-handoff.md) for the complete contract.
+```sh
+ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_LIVE=1 pnpm qualify:cloudflare-artifacts
+ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_LIVE=1 pnpm qualify:cloudflare-artifacts:binding
+```
+
+Every repository receives a generated `artifact-server-test-<run>-` prefix. Cleanup uses only the run manifest or exact run prefix; it never deletes a namespace or sweeps an account. The checked-in [qualification evidence](../project/evidence/cloudflare-artifacts-live-qualification.json) records successful REST, Workers binding, deterministic commit, exact-tag, scoped-token, smart-HTTP, and cleanup checks from August 25, 2026.
+
+## Costs and limits
+
+Cloudflare prices aggregate operations and stored bytes, not repository count. One repository per artifact therefore matches Artifact Server's authorization and deletion boundary without adding a per-repository fee. Review Cloudflare's current [pricing](https://developers.cloudflare.com/artifacts/platform/pricing/) and [limits](https://developers.cloudflare.com/artifacts/platform/limits/) before enabling large projects.
+
+For the complete product contract, read the [Git history specification](../project/spec/git-history-spec.md) and [ADR 0026](../project/spec/decisions/0026-cloudflare-artifacts-configurable-git-handoff.md).

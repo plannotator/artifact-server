@@ -236,6 +236,8 @@ describe("direct local release package", () => {
           dataDirectory,
           "--server",
           `http://127.0.0.1:${port}`,
+          "--token-file",
+          path.join(dataDirectory, "local-api-token"),
           "--public",
         ],
         workspace,

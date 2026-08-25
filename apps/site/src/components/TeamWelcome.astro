@@ -1,0 +1,170 @@
+---
+import ArtifactMark from "./ArtifactMark.astro";
+import claudeLogo from "../../../web/src/review/assets/agents/claude.svg";
+import codexLogo from "../../../web/src/review/assets/agents/codex-dark.svg";
+import copilotLogo from "../../../web/src/review/assets/agents/copilot-dark.svg";
+import cursorLogo from "../../../web/src/review/assets/agents/cursor-dark.svg";
+import piLogo from "../../../web/src/review/assets/agents/pi.svg";
+
+const agents = [
+  { name: "Claude", src: claudeLogo.src },
+  { name: "Codex", src: codexLogo.src },
+  { name: "Cursor", src: cursorLogo.src },
+  { name: "GitHub Copilot", src: copilotLogo.src },
+  { name: "Pi", src: piLogo.src },
+];
+---
+
+<section class="team-welcome" aria-labelledby="team-welcome-title">
+  <div class="team-welcome__copy">
+    <div class="team-welcome__mark" aria-hidden="true">
+      <ArtifactMark />
+    </div>
+    <p class="team-welcome__eyebrow">For teammates and agents</p>
+    <p class="team-welcome__title" id="team-welcome-title">Welcome to Artifact Server.</p>
+    <p>
+      Publish finished work, share one review link, and keep feedback with the
+      exact version everyone saw.
+    </p>
+  </div>
+
+  <div class="team-welcome__agents">
+    <p>Bring the agent you already use.</p>
+    <div class="team-welcome__agent-list" aria-label="Supported agents">
+      {agents.map((agent) => (
+        <span class="team-welcome__agent" title={agent.name}>
+          <img alt={agent.name} src={agent.src} />
+        </span>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .team-welcome {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    margin-block: 1.5rem 2rem;
+    padding: clamp(1.5rem, 5vw, 3rem);
+    overflow: hidden;
+    border: 1px solid color-mix(in oklab, white 16%, transparent);
+    background:
+      linear-gradient(135deg, color-mix(in oklab, #4c2cff 18%, transparent), transparent 48%),
+      #09090b;
+    color: #fafafa;
+  }
+
+  .team-welcome::after {
+    position: absolute;
+    right: -5rem;
+    bottom: -8rem;
+    width: 18rem;
+    height: 18rem;
+    border: 1px solid color-mix(in oklab, #7c5cff 28%, transparent);
+    border-radius: 50%;
+    content: "";
+    pointer-events: none;
+  }
+
+  .team-welcome__copy,
+  .team-welcome__agents {
+    position: relative;
+    z-index: 1;
+  }
+
+  .team-welcome__mark {
+    display: grid;
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-bottom: 2.5rem;
+    place-items: center;
+    background: #4c2cff;
+    color: white;
+  }
+
+  .team-welcome__mark :global(svg) {
+    width: 1.65rem;
+    height: 1.65rem;
+  }
+
+  .team-welcome__eyebrow,
+  .team-welcome__agents > p {
+    margin: 0;
+    color: #a9a6b3;
+    font-family: var(--nb-font-mono);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+  }
+
+  .team-welcome__title {
+    max-width: 36rem;
+    margin: 0.5rem 0 0;
+    color: #fafafa;
+    font-size: clamp(2.25rem, 6vw, 3.25rem);
+    font-weight: 600;
+    letter-spacing: -0.045em;
+    line-height: 1;
+    text-wrap: balance;
+  }
+
+  .team-welcome__copy > p:last-child {
+    max-width: 35rem;
+    margin: 1.25rem 0 0;
+    color: #b8b5c2;
+    font-size: 1rem;
+    line-height: 1.6;
+    text-wrap: pretty;
+  }
+
+  .team-welcome__agents {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    margin-top: 2.75rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid color-mix(in oklab, white 12%, transparent);
+  }
+
+  .team-welcome__agent-list {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .team-welcome__agent {
+    display: grid;
+    width: 2.4rem;
+    height: 2.4rem;
+    margin-left: -0.35rem;
+    place-items: center;
+    border: 1px solid #34313d;
+    border-radius: 50%;
+    background: #141318;
+  }
+
+  .team-welcome__agent:first-child {
+    margin-left: 0;
+  }
+
+  .team-welcome__agent img {
+    width: 1.15rem;
+    height: 1.15rem;
+    object-fit: contain;
+  }
+
+  @media (max-width: 42rem) {
+    .team-welcome__mark {
+      margin-bottom: 2rem;
+    }
+
+    .team-welcome__agents {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+  }
+</style>

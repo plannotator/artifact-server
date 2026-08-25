@@ -18,13 +18,13 @@ import {publishNew, type PublishResponse} from "../support/publishing.js";
 import {
   type BridgeHandle,
   type FollowUpDelivery,
-  type PiPort,
+  type HostPort,
   renderBundleMessage,
   startBridge,
-} from "../../integrations/pi/bridge-core.js";
+} from "../../integrations/bridge-core/index.js";
 
-/** A scripted Pi that records exactly what the bridge hands it. */
-class RecordingPiPort implements PiPort {
+/** A scripted host that records exactly what the bridge hands it. */
+class RecordingHostPort implements HostPort {
   compacting = false;
   readonly messages: {text: string; delivery: FollowUpDelivery}[] = [];
   readonly notices: string[] = [];
@@ -120,14 +120,15 @@ describe("bridge bundle rendering", () => {
     return commentThreadCreationSchema.parse(await response.json()).thread.id;
   }
 
-  function startTestBridge(port: RecordingPiPort): BridgeHandle {
+  function startTestBridge(port: RecordingHostPort): BridgeHandle {
     const bridge = startBridge({
       agentSessionId: "pi-session-render",
       credentials: {origin: server.baseUrl, token: installation.apiToken},
       displayName: "site",
       fetchImplementation: fetch,
+      host: port,
       hostname: "render-host",
-      pi: port,
+      kind: "pi",
       waitSeconds: 1,
       workingDirectory: "/work/site",
     });
@@ -159,7 +160,7 @@ describe("bridge bundle rendering", () => {
       idempotencyKey: "bridge-render-thread-plain",
     });
 
-    const port = new RecordingPiPort();
+    const port = new RecordingHostPort();
     startTestBridge(port);
     const agentId = await registeredAgentId();
 
@@ -236,7 +237,7 @@ describe("bridge bundle rendering", () => {
       idempotencyKey: "bridge-render-thread-slash",
       path: "index.html",
     });
-    const port = new RecordingPiPort();
+    const port = new RecordingHostPort();
     startTestBridge(port);
     const agentId = await registeredAgentId();
     const sent = await client.sendDispatch({

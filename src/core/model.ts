@@ -1,3 +1,5 @@
+import {Predicate} from "effect";
+
 import type {PrincipalKind} from "./identity.js";
 
 export const accessSettings = {
@@ -345,14 +347,128 @@ export interface CommentThreadDeletion {
   readonly thread: CommentThreadRecord;
 }
 
-/** Agent kinds accepted by the registered-agent registry. */
-export const registeredAgentKinds = {
-  pi: "pi",
+/** Thread populations a bulk comment clear may target. */
+export const commentClearScopes = {
+  all: "all",
+  resolved: "resolved",
 } as const;
 
-/** One supported registered-agent kind. */
-export type RegisteredAgentKind =
-  (typeof registeredAgentKinds)[keyof typeof registeredAgentKinds];
+/** One bulk-clear target population. */
+export type CommentClearScope =
+  (typeof commentClearScopes)[keyof typeof commentClearScopes];
+
+/** The durable outcome of one bulk comment clear on one artifact. */
+export interface CommentThreadClearing {
+  /** Threads deleted, each with its replies and one ledger action. */
+  readonly deleted: number;
+  /** Threads left in place because an active dispatch still holds them. */
+  readonly skippedDispatched: number;
+}
+
+/** Slug shape every registered-agent kind must satisfy. */
+export const registeredAgentKindPattern = /^[a-z][a-z0-9-]{0,39}$/;
+
+/**
+ * One registered-agent kind: display and analytics metadata shaped as a
+ * slug. Nothing branches on it — behavior branches on capabilities.
+ */
+export type RegisteredAgentKind = string;
+
+/** Bridge protocol revision spoken by this server's agent surface. */
+export const agentProtocolVersion = 1;
+
+/** Delivery-evidence tiers a registered agent can honestly claim. */
+export const agentEvidenceKinds = {
+  channel: "channel",
+  mailbox: "mailbox",
+  native: "native",
+} as const;
+
+/** One delivery-evidence tier. */
+export type AgentEvidenceKind =
+  (typeof agentEvidenceKinds)[keyof typeof agentEvidenceKinds];
+
+/** Normalized capabilities stored for one registered agent. */
+export interface AgentCapabilities {
+  readonly beacon: boolean;
+  readonly evidence: AgentEvidenceKind;
+}
+
+/** Capability keys a registration may declare; unknown keys are ignored. */
+export interface AgentCapabilityDeclaration {
+  readonly beacon?: boolean | undefined;
+  readonly evidence?: AgentEvidenceKind | undefined;
+}
+
+/** Capabilities describing today's native bridge, applied when undeclared. */
+export const defaultAgentCapabilities: AgentCapabilities = {
+  beacon: false,
+  evidence: agentEvidenceKinds.native,
+};
+
+/** Apply defaults and keep only the known capability keys. */
+export function normalizeAgentCapabilities(
+  declared: AgentCapabilityDeclaration | null,
+): AgentCapabilities {
+  return {
+    beacon: declared?.beacon ?? defaultAgentCapabilities.beacon,
+    evidence: declared?.evidence ?? defaultAgentCapabilities.evidence,
+  };
+}
+
+/**
+ * Read one stored capabilities column back into capabilities. The column is
+ * written normalized, so anything unreadable decays to the defaults instead
+ * of failing the whole agent listing.
+ */
+export function parseStoredAgentCapabilities(
+  json: string | null,
+): AgentCapabilities {
+  if (json === null) return defaultAgentCapabilities;
+  let stored: unknown;
+  try {
+    stored = JSON.parse(json);
+  } catch {
+    return defaultAgentCapabilities;
+  }
+  if (!Predicate.isObject(stored)) return defaultAgentCapabilities;
+  const evidence = stored["evidence"];
+  return {
+    beacon: Predicate.isBoolean(stored["beacon"])
+      ? stored["beacon"]
+      : defaultAgentCapabilities.beacon,
+    evidence: evidence === agentEvidenceKinds.channel ||
+        evidence === agentEvidenceKinds.mailbox ||
+        evidence === agentEvidenceKinds.native
+      ? evidence
+      : defaultAgentCapabilities.evidence,
+  };
+}
+
+/** Presence states derived for one registered agent at read time. */
+export const agentActivityStates = {
+  disconnected: "disconnected",
+  idle: "idle",
+  working: "working",
+} as const;
+
+/** One derived presence state. */
+export type AgentActivityState =
+  (typeof agentActivityStates)[keyof typeof agentActivityStates];
+
+/** Finer-grained states an agent's activity beacon may report. */
+export const agentBeaconStates = {
+  idle: "idle",
+  replying: "replying",
+  thinking: "thinking",
+} as const;
+
+/** One beacon-reported activity state. */
+export type AgentBeaconState =
+  (typeof agentBeaconStates)[keyof typeof agentBeaconStates];
+
+/** The beacon detail surfaced on read; a fresh idle beacon surfaces null. */
+export type AgentBeaconDetail = Exclude<AgentBeaconState, "idle"> | null;
 
 /**
  * One live agent connection. A disposable liveness record, not a durable
@@ -362,8 +478,14 @@ export type RegisteredAgentKind =
  * restarts because the same connectionKey upserts back into the same id.
  */
 export interface RegisteredAgentRecord {
+  /** Instant of the last stored beacon, or null when none was ever sent. */
+  readonly activityAt: string | null;
+  /** Last beacon-reported state; the read side applies TTL decay. */
+  readonly activityState: AgentBeaconState | null;
   /** Pi session id refreshed on re-registration, or null when unknown. */
   readonly agentSessionId: string | null;
+  /** Normalized capabilities the agent advertised at registration. */
+  readonly capabilities: AgentCapabilities;
   /** Stable upsert key chosen by the agent. */
   readonly connectionKey: string;
   readonly createdAt: string;
@@ -376,6 +498,21 @@ export interface RegisteredAgentRecord {
   /** The principal that registered the agent, kept for audit. */
   readonly principalId: string;
   readonly workingDirectory: string;
+}
+
+/**
+ * One listed agent with the presence facts read lazily from
+ * `agent_dispatches`: no stored activity writes, no background jobs.
+ */
+export interface RegisteredAgentPresence {
+  /**
+   * The claimed or delivered dispatch whose bundle threads are not all
+   * resolved — the dispatch the agent is working, or null.
+   */
+  readonly activeDispatchId: string | null;
+  readonly agent: RegisteredAgentRecord;
+  /** Latest dispatch transition recorded for the agent, or null. */
+  readonly latestDispatchTransitionAt: string | null;
 }
 
 /** Dispatch delivery states shared by every persistence backend. */

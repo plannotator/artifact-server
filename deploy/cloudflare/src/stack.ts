@@ -127,6 +127,11 @@ export const defineCloudflareFoundation = Effect.fn(
   );
 
   const { database, bucket } = yield* defineDurableResources(manifest);
+  const artifacts = input.cloudflareArtifactsNamespace === undefined
+    ? undefined
+    : yield* Cloudflare.Artifacts.Namespace("ARTIFACTS", {
+      namespace: input.cloudflareArtifactsNamespace,
+    });
 
   const contentWildcardDns = input.ingress === "public"
     ? yield* Cloudflare.DNS.Record("ContentWildcardDns", {
@@ -153,6 +158,16 @@ export const defineCloudflareFoundation = Effect.fn(
     workerEnvironment = {
       ...workerEnvironment,
       ARTIFACT_SERVER_QUALIFICATION_MODE: "enabled",
+    };
+  }
+  if (artifacts !== undefined) {
+    workerEnvironment = {
+      ...workerEnvironment,
+      ARTIFACTS: artifacts,
+      ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_ACCOUNT_ID:
+        input.cloudflareAccountId,
+      ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_NAMESPACE:
+        input.cloudflareArtifactsNamespace,
     };
   }
   if (

@@ -7,8 +7,9 @@ Use these guides to install, connect, operate, and extend Artifact Server.
 - [Deployment](./deployment.md)
 - [MCP and AI agents](./mcp.md)
 - [Pi live feedback extension](../integrations/pi/README.md)
+- [Agent bridge protocol](./agent-bridge-protocol.md)
 - [Command-line interface](./cli.md)
-- [Cloudflare Artifacts Git history](./cloudflare-artifacts.md)
+- [Cloudflare Artifacts integration status](./cloudflare-artifacts.md)
 - [Security](../SECURITY.md)
 
 ## Deployment guides

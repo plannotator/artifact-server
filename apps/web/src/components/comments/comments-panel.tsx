@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import {
   api,
   type AgentDispatch,
+  type AgentPresence,
   type CommentThread,
   type CommentThreadQuery,
   type CommentThreadState,
@@ -16,6 +17,7 @@ import {
   useCommentListOwnership,
   useCommentPoll,
 } from "@/components/comments/comment-poll";
+import { CommentsClearMenu } from "@/components/comments/comments-clear-menu";
 import { CommentThreadCard } from "@/components/comments/comment-thread-card";
 import {
   bundleOfThreads,
@@ -23,7 +25,9 @@ import {
 } from "@/components/dispatch/dispatch-bundle";
 import { loadDispatchIndex } from "@/components/dispatch/dispatch-index";
 import { DispatchSelectionBar } from "@/components/dispatch/dispatch-selection-bar";
-import { SendToAgentDialog } from "@/components/dispatch/send-to-agent-dialog";
+import { useDispatchUndo } from "@/components/dispatch/dispatch-toast";
+import { AgentActivityLine } from "@/components/dispatch/presence-avatar";
+import { SendToAgentControl } from "@/components/dispatch/send-to-agent-dialog";
 import { ErrorPanel, StatePanel } from "@/components/product";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -60,6 +64,7 @@ export function CommentsPanel({
   readonly versions: readonly Version[];
 }) {
   const [threads, setThreads] = useState<readonly CommentThread[]>([]);
+  const [agents, setAgents] = useState<readonly AgentPresence[] | null>(null);
   const [dispatches, setDispatches] = useState<
     ReadonlyMap<string, AgentDispatch>
   >(new Map());
@@ -163,6 +168,26 @@ export function CommentsPanel({
 
   useCommentPoll(pollThreads, !sentView);
 
+  /**
+   * Presence rides the comment cadence while this panel is open: the same
+   * interval refreshes the agents, so the send button, the dialog rows, and
+   * the "working…" lines under Sent threads stay honest without sockets.
+   */
+  const pollAgents = async () => {
+    try {
+      setAgents(await api.agentPresence());
+      setNow(Date.now());
+    } catch {
+      // A failed presence read keeps the last known state on screen.
+    }
+  };
+
+  useCommentPoll(pollAgents, true);
+
+  useEffect(() => {
+    void pollAgents();
+  }, [projectId]);
+
   useEffect(() => {
     const readPrincipal = async () => {
       try {
@@ -206,6 +231,8 @@ export function CommentsPanel({
     await load();
     await onThreadsChanged();
   };
+
+  const undo = useDispatchUndo(projectId, reload);
 
   const cancelSend = async (dispatchId: string) => {
     setError(null);
@@ -278,6 +305,18 @@ export function CommentsPanel({
     return async () => {
       await cancelSend(dispatch.id);
     };
+  };
+  /** The live "working…" line for a Sent thread whose agent holds it now. */
+  const threadPresence = (threadId: string) => {
+    const dispatch = dispatches.get(threadId);
+    if (
+      dispatch === undefined
+      || (dispatch.state !== "claimed" && dispatch.state !== "delivered")
+    ) return null;
+    const agent = agents?.find((candidate) => candidate.id === dispatch.agentId);
+    return agent === undefined
+      ? null
+      : <AgentActivityLine agent={agent} now={now} />;
   };
 
   return (
@@ -357,6 +396,16 @@ export function CommentsPanel({
         >
           {loading ? "Loading…" : "Reload comments"}
         </Button>
+        <CommentsClearMenu
+          artifactId={artifactId}
+          canClearAll={canManage}
+          onCleared={reload}
+          projectId={projectId}
+          scopeLabel={versionFilter === allVersions
+            ? "this artifact"
+            : versionLabel(versionFilter)}
+          versionId={versionFilter === allVersions ? null : versionFilter}
+        />
         {!canSend || sentView
           ? null
           : versionFilter === allVersions
@@ -367,9 +416,11 @@ export function CommentsPanel({
               </p>
             )
             : (
-              <SendToAgentDialog
+              <SendToAgentControl
+                agents={agents}
                 buttonSize="default"
                 buttonVariant="default"
+                feedback={undo.feedback}
                 label="Send all open on this version"
                 onSent={reload}
                 projectId={projectId}
@@ -394,6 +445,8 @@ export function CommentsPanel({
         ? null
         : (
           <DispatchSelectionBar
+            agents={agents}
+            feedback={undo.feedback}
             onClear={() => setSelectedIds([])}
             onSent={reload}
             projectId={projectId}
@@ -437,6 +490,7 @@ export function CommentsPanel({
                   onChanged={reload}
                   onError={setError}
                   onShowInPage={null}
+                  presence={threadPresence(thread.id)}
                   principalId={principalId}
                   projectId={projectId}
                   selected={false}
@@ -449,9 +503,12 @@ export function CommentsPanel({
                     : null}
                   sendAction={sendable(thread)
                     ? (
-                      <SendToAgentDialog
+                      <SendToAgentControl
+                        agents={agents}
+                        feedback={undo.feedback}
                         label="Send to agent"
                         onSent={reload}
+                        oneAgentLabel={(name) => `Send to ${name}`}
                         projectId={projectId}
                         resolveBundle={() =>
                           Promise.resolve(bundleOfThreads([thread]))}
@@ -480,6 +537,8 @@ export function CommentsPanel({
             </Button>
           </div>
         )}
+
+      {undo.element}
     </div>
   );
 }

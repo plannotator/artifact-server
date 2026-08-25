@@ -32,6 +32,9 @@ const email = Schema.String.check(
 const installationName = Schema.String.check(
   Schema.isPattern(/^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/u),
 );
+const cloudflareArtifactsNamespace = Schema.String.check(
+  Schema.isPattern(/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/u),
+);
 const installationId = Schema.String.check(
   Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/u),
 );
@@ -187,6 +190,7 @@ export interface GcpCloudDeploymentInput extends Schema.Schema.Type<
 export const CloudflareCloudDeploymentInput = Schema.Struct({
   ...sharedInputFields,
   cloudflareAccountId: identifier,
+  cloudflareArtifactsNamespace: Schema.optionalKey(cloudflareArtifactsNamespace),
   compatibilityDate,
   stage: identifier,
   stateStore: Schema.Literals(["cloudflare", "local"]),

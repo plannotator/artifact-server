@@ -24,6 +24,10 @@ import type {CliInvocation} from "../../src/cli/current-cli-invocation.js";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const cliEntrypoint = path.join(repositoryRoot, "src/cli/main.ts");
+const connectFixture = path.join(
+  repositoryRoot,
+  "tests/cli/fixtures/run-connect-mcp-client.ts",
+);
 const tsxExecutable = path.join(repositoryRoot, "node_modules/.bin/tsx");
 const modernProtocolRevision = "2026-07-28";
 const temporaryDirectories = new Set<string>();
@@ -48,6 +52,10 @@ const doctorSchema = z.object({
   }),
   status: z.literal("healthy"),
 }).loose();
+const registrationFileSchema = z.object({
+  registrations: z.array(z.object({client: z.string()})),
+}).loose();
+const systemErrorSchema = z.object({code: z.string().optional()});
 
 afterEach(async () => {
   for (const pid of managedServicePids) {
@@ -72,7 +80,7 @@ describe("local MCP onboarding", () => {
     const first = await connectStdio(dataDirectory);
     const firstTools = await first.client.listTools();
     expect(first.client.getNegotiatedProtocolVersion()).toBe(modernProtocolRevision);
-    expect(firstTools.tools).toHaveLength(30);
+    expect(firstTools.tools).toHaveLength(33);
     const capabilities = await first.client.callTool({
       arguments: {},
       name: "artifact_capabilities",
@@ -94,11 +102,11 @@ describe("local MCP onboarding", () => {
     )).toEqual({status: "ok"});
 
     const second = await connectStdio(dataDirectory);
-    expect((await second.client.listTools()).tools).toHaveLength(30);
+    expect((await second.client.listTools()).tools).toHaveLength(33);
     await second.client.close();
 
     const legacy = await connectStdio(dataDirectory, "legacy");
-    expect((await legacy.client.listTools()).tools).toHaveLength(30);
+    expect((await legacy.client.listTools()).tools).toHaveLength(33);
     const legacyCapabilities = await legacy.client.callTool({
       arguments: {},
       name: "artifact_capabilities",
@@ -114,7 +122,7 @@ describe("local MCP onboarding", () => {
     const doctor = await runCli(["doctor", "--data", dataDirectory]);
     expect(doctor.exitCode).toBe(0);
     expect(doctorSchema.parse(JSON.parse(doctor.stdout))).toMatchObject({
-      discovery: {tools: 30},
+      discovery: {tools: 33},
       status: "healthy",
     });
     const apiCredential = (await readFile(
@@ -226,6 +234,147 @@ describe("local MCP onboarding", () => {
     expect(disconnectedVscode).toContain('"existing"');
     expect(disconnectedVscode).toContain('"inputs"');
     expect(disconnectedVscode).not.toContain('"artifact-server"');
+  });
+
+  test("foundation: native inspection failures stop before client mutation", async () => {
+    const workspace = await temporaryWorkspace("artifact-server-mcp-inspection-");
+    const dataDirectory = path.join(workspace, "data");
+    const binaryDirectory = path.join(workspace, "bin");
+    await mkdir(binaryDirectory, {recursive: true});
+    await writeFakeClient(path.join(binaryDirectory, "codex"));
+    const environment = {
+      ...process.env,
+      FAKE_CLIENT_GET_ERROR: "1",
+      FAKE_CLIENT_STATE_DIRECTORY: workspace,
+      PATH: binaryDirectory,
+    };
+    const invocation: CliInvocation = {
+      command: "/opt/artifact-server/node",
+      prefixArguments: ["/opt/artifact-server/main.js"],
+    };
+
+    await expect(
+      connectMcpClient("codex", dataDirectory, invocation, environment),
+    ).rejects.toThrow("permission denied while reading client configuration");
+    expect(await readFile(path.join(workspace, "calls.log"), "utf8"))
+      .toBe("codex mcp get artifact-server --json\n");
+  });
+
+  test("MCP-020-B: resumes a journaled native-client change after process interruption", async () => {
+    const workspace = await temporaryWorkspace("artifact-server-mcp-resume-");
+    const dataDirectory = path.join(workspace, "data");
+    const binaryDirectory = path.join(workspace, "bin");
+    const fakeStateDirectory = path.join(workspace, "fake-client-state");
+    await Promise.all([
+      mkdir(binaryDirectory, {recursive: true}),
+      mkdir(fakeStateDirectory, {recursive: true}),
+    ]);
+    await writeFakeClient(path.join(binaryDirectory, "codex"));
+    const environment = {
+      ...process.env,
+      FAKE_CLIENT_PAUSE_AFTER_ADD: "1",
+      FAKE_CLIENT_STATE_DIRECTORY: fakeStateDirectory,
+      PATH: binaryDirectory,
+    };
+    const child = spawn(process.execPath, [
+      "--import",
+      "tsx",
+      connectFixture,
+      "codex",
+      dataDirectory,
+    ], {
+      cwd: repositoryRoot,
+      env: environment,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const clientState = path.join(fakeStateDirectory, "codex.connected");
+    const journal = path.join(dataDirectory, "mcp-onboarding-transaction.json");
+    await Promise.all([waitForFile(clientState), waitForFile(journal)]);
+    expect((await stat(journal)).mode & 0o777).toBe(0o600);
+    await killProcess(child);
+
+    const recoveryEnvironment: NodeJS.ProcessEnv = {...environment};
+    delete recoveryEnvironment["FAKE_CLIENT_PAUSE_AFTER_ADD"];
+    await connectMcpClient(
+      "codex",
+      dataDirectory,
+      {
+        command: "/opt/artifact-server/node",
+        prefixArguments: ["/opt/artifact-server/main.js"],
+      },
+      recoveryEnvironment,
+    );
+    const registrations = registrationFileSchema.parse(JSON.parse(await readFile(
+      path.join(dataDirectory, "mcp-registrations.json"),
+      "utf8",
+    )));
+    expect(registrations.registrations).toMatchObject([{client: "codex"}]);
+    await expect(stat(journal)).rejects.toMatchObject({code: "ENOENT"});
+  });
+
+  test("MCP-020-F: rolls back failed mutation and preserves an independent interrupted change", async () => {
+    const workspace = await temporaryWorkspace("artifact-server-mcp-rollback-");
+    const dataDirectory = path.join(workspace, "data");
+    const conflictDataDirectory = path.join(workspace, "conflict-data");
+    const binaryDirectory = path.join(workspace, "bin");
+    const fakeStateDirectory = path.join(workspace, "fake-client-state");
+    await Promise.all([
+      mkdir(binaryDirectory, {recursive: true}),
+      mkdir(fakeStateDirectory, {recursive: true}),
+    ]);
+    await writeFakeClient(path.join(binaryDirectory, "codex"));
+    const invocation: CliInvocation = {
+      command: "/opt/artifact-server/node",
+      prefixArguments: ["/opt/artifact-server/main.js"],
+    };
+    const baseEnvironment = {
+      ...process.env,
+      FAKE_CLIENT_STATE_DIRECTORY: fakeStateDirectory,
+      PATH: binaryDirectory,
+    };
+
+    await expect(connectMcpClient("codex", dataDirectory, invocation, {
+      ...baseEnvironment,
+      FAKE_CLIENT_FAIL_AFTER_ADD: "1",
+    })).rejects.toThrow("Could not add Artifact Server to Codex");
+    await expect(stat(path.join(fakeStateDirectory, "codex.connected")))
+      .rejects.toMatchObject({code: "ENOENT"});
+    await expect(stat(path.join(dataDirectory, "mcp-onboarding-transaction.json")))
+      .rejects.toMatchObject({code: "ENOENT"});
+    await expect(stat(path.join(dataDirectory, "mcp-registrations.json")))
+      .rejects.toMatchObject({code: "ENOENT"});
+
+    const interruptedEnvironment = {
+      ...baseEnvironment,
+      FAKE_CLIENT_PAUSE_AFTER_ADD: "1",
+    };
+    const child = spawn(
+      process.execPath,
+      ["--import", "tsx", connectFixture, "codex", conflictDataDirectory],
+      {
+        cwd: repositoryRoot,
+        env: interruptedEnvironment,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    const clientState = path.join(fakeStateDirectory, "codex.connected");
+    const journal = path.join(
+      conflictDataDirectory,
+      "mcp-onboarding-transaction.json",
+    );
+    await Promise.all([waitForFile(clientState), waitForFile(journal)]);
+    await killProcess(child);
+    const independentlyChangedState = `${await readFile(clientState, "utf8")}  EXTRA=value\n`;
+    await writeFile(clientState, independentlyChangedState);
+
+    await expect(connectMcpClient(
+      "codex",
+      conflictDataDirectory,
+      invocation,
+      baseEnvironment,
+    )).rejects.toThrow("changed independently");
+    expect(await readFile(clientState, "utf8")).toBe(independentlyChangedState);
+    expect((await stat(journal)).mode & 0o777).toBe(0o600);
   });
 
   test("refuses foreign and malformed JSON client configuration", async () => {
@@ -420,11 +569,37 @@ set -eu
 state="$FAKE_CLIENT_STATE_DIRECTORY/${name}.connected"
 printf '%s %s\\n' '${name}' "$*" >> "$FAKE_CLIENT_STATE_DIRECTORY/calls.log"
 if [ "$1" = "mcp" ] && [ "$2" = "get" ]; then
-  [ -f "$state" ] && exit 0
+  if [ -f "$state" ]; then
+    /bin/cat "$state"
+    exit 0
+  fi
+  if [ "\${FAKE_CLIENT_GET_ERROR:-}" = "1" ]; then
+    printf 'permission denied while reading client configuration\n' >&2
+    exit 7
+  fi
+  if [ '${name}' = "codex" ]; then
+    printf "Error: No MCP server named 'artifact-server' found.\n" >&2
+  else
+    printf 'No MCP server named "artifact-server".\n' >&2
+  fi
   exit 1
 fi
 if [ "$1" = "mcp" ] && [ "$2" = "add" ]; then
-  printf 'connected\\n' > "$state"
+  if [ '${name}' = "codex" ]; then
+    shift 4
+  else
+    shift 8
+  fi
+  command="$1"
+  shift
+  printf 'Type: stdio\\nCommand: %s\\nArgs: %s\\nEnvironment:\\n' \
+    "$command" "$*" > "$state"
+  if [ "\${FAKE_CLIENT_FAIL_AFTER_ADD:-}" = "1" ]; then
+    exit 9
+  fi
+  if [ "\${FAKE_CLIENT_PAUSE_AFTER_ADD:-}" = "1" ]; then
+    /bin/sleep 30
+  fi
   exit 0
 fi
 if [ "$1" = "mcp" ] && [ "$2" = "remove" ]; then
@@ -440,4 +615,30 @@ async function temporaryWorkspace(prefix: string): Promise<string> {
   const directory = await mkdtemp(path.join(tmpdir(), prefix));
   temporaryDirectories.add(directory);
   return directory;
+}
+
+async function waitForFile(filePath: string): Promise<void> {
+  return waitForFileUntil(filePath, Date.now() + 5_000);
+}
+
+async function waitForFileUntil(filePath: string, deadline: number): Promise<void> {
+  try {
+    await stat(filePath);
+    return;
+  } catch (error) {
+    const parsed = systemErrorSchema.safeParse(error);
+    if (!parsed.success || parsed.data.code !== "ENOENT") throw error;
+  }
+  if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${filePath}.`);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  return waitForFileUntil(filePath, deadline);
+}
+
+function killProcess(child: ReturnType<typeof spawn>): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", () => resolve());
+    child.kill("SIGKILL");
+  });
 }

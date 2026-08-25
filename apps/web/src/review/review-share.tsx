@@ -17,6 +17,7 @@ import {
   api,
   type AccessSetting,
   type ArtifactDetails,
+  type ArtifactVersion,
 } from "@/api/client";
 import claudeLogoUrl from "./assets/agents/claude.svg";
 import codexDarkLogoUrl from "./assets/agents/codex-dark.svg";
@@ -29,13 +30,21 @@ import piLogoUrl from "./assets/agents/pi.svg";
 import piLightLogoUrl from "./assets/agents/pi-light.svg";
 
 type ShareScreen = "access" | "agents" | "overview";
-type CopiedTarget = "agent-prompt" | "link" | "local-command" | "mcp-address";
+type CopiedTarget =
+  | "agent-prompt"
+  | "latest-link"
+  | "local-command"
+  | "mcp-address"
+  | "raw-link"
+  | "review-link";
 
 const copiedResetMilliseconds = 1_600;
 
 interface ReviewShareControlProps {
   readonly details: ArtifactDetails | null;
   readonly onArtifactChanged: (artifact: ArtifactDetails["artifact"]) => void;
+  readonly selectedPath: string | null;
+  readonly selectedVersion: ArtifactVersion | null;
   readonly triggerClassName: string;
 }
 
@@ -43,6 +52,8 @@ interface ReviewShareControlProps {
 export function ReviewShareControl({
   details,
   onArtifactChanged,
+  selectedPath,
+  selectedVersion,
   triggerClassName,
 }: ReviewShareControlProps) {
   const [open, setOpen] = useState(false);
@@ -95,15 +106,23 @@ export function ReviewShareControl({
     }
   };
 
-  const copyLink = async (): Promise<void> => {
-    if (details === null) return;
-    await copyText(details.links.artifact, "link", "The artifact link could not be copied.");
+  const reviewLink = selectedVersion === null
+    ? null
+    : exactReviewLink(selectedVersion, selectedPath);
+
+  const copyReviewLink = async (): Promise<void> => {
+    if (reviewLink === null) return;
+    await copyText(
+      reviewLink,
+      "review-link",
+      "The exact Review link could not be copied.",
+    );
   };
 
   const copyAgentPrompt = async (): Promise<void> => {
-    if (details === null) return;
+    if (details === null || selectedVersion === null || reviewLink === null) return;
     await copyText(
-      buildAgentReviewPrompt(details),
+      buildAgentReviewPrompt(details, selectedVersion, reviewLink),
       "agent-prompt",
       "The agent review prompt could not be copied.",
     );
@@ -162,7 +181,7 @@ export function ReviewShareControl({
         render={(
           <button
             className={triggerClassName}
-            disabled={details === null}
+            disabled={details === null || selectedVersion === null}
             type="button"
           />
         )}
@@ -181,7 +200,7 @@ export function ReviewShareControl({
                 </span>
                 <div>
                   <h2>{details?.artifact.name ?? "Artifact"}</h2>
-                  <p>Current version · Version {details?.current.version.number ?? "—"}</p>
+                  <p>Exact version · Version {selectedVersion?.version.number ?? "—"}</p>
                 </div>
                 <button
                   aria-label="Close Share"
@@ -223,21 +242,21 @@ export function ReviewShareControl({
             {screen === "overview" ? (
               <div className="as-share-overview">
                 <section aria-labelledby="as-share-link-heading" className="as-share-link">
-                  <h3 id="as-share-link-heading">Share this artifact</h3>
+                  <h3 id="as-share-link-heading">Review and comment</h3>
                   <div>
-                    <code title={details?.links.artifact}>{details?.links.artifact ?? ""}</code>
+                    <code title={reviewLink ?? undefined}>{reviewLink ?? ""}</code>
                     <button
                       className="as-button as-button--primary"
-                      disabled={details === null}
-                      onClick={() => void copyLink()}
+                      disabled={reviewLink === null}
+                      onClick={() => void copyReviewLink()}
                       type="button"
                     >
                       <HugeiconsIcon
                         aria-hidden="true"
-                        icon={copiedTarget === "link" ? Tick02Icon : Copy01Icon}
+                        icon={copiedTarget === "review-link" ? Tick02Icon : Copy01Icon}
                         strokeWidth={1.8}
                       />
-                      {copiedTarget === "link" ? "Copied" : "Copy link"}
+                      {copiedTarget === "review-link" ? "Copied" : "Copy Review link"}
                     </button>
                   </div>
                 </section>
@@ -249,9 +268,8 @@ export function ReviewShareControl({
                     strokeWidth={1.8}
                   />
                   <p>
-                    {publicArtifact
-                      ? "Anyone with the link who can reach this server can open the current version."
-                      : "Only people with access to this Artifact Server can open this link."}
+                    People with access to this Artifact Server can review this exact version.
+                    {publicArtifact ? " The latest raw artifact is public." : ""}
                   </p>
                   <button
                     className="as-button"
@@ -263,13 +281,47 @@ export function ReviewShareControl({
                   </button>
                 </div>
 
+                <section aria-labelledby="as-share-secondary-heading" className="as-share-secondary">
+                  <h3 id="as-share-secondary-heading">Other links</h3>
+                  <ShareSecondaryLink
+                    copied={copiedTarget === "latest-link"}
+                    description="Moves when a new version is published"
+                    label="Latest"
+                    onCopy={() => {
+                      if (details !== null) {
+                        void copyText(
+                          details.links.artifact,
+                          "latest-link",
+                          "The latest artifact link could not be copied.",
+                        );
+                      }
+                    }}
+                    value={details?.links.artifact ?? ""}
+                  />
+                  <ShareSecondaryLink
+                    copied={copiedTarget === "raw-link"}
+                    description="Exact version without Review controls"
+                    label="Raw"
+                    onCopy={() => {
+                      if (selectedVersion !== null) {
+                        void copyText(
+                          selectedVersion.links.version,
+                          "raw-link",
+                          "The raw version link could not be copied.",
+                        );
+                      }
+                    }}
+                    value={selectedVersion?.links.version ?? ""}
+                  />
+                </section>
+
                 <section aria-labelledby="as-share-agent-heading" className="as-share-agent">
                   <h3 id="as-share-agent-heading">Review with an AI agent</h3>
                   <p>Copy one complete prompt into Claude, Codex, Cursor, GitHub Copilot, or Pi.</p>
                   <div className="as-share-agent__actions">
                     <button
                       className="as-share-agent__prompt"
-                      disabled={details === null}
+                      disabled={details === null || selectedVersion === null}
                       onClick={() => void copyAgentPrompt()}
                       type="button"
                     >
@@ -419,7 +471,8 @@ export function ReviewShareControl({
 
             {screen === "overview" ? (
               <footer className="as-share-popover__footer">
-                The link always opens Version {details?.current.version.number ?? "—"} until a newer version is published.
+                This Review link stays pinned to Version {selectedVersion?.version.number ?? "—"}
+                {selectedPath === null ? "." : ` and ${selectedPath}.`}
               </footer>
             ) : null}
           </Popover.Popup>
@@ -496,29 +549,88 @@ function CopyableAgentValue({
   );
 }
 
-function buildAgentReviewPrompt(details: ArtifactDetails): string {
+function ShareSecondaryLink({
+  copied,
+  description,
+  label,
+  onCopy,
+  value,
+}: {
+  readonly copied: boolean;
+  readonly description: string;
+  readonly label: string;
+  readonly onCopy: () => void;
+  readonly value: string;
+}) {
+  return (
+    <div className="as-share-secondary__row">
+      <span>
+        <strong>{label}</strong>
+        <small>{description}</small>
+      </span>
+      <code title={value}>{value}</code>
+      <button
+        aria-label={`Copy ${label.toLocaleLowerCase("en-US")} link`}
+        className="as-icon-button"
+        disabled={value === ""}
+        onClick={onCopy}
+        type="button"
+      >
+        <HugeiconsIcon
+          aria-hidden="true"
+          icon={copied ? Tick02Icon : Copy01Icon}
+          strokeWidth={1.8}
+        />
+      </button>
+    </div>
+  );
+}
+
+function exactReviewLink(
+  selectedVersion: ArtifactVersion,
+  selectedPath: string | null,
+): string {
+  const reviewUrl = new URL(selectedVersion.links.review);
+  reviewUrl.searchParams.set("view", "focus");
+  if (
+    selectedPath !== null
+    && selectedVersion.manifest.entries.some((entry) => entry.path === selectedPath)
+  ) {
+    reviewUrl.searchParams.set("path", selectedPath);
+  } else {
+    reviewUrl.searchParams.delete("path");
+  }
+  return reviewUrl.toString();
+}
+
+function buildAgentReviewPrompt(
+  details: ArtifactDetails,
+  selectedVersion: ArtifactVersion,
+  reviewLink: string,
+): string {
   const serverOrigin = new URL(details.links.artifact).origin;
   const apiUrl = new URL(
-    `/api/v1/artifacts/${encodeURIComponent(details.artifact.id)}/versions/${encodeURIComponent(details.current.version.id)}`,
+    `/api/v1/artifacts/${encodeURIComponent(details.artifact.id)}/versions/${encodeURIComponent(selectedVersion.version.id)}`,
     serverOrigin,
   );
   apiUrl.searchParams.set("projectId", details.artifact.projectId);
-  const manifestResource = `artifact://projects/${details.artifact.projectId}/artifacts/${details.artifact.id}/versions/${details.current.version.id}/manifest`;
+  const manifestResource = `artifact://projects/${details.artifact.projectId}/artifacts/${details.artifact.id}/versions/${selectedVersion.version.id}/manifest`;
 
   return `Review this Artifact Server artifact. Inspect the exact saved version below and do not silently substitute a newer version.
 
 Artifact: ${details.artifact.name}
 Project ID: ${details.artifact.projectId}
 Artifact ID: ${details.artifact.id}
-Version: ${details.current.version.number}
-Version ID: ${details.current.version.id}
+Version: ${selectedVersion.version.number}
+Version ID: ${selectedVersion.version.id}
 Access: ${details.artifact.accessSetting === "public_link" ? "public link" : "private"}
-Stable link: ${details.links.artifact}
-Exact version link: ${details.current.links.version}
+Review and comment: ${reviewLink}
+Raw exact version: ${selectedVersion.links.version}
+Moving latest link: ${details.links.artifact}
 
 Preferred path — Artifact Server MCP:
 1. Call artifact_get with projectId "${details.artifact.projectId}" and artifactId "${details.artifact.id}".
-2. Keep versionId "${details.current.version.id}" pinned. If artifact_get reports a different current version, use artifact_version_list and review the pinned version instead.
+2. Keep versionId "${selectedVersion.version.id}" pinned. If artifact_get reports a different current version, use artifact_version_list and review the pinned version instead.
 3. Read the exact manifest resource when available: ${manifestResource}
 4. Use artifact_open with this project, artifact, and exact version when you need the rendered artifact.
 5. Review the artifact and report findings in priority order. When comment tools are available, use comment_create against this exact version for precise, actionable findings.

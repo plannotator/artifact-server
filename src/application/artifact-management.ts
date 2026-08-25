@@ -8,7 +8,11 @@ import {
   AuthorizationService,
 } from "./authorization.js";
 import { parseIdempotencyKey } from "./idempotency-key.js";
-import { parseArtifactTag, parseArtifactTags } from "./artifact-tags.js";
+import {
+  normalizeArtifactTag,
+  parseArtifactTag,
+  parseArtifactTags,
+} from "./artifact-tags.js";
 import {
   type ProjectManagementFailure,
   ProjectManagementService,
@@ -91,6 +95,7 @@ export interface ListArtifactsCommand {
   readonly limit: number;
   readonly principal: Principal;
   readonly projectId: string | null;
+  readonly search: string | null;
   readonly tag: string | null;
 }
 
@@ -246,6 +251,12 @@ export class ArtifactManagementService extends Context.Service<
     );
 }
 
+function normalizeArtifactSearch(candidate: string | null): string | null {
+  if (candidate === null) return null;
+  const normalized = normalizeArtifactTag(candidate);
+  return normalized === "" ? null : normalized;
+}
+
 function makeArtifactManagementService(
   dependencies: ArtifactManagementDependencies,
   authorization: AuthorizationOperations,
@@ -392,6 +403,7 @@ function makeArtifactManagementService(
       const tag = command.tag === null
         ? null
         : yield* parseArtifactTag(command.tag);
+      const search = normalizeArtifactSearch(command.search);
       const project = yield* resolveProjectForRead(
         command.principal,
         command.projectId,
@@ -400,6 +412,7 @@ function makeArtifactManagementService(
         cursor: command.cursor,
         limit,
         projectId: project.id,
+        search,
         tag,
       });
     },

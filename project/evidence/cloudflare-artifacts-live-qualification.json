@@ -1,0 +1,35 @@
+{
+  "accountId": "ee6997c7d9bdfb52ef0ceeaff6f2fa5f",
+  "checks": {
+    "bindingControlPlane": "pass",
+    "bindingDeterministicCommits": "pass",
+    "bindingExactReadTokenLookup": "pass",
+    "bindingSmartHttpDataPlane": "pass",
+    "deterministicExactVersionLookup": "pass",
+    "idempotentDeletion": "pass",
+    "namespaceHealth": "pass",
+    "repositoryAdoption": "pass",
+    "repositoryCreation": "pass",
+    "restControlPlane": "pass",
+    "shortLivedRepositoryToken": "pass",
+    "smartHttpPushAndRead": "pass"
+  },
+  "completedAt": "2026-08-25T21:06:58.000Z",
+  "limits": {
+    "maximumCopiedBytes": 16777216,
+    "maximumOperations": 200,
+    "maximumRepositories": 8
+  },
+  "namespace": "artifact-server-test-qualification",
+  "repositoriesCreated": 2,
+  "runs": {
+    "binding": "5e0cdada24414e26902f",
+    "rest": "mt94trme-97c7a0df"
+  },
+  "cleanup": {
+    "dedicatedNamespaceEmptyAfterRun": true,
+    "namespaceDeleted": false,
+    "selection": "run-prefixed repositories only"
+  },
+  "schemaVersion": 1
+}

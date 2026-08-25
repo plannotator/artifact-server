@@ -22,15 +22,24 @@ import {
   InvalidPagination,
 } from "../core/errors.js";
 import type {Principal} from "../core/identity.js";
-import type {
-  AgentDispatchCreation,
-  AgentDispatchPage,
-  AgentDispatchRecord,
-  AgentDispatchState,
-  CommentAuthor,
-  PageCursor,
-  RegisteredAgentKind,
-  RegisteredAgentRecord,
+import {
+  type AgentActivityState,
+  type AgentBeaconDetail,
+  type AgentBeaconState,
+  type AgentCapabilityDeclaration,
+  type AgentDispatchCreation,
+  type AgentDispatchPage,
+  type AgentDispatchRecord,
+  type AgentDispatchState,
+  agentActivityStates,
+  agentBeaconStates,
+  type CommentAuthor,
+  normalizeAgentCapabilities,
+  type PageCursor,
+  type RegisteredAgentKind,
+  registeredAgentKindPattern,
+  type RegisteredAgentPresence,
+  type RegisteredAgentRecord,
 } from "../core/model.js";
 import type {
   CancelAgentDispatch,
@@ -39,9 +48,11 @@ import type {
   ListAgentDispatches,
   MarkDispatchDelivered,
   MarkDispatchFailed,
+  RecordAgentActivity,
   RegisterAgent,
 } from "../core/ports.js";
 import {
+  agentActivityBeaconTtlMilliseconds,
   agentConnectedWindowMilliseconds,
   maximumAgentConnectionKeyCharacters,
   maximumAgentDisplayNameCharacters,
@@ -91,7 +102,7 @@ export interface AgentDispatchPersistence {
     installationId: string,
     now: string,
   ) => Effect.Effect<
-    readonly RegisteredAgentRecord[],
+    readonly RegisteredAgentPresence[],
     AgentDispatchRepositoryFailure
   >;
   readonly listDispatches: (
@@ -107,6 +118,9 @@ export interface AgentDispatchPersistence {
     dispatchId: string,
     now: string,
   ) => Effect.Effect<AgentDispatchRecord | null, AgentDispatchRepositoryFailure>;
+  readonly recordActivity: (
+    command: RecordAgentActivity,
+  ) => Effect.Effect<void, AgentDispatchRepositoryFailure>;
   readonly registerAgent: (
     command: RegisterAgent,
   ) => Effect.Effect<RegisteredAgentRecord, AgentDispatchRepositoryFailure>;
@@ -120,16 +134,26 @@ export interface AgentDispatchDependencies {
   readonly repository: AgentDispatchPersistence;
 }
 
-/** One registered agent together with its derived claim-poll liveness. */
+/** One registered agent together with its presence, derived at read time. */
 export interface ConnectedRegisteredAgent {
+  /** The claimed or delivered dispatch the agent is working, or null. */
+  readonly activeDispatchId: string | null;
+  /** Derived presence; a fresh thinking/replying beacon reports working. */
+  readonly activity: AgentActivityState;
   readonly agent: RegisteredAgentRecord;
+  /** Finer beacon detail while fresh and the agent is connected. */
+  readonly beacon: AgentBeaconDetail;
   /** True when the agent's last claim poll landed within the live window. */
   readonly connected: boolean;
+  /** max(lastSeenAt, latest dispatch transition). */
+  readonly lastActivityAt: string;
 }
 
 /** Input for one self-naming agent registration upsert. */
 export interface RegisterAgentCommand {
   readonly agentSessionId: string | null;
+  /** As declared on the wire; normalized before storage, null when absent. */
+  readonly capabilities: AgentCapabilityDeclaration | null;
   readonly connectionKey: string;
   readonly displayName: string;
   readonly kind: RegisteredAgentKind;
@@ -146,6 +170,15 @@ export interface ReadAgentCommand {
 /** Input for listing the installation's registered agents. */
 export interface ListAgentsCommand {
   readonly principal: Principal;
+}
+
+/** Input for one best-effort activity beacon from an agent. */
+export interface RecordAgentActivityCommand {
+  readonly agentId: string;
+  /** Accepted for forward compatibility; display metadata, never stored. */
+  readonly dispatchId: string | null;
+  readonly principal: Principal;
+  readonly state: AgentBeaconState;
 }
 
 /** Input for sending one bundle of comment threads to one agent. */
@@ -234,6 +267,9 @@ interface AgentDispatchOperations {
   readonly listDispatches: (
     command: ListDispatchesCommand,
   ) => Effect.Effect<AgentDispatchPage, AgentDispatchFailure>;
+  readonly recordActivity: (
+    command: RecordAgentActivityCommand,
+  ) => Effect.Effect<void, AgentDispatchFailure>;
   readonly registerAgent: (
     command: RegisterAgentCommand,
   ) => Effect.Effect<RegisteredAgentRecord, AgentDispatchFailure>;
@@ -304,6 +340,19 @@ function makeAgentDispatchService(
       message: `An agent ${field} must contain between 1 and ${maximum} characters.`,
     });
   });
+
+  /** The kind is an open slug set; the shape check is the whole contract. */
+  const requireAgentKind = Effect.fn("AgentDispatchService.requireAgentKind")(
+    function*(kind: string): Effect.fn.Return<
+      RegisteredAgentKind,
+      InvalidDispatch
+    > {
+      if (registeredAgentKindPattern.test(kind)) return kind;
+      return yield* new InvalidDispatch({
+        message: "An agent kind must be a slug of at most 40 characters: a lowercase letter followed by lowercase letters, digits, or hyphens.",
+      });
+    },
+  );
 
   const requireAgent = Effect.fn("AgentDispatchService.requireAgent")(
     function*(agentId: string): Effect.fn.Return<
@@ -425,11 +474,12 @@ function makeAgentDispatchService(
       );
       return yield* dependencies.repository.registerAgent({
         agentSessionId: command.agentSessionId,
+        capabilities: normalizeAgentCapabilities(command.capabilities),
         connectionKey,
         displayName,
         id: dependencies.ids.registeredAgentId(),
         installationId: dependencies.installationId,
-        kind: command.kind,
+        kind: yield* requireAgentKind(command.kind),
         principalId: command.principal.id,
         registeredAt: yield* now(),
         workingDirectory,
@@ -467,11 +517,36 @@ function makeAgentDispatchService(
         dependencies.installationId,
         readTime,
       );
-      const liveAfter = Date.parse(readTime) - agentConnectedWindowMilliseconds;
-      return agents.map((agent) => ({
-        agent,
-        connected: Date.parse(agent.lastSeenAt) >= liveAfter,
-      }));
+      const readMilliseconds = Date.parse(readTime);
+      return agents.map((presence) =>
+        connectedAgent(presence, readMilliseconds)
+      );
+    },
+  );
+
+  const recordActivity = Effect.fn("AgentDispatchService.recordActivity")(
+    function*(command: RecordAgentActivityCommand) {
+      yield* authorization.requireAgentConnection(command.principal);
+      const agent = yield* dependencies.repository.findAgent(
+        dependencies.installationId,
+        command.agentId,
+      );
+      // Another principal's agent is indistinguishable from a missing one:
+      // the beacon route discloses nothing about foreign registrations.
+      if (agent === null || agent.principalId !== command.principal.id) {
+        yield* Effect.fail(new AgentNotFound({
+          message: "The registered agent does not exist.",
+        }));
+        return;
+      }
+      // Stored unconditionally — a stale-heartbeat beacon is accepted too —
+      // and the read side applies the TTL and liveness gates.
+      yield* dependencies.repository.recordActivity({
+        agentId: agent.id,
+        installationId: dependencies.installationId,
+        observedAt: yield* now(),
+        state: command.state,
+      });
     },
   );
 
@@ -610,10 +685,46 @@ function makeAgentDispatchService(
     getDispatch,
     listAgents,
     listDispatches,
+    recordActivity,
     registerAgent,
     reportDelivered,
     reportFailed,
   });
+}
+
+/**
+ * Presence per spec §3.2, derived at read time. Layer 1: working = the agent
+ * holds a claimed/delivered dispatch with unresolved threads. Layer 2: a
+ * fresh thinking/replying beacon from a connected agent also reports working
+ * and carries the finer state; a stale beacon, or one from an agent whose
+ * heartbeat lapsed, decays to the derived state. A disconnected agent is
+ * disconnected regardless of the dispatches it still holds.
+ */
+function connectedAgent(
+  presence: RegisteredAgentPresence,
+  readMilliseconds: number,
+): ConnectedRegisteredAgent {
+  const {activeDispatchId, agent, latestDispatchTransitionAt} = presence;
+  const connected = Date.parse(agent.lastSeenAt) >=
+    readMilliseconds - agentConnectedWindowMilliseconds;
+  const beaconFresh = agent.activityAt !== null &&
+    Date.parse(agent.activityAt) >=
+      readMilliseconds - agentActivityBeaconTtlMilliseconds;
+  const beacon = connected && beaconFresh &&
+      agent.activityState !== null &&
+      agent.activityState !== agentBeaconStates.idle
+    ? agent.activityState
+    : null;
+  const activity = !connected
+    ? agentActivityStates.disconnected
+    : beacon !== null || activeDispatchId !== null
+    ? agentActivityStates.working
+    : agentActivityStates.idle;
+  const lastActivityAt = latestDispatchTransitionAt !== null &&
+      Date.parse(latestDispatchTransitionAt) > Date.parse(agent.lastSeenAt)
+    ? latestDispatchTransitionAt
+    : agent.lastSeenAt;
+  return {activeDispatchId, activity, agent, beacon, connected, lastActivityAt};
 }
 
 function dispatchSender(principal: Principal): CommentAuthor {

@@ -21,7 +21,7 @@ const cards = [
 
 mkdirSync(outputDirectory, {recursive: true});
 const browser = await chromium.launch();
-for (const card of cards) {
+await Promise.all(cards.map(async (card) => {
   const page = await browser.newPage({
     deviceScaleFactor: 2,
     viewport: {width: card.width, height: card.height},
@@ -31,5 +31,5 @@ for (const card of cards) {
   await page.locator("svg").screenshot({path: outputPath});
   await page.close();
   console.log(`rendered ${outputPath}`);
-}
+}));
 await browser.close();

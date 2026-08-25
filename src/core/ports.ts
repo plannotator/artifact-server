@@ -22,10 +22,15 @@ import type {
   CommentThreadState,
   ContentBootstrapRecord,
   ContentSessionRecord,
+  AgentBeaconState,
+  AgentCapabilities,
+  CommentClearScope,
+  CommentThreadClearing,
   PageCursor,
   PublishedVersion,
   ProjectRecord,
   RegisteredAgentKind,
+  RegisteredAgentPresence,
   RegisteredAgentRecord,
   SourceBindingRecord,
   SourceFreshness,
@@ -184,6 +189,8 @@ export interface ListArtifacts {
   readonly cursor: PageCursor | null;
   readonly limit: number;
   readonly projectId: string;
+  /** Normalized name-substring or exact-tag search, when supplied. */
+  readonly search?: string | null;
   readonly tag: string | null;
 }
 
@@ -288,6 +295,23 @@ export interface UpdateCommentReply {
   readonly updatedAt: string;
 }
 
+/**
+ * Values used to clear one artifact's matching comment threads in bulk.
+ * Deletion semantics per thread match {@link DeleteCommentThread}: replies
+ * cascade and one `comment_delete` action lands in the ledger. Threads held
+ * by an active (queued or claimed) dispatch are skipped and counted.
+ */
+export interface ClearCommentThreads {
+  readonly artifactId: string;
+  readonly authorizedByPrincipalId: string | null;
+  readonly clearedAt: string;
+  readonly principalId: string;
+  readonly projectId: string;
+  readonly scope: CommentClearScope;
+  /** Restricts the clear to threads on one saved version when present. */
+  readonly versionId: string | null;
+}
+
 /** Values used to delete one reply from one comment thread. */
 export interface DeleteCommentReply {
   readonly artifactId: string;
@@ -304,6 +328,7 @@ export interface DeleteCommentReply {
  * Every mutation appends its attributed action record in the same transaction.
  */
 export interface CommentRepository {
+  clearThreads(command: ClearCommentThreads): Promise<CommentThreadClearing>;
   createReply(command: CreateCommentReply): Promise<CommentReplyCreation>;
   createThread(command: CreateCommentThread): Promise<CommentThreadCreation>;
   deleteReply(command: DeleteCommentReply): Promise<void>;
@@ -403,6 +428,8 @@ export interface SourceBindingRepository {
 /** Values used to register or refresh one live agent connection. */
 export interface RegisterAgent {
   readonly agentSessionId: string | null;
+  /** Already normalized: known keys only, defaults applied. */
+  readonly capabilities: AgentCapabilities;
   readonly connectionKey: string;
   readonly displayName: string;
   /** Identity used only when the connection key inserts a new row. */
@@ -445,6 +472,17 @@ export interface MarkDispatchFailed {
   readonly failedAt: string;
   readonly installationId: string;
   readonly reason: string;
+}
+
+/**
+ * Values used to store one activity beacon on one registered agent. Display
+ * metadata only: the write always lands, and the read side decays it.
+ */
+export interface RecordAgentActivity {
+  readonly agentId: string;
+  readonly installationId: string;
+  readonly observedAt: string;
+  readonly state: AgentBeaconState;
 }
 
 /** Values used to cancel one queued or claimed dispatch. */
@@ -500,11 +538,14 @@ export interface AgentDispatchRepository {
     dispatchId: string,
     now: string,
   ): Promise<AgentDispatchRecord | null>;
-  /** List live agents, lazily deleting rows past their polling retention. */
+  /**
+   * List live agents with their dispatch-derived presence, lazily deleting
+   * rows past their polling retention.
+   */
   listAgents(
     installationId: string,
     now: string,
-  ): Promise<readonly RegisteredAgentRecord[]>;
+  ): Promise<readonly RegisteredAgentPresence[]>;
   listDispatches(command: ListAgentDispatches): Promise<AgentDispatchPage>;
   markDelivered(command: MarkDispatchDelivered): Promise<AgentDispatchRecord>;
   markFailed(command: MarkDispatchFailed): Promise<AgentDispatchRecord>;
@@ -513,11 +554,16 @@ export interface AgentDispatchRepository {
     dispatchId: string,
     now: string,
   ): Promise<AgentDispatchRecord | null>;
+  /** Store one activity beacon; overwrites the previous one regardless. */
+  recordActivity(command: RecordAgentActivity): Promise<void>;
   registerAgent(command: RegisterAgent): Promise<RegisteredAgentRecord>;
 }
 
 /** Values persisted when issuing a one-time private-content bootstrap. */
 export type CreateContentBootstrap = ContentBootstrapRecord;
+
+/** Values persisted for one short-lived exact-version Review preview lease. */
+export type CreatePreviewLease = ContentSessionRecord;
 
 /** Values used to atomically exchange a bootstrap for a browser session. */
 export interface ExchangeContentBootstrap {
@@ -628,6 +674,11 @@ export interface ContentSessionRepository {
   findContentSession(
     tokenDigest: string,
     contentToken: string,
+    requestTime: string,
+  ): Promise<ContentSessionRecord | null>;
+  createPreviewLease(command: CreatePreviewLease): Promise<ContentSessionRecord>;
+  findPreviewLease(
+    tokenDigest: string,
     requestTime: string,
   ): Promise<ContentSessionRecord | null>;
 }

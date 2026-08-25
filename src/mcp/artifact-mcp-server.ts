@@ -8,6 +8,7 @@ import {
 import {type Effect, Redacted} from "effect";
 import {z} from "zod";
 
+import {AgentDispatchService} from "../application/agent-dispatch.js";
 import {
   type ApplicationServices,
   type ApplicationRuntime,
@@ -31,15 +32,26 @@ import {
 import {ProjectManagementService} from "../application/project-management.js";
 import {ProjectGitHistoryService} from
   "../application/project-git-history.js";
+import {
+  defaultGitCloneCredentialTtlSeconds,
+  GitHistoryAccessService,
+  maximumGitCloneCredentialTtlSeconds,
+} from "../application/git-history-access.js";
 import {StagedUploadService} from "../application/staged-upload.js";
 import {
   accessSettings,
+  agentDispatchStates,
+  agentEvidenceKinds,
+  commentClearScopes,
   commentThreadStates,
   dispatchedThreadFilters,
+  type AgentDispatchRecord,
   type ArtifactVersion,
   type CommentThreadRecord,
+  type PageCursor,
   type PublishedVersion,
   type ProjectRecord,
+  type RegisteredAgentRecord,
   type SourceBindingRecord,
   type StagedUpload,
 } from "../core/model.js";
@@ -55,11 +67,14 @@ import {
   maximumCommentPageSize,
   maximumDeclaredFiles,
   maximumDispatchBundleSize,
+  maximumDispatchFailureReasonCharacters,
   maximumDispatchNoteCharacters,
   maximumUploadPlanRequestBytes,
 } from "../core/publishing-limits.js";
 import {
+  AgentNotFound,
   InvalidComment,
+  InvalidDispatch,
   InvalidPagination,
   isArtifactServerFailure,
   PublishConflict,
@@ -73,6 +88,11 @@ import {
   versionFileBrowserUrl,
 } from "../http/artifact-http-links.js";
 import {artifactServerFailureResponse} from "../http/artifact-http-failure.js";
+import {
+  renderBundleMessage,
+  type BundleItem,
+  type RenderableBundle,
+} from "./dispatch-bundle-message.js";
 
 const serverVersion = "0.0.0";
 const maximumListedArtifacts = 100;
@@ -125,6 +145,14 @@ const projectProjectionSchema = z.object({
 const projectGitHistorySettingSchema = z.object({
   enabled: z.boolean(),
   projectId: z.string(),
+  state: z.enum([
+    "backfilling",
+    "budget-limited",
+    "degraded",
+    "disabled",
+    "ready",
+    "waiting",
+  ]),
 }).strict();
 const projectGitHistoryEstimateSchema = z.object({
   estimatedCopiedBytes: z.number().int().nonnegative(),
@@ -217,6 +245,81 @@ const commentReplySchema = z.object({
   projectId: z.string(),
   threadId: z.string(),
   updatedAt: z.string(),
+}).strict();
+const mailboxAgentKind = "mcp-mailbox";
+const defaultMailboxAgentName = "mailbox agent";
+/** A mailbox agent runs wherever its MCP client runs; no directory is known. */
+const mailboxWorkingDirectory = "(mcp mailbox)";
+/** Bound every cursor walk so a server bug can never spin the loop forever. */
+
+interface CursorPage<T> {
+  readonly items: readonly T[];
+  readonly nextCursor: PageCursor | null;
+}
+
+async function collectCursorPages<T>(
+  read: (cursor: PageCursor | null) => Promise<CursorPage<T>>,
+): Promise<readonly T[]> {
+  const collected: T[] = [];
+  const seen = new Set<string>();
+  const collect = async (cursor: PageCursor | null): Promise<void> => {
+    const page = await read(cursor);
+    collected.push(...page.items);
+    if (page.nextCursor === null) return;
+    const cursorKey = `${page.nextCursor.createdAt}\u0000${page.nextCursor.id}`;
+    if (seen.has(cursorKey)) {
+      throw new Error("A paginated Artifact Server operation repeated its cursor.");
+    }
+    seen.add(cursorKey);
+    await collect(page.nextCursor);
+  };
+  await collect(null);
+  return collected;
+}
+const mailboxAgentNameSchema = z.string().trim().min(1).max(120);
+const mailboxDispatchIdSchema = z.string().min(1).max(200);
+const mailboxAnchorSchema = z.object({originalText: z.string()}).loose();
+const mailboxAgentSchema = z.object({
+  capabilities: z.object({
+    beacon: z.boolean(),
+    evidence: z.enum([
+      agentEvidenceKinds.channel,
+      agentEvidenceKinds.mailbox,
+      agentEvidenceKinds.native,
+    ]),
+  }).strict(),
+  displayName: z.string(),
+  id: z.string(),
+  kind: z.string(),
+}).strict();
+const mailboxInboxItemSchema = z.object({
+  createdAt: z.string(),
+  id: z.string(),
+  note: z.string().nullable(),
+  threadCount: z.number().int().positive(),
+}).strict();
+const mailboxClaimSchema = z.object({
+  dispatchId: z.string(),
+  message: z.string(),
+  note: z.string().nullable(),
+  projectId: z.string(),
+  threadIds: z.array(z.string()),
+  threads: z.array(z.object({
+    artifactId: z.string(),
+    path: z.string().nullable(),
+    threadId: z.string(),
+  }).strict()),
+}).strict();
+const mailboxReportSchema = z.object({
+  dispatchId: z.string(),
+  state: z.enum([
+    agentDispatchStates.addressed,
+    agentDispatchStates.canceled,
+    agentDispatchStates.claimed,
+    agentDispatchStates.delivered,
+    agentDispatchStates.failed,
+    agentDispatchStates.queued,
+  ]),
 }).strict();
 const manifestResource = new ResourceTemplate(
   "artifact://projects/{projectId}/artifacts/{artifactId}/versions/{versionId}/manifest",
@@ -443,7 +546,8 @@ export function createArtifactMcpServer(
     "project_git_history_status",
     {
       title: "Read project Git history status",
-      description: "Read the off-by-default Git history setting for one project.",
+      description:
+        "Read whether this project is selected for optional derived Git history.",
       inputSchema: z.object({projectId: projectIdSchema}).strict(),
       outputSchema: z.object({
         gitHistory: projectGitHistorySettingSchema,
@@ -466,7 +570,7 @@ export function createArtifactMcpServer(
     {
       title: "Estimate project Git history",
       description:
-        "Estimate current repositories, versions, and copied bytes before enabling one project.",
+        "Estimate future repositories, versions, and copied bytes for planning. This does not enable Git history.",
       inputSchema: z.object({projectId: projectIdSchema}).strict(),
       outputSchema: z.object({estimate: projectGitHistoryEstimateSchema}).strict(),
       annotations: readOnlyAnnotations,
@@ -487,7 +591,7 @@ export function createArtifactMcpServer(
     {
       title: "Set project Git history",
       description:
-        "Enable or disable Git history for one project. Enablement requires estimate confirmation.",
+        "Enable or disable optional derived Git history for one project. Enabling requires the current estimate to be confirmed.",
       inputSchema: z.discriminatedUnion("enabled", [
         z.object({enabled: z.literal(false), projectId: projectIdSchema}).strict(),
         z.object({
@@ -521,6 +625,40 @@ export function createArtifactMcpServer(
         ),
       };
     }),
+  );
+
+  server.registerTool(
+    "artifact_history_clone_token",
+    {
+      title: "Issue a Git history clone token",
+      description:
+        "Issue a short-lived read credential for this artifact's derived repository. Use it directly for a clone and never quote it to the user.",
+      inputSchema: z.object({
+        artifactId: artifactIdSchema,
+        projectId: projectIdSchema,
+        ttlSeconds: z.number().int().min(1)
+          .max(maximumGitCloneCredentialTtlSeconds)
+          .default(defaultGitCloneCredentialTtlSeconds),
+      }).strict(),
+      outputSchema: z.object({
+        defaultBranch: z.literal("main"),
+        expiresAt: z.string(),
+        remote: z.url(),
+        token: z.string().min(1),
+      }).strict(),
+      annotations: readOnlyAnnotations,
+    },
+    ({artifactId, projectId, ttlSeconds}) => toolResult(async () =>
+      runMcpApplicationEffect(
+        dependencies,
+        GitHistoryAccessService.use((service) => service.issueCloneCredential({
+          artifactId,
+          principal: identity.principal,
+          projectId,
+          ttlSeconds,
+        })),
+      )
+    ),
   );
 
   server.registerTool(
@@ -560,6 +698,7 @@ export function createArtifactMcpServer(
             limit,
             principal: identity.principal,
             projectId,
+            search: null,
             tag,
           })
         ),
@@ -1514,6 +1653,397 @@ export function createArtifactMcpServer(
     }),
   );
 
+  server.registerTool(
+    "comment_clear",
+    {
+      title: "Clear comment threads in bulk",
+      description:
+        "Delete every matching comment thread on one artifact — resolved threads, or all — together with their replies, recording one ledger action per thread. Threads inside an active dispatch are skipped and counted; cancel the dispatch first to clear them.",
+      inputSchema: z.object({
+        artifactId: artifactIdSchema,
+        projectId: optionalProjectIdSchema,
+        state: z.enum([commentClearScopes.all, commentClearScopes.resolved]),
+        versionId: versionIdSchema.nullable().default(null),
+      }).strict(),
+      outputSchema: z.object({
+        deleted: z.number().int().nonnegative(),
+        skippedDispatched: z.number().int().nonnegative(),
+      }).strict(),
+      annotations: destructiveWriteAnnotations,
+    },
+    async ({artifactId, projectId, state, versionId}) => toolResult(() =>
+      runMcpApplicationEffect(
+        dependencies,
+        ArtifactCommentService.use((comments) =>
+          comments.clearThreads({
+            artifactId,
+            principal: identity.principal,
+            projectId,
+            state,
+            versionId,
+          })
+        ),
+      )
+    ),
+  );
+
+  const registerMailboxAgent = (agentName: string | null) =>
+    runMcpApplicationEffect(
+      dependencies,
+      AgentDispatchService.use((agents) =>
+        agents.registerAgent({
+          agentSessionId: null,
+          capabilities: {beacon: false, evidence: agentEvidenceKinds.mailbox},
+          connectionKey: mailboxConnectionKey(identity.principal.id),
+          displayName: agentName ?? defaultMailboxAgentName,
+          kind: mailboxAgentKind,
+          principal: identity.principal,
+          workingDirectory: mailboxWorkingDirectory,
+        })
+      ),
+    );
+
+  /** Reports never register: without a prior list or claim, nothing is held. */
+  const requireRegisteredMailboxAgent = async (): Promise<
+    RegisteredAgentRecord
+  > => {
+    const connectionKey = mailboxConnectionKey(identity.principal.id);
+    const agents = await runMcpApplicationEffect(
+      dependencies,
+      AgentDispatchService.use((registry) =>
+        registry.listAgents({principal: identity.principal})
+      ),
+    );
+    const own = agents.find((candidate) =>
+      candidate.agent.connectionKey === connectionKey &&
+      candidate.agent.principalId === identity.principal.id
+    );
+    if (own !== undefined) return own.agent;
+    throw new AgentNotFound({
+      message:
+        'This caller has no registered mailbox agent. Call dispatch_inbox with operation "list" or "claim" first; reports are accepted only for dispatches claimed through this inbox.',
+    });
+  };
+
+  const listMailboxInbox = async (agentId: string) => {
+    const projects = await runMcpApplicationEffect(
+      dependencies,
+      ProjectManagementService.use((management) =>
+        management.listProjects(identity.principal)
+      ),
+    );
+    const queued = (await Promise.all(projects.map((project) =>
+      collectCursorPages((cursor) => runMcpApplicationEffect(
+          dependencies,
+          AgentDispatchService.use((agents) =>
+            agents.listDispatches({
+              agentId,
+              cursor,
+              limit: maximumCommentPageSize,
+              principal: identity.principal,
+              projectId: project.id,
+              state: agentDispatchStates.queued,
+            })
+          ),
+        ))
+    ))).flat();
+    // The claim takes the oldest dispatch, so the inbox reads oldest first.
+    return queued
+      .toSorted((left, right) =>
+        left.createdAt === right.createdAt
+          ? (left.id < right.id ? -1 : 1)
+          : (left.createdAt < right.createdAt ? -1 : 1)
+      )
+      .map((dispatch) => ({
+        createdAt: dispatch.createdAt,
+        id: dispatch.id,
+        note: dispatch.note,
+        threadCount: dispatch.threadIds.length,
+      }));
+  };
+
+  /**
+   * Assemble the claimed dispatch's threads through the application
+   * services, exactly the data the shared bridge render template needs.
+   */
+  const assembleMailboxBundle = async (
+    dispatch: AgentDispatchRecord,
+  ): Promise<{
+    bundle: RenderableBundle;
+    threads: readonly {
+      artifactId: string;
+      path: string | null;
+      threadId: string;
+    }[];
+  }> => {
+    const artifacts = await collectCursorPages((cursor) =>
+      runMcpApplicationEffect(
+        dependencies,
+        ArtifactManagementService.use((management) =>
+          management.listArtifacts({
+            cursor,
+            limit: maximumListedArtifacts,
+            principal: identity.principal,
+            projectId: dispatch.projectId,
+            search: null,
+            tag: null,
+          })
+        ),
+      )
+    );
+
+    const wanted = new Set(dispatch.threadIds);
+    const found = new Map<string, CommentThreadRecord>();
+    for (const artifact of artifacts) {
+      if (found.size === wanted.size) break;
+      // eslint-disable-next-line no-await-in-loop
+      const listedThreads = await collectCursorPages((cursor) =>
+        runMcpApplicationEffect(
+          dependencies,
+          ArtifactCommentService.use((comments) =>
+            comments.listThreads({
+              artifactId: artifact.id,
+              cursor,
+              dispatched: dispatchedThreadFilters.only,
+              limit: maximumCommentPageSize,
+              principal: identity.principal,
+              projectId: dispatch.projectId,
+              since: null,
+              state: null,
+              versionId: null,
+            })
+          ),
+        )
+      );
+      for (const thread of listedThreads) {
+        if (wanted.has(thread.id)) found.set(thread.id, thread);
+      }
+    }
+
+    const artifactNames = new Map(
+      artifacts.map((artifact) => [artifact.id, artifact.name]),
+    );
+    const versionNumbers = new Map<string, ReadonlyMap<string, number>>();
+    const items: BundleItem[] = [];
+    const threads: {
+      artifactId: string;
+      path: string | null;
+      threadId: string;
+    }[] = [];
+    for (const threadId of dispatch.threadIds) {
+      const thread = found.get(threadId);
+      if (thread === undefined) {
+        throw new InvalidDispatch({
+          message:
+            `Thread ${threadId} in dispatch ${dispatch.id} is not readable, so the dispatch was reported failed. Ask the sender to dispatch the bundle again.`,
+        });
+      }
+      let numbers = versionNumbers.get(thread.artifactId);
+      if (numbers === undefined) {
+        // eslint-disable-next-line no-await-in-loop
+        const versions = await runMcpApplicationEffect(
+          dependencies,
+          ArtifactManagementService.use((management) =>
+            management.listVersions({
+              artifactId: thread.artifactId,
+              principal: identity.principal,
+              projectId: dispatch.projectId,
+            })
+          ),
+        );
+        numbers = new Map(
+          versions.map((version) => [version.id, version.number]),
+        );
+        versionNumbers.set(thread.artifactId, numbers);
+      }
+      const anchor = mailboxAnchorSchema.safeParse(thread.anchor);
+      items.push({
+        artifactName: artifactNames.get(thread.artifactId) ??
+          thread.artifactId,
+        body: thread.body,
+        path: thread.path,
+        quotedSelection: anchor.success ? anchor.data.originalText : null,
+        threadId,
+        versionNumber: numbers.get(thread.versionId) ?? 0,
+      });
+      threads.push({
+        artifactId: thread.artifactId,
+        path: thread.path,
+        threadId,
+      });
+    }
+    return {
+      bundle: {
+        items,
+        note: dispatch.note,
+        senderDisplayName: dispatch.sender.displayName,
+      },
+      threads,
+    };
+  };
+
+  /** Best-effort: a lost report only costs the claim lease requeueing. */
+  const reportMailboxAssemblyFailure = async (
+    agentId: string,
+    dispatchId: string,
+    cause: unknown,
+  ): Promise<void> => {
+    const reason = (cause instanceof Error && cause.message.trim() !== ""
+      ? cause.message
+      : "The claimed bundle could not be assembled.")
+      .slice(0, maximumDispatchFailureReasonCharacters);
+    try {
+      await runMcpApplicationEffect(
+        dependencies,
+        AgentDispatchService.use((agents) =>
+          agents.reportFailed({
+            agentId,
+            dispatchId,
+            principal: identity.principal,
+            reason,
+          })
+        ),
+      );
+    } catch {
+      // The claim lease expiry requeues the dispatch when even this fails.
+    }
+  };
+
+  server.registerTool(
+    "dispatch_inbox",
+    {
+      title: "Agent dispatch inbox",
+      description:
+        "This caller's mailbox for annotation bundles a reviewer dispatched to it. list registers the caller as a passive mailbox-tier agent and shows its queued dispatches; claim takes the oldest queued dispatch and returns the rendered bundle message; delivered and failed report the outcome of a claimed dispatch. After reporting delivered, address every thread in the bundle: comment_reply with what you did, then comment_resolve.",
+      inputSchema: z.discriminatedUnion("operation", [
+        z.object({
+          agentName: mailboxAgentNameSchema.nullable().default(null),
+          operation: z.literal("list"),
+        }).strict(),
+        z.object({
+          agentName: mailboxAgentNameSchema.nullable().default(null),
+          operation: z.literal("claim"),
+        }).strict(),
+        z.object({
+          dispatchId: mailboxDispatchIdSchema,
+          operation: z.literal("delivered"),
+        }).strict(),
+        z.object({
+          dispatchId: mailboxDispatchIdSchema,
+          operation: z.literal("failed"),
+          reason: z.string().trim().min(1)
+            .max(maximumDispatchFailureReasonCharacters),
+        }).strict(),
+      ]),
+      outputSchema: z.object({
+        agent: mailboxAgentSchema,
+        claimed: mailboxClaimSchema.nullable(),
+        inbox: z.array(mailboxInboxItemSchema).nullable(),
+        operation: z.enum(["claim", "delivered", "failed", "list"]),
+        report: mailboxReportSchema.nullable(),
+      }).strict(),
+      annotations: additiveWriteAnnotations,
+    },
+    async (input) => toolResult(async (): Promise<MailboxAnswer> => {
+      switch (input.operation) {
+        case "list": {
+          const agent = await registerMailboxAgent(input.agentName);
+          return {
+            agent: mailboxAgentProjection(agent),
+            claimed: null,
+            inbox: await listMailboxInbox(agent.id),
+            operation: "list",
+            report: null,
+          };
+        }
+        case "claim": {
+          const agent = await registerMailboxAgent(input.agentName);
+          const dispatch = await runMcpApplicationEffect(
+            dependencies,
+            AgentDispatchService.use((agents) =>
+              agents.claimDispatch({
+                agentId: agent.id,
+                bumpHeartbeat: true,
+                principal: identity.principal,
+              })
+            ),
+          );
+          if (dispatch === null) {
+            return {
+              agent: mailboxAgentProjection(agent),
+              claimed: null,
+              inbox: null,
+              operation: "claim",
+              report: null,
+            };
+          }
+          let assembled: Awaited<ReturnType<typeof assembleMailboxBundle>>;
+          try {
+            assembled = await assembleMailboxBundle(dispatch);
+          } catch (cause) {
+            await reportMailboxAssemblyFailure(agent.id, dispatch.id, cause);
+            throw cause;
+          }
+          return {
+            agent: mailboxAgentProjection(agent),
+            claimed: {
+              dispatchId: dispatch.id,
+              message: renderBundleMessage(assembled.bundle),
+              note: dispatch.note,
+              projectId: dispatch.projectId,
+              threadIds: [...dispatch.threadIds],
+              threads: assembled.threads,
+            },
+            inbox: null,
+            operation: "claim",
+            report: null,
+          };
+        }
+        case "delivered": {
+          const agent = await requireRegisteredMailboxAgent();
+          const dispatch = await runMcpApplicationEffect(
+            dependencies,
+            AgentDispatchService.use((agents) =>
+              agents.reportDelivered({
+                agentId: agent.id,
+                dispatchId: input.dispatchId,
+                principal: identity.principal,
+              })
+            ),
+          );
+          return {
+            agent: mailboxAgentProjection(agent),
+            claimed: null,
+            inbox: null,
+            operation: "delivered",
+            report: {dispatchId: dispatch.id, state: dispatch.state},
+          };
+        }
+        default: {
+          const agent = await requireRegisteredMailboxAgent();
+          const dispatch = await runMcpApplicationEffect(
+            dependencies,
+            AgentDispatchService.use((agents) =>
+              agents.reportFailed({
+                agentId: agent.id,
+                dispatchId: input.dispatchId,
+                principal: identity.principal,
+                reason: input.reason,
+              })
+            ),
+          );
+          return {
+            agent: mailboxAgentProjection(agent),
+            claimed: null,
+            inbox: null,
+            operation: "failed",
+            report: {dispatchId: dispatch.id, state: dispatch.state},
+          };
+        }
+      }
+    }, mailboxSummary),
+  );
+
   server.registerResource(
     "artifact-version-manifest",
     manifestResource,
@@ -1599,8 +2129,9 @@ function agentInstructions(mode: "local" | "remote"): string {
     "After publishing, always give the user links.review first so they can see the exact version full screen and comment. Mention links.version second when the raw artifact is useful. Do not put content bootstrap URLs or credentials in chat.",
     "When publishing a new version, first call artifact_get and pass its current version ID as expectedCurrentVersionId. On conflict, inspect the new current version before retrying.",
     "Use a stable application idempotency key when retrying the same mutation. Use a new key only for an intentional new operation.",
-    "Reviewers leave comment threads on an artifact version. Use comment_list and comment_get to read them, comment_create, comment_reply, and comment_update to write, comment_resolve to close or reopen a thread, and comment_delete to remove one you own; deleting a thread also deletes its replies.",
+    "Reviewers leave comment threads on an artifact version. Use comment_list and comment_get to read them, comment_create, comment_reply, and comment_update to write, comment_resolve to close or reopen a thread, and comment_delete to remove one you own; deleting a thread also deletes its replies. comment_clear removes every resolved thread — or all threads — on one artifact at once, skipping threads an active dispatch still holds.",
     "comment_list hides threads an agent dispatch currently holds unless you pass dispatched: \"include\" or \"only\"; comment_get still reads a dispatched thread directly by id.",
+    "dispatch_inbox is this caller's mailbox for annotation bundles a reviewer dispatched to it: list registers the caller as a mailbox-tier agent and shows its queued dispatches, claim takes the oldest one as a rendered message, and delivered or failed reports the outcome. Address a delivered bundle's threads with comment_reply, then comment_resolve.",
     "artifact_get returns the current complete manifest and browser link in one call. artifact_open returns a client-openable URL; a remote server never opens a browser on the server machine.",
     mode === "local"
       ? "This is a local MCP connection, but the MCP protocol still carries metadata rather than file bytes. Use the bundled Artifact Server skill or CLI to upload a local path."
@@ -1746,6 +2277,71 @@ function linkedPublicationProjection(
     },
     sourceBinding: sourceBindingProjection(linked.binding),
   };
+}
+
+/** One dispatch_inbox answer; exactly one operation section is filled. */
+interface MailboxAnswer {
+  readonly agent: ReturnType<typeof mailboxAgentProjection>;
+  readonly claimed: {
+    readonly dispatchId: string;
+    readonly message: string;
+    readonly note: string | null;
+    readonly projectId: string;
+    readonly threadIds: readonly string[];
+    readonly threads: readonly {
+      readonly artifactId: string;
+      readonly path: string | null;
+      readonly threadId: string;
+    }[];
+  } | null;
+  readonly inbox: readonly {
+    readonly createdAt: string;
+    readonly id: string;
+    readonly note: string | null;
+    readonly threadCount: number;
+  }[] | null;
+  readonly operation: "claim" | "delivered" | "failed" | "list";
+  readonly report: {
+    readonly dispatchId: string;
+    readonly state: AgentDispatchRecord["state"];
+  } | null;
+}
+
+/**
+ * The mailbox registration identity: stable per principal, so every
+ * dispatch_inbox caller reclaims one agent row, and never guessable from
+ * another principal's id reading the agent listing.
+ */
+function mailboxConnectionKey(principalId: string): string {
+  const digest = createHash("sha256")
+    .update(principalId, "utf8")
+    .digest("hex");
+  return `mcp-mailbox:${digest.slice(0, 32)}`;
+}
+
+function mailboxAgentProjection(agent: RegisteredAgentRecord) {
+  return {
+    capabilities: agent.capabilities,
+    displayName: agent.displayName,
+    id: agent.id,
+    kind: agent.kind,
+  };
+}
+
+/** The claim summary is the bundle itself, so the agent reads it directly. */
+function mailboxSummary(answer: MailboxAnswer): string {
+  switch (answer.operation) {
+    case "claim":
+      return answer.claimed === null
+        ? "The inbox is empty: no dispatch is queued for this mailbox agent."
+        : answer.claimed.message;
+    case "delivered":
+      return `Dispatch ${answer.report?.dispatchId ?? ""} is delivered. Now address each thread: comment_reply with what you did, then comment_resolve.`;
+    case "failed":
+      return `Dispatch ${answer.report?.dispatchId ?? ""} is failed and will not be redelivered.`;
+    default:
+      return `The inbox holds ${answer.inbox?.length ?? 0} queued dispatch(es).`;
+  }
 }
 
 /**

@@ -22,13 +22,13 @@ import {
   type FollowUpDelivery,
   initialBackoffMilliseconds,
   maximumBackoffMilliseconds,
-  type PiPort,
+  type HostPort,
   startBridge,
   type StartBridgeOptions,
-} from "../../integrations/pi/bridge-core.js";
+} from "../../integrations/bridge-core/index.js";
 
 /** A scripted Pi that records notices and messages, and can turn hostile. */
-class RecordingPiPort implements PiPort {
+class RecordingHostPort implements HostPort {
   compacting = false;
   sendThrows: Error | null = null;
   readonly messages: {text: string; delivery: FollowUpDelivery}[] = [];
@@ -122,7 +122,7 @@ describe("bridge fail-open discipline", () => {
   }
 
   function bridgeOptions(
-    port: PiPort,
+    port: HostPort,
     fetchImplementation: typeof fetch,
     displayName: string,
   ): StartBridgeOptions {
@@ -131,8 +131,9 @@ describe("bridge fail-open discipline", () => {
       credentials: {origin: server.baseUrl, token: installation.apiToken},
       displayName,
       fetchImplementation,
+      host: port,
       hostname: "fail-open-host",
-      pi: port,
+      kind: "pi",
       waitSeconds: 1,
       workingDirectory: `/work/${displayName}`,
     };
@@ -142,15 +143,16 @@ describe("bridge fail-open discipline", () => {
     expect.hasAssertions();
 
     // Dormant: no origin or credential resolved.
-    const dormantPort = new RecordingPiPort();
+    const dormantPort = new RecordingHostPort();
     const dormantTraffic = countingFetch();
     const dormant = startTracked({
       agentSessionId: null,
       credentials: null,
       displayName: "dormant",
       fetchImplementation: dormantTraffic.fetch,
+      host: dormantPort,
       hostname: "fail-open-host",
-      pi: dormantPort,
+      kind: "pi",
       waitSeconds: 1,
       workingDirectory: "/work/dormant",
     });
@@ -162,7 +164,7 @@ describe("bridge fail-open discipline", () => {
     await dormant.stop();
 
     // Configured: registration, claim, compaction hold, delivery, shutdown.
-    const port = new RecordingPiPort();
+    const port = new RecordingHostPort();
     port.compacting = true;
     const traffic = countingFetch();
     const bridge = startTracked(bridgeOptions(port, traffic.fetch, "live"));
@@ -233,7 +235,7 @@ describe("bridge fail-open discipline", () => {
         return Promise.resolve();
       },
     };
-    const unreachablePort = new RecordingPiPort();
+    const unreachablePort = new RecordingHostPort();
     const unreachable = startTracked({
       agentSessionId: null,
       credentials: {
@@ -242,8 +244,9 @@ describe("bridge fail-open discipline", () => {
       },
       displayName: "unreachable",
       fetchImplementation: fetch,
+      host: unreachablePort,
       hostname: "fail-open-host",
-      pi: unreachablePort,
+      kind: "pi",
       timers: instantTimers,
       waitSeconds: 1,
       workingDirectory: "/work/unreachable",
@@ -259,7 +262,7 @@ describe("bridge fail-open discipline", () => {
     expect(unreachablePort.messages).toHaveLength(0);
 
     // Stale handle: a throwing port ends the loop before any delivery report.
-    const stalePort = new RecordingPiPort();
+    const stalePort = new RecordingHostPort();
     stalePort.sendThrows = new Error(
       "This extension ctx is stale after session replacement or reload",
     );

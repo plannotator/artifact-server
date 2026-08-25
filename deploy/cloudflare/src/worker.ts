@@ -1,4 +1,4 @@
-import {Layer, ManagedRuntime, Redacted} from "effect";
+import {Effect, Layer, ManagedRuntime, Redacted} from "effect";
 
 import type {ApplicationRuntime} from "../../../src/application/application-runtime.js";
 import {ExpiredStagingCleanupService} from
@@ -23,6 +23,22 @@ import {createD1IdentityRepository} from "./d1-identity-repository.js";
 import {migrateD1, requiredD1SchemaVersion} from "./d1-migrations.js";
 import {createR2ObjectStorageAdapters} from "./r2-object-storage.js";
 import {
+  ArtifactsBindingGitHistoryProvider,
+  type ArtifactsBinding,
+} from "./artifacts-binding-git-history-provider.js";
+import {D1GitHistoryProviderIdentityStore} from
+  "./d1-git-history-provider-identity-store.js";
+import {
+  defaultGitHistoryFileCopyBytes,
+  defaultGitHistoryVersionCopyBytes,
+  disabledGitHistoryCapability,
+  type GitHistoryCapabilityReader,
+} from "../../../src/git-history/git-history-capability.js";
+import {resolveGitHistoryProviderState} from
+  "../../../src/git-history/git-history-capability-monitor.js";
+import {makeGitHistoryMirrorWorker} from
+  "../../../src/git-history/git-history-mirror.js";
+import {
   createOidcIdentityProvider,
   defaultOidcScopes,
   type OidcIdentityProvider,
@@ -33,9 +49,12 @@ import {createWorkOsHostedAuthentication} from
 /** Bindings and variables the deployed Artifact Server worker reads. */
 export interface WorkerEnvironment {
   readonly ASSETS: Fetcher;
+  readonly ARTIFACTS?: ArtifactsBinding;
   readonly ARTIFACT_SERVER_API_TOKEN: string;
   readonly ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL: string;
   readonly ARTIFACT_SERVER_CONTENT_DOMAIN: string;
+  readonly ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_ACCOUNT_ID?: string;
+  readonly ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_NAMESPACE?: string;
   readonly ARTIFACT_SERVER_D1_DATABASE: D1Database;
   readonly ARTIFACT_SERVER_INSTALLATION_ID: string;
   readonly ARTIFACT_SERVER_OIDC_CLIENT_ID?: string;
@@ -57,6 +76,7 @@ interface CloudflareRuntime {
   readonly contentDomain: string;
   readonly qualificationMode: boolean;
   cleanupStaging(): Promise<void>;
+  drainGitHistory(): Promise<void>;
 }
 
 interface WorkerErrorResponse {
@@ -80,6 +100,9 @@ export default {
           error: "unrecognized_artifact_server_host",
           message: "This hostname is not assigned to this Artifact Server.",
         });
+      }
+      if (!["GET", "HEAD", "OPTIONS"].includes(prepared.method)) {
+        context.waitUntil(runtime.drainGitHistory());
       }
       return runtime.app.fetch(prepared, environment, context);
     } catch (cause) {
@@ -107,7 +130,7 @@ async function runScheduledCleanup(
   environment: WorkerEnvironment,
 ): Promise<void> {
   const runtime = await getRuntime(environment);
-  await runtime.cleanupStaging();
+  await Promise.all([runtime.cleanupStaging(), runtime.drainGitHistory()]);
 }
 
 function getRuntime(environment: WorkerEnvironment): Promise<CloudflareRuntime> {
@@ -134,6 +157,7 @@ async function createCloudflareRuntime(
     environment.ARTIFACT_SERVER_R2_BUCKET,
     environment.ARTIFACT_SERVER_INSTALLATION_ID,
   );
+  const gitHistory = await initializeGitHistory(environment, repository, blobs);
   const oidcIdentityProvider = oidcAuthentication(environment);
   const hostedAuthentication = await workOsAuthentication(environment);
   const browserAccess = hostedAuthentication !== null
@@ -141,7 +165,7 @@ async function createCloudflareRuntime(
     : oidcIdentityProvider !== null
     ? privateTeamBrowserAccess(browserLoginKinds.oidc)
     : missingIdentityProvider();
-  const applicationLayer = createApplicationLayer({
+  const applicationAdapters: Parameters<typeof createApplicationLayer>[0] = {
     apiToken: Redacted.make(environment.ARTIFACT_SERVER_API_TOKEN, {
       label: "cloudflare-api-token",
     }),
@@ -157,13 +181,18 @@ async function createCloudflareRuntime(
     ids: new SystemIdGenerator(),
     identityRepository,
     installationId: environment.ARTIFACT_SERVER_INSTALLATION_ID,
+    gitHistory: gitHistory.capability,
     interactiveIdentityProvider: oidcIdentityProvider ??
       hostedAuthentication?.interactiveIdentityProvider ?? null,
     localBootstrapCredential: null,
     protectBootstrapAdministrator: false,
     repository,
     staging,
-  });
+  };
+  if (gitHistory.provider !== null) {
+    Object.assign(applicationAdapters, {gitHistoryProvider: gitHistory.provider});
+  }
+  const applicationLayer = createApplicationLayer(applicationAdapters);
   const applicationRuntime: ApplicationRuntime = ManagedRuntime.make(
     Layer.mergeAll(applicationLayer, structuredLoggingLayer),
   );
@@ -175,6 +204,7 @@ async function createCloudflareRuntime(
     browserAccess,
     completedRequestLogSampleRate: requestLogSampleRate(environment),
     contentDomain: environment.ARTIFACT_SERVER_CONTENT_DOMAIN,
+    gitHistory: gitHistory.capability,
     readiness: () => readiness(environment),
     trustedApplicationOrigin: origin.origin,
     webAssets: {
@@ -204,9 +234,102 @@ async function createCloudflareRuntime(
         throw new Error("One or more expired staging uploads could not be removed.");
       }
     },
+    drainGitHistory: gitHistory.drain,
     contentDomain: environment.ARTIFACT_SERVER_CONTENT_DOMAIN,
     qualificationMode:
       environment.ARTIFACT_SERVER_QUALIFICATION_MODE === "enabled",
+  };
+}
+
+async function initializeGitHistory(
+  environment: WorkerEnvironment,
+  repository: ReturnType<typeof createD1ArtifactRepository>,
+  blobs: ReturnType<typeof createR2ObjectStorageAdapters>["blobs"],
+): Promise<{
+  readonly capability: GitHistoryCapabilityReader;
+  readonly drain: () => Promise<void>;
+  readonly provider: ArtifactsBindingGitHistoryProvider | null;
+}> {
+  if (environment.ARTIFACTS === undefined) {
+    return {
+      capability: {read: disabledGitHistoryCapability},
+      drain: async () => undefined,
+      provider: null,
+    };
+  }
+  const accountId = requireEnvironmentValue(
+    environment.ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_ACCOUNT_ID,
+  );
+  const namespace = requireEnvironmentValue(
+    environment.ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_NAMESPACE,
+  );
+  const identity = {
+    accountId,
+    namespace,
+    provider: "cloudflare-artifacts" as const,
+  };
+  const provider = new ArtifactsBindingGitHistoryProvider(environment.ARTIFACTS);
+  const identityStore = new D1GitHistoryProviderIdentityStore(
+    environment.ARTIFACT_SERVER_D1_DATABASE,
+    environment.ARTIFACT_SERVER_INSTALLATION_ID,
+  );
+  const providerState = await Effect.runPromise(resolveGitHistoryProviderState({
+    clock: new SystemClock(),
+    identity,
+    identityStore,
+    providerHealth: {
+      check: () => Effect.promise(async () => {
+        const health = await provider.health();
+        return health.healthy
+          ? {state: "available" as const}
+          : {
+            reason: "provider_unavailable" as const,
+            state: "degraded" as const,
+          };
+      }),
+    },
+  }));
+  const capability: GitHistoryCapabilityReader = {
+    read: () => ({
+      limits: {
+        fileCopyBytes: defaultGitHistoryFileCopyBytes,
+        logicalCopiedBytes: 0,
+        logicalReservedBytes: 0,
+        storageBudgetBytes: null,
+        versionCopyBytes: defaultGitHistoryVersionCopyBytes,
+      },
+      provider: "cloudflare-artifacts",
+      providerState,
+    }),
+  };
+  const worker = makeGitHistoryMirrorWorker({
+    blobs,
+    capability,
+    installationId: environment.ARTIFACT_SERVER_INSTALLATION_ID,
+    provider,
+    store: repository,
+  });
+  const drainPasses = async (remaining: number): Promise<void> => {
+    if (remaining === 0) return;
+    const result = await Effect.runPromise(worker.runPass());
+    if (
+      result.outcome === "idle" ||
+      result.outcome === "retry" ||
+      result.outcome === "budget-limited"
+    ) return;
+    await drainPasses(remaining - 1);
+  };
+  let activeDrain: Promise<void> | null = null;
+  const drain = (): Promise<void> => {
+    activeDrain ??= drainPasses(8).finally(() => {
+      activeDrain = null;
+    });
+    return activeDrain;
+  };
+  return {
+    capability,
+    drain,
+    provider,
   };
 }
 

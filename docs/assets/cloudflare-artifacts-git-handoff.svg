@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="184" viewBox="0 0 1200 184" role="img" aria-labelledby="title description">
-  <title id="title">Backed by Cloudflare Artifacts</title>
-  <desc id="description">Cloudflare Artifacts provides optional Git-backed version history through Workers bindings.</desc>
+  <title id="title">Cloudflare Artifacts integration</title>
+  <desc id="description">Cloudflare Artifacts provides optional private Git-backed history for selected Artifact Server projects.</desc>
 
   <defs>
     <linearGradient id="frame" x1="0" y1="0" x2="0" y2="1">
@@ -16,12 +16,12 @@
   </g>
 
   <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
-    <text x="176" y="80" fill="#8f96ab" font-size="14" font-weight="600" letter-spacing="3.2">BACKED BY</text>
+    <text x="176" y="80" fill="#8f96ab" font-size="14" font-weight="600" letter-spacing="3.2">OPTIONAL GIT HISTORY</text>
     <text x="176" y="120" fill="#f5f6f8" font-size="34" font-weight="500" letter-spacing="-0.6">Cloudflare Artifacts</text>
 
     <text x="746" y="84" fill="#b9bfcc" font-size="18" font-weight="400" letter-spacing="-0.1">
-      <tspan x="746" dy="0">Optional Git-backed version history</tspan>
-      <tspan x="746" dy="28">through Workers bindings.</tspan>
+      <tspan x="746" dy="0">Private repositories for selected projects.</tspan>
+      <tspan x="746" dy="28">Off by default · closed beta access required.</tspan>
     </text>
   </g>
 

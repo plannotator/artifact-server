@@ -40,5 +40,8 @@ export const agentUnavailableStalenessMilliseconds = 15 * 60 * 1_000;
 /** Window within which a registered agent's claim polling counts as connected. */
 export const agentConnectedWindowMilliseconds = 90 * 1_000;
 
+/** Beacon freshness window; a staler beacon decays to the derived state. */
+export const agentActivityBeaconTtlMilliseconds = 60 * 1_000;
+
 /** Retention for registered-agent rows whose claim polling stopped. */
 export const registeredAgentRetentionMilliseconds = 7 * 24 * 60 * 60 * 1_000;

@@ -57,6 +57,12 @@ import {
 } from "../git-history/git-history-capability-monitor.js";
 import {PostgresGitHistoryProviderIdentityStore} from
   "../storage/postgres-git-history-provider-identity-store.js";
+import {
+  type GitHistoryProvider,
+  startGitHistoryMirrorWorker,
+} from "../git-history/git-history-mirror.js";
+import {CloudflareArtifactsGitHistoryProvider} from
+  "../git-history/cloudflare-artifacts-git-history-provider.js";
 
 /** Configuration for one stateless Artifact Server process. */
 export interface ExternalStorageRuntimeConfig {
@@ -75,6 +81,8 @@ export interface ExternalStorageRuntimeConfig {
   readonly gitHistory?: NodeGitHistoryConfiguration;
   /** Optional provider seam for real-boundary tests; production composes REST. */
   readonly gitHistoryHealthProbe?: GitHistoryProviderHealthProbe;
+  /** Complete provider seam for conformance tests; production composes REST and Git. */
+  readonly gitHistoryProvider?: GitHistoryProvider;
   readonly installationId: string;
   readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
   readonly localBootstrapCredential?: Redacted.Redacted;
@@ -112,6 +120,7 @@ export async function createExternalStorageRuntime(
   let objectStorage: ObjectStorageProvider | null = null;
   let applicationRuntime: ApplicationRuntime | null = null;
   let gitHistoryMonitor: GitHistoryCapabilityMonitor | null = null;
+  let gitHistoryWorker: Awaited<ReturnType<typeof startGitHistoryMirrorWorker>> | null = null;
   try {
     const connectedObjectStorage = config.objectStorage.create(
       config.installationId,
@@ -130,6 +139,12 @@ export async function createExternalStorageRuntime(
       config.installationId,
     );
     const configuredGitHistory = configuredNodeGitHistory(gitHistory);
+    const gitHistoryProvider = configuredGitHistory === null
+      ? null
+      : config.gitHistoryProvider ?? new CloudflareArtifactsGitHistoryProvider({
+        apiToken: configuredGitHistory.apiToken,
+        identity: configuredGitHistory.identity,
+      });
     const gitHistoryIdentityStore = configuredGitHistory === null
       ? null
       : new PostgresGitHistoryProviderIdentityStore(
@@ -143,7 +158,7 @@ export async function createExternalStorageRuntime(
       repository: identityRepository,
     });
     const {blobs, staging} = connectedObjectStorage;
-    const applicationLayer = createApplicationLayer({
+    const applicationAdapters: Parameters<typeof createApplicationLayer>[0] = {
       apiToken: null,
       blobs,
       bootstrapAdministratorEmail: config.bootstrapAdministratorEmail,
@@ -162,7 +177,11 @@ export async function createExternalStorageRuntime(
       repository,
       staging,
       stagingCleanupPolicy,
-    });
+    };
+    if (gitHistoryProvider !== null) {
+      Object.assign(applicationAdapters, {gitHistoryProvider});
+    }
+    const applicationLayer = createApplicationLayer(applicationAdapters);
     const resources = Layer.effectDiscard(Effect.acquireRelease(
       Effect.void,
       () => Effect.promise(async () => {
@@ -179,8 +198,12 @@ export async function createExternalStorageRuntime(
     );
     await applicationRuntime.context();
     const readyRuntime = applicationRuntime;
-    if (configuredGitHistory !== null && gitHistoryIdentityStore !== null) {
-      gitHistoryMonitor = startGitHistoryCapabilityMonitor({
+    if (
+      configuredGitHistory !== null &&
+      gitHistoryIdentityStore !== null &&
+      gitHistoryProvider !== null
+    ) {
+      gitHistoryMonitor = startGitHistoryCapabilityMonitor(readyRuntime, {
         clock: runtimeClock,
         identity: configuredGitHistory.identity,
         identityStore: gitHistoryIdentityStore,
@@ -192,6 +215,13 @@ export async function createExternalStorageRuntime(
           }),
       });
       applicationGitHistory = gitHistoryMonitor.reader;
+      gitHistoryWorker = await startGitHistoryMirrorWorker({
+        blobs,
+        capability: applicationGitHistory,
+        installationId: config.installationId,
+        provider: gitHistoryProvider,
+        store: repository,
+      });
     }
     const appDependenciesWithoutOAuth = {
       applicationRuntime: readyRuntime,
@@ -230,11 +260,13 @@ export async function createExternalStorageRuntime(
       cleanupStaging: (limit) => runStagingCleanupPass(readyRuntime, limit),
       close: async () => {
         if (closeCleanupSchedule !== null) await closeCleanupSchedule();
+        if (gitHistoryWorker !== null) await gitHistoryWorker.close();
         if (gitHistoryMonitor !== null) await gitHistoryMonitor.close();
         await readyRuntime.dispose();
       },
     };
   } catch (cause) {
+    if (gitHistoryWorker !== null) await gitHistoryWorker.close();
     if (gitHistoryMonitor !== null) await gitHistoryMonitor.close();
     if (applicationRuntime === null) {
       await Promise.all([

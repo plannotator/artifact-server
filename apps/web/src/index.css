@@ -61,3 +61,65 @@
     @apply font-sans;
   }
 }
+
+/*
+ * Agent presence rings. The ring is the state signal: solid while idle,
+ * pulsing while working, a spinning conic arc while replying, hollow grey
+ * while disconnected. Motion attaches only to the live states and only when
+ * the reader allows it; reduced motion keeps a static two-tone ring so the
+ * live states stay distinguishable without animation.
+ */
+@layer components {
+  .presence-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: calc(infinity * 1px);
+    border: 2px solid var(--presence-accent, var(--muted-foreground));
+  }
+  .presence-ring-disconnected {
+    border-color: var(--muted-foreground);
+    opacity: 0.45;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .presence-ring-working {
+      animation: presence-pulse 2s ease-in-out infinite;
+    }
+    .presence-ring-replying {
+      border-color: transparent;
+      background: conic-gradient(
+        from 0turn,
+        var(--presence-accent) 0turn 0.3turn,
+        transparent 0.42turn 1turn
+      );
+      mask: radial-gradient(
+        farthest-side,
+        transparent calc(100% - 2.5px),
+        #000 calc(100% - 2px)
+      );
+      animation: presence-spin 1.2s linear infinite;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .presence-ring-working,
+    .presence-ring-replying {
+      border-color: var(--presence-accent);
+      border-top-color: var(--muted-foreground);
+    }
+  }
+}
+
+@keyframes presence-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes presence-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}

@@ -53,18 +53,31 @@ const threadPageSchema = z.object({
 }).loose();
 const agentSchema = z.object({
   agentSessionId: z.string().nullable(),
+  capabilities: z.object({
+    beacon: z.boolean(),
+    evidence: z.enum(["channel", "mailbox", "native"]),
+  }).strict(),
   connectionKey: z.string(),
   createdAt: z.iso.datetime(),
   displayName: z.string(),
   id: z.string().startsWith("agt_"),
-  kind: z.literal("pi"),
+  kind: z.string().regex(/^[a-z][a-z0-9-]{0,39}$/),
   lastSeenAt: z.iso.datetime(),
   principalId: z.string(),
   workingDirectory: z.string(),
 }).strict();
-const agentRegistrationSchema = z.object({agent: agentSchema}).strict();
+const agentRegistrationSchema = z.object({
+  agent: agentSchema,
+  protocolVersion: z.literal(1),
+}).strict();
 const agentListSchema = z.object({
-  items: z.array(agentSchema.extend({connected: z.boolean()}).strict()),
+  items: z.array(agentSchema.extend({
+    activeDispatchId: z.string().nullable(),
+    activity: z.enum(["disconnected", "idle", "working"]),
+    beacon: z.enum(["replying", "thinking"]).nullable(),
+    connected: z.boolean(),
+    lastActivityAt: z.iso.datetime(),
+  }).strict()),
 }).strict();
 const dispatchSchema = z.object({
   addressedAt: z.iso.datetime().nullable(),
@@ -480,7 +493,7 @@ describe("Cloudflare D1 agent dispatch", () => {
       try {
         expect(schemaVersionRowSchema.parse(upgraded.prepare(
           "SELECT version FROM artifact_server_schema WHERE component = 'runtime'",
-        ).get()).version).toBe(7);
+        ).get()).version).toBe(9);
         expect(z.array(tableColumnRowSchema)
           .parse(upgraded.prepare("PRAGMA table_info(comment_threads)").all())
           .map(({name}) => name)).toContain("dispatch_id");

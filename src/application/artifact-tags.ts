@@ -58,7 +58,13 @@ export function parseArtifactTag(
   );
 }
 
-function normalizeArtifactTag(candidate: string): string {
+/** Normalize one tag-shaped search value without enforcing tag limits. */
+export function normalizeArtifactTag(candidate: string): string {
+  return normalizeArtifactSearchText(candidate);
+}
+
+/** Normalize user-visible text for storage-independent artifact search. */
+export function normalizeArtifactSearchText(candidate: string): string {
   const collapsed = candidate.normalize("NFKC").trim().replace(whitespace, " ");
   return caseFold(collapsed).normalize("NFC");
 }

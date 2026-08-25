@@ -40,6 +40,10 @@ import {
 } from "../application/content-access.js";
 import {ExpiredStagingCleanupService} from
   "../application/expired-staging-cleanup.js";
+import {
+  type GitHistoryAccessDependencies,
+  GitHistoryAccessService,
+} from "../application/git-history-access.js";
 
 import {
   disabledLinkedArtifactLayer,
@@ -131,6 +135,10 @@ import {
   fixedGitHistoryCapabilityReader,
   type GitHistoryCapabilityReader,
 } from "../git-history/git-history-capability.js";
+import type {
+  GitHistoryMirrorStore,
+  GitHistoryProvider,
+} from "../git-history/git-history-mirror.js";
 
 /** Concrete Node adapters reused by the Effect application layer. */
 export interface ApplicationAdapters {
@@ -152,6 +160,8 @@ export interface ApplicationAdapters {
   readonly interactiveIdentityProvider: InteractiveIdentityProvider | null;
   /** Live optional-provider state used to guard project enablement. */
   readonly gitHistory?: GitHistoryCapabilityReader;
+  /** Optional managed provider used only after application authorization. */
+  readonly gitHistoryProvider?: GitHistoryProvider;
   /**
    * Linked-artifact adapters, present only on a local deployment that has
    * enabled the capability. Absent, every runtime still provides the
@@ -166,6 +176,7 @@ export interface ApplicationAdapters {
     ContentSessionRepository &
     ProjectRepository &
     ProjectGitHistoryStore &
+    GitHistoryMirrorStore &
     PublicLinkInventoryStore &
     StagedUploadRepository;
   readonly staging: StagingStore;
@@ -200,6 +211,7 @@ export function createApplicationLayer(
   | CompareArtifactService
   | ContentAccessService
   | ExpiredStagingCleanupService
+  | GitHistoryAccessService
   | InstallationAccessService
   | InteractiveLoginService
   | LinkedArtifactService
@@ -417,9 +429,30 @@ export function createApplicationLayer(
         try: () => adapters.repository.readProjectGitHistorySetting(projectId),
         catch: (cause) => repositoryFailure("readProjectGitHistorySetting", cause),
       }),
+      readProjectGitHistoryProgress: (projectId) => Effect.tryPromise({
+        try: () => adapters.repository.readProjectGitHistoryProgress(projectId),
+        catch: (cause) => repositoryFailure("readProjectGitHistoryProgress", cause),
+      }),
       storeProjectGitHistorySetting: (setting) => Effect.tryPromise({
         try: () => adapters.repository.storeProjectGitHistorySetting(setting),
         catch: (cause) => repositoryFailure("storeProjectGitHistorySetting", cause),
+      }),
+    },
+  };
+  const gitHistoryAccessDependencies: GitHistoryAccessDependencies = {
+    provider: adapters.gitHistoryProvider ?? null,
+    repository: {
+      findArtifact: (projectId, artifactId) => Effect.tryPromise({
+        try: () => adapters.repository.findArtifact(projectId, artifactId),
+        catch: (cause) => repositoryFailure("findArtifact", cause),
+      }),
+      findGitHistoryRepository: (projectId, artifactId) => Effect.tryPromise({
+        try: () => adapters.repository.findGitHistoryRepository(projectId, artifactId),
+        catch: (cause) => repositoryFailure("findGitHistoryRepository", cause),
+      }),
+      readProjectGitHistorySetting: (projectId) => Effect.tryPromise({
+        try: () => adapters.repository.readProjectGitHistorySetting(projectId),
+        catch: (cause) => repositoryFailure("readProjectGitHistorySetting", cause),
       }),
     },
   };
@@ -493,6 +526,10 @@ export function createApplicationLayer(
     ids: adapters.ids,
     installationId: adapters.installationId,
     repository: {
+      clearThreads: (command) => commentEffect(
+        "clearCommentThreads",
+        () => adapters.repository.clearThreads(command),
+      ),
       createReply: (command) => commentEffect(
         "createCommentReply",
         () => adapters.repository.createReply(command),
@@ -597,6 +634,10 @@ export function createApplicationLayer(
         "observeAgentDispatchAddressed",
         () => dispatchStore.observeAddressed(dispatchId, now),
       ),
+      recordActivity: (command) => dispatchEffect(
+        "recordAgentActivity",
+        () => dispatchStore.recordActivity(command),
+      ),
       registerAgent: (command) => dispatchEffect(
         "registerAgent",
         () => dispatchStore.registerAgent(command),
@@ -638,6 +679,11 @@ export function createApplicationLayer(
           try: () => adapters.repository.exchangeContentBootstrap(command),
           catch: (cause) => repositoryFailure("exchangeContentBootstrap", cause),
         }),
+      createPreviewLease: (command) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.createPreviewLease(command),
+          catch: (cause) => repositoryFailure("createPreviewLease", cause),
+        }),
       findContentSession: (tokenDigest, contentToken, requestTime) =>
         Effect.tryPromise({
           try: () =>
@@ -647,6 +693,11 @@ export function createApplicationLayer(
               requestTime,
             ),
           catch: (cause) => repositoryFailure("findContentSession", cause),
+        }),
+      findPreviewLease: (tokenDigest, requestTime) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.findPreviewLease(tokenDigest, requestTime),
+          catch: (cause) => repositoryFailure("findPreviewLease", cause),
         }),
       findCurrentVersion: (projectId, artifactId) =>
         Effect.tryPromise({
@@ -946,6 +997,9 @@ export function createApplicationLayer(
   const projectGitHistoryLayer = ProjectGitHistoryService.layer(
     projectGitHistoryDependencies,
   ).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)));
+  const gitHistoryAccessLayer = GitHistoryAccessService.layer(
+    gitHistoryAccessDependencies,
+  ).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)));
 
   const publishLayer = PublishArtifactService.layer(publishDependencies).pipe(
     Layer.provideMerge(authorizationLayer),
@@ -1079,6 +1133,7 @@ export function createApplicationLayer(
     managementLayer,
     publicLinkAdministrationLayer,
     comparisonLayer,
+    gitHistoryAccessLayer,
     projectGitHistoryLayer,
     projectLayer,
   );

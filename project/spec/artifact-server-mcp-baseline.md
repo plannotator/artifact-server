@@ -55,6 +55,31 @@ call, and prints only the selected client and local server address.
 `artifactserver doctor` reports service, client-registration, and reachability
 problems without revealing credentials.
 
+#### Transactional client onboarding
+
+Connect and disconnect preflight both Artifact Server's private registration
+state and the selected client's current configuration before either is
+changed. The CLI rejects malformed, foreign, or independently changed managed
+entries. It never adopts or replaces an entry that it cannot prove it owns.
+
+Before the first client mutation, the CLI writes a user-only transaction
+journal. The journal records the exact client change, the registration state
+before and after the operation, and content digests used for compare-and-swap
+writes. It contains no credential. Only one journal may exist for an
+installation at a time.
+
+After interruption, the next connect or disconnect command reads the journal
+before planning new work. It accepts only the exact before state, the exact
+after state, or the documented native-client intermediate state produced when
+replacement has removed the old entry but has not added the new entry. The CLI
+then completes the operation forward. A normal command failure rolls back only
+when the exact inverse client change is safe. If a durable client-file change
+has already committed, the CLI keeps the journal and resumes forward instead
+of reconstructing or snapshotting unrelated client configuration. If either
+state changed outside the transaction, recovery stops, preserves that
+independent change, and keeps the journal for explicit safe recovery. The CLI
+never overwrites a state that does not match the journal.
+
 The stdio helper is a transport bridge over the same authenticated loopback
 `/mcp` endpoint used by the product. It does not define tools, implement
 artifact rules, or write directly to the database. Its private local credential

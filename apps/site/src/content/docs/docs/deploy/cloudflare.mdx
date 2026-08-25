@@ -12,12 +12,12 @@ Cloudflare is Artifact Server's first-class direct-cloud target. The deployment 
 | Artifact and staged-upload bytes | R2 |
 | Provisioning and lifecycle | Alchemy |
 | Hosted browser and MCP authorization | WorkOS |
-| Optional private Git handoff | Cloudflare Artifacts, off by default |
+| Optional private Git history | Cloudflare Artifacts |
 
 ## Current release boundary
 
-<Aside type="caution" title="Qualification is still in progress">
-The Cloudflare package has selected live runtime and recovery evidence, but it has not passed the repository's complete Cloudflare release gate. Treat this page as the integration path, not a declaration of general availability.
+<Aside type="note" title="Qualified integration; beta provider">
+Artifact Server's REST and Workers-binding paths pass the isolated live Cloudflare Artifacts qualification. Cloudflare Artifacts itself still requires beta access, and the broader Cloudflare deployment package retains its independent release gate.
 </Aside>
 
 The checked-in deployment package lives in `deploy/cloudflare`. It pins Alchemy, Wrangler, Workers types, and the Cloudflare compatibility date. Team and CI deployments use Cloudflare-hosted Alchemy state.
@@ -46,4 +46,12 @@ The configuration contract requires the Cloudflare account, application and cont
 
 ## Optional Cloudflare Artifacts history
 
-Cloudflare Artifacts is a configurable Git handoff, not authoritative storage. It stays off by default because access is not globally available. Enabling it for one project must not change the immutable Artifact Server version or its primary bytes.
+Cloudflare Artifacts can keep a private Git copy of selected projects. It is off by default, and Artifact Server's D1 and R2 data remains authoritative. The integration creates one repository per artifact, mirrors immutable versions through a durable retry queue, backfills existing versions, and issues bounded read tokens for clones.
+
+<Aside type="caution" title="Closed beta access is required">
+Cloudflare Artifacts is not generally available. Request access, create one dedicated namespace for each Artifact Server environment, and review current pricing and limits before enabling a project.
+</Aside>
+
+Set `cloudflareArtifactsNamespace` in the deployment input. After deployment, open **Projects**, review the estimate, and enable Git history for each project that should be copied. Disabling preserves the derived repositories; deleting an artifact queues deletion of its repository.
+
+Read the [operational guide](https://github.com/plannotator/artifact-server/blob/main/docs/cloudflare-artifacts.md) for namespace isolation, runtime states, clone and purge commands, copy limits, recovery behavior, and the bounded live qualification commands.

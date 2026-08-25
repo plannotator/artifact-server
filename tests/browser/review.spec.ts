@@ -77,7 +77,10 @@ test.describe("Artifact review viewer", () => {
       );
       expect(frameResponse.status()).toBe(200);
       const framePolicy = frameResponse.headers()["content-security-policy"] ?? "";
-      expect(framePolicy).toContain("connect-src 'none'");
+      expect(framePolicy).toContain(
+        "connect-src http://*.localhost:* https://*.localhost",
+      );
+      expect(framePolicy).not.toContain("connect-src 'self'");
       expect(framePolicy).toContain("frame-ancestors 'self'");
 
       await fixture.page.goto(reviewUrl);

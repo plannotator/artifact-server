@@ -71,6 +71,12 @@ import {
 } from "../git-history/git-history-capability-monitor.js";
 import {SqliteGitHistoryProviderIdentityStore} from
   "../storage/sqlite-git-history-provider-identity-store.js";
+import {
+  type GitHistoryProvider,
+  startGitHistoryMirrorWorker,
+} from "../git-history/git-history-mirror.js";
+import {CloudflareArtifactsGitHistoryProvider} from
+  "../git-history/cloudflare-artifacts-git-history-provider.js";
 
 export interface LocalRuntimeConfig {
   readonly apiToken: string;
@@ -90,6 +96,8 @@ export interface LocalRuntimeConfig {
   readonly gitHistory?: NodeGitHistoryConfiguration;
   /** Optional provider seam for real-boundary tests; production composes REST. */
   readonly gitHistoryHealthProbe?: GitHistoryProviderHealthProbe;
+  /** Complete provider seam for conformance tests; production composes REST and Git. */
+  readonly gitHistoryProvider?: GitHistoryProvider;
   readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
   /** Linked-artifact capability switch; absent or "off" leaves it disabled. */
   readonly linkedFiles?: "off" | "on";
@@ -130,6 +138,12 @@ export async function createLocalRuntime(
   const repository = new SqliteArtifactRepository(databasePath, installationId);
   const identityRepository = new SqliteIdentityRepository(databasePath);
   const configuredGitHistory = configuredNodeGitHistory(gitHistory);
+  const gitHistoryProvider = configuredGitHistory === null
+    ? null
+    : config.gitHistoryProvider ?? new CloudflareArtifactsGitHistoryProvider({
+      apiToken: configuredGitHistory.apiToken,
+      identity: configuredGitHistory.identity,
+    });
   const apiToken = Redacted.make(config.apiToken, {label: "local-api-token"});
   if (config.browserAccess.mode === browserAccessModes.privateTeam) {
     try {
@@ -225,6 +239,9 @@ export async function createLocalRuntime(
     staging,
     stagingCleanupPolicy,
   };
+  if (gitHistoryProvider !== null) {
+    Object.assign(applicationAdapters, {gitHistoryProvider});
+  }
   if (linkedAdapters !== undefined) {
     applicationAdapters = {...applicationAdapters, linked: linkedAdapters};
   }
@@ -240,10 +257,15 @@ export async function createLocalRuntime(
     Layer.mergeAll(applicationLayer, resourceLayer, telemetryLayer),
   );
   let gitHistoryMonitor: GitHistoryCapabilityMonitor | null = null;
+  let gitHistoryWorker: Awaited<ReturnType<typeof startGitHistoryMirrorWorker>> | null = null;
   try {
     await applicationRuntime.context();
-    if (configuredGitHistory !== null && gitHistoryIdentityStore !== null) {
-      gitHistoryMonitor = startGitHistoryCapabilityMonitor({
+    if (
+      configuredGitHistory !== null &&
+      gitHistoryIdentityStore !== null &&
+      gitHistoryProvider !== null
+    ) {
+      gitHistoryMonitor = startGitHistoryCapabilityMonitor(applicationRuntime, {
         clock: runtimeClock,
         identity: configuredGitHistory.identity,
         identityStore: gitHistoryIdentityStore,
@@ -255,6 +277,13 @@ export async function createLocalRuntime(
           }),
       });
       applicationGitHistory = gitHistoryMonitor.reader;
+      gitHistoryWorker = await startGitHistoryMirrorWorker({
+        blobs,
+        capability: applicationGitHistory,
+        installationId,
+        provider: gitHistoryProvider,
+        store: repository,
+      });
     }
     let appDependenciesWithoutOAuth: HttpAppDependencies = {
       applicationRuntime,
@@ -304,11 +333,13 @@ export async function createLocalRuntime(
       cleanupStaging: (limit) => runStagingCleanupPass(applicationRuntime, limit),
       close: async () => {
         if (closeCleanupSchedule !== null) await closeCleanupSchedule();
+        if (gitHistoryWorker !== null) await gitHistoryWorker.close();
         if (gitHistoryMonitor !== null) await gitHistoryMonitor.close();
         await applicationRuntime.dispose();
       },
     };
   } catch (error) {
+    if (gitHistoryWorker !== null) await gitHistoryWorker.close();
     if (gitHistoryMonitor !== null) await gitHistoryMonitor.close();
     await applicationRuntime.dispose();
     throw error;

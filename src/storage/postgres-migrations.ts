@@ -2,6 +2,10 @@ import {Effect} from "effect";
 import * as Migrator from "effect/unstable/sql/Migrator";
 import {SqlClient} from "effect/unstable/sql/SqlClient";
 
+import {normalizeArtifactSearchText} from "../application/artifact-tags.js";
+import {defaultGitHistoryMaximumCopiedFiles} from
+  "../git-history/git-history-capability.js";
+
 const initialSchema = Effect.gen(function*() {
   const sql = yield* SqlClient;
   const statements = [
@@ -529,6 +533,128 @@ const addProjectGitHistorySetting = Effect.gen(function*() {
   )`);
 });
 
+const addGitHistoryMirror = Effect.gen(function*() {
+  const sql = yield* SqlClient;
+  const statements = [
+    `ALTER TABLE git_history_project_settings
+      ADD COLUMN file_copy_limit_bytes BIGINT NOT NULL DEFAULT 10485760,
+      ADD COLUMN version_copy_limit_bytes BIGINT NOT NULL DEFAULT 52428800,
+      ADD COLUMN maximum_copied_files INTEGER NOT NULL
+        DEFAULT ${defaultGitHistoryMaximumCopiedFiles},
+      ADD COLUMN storage_budget_bytes BIGINT`,
+    `CREATE TABLE git_history_repositories (
+      installation_id TEXT NOT NULL REFERENCES artifact_installations(id),
+      project_id TEXT NOT NULL,
+      artifact_id TEXT NOT NULL,
+      provider TEXT NOT NULL CHECK (provider = 'cloudflare-artifacts'),
+      repository_name TEXT NOT NULL,
+      remote_url TEXT NOT NULL,
+      default_branch TEXT NOT NULL CHECK (default_branch = 'main'),
+      status TEXT NOT NULL CHECK (status IN ('provisioned', 'deleting', 'deleted')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (installation_id, artifact_id),
+      UNIQUE (installation_id, repository_name),
+      FOREIGN KEY (installation_id, project_id, artifact_id)
+        REFERENCES artifacts(installation_id, project_id, id)
+    )`,
+    `CREATE TABLE git_history_jobs (
+      installation_id TEXT NOT NULL REFERENCES artifact_installations(id),
+      id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      artifact_id TEXT NOT NULL,
+      version_id TEXT,
+      kind TEXT NOT NULL CHECK (kind IN ('mirror-version', 'delete-repository')),
+      state TEXT NOT NULL CHECK (state IN ('queued', 'claimed', 'done')),
+      attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+      file_copy_limit_bytes BIGINT,
+      version_copy_limit_bytes BIGINT,
+      maximum_copied_files INTEGER,
+      storage_budget_bytes BIGINT,
+      copy_policy_digest TEXT,
+      lease_expires_at TEXT,
+      available_at TEXT NOT NULL,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (installation_id, id),
+      FOREIGN KEY (installation_id, project_id, artifact_id)
+        REFERENCES artifacts(installation_id, project_id, id),
+      CHECK (
+        (kind = 'mirror-version' AND version_id IS NOT NULL
+          AND file_copy_limit_bytes IS NOT NULL
+          AND version_copy_limit_bytes IS NOT NULL
+          AND maximum_copied_files IS NOT NULL
+          AND copy_policy_digest IS NOT NULL)
+        OR (kind = 'delete-repository' AND version_id IS NULL)
+      )
+    )`,
+    `CREATE TABLE git_history_mappings (
+      installation_id TEXT NOT NULL REFERENCES artifact_installations(id),
+      project_id TEXT NOT NULL,
+      artifact_id TEXT NOT NULL,
+      version_id TEXT NOT NULL,
+      repository_name TEXT NOT NULL,
+      commit_id TEXT NOT NULL,
+      attempts INTEGER NOT NULL CHECK (attempts > 0),
+      copied_bytes BIGINT NOT NULL CHECK (copied_bytes >= 0),
+      status TEXT NOT NULL CHECK (status IN ('recorded', 'deleted')),
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (installation_id, project_id, artifact_id, version_id)
+    )`,
+    `CREATE TABLE git_history_budget_reservations (
+      installation_id TEXT NOT NULL REFERENCES artifact_installations(id),
+      job_id TEXT NOT NULL,
+      logical_bytes BIGINT NOT NULL CHECK (logical_bytes >= 0),
+      state TEXT NOT NULL CHECK (state IN ('reserved', 'committed', 'released')),
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (installation_id, job_id),
+      FOREIGN KEY (installation_id, job_id)
+        REFERENCES git_history_jobs(installation_id, id)
+    )`,
+    `CREATE INDEX git_history_jobs_ready
+      ON git_history_jobs (installation_id, state, available_at, created_at)`,
+    `CREATE INDEX git_history_jobs_artifact
+      ON git_history_jobs (installation_id, artifact_id, state)`,
+  ] as const;
+  for (const statement of statements) yield* sql.unsafe(statement);
+});
+
+const widenRegisteredAgentKind = Effect.gen(function*() {
+  const sql = yield* SqlClient;
+  const statements = [
+    // The kind becomes an open slug validated in the application layer, so
+    // the closed-set CHECK constraint stops describing the contract.
+    `ALTER TABLE registered_agents
+      DROP CONSTRAINT registered_agents_kind_check`,
+    `ALTER TABLE registered_agents
+      ADD COLUMN capabilities_json TEXT,
+      ADD COLUMN activity_state TEXT,
+      ADD COLUMN activity_at TEXT`,
+  ] as const;
+  for (const statement of statements) yield* sql.unsafe(statement);
+});
+
+const addArtifactSearchName = Effect.gen(function*() {
+  const sql = yield* SqlClient;
+  yield* sql.unsafe("ALTER TABLE artifacts ADD COLUMN search_name TEXT");
+  const rows = yield* sql.unsafe<{
+    readonly id: string;
+    readonly installationId: string;
+    readonly name: string;
+  }>(`SELECT installation_id AS "installationId", id, name FROM artifacts`);
+  for (const row of rows) {
+    yield* sql.unsafe(
+      `UPDATE artifacts SET search_name = $1
+       WHERE installation_id = $2 AND id = $3`,
+      [normalizeArtifactSearchText(row.name), row.installationId, row.id],
+    );
+  }
+  yield* sql.unsafe(
+    "ALTER TABLE artifacts ALTER COLUMN search_name SET NOT NULL",
+  );
+});
+
 const migrationLoader = Migrator.fromRecord({
   "0001_initial_shared_schema": initialSchema,
   "0002_project_scoped_artifacts": addProjectScope,
@@ -538,10 +664,13 @@ const migrationLoader = Migrator.fromRecord({
   "0006_agent_dispatch": addAgentDispatch,
   "0007_git_history_provider_identity": addGitHistoryProviderIdentity,
   "0008_project_git_history_setting": addProjectGitHistorySetting,
+  "0009_git_history_mirror": addGitHistoryMirror,
+  "0010_agent_capabilities": widenRegisteredAgentKind,
+  "0011_artifact_search_name": addArtifactSearchName,
 });
 
 /** Schema revision required by this Artifact Server build. */
-export const requiredPostgresSchemaVersion = 8;
+export const requiredPostgresSchemaVersion = 11;
 
 /** Migration compatibility observed without changing Postgres. */
 export interface PostgresMigrationStatus {
@@ -620,6 +749,15 @@ export const readPostgresMigrationStatus = Effect.gen(function*() {
   }, {
     migration_id: 8,
     name: "project_git_history_setting",
+  }, {
+    migration_id: 9,
+    name: "git_history_mirror",
+  }, {
+    migration_id: 10,
+    name: "agent_capabilities",
+  }, {
+    migration_id: 11,
+    name: "artifact_search_name",
   }] as const;
   const observedRequiredHistory = rows.filter(
     (row) => row.migration_id <= requiredPostgresSchemaVersion,

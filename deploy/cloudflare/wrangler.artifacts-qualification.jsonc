@@ -1,0 +1,14 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "artifact-server-artifacts-binding-qualification",
+  "main": "./scripts/artifacts-binding-qualification-worker.ts",
+  "compatibility_date": "2026-08-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "artifacts": [
+    {
+      "binding": "ARTIFACTS",
+      "namespace": "artifact-server-test-qualification",
+      "remote": true
+    }
+  ]
+}

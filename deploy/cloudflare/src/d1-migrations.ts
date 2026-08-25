@@ -2,9 +2,13 @@ import {
   defaultProjectId,
   defaultProjectName,
 } from "../../../src/core/model.js";
+import {normalizeArtifactSearchText} from
+  "../../../src/application/artifact-tags.js";
+import {defaultGitHistoryMaximumCopiedFiles} from
+  "../../../src/git-history/git-history-capability.js";
 
 /** D1 schema revision required by the Cloudflare runtime. */
-export const requiredD1SchemaVersion = 7;
+export const requiredD1SchemaVersion = 9;
 
 /** SQL literal list of every action kind the ledger accepts. */
 const actionKindList = [
@@ -39,6 +43,7 @@ const schemaSql = `
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES projects(id),
     name TEXT NOT NULL,
+    search_name TEXT NOT NULL,
     access_setting TEXT NOT NULL CHECK (access_setting IN ('account_required', 'public_link')),
     current_version_id TEXT,
     created_at TEXT NOT NULL,
@@ -196,9 +201,84 @@ const schemaSql = `
     project_id TEXT PRIMARY KEY REFERENCES projects(id),
     installation_id TEXT NOT NULL,
     enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+    file_copy_limit_bytes INTEGER NOT NULL DEFAULT 10485760,
+    version_copy_limit_bytes INTEGER NOT NULL DEFAULT 52428800,
+    maximum_copied_files INTEGER NOT NULL DEFAULT ${defaultGitHistoryMaximumCopiedFiles},
+    storage_budget_bytes INTEGER,
     updated_by_principal_id TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS git_history_repositories (
+    artifact_id TEXT PRIMARY KEY REFERENCES artifacts(id),
+    installation_id TEXT NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    provider TEXT NOT NULL CHECK (provider = 'cloudflare-artifacts'),
+    repository_name TEXT NOT NULL,
+    remote_url TEXT NOT NULL,
+    default_branch TEXT NOT NULL CHECK (default_branch = 'main'),
+    status TEXT NOT NULL CHECK (status IN ('provisioned', 'deleting', 'deleted')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (installation_id, repository_name)
+  );
+
+  CREATE TABLE IF NOT EXISTS git_history_jobs (
+    id TEXT PRIMARY KEY,
+    installation_id TEXT NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+    version_id TEXT REFERENCES versions(id),
+    kind TEXT NOT NULL CHECK (kind IN ('mirror-version', 'delete-repository')),
+    state TEXT NOT NULL CHECK (state IN ('queued', 'claimed', 'done')),
+    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    file_copy_limit_bytes INTEGER,
+    version_copy_limit_bytes INTEGER,
+    maximum_copied_files INTEGER,
+    storage_budget_bytes INTEGER,
+    copy_policy_digest TEXT,
+    lease_expires_at TEXT,
+    available_at TEXT NOT NULL,
+    last_error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK (
+      (kind = 'mirror-version' AND version_id IS NOT NULL
+        AND file_copy_limit_bytes IS NOT NULL
+        AND version_copy_limit_bytes IS NOT NULL
+        AND maximum_copied_files IS NOT NULL
+        AND copy_policy_digest IS NOT NULL)
+      OR (kind = 'delete-repository' AND version_id IS NULL)
+    )
+  );
+
+  CREATE TABLE IF NOT EXISTS git_history_mappings (
+    installation_id TEXT NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+    version_id TEXT NOT NULL REFERENCES versions(id),
+    repository_name TEXT NOT NULL,
+    commit_id TEXT NOT NULL,
+    attempts INTEGER NOT NULL CHECK (attempts > 0),
+    copied_bytes INTEGER NOT NULL CHECK (copied_bytes >= 0),
+    status TEXT NOT NULL CHECK (status IN ('recorded', 'deleted')),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (installation_id, project_id, artifact_id, version_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS git_history_budget_reservations (
+    job_id TEXT PRIMARY KEY REFERENCES git_history_jobs(id),
+    installation_id TEXT NOT NULL,
+    logical_bytes INTEGER NOT NULL CHECK (logical_bytes >= 0),
+    state TEXT NOT NULL CHECK (state IN ('reserved', 'committed', 'released')),
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS git_history_jobs_ready
+    ON git_history_jobs (installation_id, state, available_at, created_at);
+
+  CREATE INDEX IF NOT EXISTS git_history_jobs_artifact
+    ON git_history_jobs (installation_id, artifact_id, state);
 
   CREATE TABLE IF NOT EXISTS managed_api_keys (
     id TEXT PRIMARY KEY,
@@ -238,12 +318,15 @@ const schemaSql = `
     installation_id TEXT NOT NULL,
     connection_key TEXT NOT NULL,
     display_name TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('pi')),
+    kind TEXT NOT NULL,
     working_directory TEXT NOT NULL,
     agent_session_id TEXT,
     principal_id TEXT NOT NULL,
     created_at TEXT NOT NULL,
     last_seen_at TEXT NOT NULL,
+    capabilities_json TEXT,
+    activity_state TEXT,
+    activity_at TEXT,
     UNIQUE (installation_id, principal_id, connection_key)
   );
 
@@ -531,6 +614,9 @@ export async function migrateD1(
   }
   if (current === null || current < requiredD1SchemaVersion) {
     await addCommentThreadDispatchMarkerIfMissing(database);
+    await addGitHistoryMirrorColumnsIfMissing(database);
+    await widenRegisteredAgentsIfNeeded(database);
+    await addArtifactSearchNameIfMissing(database);
   }
   await database.batch([
     database.prepare(`
@@ -550,6 +636,62 @@ export async function migrateD1(
       new Date(0).toISOString(),
     ),
   ]);
+}
+
+async function addArtifactSearchNameIfMissing(
+  database: D1Database,
+): Promise<void> {
+  const columns = await database.prepare("PRAGMA table_info(artifacts)")
+    .all<{name: string}>();
+  if (!columns.results.some((column) => column.name === "search_name")) {
+    await database.prepare(
+      "ALTER TABLE artifacts ADD COLUMN search_name TEXT",
+    ).run();
+  }
+  const artifacts = await database.prepare(
+    "SELECT id, name FROM artifacts WHERE search_name IS NULL",
+  )
+    .all<{id: string; name: string}>();
+  if (artifacts.results.length === 0) return;
+  await database.batch(artifacts.results.map((artifact) =>
+    database.prepare("UPDATE artifacts SET search_name = ? WHERE id = ?").bind(
+      normalizeArtifactSearchText(artifact.name),
+      artifact.id,
+    )
+  ));
+}
+
+async function addGitHistoryMirrorColumnsIfMissing(
+  database: D1Database,
+): Promise<void> {
+  const columns = await database.prepare(
+    "PRAGMA table_info(git_history_project_settings)",
+  ).all<{readonly name: string}>();
+  const names = new Set(columns.results.map((column) => column.name));
+  const statements: D1PreparedStatement[] = [];
+  if (!names.has("file_copy_limit_bytes")) {
+    statements.push(database.prepare(
+      "ALTER TABLE git_history_project_settings ADD COLUMN file_copy_limit_bytes INTEGER NOT NULL DEFAULT 10485760",
+    ));
+  }
+  if (!names.has("version_copy_limit_bytes")) {
+    statements.push(database.prepare(
+      "ALTER TABLE git_history_project_settings ADD COLUMN version_copy_limit_bytes INTEGER NOT NULL DEFAULT 52428800",
+    ));
+  }
+  if (!names.has("maximum_copied_files")) {
+    statements.push(database.prepare(
+      `ALTER TABLE git_history_project_settings
+        ADD COLUMN maximum_copied_files INTEGER NOT NULL
+        DEFAULT ${defaultGitHistoryMaximumCopiedFiles}`,
+    ));
+  }
+  if (!names.has("storage_budget_bytes")) {
+    statements.push(database.prepare(
+      "ALTER TABLE git_history_project_settings ADD COLUMN storage_budget_bytes INTEGER",
+    ));
+  }
+  if (statements.length > 0) await database.batch(statements);
 }
 
 /**
@@ -583,6 +725,57 @@ async function addLoginAttemptNonceIfMissing(
   if (columns.results.some((column) => column.name === "nonce")) return;
   await database.batch(
     upgradeFromVersion3Statements.map((statement) =>
+      database.prepare(statement)),
+  );
+}
+
+const widenRegisteredAgentsStatements = [
+  `CREATE TABLE registered_agents_next (
+    id TEXT PRIMARY KEY,
+    installation_id TEXT NOT NULL,
+    connection_key TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    working_directory TEXT NOT NULL,
+    agent_session_id TEXT,
+    principal_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    capabilities_json TEXT,
+    activity_state TEXT,
+    activity_at TEXT,
+    UNIQUE (installation_id, principal_id, connection_key)
+  )`,
+  `INSERT INTO registered_agents_next (
+    id, installation_id, connection_key, display_name, kind,
+    working_directory, agent_session_id, principal_id, created_at,
+    last_seen_at
+  ) SELECT id, installation_id, connection_key, display_name, kind,
+    working_directory, agent_session_id, principal_id, created_at,
+    last_seen_at
+    FROM registered_agents`,
+  "DROP TABLE registered_agents",
+  "ALTER TABLE registered_agents_next RENAME TO registered_agents",
+] as const;
+
+/**
+ * Rebuild `registered_agents` without the closed-set kind CHECK and with the
+ * capability and activity columns. The kind is validated as a slug in the
+ * application layer, so the schema stops constraining it. A rebuild is the
+ * only path: SQLite cannot drop a CHECK constraint in place, and a database
+ * created before this revision already holds the narrow table, so the shared
+ * `CREATE TABLE IF NOT EXISTS` leaves it untouched.
+ */
+async function widenRegisteredAgentsIfNeeded(
+  database: D1Database,
+): Promise<void> {
+  const columns = await database.prepare("PRAGMA table_info(registered_agents)")
+    .all<{name: string}>();
+  if (columns.results.some((column) => column.name === "capabilities_json")) {
+    return;
+  }
+  await database.batch(
+    widenRegisteredAgentsStatements.map((statement) =>
       database.prepare(statement)),
   );
 }

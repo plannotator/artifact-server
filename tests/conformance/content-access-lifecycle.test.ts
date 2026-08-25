@@ -175,6 +175,49 @@ describe("content access lifecycle", () => {
     expect(authorized?.versionId).toBe(published.version.id);
   });
 
+  test("preview lease foundation: tampered leases fail and valid leases expire at their exact boundary", async () => {
+    expect.hasAssertions();
+    const published = await publishPrivateArtifact(runtime);
+    const lease = await runtime.runPromise(
+      ContentAccessService.use((contentAccess) =>
+        contentAccess.issuePreviewLease({
+          artifactId: published.artifact.id,
+          principal: testPrincipal,
+          projectId: null,
+          versionId: published.version.id,
+        })
+      ),
+    );
+    const authorized = await runtime.runPromise(
+      ContentAccessService.use((contentAccess) =>
+        contentAccess.authorizePreviewContent({
+          fallback: "entry",
+          path: "",
+          token: lease.token,
+        })
+      ),
+    );
+    expect(authorized?.versionId).toBe(published.version.id);
+    await expectFailure("ContentSessionRequired",
+      ContentAccessService.use((contentAccess) =>
+        contentAccess.authorizePreviewContent({
+          fallback: "entry",
+          path: "",
+          token: Redacted.make("review-tampered-preview-lease-token"),
+        })
+      ));
+
+    clock.set(new Date(lease.expiresAt));
+    await expectFailure("ContentSessionRequired",
+      ContentAccessService.use((contentAccess) =>
+        contentAccess.authorizePreviewContent({
+          fallback: "entry",
+          path: "",
+          token: lease.token,
+        })
+      ));
+  });
+
   async function expectFailure<A, E extends {_tag: string}>(
     expectedTag: E["_tag"],
     effect: Effect.Effect<A, E, ContentAccessService>,

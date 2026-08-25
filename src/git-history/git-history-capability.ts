@@ -43,6 +43,9 @@ export const defaultGitHistoryFileCopyBytes = 10 * 1024 * 1024;
 /** Default maximum total copied bytes for one mirrored version. */
 export const defaultGitHistoryVersionCopyBytes = 50 * 1024 * 1024;
 
+/** Default maximum number of authored files copied into one Git commit. */
+export const defaultGitHistoryMaximumCopiedFiles = 500;
+
 /** Provider-safe upper bound accepted for one version-copy configuration. */
 export const maximumGitHistoryVersionCopyBytes = 10 * 1024 * 1024 * 1024;
 

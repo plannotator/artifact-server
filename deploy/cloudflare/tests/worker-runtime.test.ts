@@ -37,6 +37,14 @@ const projectGitHistorySchema = z.object({
   gitHistory: z.object({
     enabled: z.boolean(),
     projectId: z.string(),
+    state: z.enum([
+      "backfilling",
+      "budget-limited",
+      "degraded",
+      "disabled",
+      "ready",
+      "waiting",
+    ]),
   }).strict(),
 }).strict();
 
@@ -112,7 +120,11 @@ describe("Cloudflare Worker runtime", () => {
     );
     expect(historyStatus.status).toBe(200);
     expect(projectGitHistorySchema.parse(await historyStatus.json())).toEqual({
-      gitHistory: {enabled: false, projectId: "prj_default"},
+      gitHistory: {
+        enabled: false,
+        projectId: "prj_default",
+        state: "disabled",
+      },
     });
     const historyEnable = await worker.fetch(
       `${origin}/api/v1/projects/prj_default/git-history`,

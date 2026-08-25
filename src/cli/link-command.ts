@@ -1,16 +1,11 @@
 import {randomBytes} from "node:crypto";
-import {readFile} from "node:fs/promises";
 import path from "node:path";
 
 import {Option, type Command} from "commander";
-import {Effect, Redacted} from "effect";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import {Redacted} from "effect";
 import {z} from "zod";
 
-import {resolveVerifiedProfileCredential} from "./cli-auth-commands.js";
-import {resolveCliProfile} from "./cli-profile-store.js";
-import {runCliEffect} from "./run-cli-effect.js";
-import {createSystemCredentialStore} from "./system-credential-store.js";
+import {resolveCliServerConnection} from "./cli-server-connection.js";
 
 interface LinkOptions {
   readonly data: string;
@@ -27,15 +22,6 @@ export interface LinkCommandOptions {
   readonly defaultProfileDirectory: string;
 }
 
-interface LinkConnection {
-  readonly apiToken: Redacted.Redacted;
-  readonly origin: string;
-}
-
-const bearerCredentialSchema = z.string()
-  .min(32)
-  .max(200)
-  .regex(/^[A-Za-z0-9._~-]+$/u);
 const linkedPublicationSchema = z.object({
   artifact: z.object({
     id: z.string().min(1),
@@ -100,7 +86,7 @@ export function configureLinkCommand(
       // The server reads the file itself, so the path it receives must be
       // absolute on this machine; linking is a same-machine operation.
       const absolutePath = path.resolve(inputPath);
-      const connection = await resolveLinkConnection(options);
+      const connection = await resolveCliServerConnection(options, "link");
       const response = await fetch(
         new URL("/api/v1/artifacts/link", connection.origin),
         {
@@ -111,6 +97,7 @@ export function configureLinkCommand(
             "Idempotency-Key": randomBytes(24).toString("base64url"),
           },
           method: "POST",
+          redirect: "error",
         },
       );
       if (response.status !== 201) throw await linkFailure(response);
@@ -152,86 +139,4 @@ async function readFailure(
   } catch {
     return null;
   }
-}
-
-async function resolveLinkConnection(
-  options: LinkOptions,
-): Promise<LinkConnection> {
-  const explicitToken = await loadExplicitApiToken(options);
-  if (explicitToken !== undefined) {
-    if (options.server === undefined) {
-      throw new Error(
-        "ARTIFACT_SERVER_API_TOKEN and --token-file require --server or ARTIFACT_SERVER_URL so the credential has one explicit destination.",
-      );
-    }
-    return {apiToken: explicitToken, origin: options.server};
-  }
-
-  if (options.profile !== undefined) {
-    const dataDirectory = path.resolve(options.profileData);
-    const profile = await runCliEffect(resolveCliProfile(
-      dataDirectory,
-      options.server === undefined
-        ? {name: options.profile}
-        : {name: options.profile, origin: options.server},
-    ));
-    const resolved = await runCliEffect(resolveVerifiedProfileCredential(
-      dataDirectory,
-      profile,
-      createSystemCredentialStore(),
-      false,
-    ).pipe(Effect.provide(FetchHttpClient.layer)));
-    return {apiToken: resolved.bearer, origin: profile.origin};
-  }
-
-  return {
-    apiToken: await loadLocalApiToken(options),
-    origin: options.server ?? "http://localhost:8787",
-  };
-}
-
-async function loadExplicitApiToken(
-  options: LinkOptions,
-): Promise<Redacted.Redacted | undefined> {
-  const environmentToken = process.env["ARTIFACT_SERVER_API_TOKEN"];
-  if (options.tokenFile === undefined && environmentToken !== undefined) {
-    const parsed = bearerCredentialSchema.safeParse(environmentToken);
-    if (!parsed.success) {
-      throw new Error("ARTIFACT_SERVER_API_TOKEN is invalid.");
-    }
-    return Redacted.make(parsed.data, {label: "artifact-server-api-token"});
-  }
-  if (options.tokenFile === undefined) return undefined;
-
-  const tokenPath = path.resolve(options.tokenFile);
-  let candidate: string;
-  try {
-    candidate = (await readFile(tokenPath, "utf8")).trim();
-  } catch {
-    throw new Error(`Artifact Server API token not found at ${tokenPath}.`);
-  }
-  const parsed = bearerCredentialSchema.safeParse(candidate);
-  if (!parsed.success) {
-    throw new Error(`The API token in ${tokenPath} is invalid.`);
-  }
-  return Redacted.make(parsed.data, {label: "artifact-server-api-token"});
-}
-
-async function loadLocalApiToken(
-  options: LinkOptions,
-): Promise<Redacted.Redacted> {
-  const tokenPath = path.resolve(path.join(options.data, "local-api-token"));
-  let candidate: string;
-  try {
-    candidate = (await readFile(tokenPath, "utf8")).trim();
-  } catch {
-    throw new Error(
-      `Local Artifact Server API token not found at ${tokenPath}. Run artifactserver up or artifactserver start first.`,
-    );
-  }
-  const parsed = bearerCredentialSchema.safeParse(candidate);
-  if (!parsed.success) {
-    throw new Error(`The local API token in ${tokenPath} is invalid.`);
-  }
-  return Redacted.make(parsed.data, {label: "artifact-server-api-token"});
 }

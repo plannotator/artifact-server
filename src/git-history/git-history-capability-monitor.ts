@@ -1,5 +1,4 @@
-import {Effect, Fiber, Result, Schedule} from "effect";
-
+import {Effect, Fiber, type ManagedRuntime, Result, Schedule} from "effect";
 import type {Clock} from "../core/ports.js";
 import type {
   GitHistoryCapability,
@@ -36,7 +35,8 @@ export interface GitHistoryCapabilityMonitor {
 }
 
 /** Start an interruptible provider monitor whose first pass runs immediately. */
-export function startGitHistoryCapabilityMonitor(
+export function startGitHistoryCapabilityMonitor<R>(
+  runtime: ManagedRuntime.ManagedRuntime<R, never>,
   config: GitHistoryCapabilityMonitorConfig,
 ): GitHistoryCapabilityMonitor {
   let capability = config.initialCapability;
@@ -53,14 +53,14 @@ export function startGitHistoryCapabilityMonitor(
     settleInitialCheck = resolve;
   });
   const pass = refresh.pipe(Effect.ensuring(Effect.sync(settleInitialCheck)));
-  const fiber = Effect.runFork(Effect.repeat(
+  const fiber = runtime.runFork(Effect.repeat(
     pass,
     Schedule.spaced(
       config.refreshIntervalMilliseconds ?? defaultRefreshIntervalMilliseconds,
     ).pipe(Schedule.jittered),
   ));
   return {
-    close: () => Effect.runPromise(Fiber.interrupt(fiber)),
+    close: () => runtime.runPromise(Fiber.interrupt(fiber)),
     initialCheck,
     reader,
   };
@@ -76,30 +76,38 @@ const refreshGitHistoryCapability = Effect.fn(
 )(function*(
   config: RefreshGitHistoryCapabilityConfig,
 ): Effect.fn.Return<void> {
+  config.updateProviderState(yield* resolveGitHistoryProviderState(config));
+});
+
+/** Resolve one provider state without retaining process-local monitor state. */
+export const resolveGitHistoryProviderState = Effect.fn(
+  "GitHistory.CapabilityMonitor.resolveState",
+)(function*(
+  config: Pick<
+    GitHistoryCapabilityMonitorConfig,
+    "clock" | "identity" | "identityStore" | "providerHealth"
+  >,
+): Effect.fn.Return<GitHistoryProviderState> {
   const persisted = yield* config.identityStore.read().pipe(Effect.result);
   if (Result.isFailure(persisted)) {
-    config.updateProviderState("degraded");
     yield* logMonitorIssue("identity_read_failed");
-    return;
+    return "degraded";
   }
   if (
     persisted.success !== null &&
     !gitHistoryProviderIdentitiesEqual(persisted.success, config.identity)
   ) {
-    config.updateProviderState("migration-required");
     yield* logMonitorIssue("identity_mismatch");
-    return;
+    return "migration-required";
   }
 
   const health = yield* config.providerHealth.check();
   if (health.state !== "available") {
-    config.updateProviderState(health.state);
     yield* logMonitorIssue(health.reason);
-    return;
+    return health.state;
   }
   if (persisted.success !== null) {
-    config.updateProviderState("available");
-    return;
+    return "available";
   }
 
   const activated = yield* config.identityStore.activate({
@@ -107,12 +115,10 @@ const refreshGitHistoryCapability = Effect.fn(
     identity: config.identity,
   }).pipe(Effect.result);
   if (Result.isFailure(activated)) {
-    config.updateProviderState("degraded");
     yield* logMonitorIssue("identity_activation_failed");
-    return;
+    return "degraded";
   }
   const activationState = providerStateFromActivation(activated.success);
-  config.updateProviderState(activationState);
   if (activationState !== "available") {
     yield* logMonitorIssue(
       activationState === "migration-required"
@@ -120,6 +126,7 @@ const refreshGitHistoryCapability = Effect.fn(
         : "identity_location_claimed",
     );
   }
+  return activationState;
 });
 
 function providerStateFromActivation(

@@ -1,0 +1,69 @@
+---
+title: Welcome your team
+description: Give teammates and agents one short path into your team's Artifact Server.
+---
+
+<TeamWelcome />
+
+Artifact Server is your team's shared home for plans, prototypes, reports, screenshots, videos, and other finished work. People can review and comment in the browser. Agents can publish new versions and act on the feedback.
+
+<Aside type="note" title="For team leads">
+Share this page and your Artifact Server address with each teammate. The address is the only team-specific value they need.
+</Aside>
+
+## Get connected
+
+<Steps>
+  <Step title="Open your team's Artifact Server">
+    Your team lead will give you an address such as `https://artifacts.example.com`. Open it and sign in with your team account.
+  </Step>
+  <Step title="Install the Agent Skill">
+    Give this command to your agent, or run it in your terminal:
+
+    ```sh
+    npx skills add plannotator/artifact-server
+    ```
+  </Step>
+  <Step title="Give the agent your team address">
+    Replace the placeholder, then send this instruction to the agent:
+
+    ```text
+    Set up Artifact Server for this team.
+
+    Server: <TEAM_ARTIFACT_SERVER_URL>
+    MCP: <TEAM_ARTIFACT_SERVER_URL>/mcp
+
+    Connect this client, complete browser sign-in if asked, and use Artifact
+    Server for work that should be reviewed or shared. After publishing, give
+    me the full-screen review link first.
+    ```
+
+    If the client needs manual MCP configuration, add the exact `/mcp` address. [See publishing and MCP details →](/docs/publish/)
+  </Step>
+</Steps>
+
+That is enough to start. Ask the agent to publish a finished file or directory:
+
+```text
+/artifact-server upload that HTML design doc
+```
+
+The agent will return a full-screen review link. Open it to view the exact version and leave comments.
+
+## Recommended for Claude Code teams
+
+If Artifact Server is your team's shared artifact home, turn off Claude Code's built-in Artifacts so work does not split across two systems.
+
+- For your own sessions, add `"disableArtifact": true` to Claude Code settings or set `CLAUDE_CODE_DISABLE_ARTIFACT=1`.
+- For a Team or Enterprise organization, an Owner can turn off **Artifacts** in **Settings → Claude Code → Capabilities**.
+
+[See Anthropic's current disable instructions →](https://code.claude.com/docs/en/artifacts#disable-artifacts)
+
+## What to do next
+
+- Publish plans, prototypes, reports, images, videos, or complete HTML sites.
+- Share the review link, not a local file path.
+- Leave comments on the exact version you reviewed.
+- Ask the publishing agent to read the comments and make the next version.
+
+[Learn how publishing works →](/docs/publish/)

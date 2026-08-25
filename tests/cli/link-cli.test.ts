@@ -1,5 +1,6 @@
 import {spawn} from "node:child_process";
 import {mkdtemp, realpath, rm, writeFile} from "node:fs/promises";
+import {createServer, type Server} from "node:http";
 import {tmpdir} from "node:os";
 import path from "node:path";
 
@@ -17,6 +18,7 @@ import {
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const cliExecutable = path.join(repositoryRoot, "node_modules/.bin/tsx");
 const cliEntrypoint = path.join(repositoryRoot, "src/cli/main.ts");
+const assignedAddressSchema = z.object({port: z.number().int().positive()});
 const linkedPublicationSchema = z.object({
   artifact: z.object({id: z.string(), name: z.string(), projectId: z.string()})
     .loose(),
@@ -125,22 +127,95 @@ describe("artifactserver link", () => {
       await rm(outsideDirectory, {force: true, recursive: true});
     }
   });
+
+  test("CLI-SEC-001-F: never sends a local-owner token to an arbitrary explicit origin", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "artifact-server-link-credentials-"),
+    );
+    const localToken = "local-owner-token-that-must-never-leave-this-installation";
+    const recorder = await startRequestRecorder();
+    const sourcePath = path.join(linkRoot, "notes.md");
+    await writeFile(path.join(dataDirectory, "local-api-token"), localToken);
+    await writeFile(sourcePath, "# credential boundary\n");
+
+    try {
+      const result = await runLinkCli(
+        [
+          sourcePath,
+          "--data",
+          dataDirectory,
+          "--server",
+          recorder.origin,
+        ],
+        {cwd: repositoryRoot},
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(recorder.requestCount()).toBe(0);
+      expect(result.stdout).not.toContain(localToken);
+      expect(result.stderr).not.toContain(localToken);
+    } finally {
+      await recorder.stop();
+      await rm(dataDirectory, {force: true, recursive: true});
+    }
+  });
+
+  test("CLI-SEC-002-F: refuses authenticated redirects", async () => {
+    const target = await startRequestRecorder();
+    const redirect = await startRequestRecorder(target.origin);
+    const sourcePath = path.join(linkRoot, "notes.md");
+    await writeFile(sourcePath, "# redirect boundary\n");
+
+    try {
+      const result = await runLinkCli(
+        [sourcePath, "--server", redirect.origin],
+        {cwd: repositoryRoot, token: installation.apiToken},
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(redirect.requestCount()).toBe(1);
+      expect(target.requestCount()).toBe(0);
+      expect(result.stdout).not.toContain(installation.apiToken);
+      expect(result.stderr).not.toContain(installation.apiToken);
+    } finally {
+      await Promise.all([redirect.stop(), target.stop()]);
+    }
+  });
+
+  test("foundation: missing local credentials name real recovery commands", async () => {
+    const dataDirectory = path.join(linkRoot, "missing local data");
+    const sourcePath = path.join(linkRoot, "notes.md");
+    await writeFile(sourcePath, "# local recovery\n");
+
+    const result = await runLinkCli(
+      [sourcePath, "--data", dataDirectory],
+      {cwd: repositoryRoot},
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("artifactserver open --data");
+    expect(result.stderr).toContain("artifactserver start --data");
+    expect(result.stderr).not.toContain("artifactserver up");
+  });
 });
 
 function runLinkCli(
   commandArguments: readonly string[],
-  options: {readonly cwd: string; readonly token: string},
+  options: {readonly cwd: string; readonly token?: string},
 ): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
+    const environment = {...process.env};
+    delete environment["ARTIFACT_SERVER_API_TOKEN"];
+    delete environment["ARTIFACT_SERVER_URL"];
+    if (options.token !== undefined) {
+      environment["ARTIFACT_SERVER_API_TOKEN"] = options.token;
+    }
     const child = spawn(
       cliExecutable,
       [cliEntrypoint, "link", ...commandArguments],
       {
         cwd: options.cwd,
-        env: {
-          ...process.env,
-          ARTIFACT_SERVER_API_TOKEN: options.token,
-        },
+        env: environment,
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
@@ -155,6 +230,60 @@ function runLinkCli(
         stderr: Buffer.concat(stderr).toString("utf8"),
         stdout: Buffer.concat(stdout).toString("utf8"),
       });
+    });
+  });
+}
+
+interface RequestRecorder {
+  readonly origin: string;
+  readonly requestCount: () => number;
+  readonly stop: () => Promise<void>;
+}
+
+async function startRequestRecorder(
+  redirectOrigin?: string,
+): Promise<RequestRecorder> {
+  let requests = 0;
+  const server = createServer((request, response) => {
+    requests += 1;
+    request.resume();
+    if (redirectOrigin !== undefined) {
+      response.writeHead(307, {
+        location: new URL(request.url ?? "/", redirectOrigin).toString(),
+      });
+      response.end();
+      return;
+    }
+    response.writeHead(500);
+    response.end();
+  });
+  const origin = await listen(server);
+  return {
+    origin,
+    requestCount: () => requests,
+    stop: () => close(server),
+  };
+}
+
+function listen(server: Server): Promise<string> {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = assignedAddressSchema.safeParse(server.address());
+      if (!address.success) {
+        reject(new Error("The request recorder did not receive a TCP port."));
+        return;
+      }
+      resolve(`http://127.0.0.1:${address.data.port}`);
+    });
+  });
+}
+
+function close(server: Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error !== undefined) reject(error);
+      else resolve();
     });
   });
 }

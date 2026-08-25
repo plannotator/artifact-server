@@ -12,7 +12,6 @@
   },
   "files": [
     "index.ts",
-    "bridge-core.ts",
     "README.md",
     "LICENSE"
   ],
@@ -20,7 +19,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "zod": "4.4.3"
+    "@plannotator/agent-bridge": "workspace:*"
   },
   "peerDependencies": {
     "typebox": "*"

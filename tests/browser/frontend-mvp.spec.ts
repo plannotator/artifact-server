@@ -1,5 +1,6 @@
 import {AxeBuilder} from "@axe-core/playwright";
 import {expect, test} from "@playwright/test";
+import {readFile} from "node:fs/promises";
 import {z} from "zod";
 
 import {
@@ -571,7 +572,157 @@ test.describe("Artifact Server frontend MVP", () => {
     }
   });
 
-  test("the Artifact Server review interface shares the stable artifact link and manages public access in standard and full-screen views", async ({browser}) => {
+  test("CMT-016-B CMT-016-F: an exact Review URL resolves outside the loaded catalog and never substitutes another version", async ({browser}) => {
+    const fixture = await startBrowserFixture(browser);
+    try {
+      const target = await publishNew(fixture.server, fixture.installation, {
+        accessSetting: "account_required",
+        content: "<!doctype html><html lang=\"en\"><title>Exact target</title><main><h1>Historical exact target</h1></main></html>",
+        idempotencyKey: "frontend-exact-target-v1",
+        name: "Exact target beyond catalog page",
+      });
+      await publishVersion(fixture.server, fixture.installation, {
+        artifactId: target.body.artifact.id,
+        content: "<!doctype html><html lang=\"en\"><title>Exact target latest</title><main><h1>Newer target content</h1></main></html>",
+        expectedCurrentVersionId: target.body.version.id,
+        idempotencyKey: "frontend-exact-target-v2",
+      });
+      const decoy = await publishNew(fixture.server, fixture.installation, {
+        accessSetting: "account_required",
+        content: "<!doctype html><html lang=\"en\"><title>Catalog decoy</title><main><h1>Catalog decoy content</h1></main></html>",
+        idempotencyKey: "frontend-exact-target-decoy",
+        name: "Catalog decoy",
+      });
+
+      await localLogin(fixture);
+      await fixture.page.route(/\/api\/v1\/artifacts\?.*/u, async (route) => {
+        const response = await route.fetch();
+        const body = z.object({
+          artifacts: z.array(z.unknown()),
+          nextCursor: z.string().nullable(),
+        }).passthrough().parse(await response.json());
+        const artifacts = body.artifacts.filter((item) => z.object({
+          artifact: z.object({id: z.string()}),
+        }).parse(item).artifact.id !== target.body.artifact.id);
+        await route.fulfill({
+          response,
+          body: JSON.stringify({...body, artifacts, nextCursor: "next-catalog-page"}),
+          contentType: "application/json",
+        });
+      });
+
+      await fixture.page.goto(target.body.links.review);
+      const reviewFrame = fixture.page.frameLocator(".as-artifact-frame");
+      const preview = reviewFrame.frameLocator("iframe");
+      await expect(preview.getByRole("heading", {name: "Historical exact target"}))
+        .toBeVisible();
+      await expect(preview.getByRole("heading", {name: "Newer target content"}))
+        .toHaveCount(0);
+      expect(new URL(fixture.page.url()).searchParams.get("version"))
+        .toBe(target.body.version.id);
+      await fixture.page.goto(decoy.body.links.review);
+      await expect(preview.getByRole("heading", {name: "Catalog decoy content"}))
+        .toBeVisible();
+      await fixture.page.goBack();
+      await expect(preview.getByRole("heading", {name: "Historical exact target"}))
+        .toBeVisible();
+      await fixture.page.reload();
+      await expect(preview.getByRole("heading", {name: "Historical exact target"}))
+        .toBeVisible();
+
+      await fixture.page.getByRole("button", {name: "Exit full screen"}).click();
+      await expect(fixture.page.getByRole("heading", {
+        exact: true,
+        name: "Exact target beyond catalog page",
+      })).toBeVisible();
+      await expect(fixture.page.getByRole("button", {
+        name: /Exact target beyond catalog page.*2 versions/u,
+      })).toHaveAttribute("aria-current", "true");
+      await expect(fixture.page.getByRole("button", {name: /Catalog decoy/u})).toBeVisible();
+
+      const unavailable = new URL(target.body.links.review);
+      unavailable.searchParams.set("version", "ver_missing-review-version");
+      await fixture.page.goto(unavailable.toString());
+      await expect(fixture.page.getByRole("heading", {name: "Review target unavailable"}))
+        .toBeVisible();
+      await expect(fixture.page.getByRole("heading", {name: "Catalog decoy content"}))
+        .toHaveCount(0);
+      expect(new URL(fixture.page.url()).searchParams.get("version"))
+        .toBe("ver_missing-review-version");
+      expect(decoy.body.artifact.id).not.toBe(target.body.artifact.id);
+    } finally {
+      await stopBrowserFixture(fixture);
+    }
+  });
+
+  test("CMT-018-B CMT-018-F: private historical HTML loads exact relative CSS, modules, images, fonts, and fetches", async ({browser}) => {
+    const fixture = await startBrowserFixture(browser);
+    try {
+      const historical = await publishReviewMultifileFixture(fixture);
+      await localLogin(fixture);
+      const historicalReview = new URL(historical.body.links.review);
+      historicalReview.searchParams.set("path", "site/pages/index.html");
+      await fixture.page.goto(historicalReview.toString());
+
+      const reviewFrame = fixture.page.frameLocator(".as-artifact-frame");
+      const preview = reviewFrame.frameLocator("iframe");
+      const assertMultifilePreview = async (): Promise<void> => {
+        const title = preview.getByRole("heading", {name: "Private historical site"});
+        await expect(title).toBeVisible();
+        await expect(title).toHaveCSS("color", "rgb(12, 34, 56)");
+        await expect(preview.locator("html")).toHaveAttribute(
+          "data-module",
+          "module-ready",
+        );
+        await expect(preview.locator("html")).toHaveAttribute("data-font", "loaded");
+        await expect(preview.locator("#release-status")).toHaveText("historical-data");
+        await expect.poll(
+          () => preview.locator("#relative-image").evaluate(
+            (image: HTMLImageElement) => image.naturalWidth,
+          ),
+        ).toBeGreaterThan(0);
+      };
+      // Qualify the same exact multi-file version first while it is current,
+      // then again after the artifact's current pointer has moved away.
+      await assertMultifilePreview();
+      await publishVersion(fixture.server, fixture.installation, {
+        artifactId: historical.body.artifact.id,
+        content: "<!doctype html><html lang=\"en\"><title>Current replacement</title><main><h1>Current replacement</h1></main></html>",
+        expectedCurrentVersionId: historical.body.version.id,
+        idempotencyKey: "frontend-private-multifile-v2",
+      });
+      await fixture.page.reload();
+      await assertMultifilePreview();
+
+      const resourceUrls = await preview.locator("html").evaluate(() =>
+        performance.getEntriesByType("resource").map((entry) => entry.name)
+      );
+      const expectedPaths = [
+        "/assets/pixel.png",
+        "/data/release.json",
+        "/site/scripts/app.js",
+        "/site/scripts/status.js",
+        "/site/styles/site.css",
+      ];
+      for (const expectedPath of expectedPaths) {
+        const resourceUrl = resourceUrls.find((candidate) =>
+          new URL(candidate).pathname === expectedPath
+        );
+        expect(resourceUrl, `missing ${expectedPath}`).toBeDefined();
+        if (resourceUrl === undefined) continue;
+        expect(new URL(resourceUrl).hostname).toMatch(/^review-[a-z0-9_-]+\.localhost$/u);
+        expect(resourceUrl).not.toContain(historical.body.version.contentToken);
+      }
+      expect(new URL(fixture.page.url()).searchParams.get("version"))
+        .toBe(historical.body.version.id);
+      expect(new URL(fixture.page.url()).searchParams.get("path"))
+        .toBe("site/pages/index.html");
+    } finally {
+      await stopBrowserFixture(fixture);
+    }
+  });
+
+  test("CMT-017-B CMT-017-F: Review shares the selected exact version and path before moving and raw links", async ({browser, browserName}) => {
     const fixture = await startBrowserFixture(browser);
     try {
       const published = await publishNew(fixture.server, fixture.installation, {
@@ -581,14 +732,26 @@ test.describe("Artifact Server frontend MVP", () => {
         name: "Share fixture",
         tags: ["sharing"],
       });
-      await fixture.context.grantPermissions(
-        ["clipboard-read", "clipboard-write"],
-        {origin: fixture.server.baseUrl},
-      );
+      const latest = await publishVersion(fixture.server, fixture.installation, {
+        artifactId: published.body.artifact.id,
+        content: "<!doctype html><html lang=\"en\"><title>Share fixture latest</title><main><h1>Share fixture latest</h1></main></html>",
+        expectedCurrentVersionId: published.body.version.id,
+        idempotencyKey: "frontend-review-share-fixture-v2",
+      });
+      const canInspectClipboard = browserName === "chromium";
+      if (canInspectClipboard) {
+        await fixture.context.grantPermissions(
+          ["clipboard-read", "clipboard-write"],
+          {origin: fixture.server.baseUrl},
+        );
+      }
       await localLogin(fixture);
+      const exactReviewLink = new URL(published.body.links.review);
+      exactReviewLink.searchParams.set("path", "index.html");
       await fixture.page.goto(
         `${fixture.server.baseUrl}/review?${new URLSearchParams({
           artifact: published.body.artifact.id,
+          path: "index.html",
           project: published.body.artifact.projectId,
           version: published.body.version.id,
         })}`,
@@ -605,46 +768,70 @@ test.describe("Artifact Server frontend MVP", () => {
       await headerShare.click();
       const share = fixture.page.locator(".as-share-popover[data-open]");
       await expect(share.getByRole("heading", {name: "Share fixture"})).toBeVisible();
+      await expect(share.getByText("Exact version · Version 1", {exact: true})).toBeVisible();
+      await expect(share.getByText(exactReviewLink.toString(), {exact: true})).toBeVisible();
       await expect(share.getByText(published.body.links.artifact, {exact: true})).toBeVisible();
       await expect(share.getByText(
-        "Only people with access to this Artifact Server can open this link.",
+        "People with access to this Artifact Server can review this exact version.",
         {exact: true},
       )).toBeVisible();
+      await expect(share.getByText(published.body.links.version, {exact: true})).toBeVisible();
+      await expect(share.getByText("Moves when a new version is published", {exact: true}))
+        .toBeVisible();
       const shareAccessibility = await new AxeBuilder({page: fixture.page})
         .exclude(".as-artifact-frame")
+        // Base UI gives its invisible Safari focus guards a button role only
+        // in WebKit. They are focus-management sentinels, not user commands.
+        .exclude("[data-base-ui-focus-guard]")
         .withTags(["wcag2a", "wcag2aa"])
         .analyze();
       expect(shareAccessibility.violations).toEqual([]);
-      await share.getByRole("button", {name: "Copy link"}).click();
-      await expect(share.getByRole("button", {name: "Copied"})).toBeVisible();
-      expect(await fixture.page.evaluate(() => navigator.clipboard.readText())).toBe(
-        published.body.links.artifact,
-      );
+      if (canInspectClipboard) {
+        await share.getByRole("button", {name: "Copy Review link"}).click();
+        await expect(share.getByRole("button", {name: "Copied"})).toBeVisible();
+        expect(await fixture.page.evaluate(() => navigator.clipboard.readText())).toBe(
+          exactReviewLink.toString(),
+        );
+        await share.getByRole("button", {name: "Copy latest link"}).click();
+        expect(await fixture.page.evaluate(() => navigator.clipboard.readText())).toBe(
+          published.body.links.artifact,
+        );
+        await share.getByRole("button", {name: "Copy raw link"}).click();
+        expect(await fixture.page.evaluate(() => navigator.clipboard.readText())).toBe(
+          published.body.links.version,
+        );
+      }
 
       await expect(share.getByRole("img", {
         name: "Claude, Codex, Cursor, GitHub Copilot, and Pi",
       })).toBeVisible();
-      await share.getByRole("button", {name: "Copy review prompt"}).click();
-      await expect(share.getByRole("button", {name: "Prompt copied"})).toBeVisible();
-      const agentPrompt = await fixture.page.evaluate(() => navigator.clipboard.readText());
-      expect(agentPrompt).toContain("artifact_get");
-      expect(agentPrompt).toContain("artifact_version_list");
-      expect(agentPrompt).toContain("comment_create");
-      expect(agentPrompt).toContain(published.body.artifact.projectId);
-      expect(agentPrompt).toContain(published.body.artifact.id);
-      expect(agentPrompt).toContain(published.body.version.id);
-      expect(agentPrompt).toContain(`${fixture.server.baseUrl}/mcp`);
-      expect(agentPrompt).toContain("artifactserver connect");
+      if (canInspectClipboard) {
+        await share.getByRole("button", {name: "Copy review prompt"}).click();
+        await expect(share.getByRole("button", {name: "Prompt copied"})).toBeVisible();
+        const agentPrompt = await fixture.page.evaluate(() => navigator.clipboard.readText());
+        expect(agentPrompt).toContain("artifact_get");
+        expect(agentPrompt).toContain("artifact_version_list");
+        expect(agentPrompt).toContain("comment_create");
+        expect(agentPrompt).toContain(published.body.artifact.projectId);
+        expect(agentPrompt).toContain(published.body.artifact.id);
+        expect(agentPrompt).toContain(published.body.version.id);
+        expect(agentPrompt).toContain(exactReviewLink.toString());
+        expect(agentPrompt).toContain(published.body.links.version);
+        expect(agentPrompt).toContain(`${fixture.server.baseUrl}/mcp`);
+        expect(agentPrompt).toContain("artifactserver connect");
+      }
 
       await share.getByRole("button", {name: "Connect MCP"}).click();
       await expect(share.getByRole("heading", {name: "Connect MCP"})).toBeVisible();
       await expect(share.getByText("On this computer", {exact: true})).toBeVisible();
       await expect(share.getByText("Team or remote server", {exact: true})).toBeVisible();
       await expect(share.getByText("Without MCP", {exact: true})).toBeVisible();
-      await share.getByRole("button", {name: "Copy MCP server address"}).click();
-      expect(await fixture.page.evaluate(() => navigator.clipboard.readText())).toBe(
-        `${fixture.server.baseUrl}/mcp`,
-      );
+      if (canInspectClipboard) {
+        await share.getByRole("button", {name: "Copy MCP server address"}).click();
+        expect(await fixture.page.evaluate(() => navigator.clipboard.readText())).toBe(
+          `${fixture.server.baseUrl}/mcp`,
+        );
+      }
       await share.getByRole("button", {name: "Back to Share"}).click();
 
       await share.getByRole("button", {name: "Manage access"}).click();
@@ -652,8 +839,7 @@ test.describe("Artifact Server frontend MVP", () => {
       await share.getByRole("radio", {name: /Public link/u}).check();
       await share.getByRole("button", {name: "Save"}).click();
       await expect(share.getByText(
-        "Anyone with the link who can reach this server can open the current version.",
-        {exact: true},
+        /The latest raw artifact is public/u,
       )).toBeVisible();
       const accessRow = fixture.page.locator(".as-inspector-row").filter({hasText: "access"});
       await expect(accessRow.getByText("public", {exact: true})).toBeVisible();
@@ -670,7 +856,8 @@ test.describe("Artifact Server frontend MVP", () => {
       );
       await focusShare.click();
       await expect(share.getByRole("heading", {name: "Share fixture"})).toBeVisible();
-      await expect(share.getByText(published.body.links.artifact, {exact: true})).toBeVisible();
+      await expect(share.getByText(exactReviewLink.toString(), {exact: true})).toBeVisible();
+      await expect(share.getByText(latest.body.links.version, {exact: true})).toHaveCount(0);
       await share.getByRole("button", {name: "Close Share"}).click();
       await exitFullScreen.click();
     } finally {
@@ -1132,11 +1319,11 @@ test.describe("Artifact Server frontend MVP", () => {
         has: fixture.page.getByRole("heading", {name: "Default"}),
       });
       await expect(defaultProjectCard.getByText("Git history", {exact: true})).toBeVisible();
-      await expect(defaultProjectCard.getByText("Off", {exact: true})).toBeVisible();
+      await expect(defaultProjectCard.getByText("disabled", {exact: true})).toBeVisible();
       await expect(defaultProjectCard).toContainText(
-        "Cloudflare Git history is not configured for this installation.",
+        "This deployment has no Git history provider.",
       );
-      await expect(defaultProjectCard.getByRole("button", {name: "Turn on"}))
+      await expect(defaultProjectCard.getByRole("button", {name: "Enable Git history"}))
         .toHaveCount(0);
       const accessibility = await new AxeBuilder({page: fixture.page})
         .withTags(["wcag2a", "wcag2aa"])
@@ -1189,6 +1376,104 @@ test.describe("Artifact Server frontend MVP", () => {
     }
   });
 });
+
+async function publishReviewMultifileFixture(fixture: BrowserFixture) {
+  const encoder = new TextEncoder();
+  const imageBytes = await readFile(
+    new URL("../../project/evidence/frontend-mvp/error-not-found.png", import.meta.url),
+  );
+  const fontBytes = await readFile(
+    new URL("../../apps/site/public/fonts/Inter-Bold.ttf", import.meta.url),
+  );
+  const files = [
+    {
+      bytes: encoder.encode(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Private historical site</title>
+    <link rel="stylesheet" href="../styles/site.css">
+  </head>
+  <body>
+    <main>
+      <h1 id="multi-title">Private historical site</h1>
+      <img alt="Relative pixel" id="relative-image" src="/assets/pixel.png">
+      <p id="release-status">Loading</p>
+    </main>
+    <script src="../scripts/app.js" type="module"></script>
+  </body>
+</html>`),
+      mediaType: "text/html; charset=utf-8",
+      path: "site/pages/index.html",
+    },
+    {
+      bytes: encoder.encode(`@font-face {
+  font-family: "Review Lease Font";
+  font-style: normal;
+  font-weight: 700;
+  src: url("../../assets/Inter-Bold.ttf") format("truetype");
+}
+#multi-title {
+  color: rgb(12 34 56);
+  font-family: "Review Lease Font", sans-serif;
+  font-weight: 700;
+}`),
+      mediaType: "text/css; charset=utf-8",
+      path: "site/styles/site.css",
+    },
+    {
+      bytes: encoder.encode(`import {moduleStatus} from "./status.js";
+const response = await fetch("../../data/release.json");
+const release = await response.json();
+document.documentElement.dataset.module = moduleStatus;
+document.querySelector("#release-status").textContent = release.status;
+await document.fonts.load('700 16px "Review Lease Font"');
+document.documentElement.dataset.font = document.fonts.check('700 16px "Review Lease Font"')
+  ? "loaded"
+  : "missing";`),
+      mediaType: "text/javascript; charset=utf-8",
+      path: "site/scripts/app.js",
+    },
+    {
+      bytes: encoder.encode('export const moduleStatus = "module-ready";'),
+      mediaType: "text/javascript; charset=utf-8",
+      path: "site/scripts/status.js",
+    },
+    {
+      bytes: encoder.encode('{"status":"historical-data"}'),
+      mediaType: "application/json; charset=utf-8",
+      path: "data/release.json",
+    },
+    {
+      bytes: imageBytes,
+      mediaType: "image/png",
+      path: "assets/pixel.png",
+    },
+    {
+      bytes: fontBytes,
+      mediaType: "font/ttf",
+      path: "assets/Inter-Bold.ttf",
+    },
+  ] satisfies readonly TestSiteFile[];
+  const upload = await createStagedUpload(
+    fixture.server,
+    fixture.installation,
+    "site/pages/index.html",
+    files,
+  );
+  await uploadEveryStagedFile(fixture.installation, upload.body, files);
+  return commitStagedUpload(
+    fixture.installation,
+    upload.body,
+    "frontend-private-multifile-v1",
+    {
+      accessSetting: "account_required",
+      kind: "new_artifact",
+      name: "Private multi-file history",
+      tags: ["private", "multi-file"],
+    },
+  );
+}
 
 async function publishReviewMediaFixture(
   fixture: BrowserFixture,

@@ -38,9 +38,11 @@ import {
   type ArtifactRecord,
   type ArtifactVersion,
   type CommentAuthor,
+  type CommentClearScope,
   type DispatchedThreadFilter,
   type CommentReplyCreation,
   type CommentReplyRecord,
+  type CommentThreadClearing,
   type CommentThreadCreation,
   type CommentThreadDeletion,
   type CommentThreadPage,
@@ -49,6 +51,7 @@ import {
   type PageCursor,
 } from "../core/model.js";
 import type {
+  ClearCommentThreads,
   CreateCommentReply,
   CreateCommentThread,
   DeleteCommentReply,
@@ -148,8 +151,18 @@ export interface UpdateCommentReplyCommand extends ReadCommentReplyCommand {
   readonly body: string;
 }
 
+/** Input for clearing one artifact's matching comment threads in bulk. */
+export interface ClearCommentThreadsCommand extends ReadArtifactCommentsCommand {
+  readonly state: CommentClearScope;
+  /** Restricts the clear to threads on one saved version when present. */
+  readonly versionId: string | null;
+}
+
 /** Persistence required by comment threads and replies. */
 export interface ArtifactCommentRepository {
+  readonly clearThreads: (
+    command: ClearCommentThreads,
+  ) => Effect.Effect<CommentThreadClearing, CommentRepositoryFailure>;
   readonly createReply: (
     command: CreateCommentReply,
   ) => Effect.Effect<CommentReplyCreation, CommentRepositoryFailure>;
@@ -219,6 +232,9 @@ export type ArtifactCommentFailure =
   | LinkedCommentCaptureFailure;
 
 interface ArtifactCommentOperations {
+  readonly clearThreads: (
+    command: ClearCommentThreadsCommand,
+  ) => Effect.Effect<CommentThreadClearing, ArtifactCommentFailure>;
   readonly createReply: (
     command: CreateCommentReplyCommand,
   ) => Effect.Effect<CommentReplyCreation, ArtifactCommentFailure>;
@@ -658,6 +674,32 @@ function makeArtifactCommentService(
     },
   );
 
+  const clearThreads = Effect.fn("ArtifactCommentService.clearThreads")(
+    function*(command: ClearCommentThreadsCommand) {
+      const project = yield* resolveProjectForWrite(
+        command.principal,
+        command.projectId,
+      );
+      // Bulk clear shares the dispatch-send rule: a direct human member, or
+      // the artifact-management capability (spec §2).
+      yield* authorization.requireDispatchSend(command.principal);
+      const artifact = yield* requireArtifact(project.id, command.artifactId);
+      if (command.versionId !== null) {
+        yield* requireVersion(project.id, artifact.id, command.versionId);
+      }
+      const clearedAt = DateTime.formatIso(yield* dependencies.clock.now);
+      return yield* dependencies.repository.clearThreads({
+        artifactId: artifact.id,
+        authorizedByPrincipalId: command.principal.authorizedByPrincipalId,
+        clearedAt,
+        principalId: command.principal.id,
+        projectId: project.id,
+        scope: command.state,
+        versionId: command.versionId,
+      });
+    },
+  );
+
   const createReply = Effect.fn("ArtifactCommentService.createReply")(
     function*(command: CreateCommentReplyCommand) {
       const project = yield* resolveProjectForWrite(
@@ -746,6 +788,7 @@ function makeArtifactCommentService(
   );
 
   return ArtifactCommentService.of({
+    clearThreads,
     createReply,
     createThread,
     deleteReply,

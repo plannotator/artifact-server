@@ -46,6 +46,8 @@ describe("local publishing security boundaries", () => {
       "nested//empty.html",
       "nested\\windows.html",
       ".git/config",
+      ".artifactserver/version.json",
+      "nested/.ARTIFACTSERVER/pointers.json",
       "nested/%2f/encoded.html",
       "nested/\0/nul.html",
       "cafe\u0301.html",

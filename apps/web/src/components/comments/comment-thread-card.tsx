@@ -49,6 +49,7 @@ export function CommentThreadCard({
   onChanged,
   onError,
   onShowInPage,
+  presence,
   principalId,
   projectId,
   selected,
@@ -70,6 +71,8 @@ export function CommentThreadCard({
   readonly onError: (error: Error) => void;
   /** Focus this thread's marker in the rendered page, or null outside review. */
   readonly onShowInPage: (() => void) | null;
+  /** Live agent activity under the send's state pill, in the "Sent" view. */
+  readonly presence?: ReactNode;
   readonly principalId: string | null;
   readonly projectId: string;
   /** This thread is the one the review view currently has focused. */
@@ -238,6 +241,8 @@ export function CommentThreadCard({
           {thread.path ?? "Whole version"}
         </span>
       </div>
+
+      {presence ?? null}
 
       {editing
         ? (

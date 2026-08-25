@@ -15,6 +15,7 @@ import { z } from "zod";
 
 import {
   api,
+  type AgentPresence,
   type Artifact,
   type ArtifactDetails,
   type ArtifactVersion,
@@ -39,7 +40,8 @@ import {
   openVersionBundle,
 } from "@/components/dispatch/dispatch-bundle";
 import { DispatchSelectionBar } from "@/components/dispatch/dispatch-selection-bar";
-import { SendToAgentDialog } from "@/components/dispatch/send-to-agent-dialog";
+import { useDispatchUndo } from "@/components/dispatch/dispatch-toast";
+import { SendToAgentControl } from "@/components/dispatch/send-to-agent-dialog";
 import {
   ErrorPanel,
   StatePanel,
@@ -409,6 +411,7 @@ export function ReviewScreen({
   const [artifacts, setArtifacts] = useState<readonly ReviewArtifactListItem[]>([]);
   const [versions, setVersions] = useState<readonly ReviewVersionListItem[]>([]);
   const [threads, setThreads] = useState<readonly CommentThread[]>([]);
+  const [agents, setAgents] = useState<readonly AgentPresence[] | null>(null);
   const [selectedIds, setSelectedIds] = useState<readonly string[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [unanchoredIds, setUnanchoredIds] = useState<readonly string[]>([]);
@@ -586,6 +589,29 @@ export function ReviewScreen({
   }, [threads]);
 
   useCommentPoll(pollThreads, true);
+
+  const undo = useDispatchUndo(project.id, loadThreads);
+
+  /**
+   * Presence rides the comment cadence, and only while the comments panel is
+   * open: that is the one surface here that names an agent. Screens without
+   * the panel keep the last known state.
+   */
+  const presenceLive = canSend && viewerPanel === "comments";
+  const pollAgents = useCallback(async (): Promise<void> => {
+    try {
+      setAgents(await api.agentPresence());
+      setNow(Date.now());
+    } catch {
+      // A failed presence read keeps the last known state on screen.
+    }
+  }, []);
+
+  useCommentPoll(pollAgents, presenceLive);
+
+  useEffect(() => {
+    if (presenceLive) void pollAgents();
+  }, [pollAgents, presenceLive]);
 
   // Resolving hides a thread's in-page marker; the side panel still lists it.
   const annotations = useMemo(
@@ -1071,7 +1097,9 @@ export function ReviewScreen({
                 <div className="flex flex-wrap items-center gap-1">
                   {canSend && openThreads.length > 0
                     ? (
-                      <SendToAgentDialog
+                      <SendToAgentControl
+                        agents={agents}
+                        feedback={undo.feedback}
                         label="Send all open"
                         onSent={loadThreads}
                         projectId={project.id}
@@ -1103,6 +1131,8 @@ export function ReviewScreen({
                   : (
                     <div className="border-b p-4">
                       <DispatchSelectionBar
+                        agents={agents}
+                        feedback={undo.feedback}
                         onClear={() => setSelectedIds([])}
                         onSent={loadThreads}
                         projectId={project.id}
@@ -1153,9 +1183,12 @@ export function ReviewScreen({
                               : null}
                             sendAction={sendable(thread)
                               ? (
-                                <SendToAgentDialog
+                                <SendToAgentControl
+                                  agents={agents}
+                                  feedback={undo.feedback}
                                   label="Send to agent"
                                   onSent={loadThreads}
+                                  oneAgentLabel={(name) => `Send to ${name}`}
                                   projectId={project.id}
                                   resolveBundle={() =>
                                     Promise.resolve(bundleOfThreads([thread]))}
@@ -1188,6 +1221,8 @@ export function ReviewScreen({
             </section>
           )
           : null}
+
+        {undo.element}
       </div>
     </div>
   );

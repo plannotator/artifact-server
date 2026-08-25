@@ -80,12 +80,12 @@ The agent returns the full-screen review link first. [Read the MCP guide](./docs
 
 ## Cloudflare and Artifact Server
 
-Cloudflare is the main hosted deployment target. Cloudflare Artifacts adds optional Git history, but it is not generally available. You must sign up for access, so the integration is off by default.
+Cloudflare is the main hosted deployment target. Cloudflare Artifacts can add private Git-backed history for selected projects. It is off by default and currently requires closed beta access.
 
-<a href="./docs/cloudflare-artifacts.md"><img src="./docs/assets/cloudflare-artifacts-git-handoff.svg" alt="Cloudflare Artifacts provides optional Git-backed version history through Workers bindings" width="800"></a>
+<a href="./docs/cloudflare-artifacts.md"><img src="./docs/assets/cloudflare-artifacts-git-handoff.svg" alt="Cloudflare Artifacts provides optional Git-backed history" width="800"></a>
 
 - [Deploy Artifact Server on Cloudflare](./deploy/cloudflare/README.md)
-- [Use Cloudflare Artifacts for optional Git history](./docs/cloudflare-artifacts.md)
+- [Configure optional Git history](./docs/cloudflare-artifacts.md)
 - [Read the Cloudflare Artifacts documentation](https://developers.cloudflare.com/artifacts/)
 
 Cloudflare is optional. Artifact Server also runs locally, on Compose, on Kubernetes, on AWS, and on Google Cloud.
@@ -98,7 +98,7 @@ Every remote deployment uses one trusted application origin and one isolated wil
 
 | Deployment | Data layer | Guide |
 | --- | --- | --- |
-| Cloudflare | D1 and R2 (in preview: Artifacts) | [Cloudflare guide](./deploy/cloudflare/README.md) |
+| Cloudflare | D1 and R2 | [Cloudflare guide](./deploy/cloudflare/README.md) |
 | Compact Compose | SQLite and one file volume | [Compose guide](./packaging/compose/README.md) |
 | External-storage Compose | PostgreSQL and S3-compatible storage | [Compose guide](./packaging/compose/README.md) |
 | Kubernetes | PostgreSQL and object storage | [Helm guide](./packaging/helm/artifact-server/README.md) |

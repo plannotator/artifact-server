@@ -28,6 +28,11 @@ import { ProjectManagementService } from "../application/project-management.js";
 import {ProjectGitHistoryService} from
   "../application/project-git-history.js";
 import {
+  defaultGitCloneCredentialTtlSeconds,
+  GitHistoryAccessService,
+  maximumGitCloneCredentialTtlSeconds,
+} from "../application/git-history-access.js";
+import {
   AgentDispatchService,
   type ConnectedRegisteredAgent,
 } from "../application/agent-dispatch.js";
@@ -50,7 +55,10 @@ import {
   type ArtifactComparison,
   CompareArtifactService,
 } from "../application/compare-artifact.js";
-import { ContentAccessService } from "../application/content-access.js";
+import {
+  ContentAccessService,
+  isPreviewLeaseToken,
+} from "../application/content-access.js";
 import {
   isLiveContentToken,
   LinkedArtifactService,
@@ -81,9 +89,13 @@ import {
 } from "../core/identity.js";
 import {
   accessSettings,
+  agentBeaconStates,
   type AgentDispatchPage,
   type AgentDispatchRecord,
   agentDispatchStates,
+  agentEvidenceKinds,
+  agentProtocolVersion,
+  commentClearScopes,
   type ArtifactActionPage,
   type ArtifactDeletion,
   type ArtifactPage,
@@ -97,9 +109,9 @@ import {
   type ManifestEntry,
   type PageCursor,
   type PublishedVersion,
-  registeredAgentKinds,
   type RegisteredAgentRecord,
   type SourceBindingRecord,
+  type VersionContent,
   type VersionRecord,
 } from "../core/model.js";
 import type { BlobStore } from "../core/ports.js";
@@ -127,6 +139,7 @@ import {
   artifactBrowserUrl,
   artifactReviewUrl,
   contentBootstrapBrowserUrl,
+  previewLeaseBrowserUrl,
   versionBrowserUrl,
   versionFileBrowserUrl,
 } from "./artifact-http-links.js";
@@ -271,12 +284,37 @@ const commentPageQuerySchema = z.object({
 // the wire schemas below only fix the types.
 const agentTextSchema = z.string();
 const agentIdSchema = z.string().min(1).max(200);
+// Unknown capability keys are ignored for forward compatibility, which is
+// exactly what the default object schema does: strip them.
+const agentCapabilitiesSchema = z.object({
+  beacon: z.boolean().optional(),
+  evidence: z.enum([
+    agentEvidenceKinds.channel,
+    agentEvidenceKinds.mailbox,
+    agentEvidenceKinds.native,
+  ]).optional(),
+});
 const registerAgentSchema = z.object({
   agentSessionId: agentTextSchema.nullable().optional(),
+  capabilities: agentCapabilitiesSchema.optional(),
   connectionKey: agentTextSchema.optional(),
   displayName: agentTextSchema,
-  kind: z.enum([registeredAgentKinds.pi]),
+  // The dispatch service validates the slug shape and answers 422.
+  kind: agentTextSchema,
   workingDirectory: agentTextSchema,
+}).strict();
+const agentActivitySchema = z.object({
+  // Accepted for forward compatibility; the beacon stores state + time only.
+  dispatchId: agentIdSchema.optional(),
+  state: z.enum([
+    agentBeaconStates.idle,
+    agentBeaconStates.replying,
+    agentBeaconStates.thinking,
+  ]),
+}).strict();
+const clearCommentThreadsSchema = z.object({
+  state: z.enum([commentClearScopes.all, commentClearScopes.resolved]),
+  versionId: z.string().min(1).max(200).optional(),
 }).strict();
 // The wait is clamped rather than refused: the contract already permits an
 // early answer, so an over-eager client gets the server cap, not an error.
@@ -319,14 +357,19 @@ const deleteArtifactSchema = z.object({
 const pageQuerySchema = z.object({
   cursor: z.string().max(1_024).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
+  search: z.string().max(200).optional(),
   tag: z.string().max(200).optional(),
 });
-const publicLinksPageQuerySchema = pageQuerySchema.omit({tag: true});
+const publicLinksPageQuerySchema = pageQuerySchema.omit({search: true, tag: true});
 const makePublicLinkPrivateItemSchema = z.object({
   artifactId: z.string().min(1).max(200),
   expectedCurrentVersionId: z.string().min(1).max(200),
   idempotencyKey: z.string().min(16).max(200),
   projectId: projectIdSchema,
+}).strict();
+const issueGitCloneCredentialSchema = z.object({
+  ttlSeconds: z.number().int().min(1).max(maximumGitCloneCredentialTtlSeconds)
+    .default(defaultGitCloneCredentialTtlSeconds),
 }).strict();
 const makePublicLinksPrivateSchema = z.object({
   items: z.array(makePublicLinkPrivateItemSchema).min(1).max(100),
@@ -643,6 +686,14 @@ export function createHttpApp(
       dependencies.contentDomain,
     );
     if (contentToken !== null) {
+      if (isPreviewLeaseToken(contentToken)) {
+        return servePreviewLeaseContent(
+          context,
+          requestUrl,
+          contentToken,
+          dependencies,
+        );
+      }
       if (isContentBootstrapRequest(requestUrl)) {
         return exchangeContentBootstrap(
           context,
@@ -1113,6 +1164,7 @@ export function createHttpApp(
       AgentDispatchService.use((dispatches) =>
         dispatches.registerAgent({
           agentSessionId: body.agentSessionId ?? null,
+          capabilities: body.capabilities ?? null,
           connectionKey: body.connectionKey ??
             derivedConnectionKey(
               context.get("principal").id,
@@ -1125,7 +1177,10 @@ export function createHttpApp(
         })
       ),
     );
-    return context.json({agent: registeredAgentResponse(agent)});
+    return context.json({
+      agent: registeredAgentResponse(agent),
+      protocolVersion: agentProtocolVersion,
+    });
   });
 
   app.get("/api/v1/agents", async (context) => {
@@ -1152,6 +1207,27 @@ export function createHttpApp(
     );
     return context.body(null, 204);
   });
+
+  app.post(
+    "/api/v1/agents/:agentId/activity",
+    boundedJsonBody,
+    async (context) => {
+      const body = agentActivitySchema.parse(await context.req.json());
+      await runHttpApplicationEffect(
+        context,
+        dependencies,
+        AgentDispatchService.use((dispatches) =>
+          dispatches.recordActivity({
+            agentId: context.req.param("agentId"),
+            dispatchId: body.dispatchId ?? null,
+            principal: context.get("principal"),
+            state: body.state,
+          })
+        ),
+      );
+      return context.body(null, 204);
+    },
+  );
 
   app.post("/api/v1/agents/:agentId/claims", async (context) => {
     const query = claimDispatchQuerySchema.parse(context.req.query());
@@ -1435,6 +1511,28 @@ export function createHttpApp(
     },
   );
 
+  app.post(
+    "/api/v1/projects/:projectId/artifacts/:artifactId/history/clone-token",
+    boundedJsonBody,
+    async (context) => {
+      const body = issueGitCloneCredentialSchema.parse(
+        await context.req.json().catch(() => ({})),
+      );
+      const clone = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        GitHistoryAccessService.use((service) => service.issueCloneCredential({
+          artifactId: context.req.param("artifactId"),
+          principal: context.get("principal"),
+          projectId: projectIdSchema.parse(context.req.param("projectId")),
+          ttlSeconds: body.ttlSeconds,
+        })),
+      );
+      context.header("Cache-Control", "private, no-store");
+      return context.json(clone, 201);
+    },
+  );
+
   app.post("/api/v1/artifacts", (context) => {
     context.header("Allow", "GET");
     return context.json({
@@ -1456,6 +1554,7 @@ export function createHttpApp(
           limit: query.limit,
           principal: context.get("principal"),
           projectId: requestedProjectId(context),
+          search: query.search ?? null,
           tag: query.tag ?? null,
         })
       ),
@@ -1846,6 +1945,28 @@ export function createHttpApp(
   );
 
   app.post(
+    "/api/v1/projects/:projectId/artifacts/:artifactId/comments/clear",
+    boundedJsonBody,
+    async (context) => {
+      const body = clearCommentThreadsSchema.parse(await context.req.json());
+      const cleared = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ArtifactCommentService.use((comments) =>
+          comments.clearThreads({
+            artifactId: context.req.param("artifactId"),
+            principal: context.get("principal"),
+            projectId: context.req.param("projectId"),
+            state: body.state,
+            versionId: body.versionId ?? null,
+          })
+        ),
+      );
+      return context.json(cleared);
+    },
+  );
+
+  app.post(
     "/api/v1/artifacts/:artifactId/restore",
     boundedJsonBody,
     async (context) => {
@@ -2121,6 +2242,33 @@ export function createHttpApp(
           issued.contentToken,
           Redacted.value(issued.token),
           destinationPath,
+        ),
+        expiresAt: issued.expiresAt,
+        versionId: issued.versionId,
+      }, 201);
+    },
+  );
+
+  app.post(
+    "/api/v1/artifacts/:artifactId/versions/:versionId/preview-leases",
+    async (context) => {
+      const issued = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ContentAccessService.use((contentAccess) =>
+          contentAccess.issuePreviewLease({
+            artifactId: context.req.param("artifactId"),
+            principal: context.get("principal"),
+            projectId: requestedProjectId(context),
+            versionId: context.req.param("versionId"),
+          })
+        ),
+      );
+      return context.json({
+        baseUrl: previewLeaseBrowserUrl(
+          responseApplicationUrl(context, dependencies),
+          dependencies.contentDomain,
+          Redacted.value(issued.token),
         ),
         expiresAt: issued.expiresAt,
         versionId: issued.versionId,
@@ -2795,6 +2943,7 @@ function publicLinkMutationResponse(
 function registeredAgentResponse(agent: RegisteredAgentRecord) {
   return {
     agentSessionId: agent.agentSessionId,
+    capabilities: agent.capabilities,
     connectionKey: agent.connectionKey,
     createdAt: agent.createdAt,
     displayName: agent.displayName,
@@ -2809,7 +2958,11 @@ function registeredAgentResponse(agent: RegisteredAgentRecord) {
 function connectedAgentResponse(entry: ConnectedRegisteredAgent) {
   return {
     ...registeredAgentResponse(entry.agent),
+    activeDispatchId: entry.activeDispatchId,
+    activity: entry.activity,
+    beacon: entry.beacon,
     connected: entry.connected,
+    lastActivityAt: entry.lastActivityAt,
   };
 }
 
@@ -3054,6 +3207,12 @@ function versionResponse(
 ) {
   return {
     links: {
+      review: artifactReviewUrl(
+        requestUrl,
+        version.projectId,
+        version.artifactId,
+        version.id,
+      ),
       version: versionBrowserUrl(
         requestUrl,
         contentDomain,
@@ -3235,11 +3394,65 @@ async function serveVersionContent(
   }
   const publiclyCacheable = content.accessSetting === accessSettings.publicLink &&
     content.isCurrent;
+  return serveStoredVersionContent(
+    context,
+    content,
+    publiclyCacheable,
+    false,
+    dependencies,
+  );
+}
+
+async function servePreviewLeaseContent(
+  context: Context<HttpEnvironment>,
+  requestUrl: URL,
+  leaseToken: string,
+  dependencies: HttpAppDependencies,
+): Promise<Response> {
+  const method = context.req.method;
+  if (method !== "GET" && method !== "HEAD") {
+    return Response.json(
+      {error: {code: errorCodes.methodNotAllowed, message: "Only GET and HEAD are supported."}},
+      {status: 405, headers: {Allow: "GET, HEAD"}},
+    );
+  }
+  const requestedPath = manifestPathFromUrl(requestUrl.pathname);
+  if (requestedPath === null) return versionNotFoundResponse();
+  const content = await runHttpApplicationEffect(
+    context,
+    dependencies,
+    ContentAccessService.use((contentAccess) =>
+      contentAccess.authorizePreviewContent({
+        fallback: permitsSpaEntryFallback(context.req.raw.headers)
+          ? "entry"
+          : "none",
+        path: requestedPath,
+        token: Redacted.make(leaseToken, {label: "preview-lease-token"}),
+      })
+    ),
+  );
+  if (content === null) return versionNotFoundResponse();
+  return serveStoredVersionContent(context, content, false, true, dependencies);
+}
+
+async function serveStoredVersionContent(
+  context: Context<HttpEnvironment>,
+  content: VersionContent,
+  publiclyCacheable: boolean,
+  previewLease: boolean,
+  dependencies: HttpAppDependencies,
+): Promise<Response> {
   const headers = contentHeaders(
     content.entry,
     content.entry.size,
     publiclyCacheable,
   );
+  if (previewLease) {
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Cache-Control", "private, no-store");
+    headers.set("Cross-Origin-Resource-Policy", "cross-origin");
+    headers.set("Referrer-Policy", "no-referrer");
+  }
 
   const strongEtag = `"${content.entry.sha256}"`;
   if (etagMatches(context.req.header("if-none-match"), strongEtag)) {
@@ -3259,7 +3472,7 @@ async function serveVersionContent(
     return new Response(null, {headers, status: 416});
   }
 
-  if (method === "HEAD") {
+  if (context.req.method === "HEAD") {
     const blob = await dependencies.blobs.inspect(content.entry.sha256);
     assertBlobSize(blob.size, content.entry.size, content.entry.sha256);
     if (rangeDecision.kind === "partial") {
@@ -3698,16 +3911,30 @@ function isContentBootstrapRequest(requestUrl: URL): boolean {
 }
 
 /**
- * The review frame is a separate document from the application shell. It holds
- * no credential and issues no request: it renders one artifact version inside
- * an opaque-origin `srcdoc` sandbox, which inherits this policy. So the policy
- * permits what published artifacts need (inline scripts and styles, images,
- * fonts and media from anywhere) while `connect-src 'none'` keeps the sandbox
- * from reaching any network, and `frame-ancestors 'self'` keeps the frame
- * embeddable only by the shell that serves it.
+ * The review frame renders one artifact version inside an opaque-origin
+ * `srcdoc` sandbox. Relative resources resolve through an exact-version content
+ * host, so the inherited policy permits network access only to configured
+ * content hosts. The frame still cannot reach the trusted application origin.
  */
-const reviewFrameContentSecurityPolicy =
-  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; connect-src 'none'; frame-ancestors 'self'";
+function reviewFrameContentSecurityPolicy(contentDomain: string): string {
+  const httpContent = `http://*.${contentDomain}:*`;
+  const httpsContent = `https://*.${contentDomain}`;
+  const contentSources = `${httpContent} ${httpsContent}`;
+  return [
+    "default-src 'none'",
+    `script-src 'self' 'unsafe-inline' ${contentSources}`,
+    `style-src 'self' 'unsafe-inline' ${contentSources}`,
+    // Preserve the viewer's existing support for authored remote images,
+    // fonts, and media. The lease host is still the only remote script,
+    // stylesheet, and fetch source, so artifact code cannot send lease-scoped
+    // data to arbitrary origins.
+    "img-src 'self' * data: blob:",
+    "font-src * data:",
+    "media-src * data: blob:",
+    `connect-src ${contentSources}`,
+    "frame-ancestors 'self'",
+  ].join("; ");
+}
 
 type WebAssetKind = "application-shell" | "review-frame" | "static-asset";
 
@@ -3726,7 +3953,7 @@ async function serveWebAsset(
       ? "public, max-age=31536000, immutable"
       : "no-cache, must-revalidate",
     "Content-Security-Policy": kind === "review-frame"
-      ? reviewFrameContentSecurityPolicy
+      ? reviewFrameContentSecurityPolicy(dependencies.contentDomain)
       : "default-src 'self'; base-uri 'none'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self'",
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",

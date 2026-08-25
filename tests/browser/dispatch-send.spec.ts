@@ -135,20 +135,16 @@ test.describe("Sending annotations to an agent", () => {
       const cards = page.getByRole("article");
       await expect(cards).toHaveCount(3);
 
-      // One annotation, sent from its own card through the agent picker.
+      // One annotation, sent from its own card: with exactly one connected
+      // agent the button names the destination and dispatches on one click.
       const firstCard = cards.filter({hasText: bodies.first});
-      await firstCard.getByRole("button", {name: "Send to agent"}).click();
-      const picker = page.getByRole("dialog");
-      await expect(picker.getByRole("heading", {name: "Send to agent"}))
-        .toBeVisible();
-      await expect(picker.getByText("site", {exact: true})).toBeVisible();
-      await expect(picker.getByText("/work/site")).toBeVisible();
-      await expect(picker.getByText("Connected", {exact: true})).toBeVisible();
+      await firstCard.getByRole("button", {name: "Send to site"}).click();
+      await expect(page.getByText("Sent 1 thread to site")).toBeVisible();
       await expectNoAccessibilityViolations(page);
-      await picker.getByRole("button", {name: "Send 1 annotation"}).click();
 
-      // Send is consumptive: the annotation leaves the artifact's own views.
-      await expect(picker).toHaveCount(0);
+      // Send is consumptive: the annotation leaves the artifact's own views,
+      // and no confirmation dialog stood in the way.
+      await expect(page.getByRole("dialog")).toHaveCount(0);
       await expect(cards).toHaveCount(2);
       await expect(cards.filter({hasText: bodies.first})).toHaveCount(0);
 
@@ -187,10 +183,7 @@ test.describe("Sending annotations to an agent", () => {
       await expect(page.getByRole("article")).toHaveCount(2);
       await page.getByRole("button", {name: "Send all open on this version"})
         .click();
-      const bundlePicker = page.getByRole("dialog");
-      await bundlePicker.getByRole("button", {name: "Send 2 annotations"})
-        .click();
-      await expect(bundlePicker).toHaveCount(0);
+      await expect(page.getByText("Sent 2 threads to site")).toBeVisible();
       await expect(page.getByRole("heading", {name: "No matching comments"}))
         .toBeVisible();
 
@@ -287,13 +280,10 @@ test.describe("Sending annotations to an agent", () => {
       const marker = sandbox.locator("button[data-plannotator-marker]");
       await expect(marker).toHaveCount(1);
 
-      await card.getByRole("button", {name: "Send to agent"}).click();
-      const picker = page.getByRole("dialog");
-      await expect(picker.getByText("/work/review")).toBeVisible();
-      await picker.getByRole("button", {name: "Send 1 annotation"}).click();
+      await card.getByRole("button", {name: "Send to review"}).click();
+      await expect(page.getByText("Sent 1 thread to review")).toBeVisible();
 
       // The pin goes with the card: no send status decorates this surface.
-      await expect(picker).toHaveCount(0);
       await expect(card).toHaveCount(0);
       await expect(marker).toHaveCount(0);
 

@@ -70,3 +70,12 @@ export function contentBootstrapBrowserUrl(
   bootstrapUrl.hash = "";
   return bootstrapUrl.toString();
 }
+
+/** Build the content-host base URL for one short-lived embedded Review lease. */
+export function previewLeaseBrowserUrl(
+  applicationUrl: URL,
+  contentDomain: string,
+  leaseToken: string,
+): string {
+  return versionBrowserUrl(applicationUrl, contentDomain, leaseToken);
+}

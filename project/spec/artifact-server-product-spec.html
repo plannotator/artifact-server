@@ -1729,8 +1729,15 @@
                 normalizes Unicode and letter case, removes duplicates, and stores tags in a
                 stable order. Each stored tag contains 1 to 40 user-perceived characters and no
                 control characters. Tags apply to the artifact, not one saved version, so publishing or
-                restoring does not change them. The first release supports exact tag filtering;
-                it does not add tag categories, nested tags, or per-version tags.
+                restoring does not change them. Project search runs before pagination and matches a
+                normalized artifact-name substring or one exact normalized tag. It does not add tag
+                categories, nested tags, or per-version tags.
+              </p>
+              <p>
+                Review can make any saved version current after confirmation. The request includes
+                the current-version ID the reviewer saw, so a concurrent publish or restore produces
+                a conflict instead of replacing a newer pointer. The Review URL and preview remain on
+                the exact selected version after either outcome.
               </p>
             </div>
           </div>
