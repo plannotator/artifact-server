@@ -27,7 +27,7 @@ Run it on a laptop for one developer. Deploy it for a private team on Cloudflare
 
 ## Why Artifact Server
 
-HTML has become a practical format for much more than websites. Teams use it for plans, mockups, prototypes, reports, and working interfaces. The same process now produces images and videos.
+HTML—and increasingly images and videos—has become practical for much more than websites. Teams use these formats to create plans, mockups, prototypes, code reviews, and other artifacts throughout the development process.
 
 Too much of this work stays locked inside the platform that created it. Teams deserve to own their artifacts, data, and design process.
 
