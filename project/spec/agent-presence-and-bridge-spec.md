@@ -107,10 +107,9 @@ Adopting the Workspaces presence language (identity-color dot, motion only
 while live), tuned down to this app's zero-radius, quiet style:
 
 - **Agent chip.** Wherever an agent is named (send button, dialog row,
-  thread state), it renders as a chip: 8 px identity-color presence dot +
-  display name. Color = stable hash of agent id into an 8-slot presence
-  palette (`--presence-0..7`, light and dark variants, same parity contract
-  Workspaces pins in tests).
+  thread state), it renders as a chip: 8 px presence dot + display name. The
+  dot uses the app's iris accent (per-agent identity colors deferred — see
+  section 6, decision 4).
 - **States as motion.** `idle`: solid dot. `working`/`thinking`: the dot
   pulses (2 s ease, opacity 1 → 0.35). `replying`: a 1.5 px conic spinning
   border on the chip — the "agent is doing something" signal the owner asked
@@ -166,7 +165,8 @@ fail open (dormant + one notice, exponential 1–30 s backoff), report
   for bundles, the citizenship rules above, and the new activity beacon.
   Written so someone building an opencode plugin never needs to read Pi code.
 - **Extract the client.** `integrations/bridge-core/` becomes the shared,
-  host-agnostic package (working name `@artifact-server/agent-bridge`):
+  host-agnostic package, published from this repo as
+  `@artifact-server/agent-bridge` (section 6, decision 3):
   `resolveBridgeCredentials`, `startBridge`, `createCommentOperations`,
   `renderBundleMessage`, backoff, and the beacon — parameterized by a renamed
   `HostPort` (today's `PiPort`: notify / deliverFollowUp / isBusy). The Pi
@@ -197,12 +197,29 @@ fail open (dormant + one notice, exponential 1–30 s backoff), report
 | PRS-007 | `kind` accepts any valid slug and round-trips; invalid slugs fail 422. |
 | BRP-001 | The extracted bridge core drives a fake host through register → claim → deliver → reply → resolve with no Pi import anywhere in the module. |
 
-## 6. Open questions for the owner
+## 6. Decisions from owner review (August 25, 2026)
 
-1. Bulk clear scope: per artifact (proposed) or also per project in one call?
-2. Presence poll piggybacks the comments poll (~5 s). Fine, or is the
-   send-button presence wanted on screens where comments are closed too?
-3. Should the npm package publish from this repo (like the Pi extension) or
-   stay an internal module until an opencode plugin actually exists?
-4. Identity-color palette: adopt Workspaces' 8 oklch slots verbatim for
-   cross-product familiarity, or derive a local set from the iris accent?
+The first draft ended with four questions; owner annotations resolved three
+and asked for the fourth in plain words.
+
+1. **Still open, restated plainly:** the "Clear resolved…" menu item deletes
+   the resolved comments on the artifact you are currently looking at. Do you
+   also want a project-level version — one action that clears resolved
+   comments across every artifact in the project? Proposal: start with the
+   per-artifact button only, add the project-wide one if it turns out to be
+   wanted.
+2. **Decided — how often presence refreshes.** The question was only about
+   where the live dot updates: the web app refreshes agent presence on the
+   same ~5-second cycle it already uses to refresh comments, so presence is
+   live wherever a comments panel is open. Screens without comments show the
+   last known state. Good enough for v1; revisit only if presence is wanted
+   on other screens.
+3. **Decided — publish the package.** Owner: "why not?" The bridge core
+   publishes from this repo as `@artifact-server/agent-bridge`, the same way
+   `@artifact-server/pi-extension` already does.
+4. **Decided — skip per-agent colors for now.** The color question existed
+   for one reason: if several agents are connected at once, giving each a
+   stable color makes them distinguishable at a glance. Most installations
+   run one agent, so v1 keeps it simple: every presence dot uses the app's
+   iris accent. Per-agent identity colors (the Workspaces approach) become a
+   later nicety if multi-agent setups turn out to be common.
