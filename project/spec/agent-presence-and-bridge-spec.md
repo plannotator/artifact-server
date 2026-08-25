@@ -106,17 +106,25 @@ once; explicitly out of scope here.
 Adopting the Workspaces presence language (identity-color dot, motion only
 while live), tuned down to this app's zero-radius, quiet style:
 
-- **Agent chip.** Wherever an agent is named (send button, dialog row,
-  thread state), it renders as a chip: 8 px presence dot + display name. The
-  dot uses the app's iris accent (per-agent identity colors deferred — see
-  section 6, decision 4).
-- **States as motion.** `idle`: solid dot. `working`/`thinking`: the dot
-  pulses (2 s ease, opacity 1 → 0.35). `replying`: a 1.5 px conic spinning
-  border on the chip — the "agent is doing something" signal the owner asked
-  for. `disconnected`: hollow grey dot, chip text muted, send disabled with
-  reason. All motion sits behind `prefers-reduced-motion` (falls back to a
-  static two-tone dot), and animations attach only to live states so there is
-  no idle CPU burn.
+- **Agent avatar.** Presence renders as an avatar circle carrying the
+  agent's own brand mark — the Pi glyph for `kind: "pi"`, an opencode mark
+  for `opencode`, a neutral mark for unknown kinds. The web app maps `kind`
+  to a bundled asset (glyph + brand accent color); no remote fetches. The
+  avatar appears wherever the agent is named: the send button, dialog rows,
+  and under Sent threads.
+- **State on the border.** The avatar's ring is the state signal, colored
+  from the agent's brand accent: quiet solid ring = connected and idle;
+  pulsing ring (2 s ease) = working/thinking; spinning conic ring =
+  replying; hollow grey ring + muted name = disconnected, send disabled with
+  the reason. State is never carried by color alone — motion plus the
+  popover below carry the meaning. All motion sits behind
+  `prefers-reduced-motion` (static two-tone ring fallback) and attaches only
+  to live states, so an idle page burns nothing.
+- **Hover popover.** Hovering or keyboard-focusing the avatar opens a small
+  popover that says the state in words: agent name and kind, "Working —
+  claimed your bundle of 3 threads, 40 s ago", last-seen time, working
+  directory. The same popover explains a disconnected agent ("last seen 6
+  minutes ago — restart Pi to reconnect").
 - **Thread-level feedback.** A `Sent` thread whose dispatch is `claimed` or
   `delivered` shows "‹chip› working…" under the state pill; when the agent's
   beacon says `replying`, it shows "‹chip› replying…". When the reply lands,
@@ -193,21 +201,18 @@ fail open (dormant + one notice, exponential 1–30 s backoff), report
 | PRS-003 | Beacon rejected for another principal's agent (404, no disclosure). |
 | PRS-004 | Single-connected-agent send dispatches without a dialog; undo cancels from `queued`/`claimed`; a terminal-state undo reports the conflict. |
 | PRS-005 | Bulk clear deletes matching threads with ledger entries, skips actively dispatched threads, and reports both counts. |
-| PRS-006 | Presence chip renders all four states; motion only on live states; reduced-motion fallback. |
+| PRS-006 | Presence avatar renders all four ring states with the kind's brand assets; popover states the meaning in words; motion only on live states; reduced-motion fallback. |
 | PRS-007 | `kind` accepts any valid slug and round-trips; invalid slugs fail 422. |
 | BRP-001 | The extracted bridge core drives a fake host through register → claim → deliver → reply → resolve with no Pi import anywhere in the module. |
 
 ## 6. Decisions from owner review (August 25, 2026)
 
-The first draft ended with four questions; owner annotations resolved three
-and asked for the fourth in plain words.
+The first draft ended with four open questions; two rounds of owner
+annotations resolved all four.
 
-1. **Still open, restated plainly:** the "Clear resolved…" menu item deletes
-   the resolved comments on the artifact you are currently looking at. Do you
-   also want a project-level version — one action that clears resolved
-   comments across every artifact in the project? Proposal: start with the
-   per-artifact button only, add the project-wide one if it turns out to be
-   wanted.
+1. **Decided — bulk clear stays per artifact.** Owner: "keep it
+   focused/simple." The "Clear resolved…" menu item acts on the artifact you
+   are looking at; there is no project-wide clear.
 2. **Decided — how often presence refreshes.** The question was only about
    where the live dot updates: the web app refreshes agent presence on the
    same ~5-second cycle it already uses to refresh comments, so presence is
@@ -217,9 +222,8 @@ and asked for the fourth in plain words.
 3. **Decided — publish the package.** Owner: "why not?" The bridge core
    publishes from this repo as `@artifact-server/agent-bridge`, the same way
    `@artifact-server/pi-extension` already does.
-4. **Decided — skip per-agent colors for now.** The color question existed
-   for one reason: if several agents are connected at once, giving each a
-   stable color makes them distinguishable at a glance. Most installations
-   run one agent, so v1 keeps it simple: every presence dot uses the app's
-   iris accent. Per-agent identity colors (the Workspaces approach) become a
-   later nicety if multi-agent setups turn out to be common.
+4. **Decided — presence wears the agent's brand.** Presence is an avatar
+   circle carrying the agent's own mark (Pi's glyph, opencode's mark), and
+   its ring colors come from that agent's brand identity — not the app
+   accent, not a generated palette. The `kind` → brand-asset map in the web
+   app is the single place a new agent kind registers its look.
