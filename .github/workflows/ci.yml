@@ -59,6 +59,16 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Reclaim unused runner disk
+        run: |
+          df -h /
+          sudo rm -rf -- \
+            /opt/ghc \
+            /usr/local/lib/android \
+            /usr/local/share/boost \
+            /usr/share/dotnet
+          df -h /
+
       - name: Install pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
