@@ -1,5 +1,5 @@
 import {execFile} from "node:child_process";
-import {randomBytes} from "node:crypto";
+import {randomBytes, randomUUID} from "node:crypto";
 import {chmod, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import {request} from "node:http";
 import {tmpdir} from "node:os";
@@ -10,7 +10,8 @@ import {afterEach, describe, expect, test} from "vitest";
 import {z} from "zod";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
-const apiToken = "oci-api-token-abcdefghijklmnopqrstuvwxyz0123456789";
+const apiToken =
+  `as_key_key_${randomUUID()}_${randomBytes(32).toString("base64url")}`;
 const browserToken = "oci-browser-token-abcdefghijklmnopqrstuvwxyz012345";
 const applicationOrigin = "https://artifacts.example.com";
 const contentDomain = "content.example.net";
@@ -137,7 +138,9 @@ describe.sequential("production OCI image", () => {
       environment.arm64Image,
       "-c", `cat ${dataDirectory}/secrets/api-token`,
     ])).stdout.trim();
-    expect(storedApiToken).toHaveLength(43);
+    expect(storedApiToken).toMatch(
+      /^as_key_key_[0-9a-f-]+_[A-Za-z0-9_-]{32,}$/u,
+    );
     registerSensitiveValue(storedApiToken);
 
     const firstName = `artifact-server-oci-compact-first-${nameSuffix}`;
@@ -399,6 +402,8 @@ async function verifyArchitectureRuntime(input: {
 function compactRuntimeEnvironment() {
   return {
     ARTIFACT_SERVER_CONTENT_DOMAIN: contentDomain,
+    ARTIFACT_SERVER_OIDC_CLIENT_ID: "oci-image-integration",
+    ARTIFACT_SERVER_OIDC_ISSUER: "https://identity.example.test",
     ARTIFACT_SERVER_ORIGIN: applicationOrigin,
     ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS: "0",
     ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE: "0",
@@ -418,6 +423,8 @@ function externalRuntimeEnvironment(input: {
     ARTIFACT_SERVER_DATABASE_URL: input.providers.dockerDatabaseUrl,
     ARTIFACT_SERVER_INSTALLATION_ID: input.installationId,
     ARTIFACT_SERVER_LOCAL_BOOTSTRAP_TOKEN: browserToken,
+    ARTIFACT_SERVER_OIDC_CLIENT_ID: "oci-image-integration",
+    ARTIFACT_SERVER_OIDC_ISSUER: "https://identity.example.test",
     ARTIFACT_SERVER_ORIGIN: applicationOrigin,
     ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS: "0",
     ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE: "0",
