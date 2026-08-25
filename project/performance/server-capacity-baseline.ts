@@ -23,7 +23,7 @@ import {z} from "zod";
 import {readLocalApiCredential} from "../../src/local/local-credentials.js";
 import {inspectLocalServiceRecord} from "../../src/local/local-service-record.js";
 
-const repositoryRoot = path.resolve(import.meta.dirname, "..");
+const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const profiledServerEntry = path.join(
   repositoryRoot,
   "project/performance/profiled-local-server.ts",
@@ -135,7 +135,11 @@ const uploadPlanSchema = z.object({
 }).loose();
 const publicationSchema = z.object({
   artifact: z.object({id: z.string()}).loose(),
-  links: z.object({artifact: z.url(), version: z.url()}).strict(),
+  links: z.object({
+    artifact: z.url(),
+    review: z.url(),
+    version: z.url(),
+  }).strict(),
   version: z.object({
     artifactId: z.string(),
     id: z.string(),

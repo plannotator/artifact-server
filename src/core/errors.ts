@@ -27,6 +27,8 @@ export const errorCodes = {
   linkPathOutsideRoots: "LINK_PATH_OUTSIDE_ROOTS",
   linkPathProtected: "LINK_PATH_PROTECTED",
   methodNotAllowed: "METHOD_NOT_ALLOWED",
+  mediaPreviewContextRequired: "MEDIA_PREVIEW_CONTEXT_REQUIRED",
+  mediaPreviewTypeUnsupported: "MEDIA_PREVIEW_TYPE_UNSUPPORTED",
   capabilityUnavailable: "CAPABILITY_UNAVAILABLE",
   sourceDrifted: "SOURCE_DRIFTED",
   sourceMissing: "SOURCE_MISSING",

@@ -1,0 +1,39 @@
+{
+  "name": "@artifact-server/site",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check",
+    "lint:docs": "nimbus-docs lint",
+    "lint:docs:fix": "nimbus-docs lint --fix",
+    "verify": "astro check && nimbus-docs lint && astro build && node scripts/verify-agent-surfaces.mjs",
+    "verify:agents": "node scripts/verify-agent-surfaces.mjs",
+    "prepreview:cf": "astro build",
+    "preview:cf": "wrangler dev",
+    "predeploy": "pnpm verify",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@cloudflare/nimbus-docs": "0.11.0",
+    "@fontsource/atkinson-hyperlegible-mono": "5.3.0",
+    "@fontsource/atkinson-hyperlegible-next": "5.3.0",
+    "@iconify-json/ph": "1.2.0",
+    "astro": "7.0.9",
+    "astro-og-canvas": "0.13.0",
+    "canvaskit-wasm": "0.41.1",
+    "clsx": "2.1.1",
+    "tailwind-merge": "3.5.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.8",
+    "@tailwindcss/vite": "4.3.3",
+    "pagefind": "1.5.2",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.8.3",
+    "wrangler": "4.123.0"
+  }
+}

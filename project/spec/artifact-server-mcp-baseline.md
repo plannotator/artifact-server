@@ -115,6 +115,13 @@ The server instructions begin with the normal workflow:
 
 > Find the artifact, begin an upload if needed, complete the upload, publish against the version you started from, then inspect the immutable saved version.
 
+After a successful publication, the server instructs the agent to give the user
+`links.review` first. That durable URL opens the exact saved version in the
+authenticated full-screen Review with comments available. The agent mentions
+`links.version` second when a raw content URL is useful and never puts a
+credential-bearing content bootstrap URL in chat. HTTP, CLI, and MCP publication
+results use the same `review`, `artifact`, and `version` link names.
+
 ## HTTP and wire rules
 
 The outer HTTP route authenticates and validates the request before the MCP SDK dispatches it.
@@ -292,7 +299,7 @@ Start with a small, explicit tool surface:
 | `artifact_get` | Read artifact metadata, the current immutable version, and its complete manifest. |
 | `artifact_open` | Return the canonical browser link for the selected artifact and exact version when requested. The client opens it on the user's computer. |
 | `artifact_create_upload` | Create an expiring upload handle and direct-upload plan. |
-| `artifact_commit_upload` | Verify the manifest and publish an immutable version. |
+| `artifact_commit_upload` | Verify the manifest and publish an immutable version. Return the exact-version review URL as the primary human handoff, plus stable and raw links. |
 | `artifact_set_visibility` | Change between account-required and public-link access when permitted. A public link opens only the current version. Warn that public copies cannot be recalled and perform the configured CDN purge when returning to account-required. |
 | `artifact_set_tags` | Replace the artifact's normalized tag set without changing its saved files. |
 | `artifact_version_list` | List immutable saved versions and their exact content addresses. Use `artifact_open` when a user needs an authorized browser address. |
@@ -354,8 +361,9 @@ filesystem path.
 
 MCP and the CLI intentionally overlap for server-only artifact operations.
 Both adapt the same application services and authorization rules. The
-`publish-artifact` skill selects the CLI when local file access is required and
-may use either adapter when all required data already exists on the server.
+The artifact route of the `artifact-server` skill selects the CLI when local
+file access is required and may use either adapter when all required data
+already exists on the server.
 
 Do not add prompts in the first release. Do not build new dependencies on deprecated MCP Roots, Sampling, or Logging.
 

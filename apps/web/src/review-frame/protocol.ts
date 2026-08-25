@@ -64,6 +64,7 @@ const themeTokensSchema = z.record(
 /** Every message the host is allowed to send into the review frame. */
 export const hostMessageSchema = z.discriminatedUnion("type", [
   z.object({
+    annotateModeActive: z.boolean().optional(),
     annotations: z.array(reviewAnnotationSchema),
     baseHref: z.string().nullable(),
     entryPath: z.string(),
@@ -80,6 +81,11 @@ export const hostMessageSchema = z.discriminatedUnion("type", [
     v: versionSchema,
   }),
   z.object({
+    active: z.boolean(),
+    type: z.literal("as-review-annotate-mode"),
+    v: versionSchema,
+  }),
+  z.object({
     threadId: z.string().nullable(),
     type: z.literal("as-review-focus"),
     v: versionSchema,
@@ -92,25 +98,36 @@ export type ReviewAnchor = z.infer<typeof reviewAnchorSchema>;
 export type ReviewInit = Extract<HostMessage, {type: "as-review-init"}>;
 
 /** Every message the review frame sends back to the host. */
-export type FrameMessage =
-  | {v: typeof reviewProtocolVersion; type: "as-review-ready"}
-  | {
-    v: typeof reviewProtocolVersion;
-    type: "as-review-submit";
-    body: string;
-    originalText: string;
-    anchor: ReviewAnchor | null;
-  }
-  | {
-    v: typeof reviewProtocolVersion;
-    type: "as-review-select";
-    threadId: string | null;
-  }
-  | {
-    v: typeof reviewProtocolVersion;
-    type: "as-review-unanchored";
-    threadIds: string[];
-  };
+export const frameMessageSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("as-review-ready"),
+    v: versionSchema,
+  }),
+  z.object({
+    anchor: optionalAnchorSchema,
+    body: z.string(),
+    originalText: z.string(),
+    type: z.literal("as-review-submit"),
+    v: versionSchema,
+  }),
+  z.object({
+    threadId: z.string().nullable(),
+    type: z.literal("as-review-select"),
+    v: versionSchema,
+  }),
+  z.object({
+    active: z.boolean(),
+    type: z.literal("as-review-annotate-mode-request"),
+    v: versionSchema,
+  }),
+  z.object({
+    threadIds: z.array(z.string()),
+    type: z.literal("as-review-unanchored"),
+    v: versionSchema,
+  }),
+]);
+
+export type FrameMessage = z.infer<typeof frameMessageSchema>;
 
 /** Build the anchor stored on a thread from what the viewer emitted. */
 export function reviewAnchorFrom(

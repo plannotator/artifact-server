@@ -277,7 +277,7 @@ Follow the existing `noun_verb` naming in `src/mcp/artifact-mcp-server.ts` (`art
 
 `artifact_capabilities` gains `comments: {maximumBodyCharacters, maximumAnchorBytes, anchorRule: "opaque; top-level point.x and point.y must be 0..1"}` so an agent can read the limits before writing.
 
-The `publish-artifact` Agent Skill gets one paragraph: after publishing, call `comment_list` on the previous version to see whether reviewers left open threads, and reply or resolve as appropriate. No auto-reply behavior.
+The artifact route of the `artifact-server` Agent Skill gets one paragraph: after publishing, call `comment_list` on the previous version to see whether reviewers left open threads, and reply or resolve as appropriate. No auto-reply behavior.
 
 ## 9. Web application
 
@@ -298,6 +298,10 @@ sharing, and focus controls. The artifact is the only open surface by default.
 Comments and version navigation open deliberately, dock beside the artifact on
 wide screens, and overlay it on narrow screens. Focus mode removes both the bar
 and side surfaces while keeping an explicit visible control that restores them.
+The state is URL-backed as `view=focus`. A publication review link names the
+project, artifact, and exact version and opens directly in this mode, so refresh,
+browser history, team sign-in, and shared review handoffs preserve the same saved
+version and commenting surface.
 The first shell slice adds no product-specific keyboard shortcuts; normal
 browser focus and button semantics remain intact.
 

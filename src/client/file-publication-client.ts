@@ -98,6 +98,7 @@ const publishResponseSchema = Schema.Struct({
   artifact: artifactSchema,
   links: Schema.Struct({
     artifact: Schema.URLFromString,
+    review: Schema.URLFromString,
     version: Schema.URLFromString,
   }),
   replayed: Schema.Boolean,

@@ -38,6 +38,7 @@ import {
   dispatchedThreadFilters,
   type ArtifactVersion,
   type CommentThreadRecord,
+  type PublishedVersion,
   type ProjectRecord,
   type SourceBindingRecord,
   type StagedUpload,
@@ -66,6 +67,7 @@ import {
 } from "../core/errors.js";
 import {
   artifactBrowserUrl,
+  artifactReviewUrl,
   contentBootstrapBrowserUrl,
   versionBrowserUrl,
   versionFileBrowserUrl,
@@ -152,7 +154,7 @@ const artifactStateSchema = z.object({
   version: versionRecordSchema,
 }).strict();
 const publishedVersionSchema = artifactStateSchema.extend({
-  links: z.object({artifact: z.url(), version: z.url()}).strict(),
+  links: z.object({artifact: z.url(), review: z.url(), version: z.url()}).strict(),
 }).strict();
 const linkPathSchema = z.string().min(1).max(4_096);
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
@@ -165,6 +167,7 @@ const linkedPublicationSchema = artifactStateSchema.extend({
   links: z.object({
     artifact: z.url(),
     live: z.url().nullable(),
+    review: z.url(),
     version: z.url(),
   }).strict(),
   sourceBinding: sourceBindingSchema,
@@ -542,6 +545,7 @@ export function createArtifactMcpServer(
           name: z.string(),
           projectId: z.string(),
           tags: z.array(z.string()),
+          versionCount: z.number().int().positive(),
         })),
         nextCursor: z.string().nullable(),
       }),
@@ -570,6 +574,7 @@ export function createArtifactMcpServer(
           name: artifact.name,
           projectId: artifact.projectId,
           tags: [...artifact.tags],
+          versionCount: artifact.versionCount,
         })),
         nextCursor: encodePageCursor(page.nextCursor),
       };
@@ -898,7 +903,7 @@ export function createArtifactMcpServer(
     {
       title: "Commit an uploaded version",
       description:
-        "After every upload-plan URL has received its exact file bytes, commit the upload as a new artifact or an optimistic new version. Retrying the same idempotency key and input returns the original result.",
+        "After every upload-plan URL has received its exact file bytes, commit the upload as a new artifact or an optimistic new version. Returns a durable review URL for the exact version; give that URL to the user first. Retrying the same idempotency key and input returns the original result.",
       inputSchema: z.object({
         idempotencyKey: idempotencyKeySchema,
         projectId: optionalProjectIdSchema,
@@ -940,7 +945,7 @@ export function createArtifactMcpServer(
         dependencies.contentDomain,
         published,
       );
-    }),
+    }, publicationSummary),
   );
 
   server.registerTool(
@@ -1117,7 +1122,7 @@ export function createArtifactMcpServer(
           ),
         ),
       );
-    }),
+    }, publicationSummary),
   );
 
   server.registerTool(
@@ -1156,7 +1161,8 @@ export function createArtifactMcpServer(
               })
             ),
           ),
-        )
+        ),
+        publicationSummary,
       ),
   );
 
@@ -1590,14 +1596,15 @@ function agentInstructions(mode: "local" | "remote"): string {
     "Start with artifact_capabilities when you do not know this installation's limits.",
     "Artifacts belong to projects. Omit projectId only when the installation has one active project; otherwise call project_list and choose explicitly.",
     "For publishing, inspect the selected file or finished directory on the client, compute each relative path, byte length, media type, and SHA-256 fingerprint, call artifact_create_upload, PUT the exact bytes to every returned uploadUrl using the same bearer credential, then call artifact_commit_upload.",
+    "After publishing, always give the user links.review first so they can see the exact version full screen and comment. Mention links.version second when the raw artifact is useful. Do not put content bootstrap URLs or credentials in chat.",
     "When publishing a new version, first call artifact_get and pass its current version ID as expectedCurrentVersionId. On conflict, inspect the new current version before retrying.",
     "Use a stable application idempotency key when retrying the same mutation. Use a new key only for an intentional new operation.",
     "Reviewers leave comment threads on an artifact version. Use comment_list and comment_get to read them, comment_create, comment_reply, and comment_update to write, comment_resolve to close or reopen a thread, and comment_delete to remove one you own; deleting a thread also deletes its replies.",
     "comment_list hides threads an agent dispatch currently holds unless you pass dispatched: \"include\" or \"only\"; comment_get still reads a dispatched thread directly by id.",
     "artifact_get returns the current complete manifest and browser link in one call. artifact_open returns a client-openable URL; a remote server never opens a browser on the server machine.",
     mode === "local"
-      ? "This is a local MCP connection, but the MCP protocol still carries metadata rather than file bytes. Use the bundled Artifact Server publishing skill or CLI to upload a local path."
-      : "This is a remote MCP connection. The server cannot read paths on the agent's computer; use the returned upload plan or the bundled Artifact Server publishing skill.",
+      ? "This is a local MCP connection, but the MCP protocol still carries metadata rather than file bytes. Use the bundled Artifact Server skill or CLI to upload a local path."
+      : "This is a remote MCP connection. The server cannot read paths on the agent's computer; use the returned upload plan or the bundled Artifact Server skill.",
   ].join("\n");
 }
 
@@ -1687,19 +1694,18 @@ function projectProjection(project: ProjectRecord) {
 function publishedVersionProjection(
   applicationUrl: URL,
   contentDomain: string,
-  published: {
-    readonly artifact: {readonly id: string};
-    readonly replayed: boolean;
-    readonly version: {
-      readonly contentToken: string;
-      readonly id: string;
-    };
-  },
+  published: PublishedVersion,
 ) {
   return {
     artifact: published.artifact,
     links: {
       artifact: artifactBrowserUrl(applicationUrl, published.artifact.id),
+      review: artifactReviewUrl(
+        applicationUrl,
+        published.version.projectId,
+        published.artifact.id,
+        published.version.id,
+      ),
       version: versionBrowserUrl(
         applicationUrl,
         contentDomain,
@@ -1853,9 +1859,13 @@ async function authorizedBrowserUrl(
   );
 }
 
-async function toolResult<Value extends object>(operation: () => Promise<Value>) {
+async function toolResult<Value extends object>(
+  operation: () => Promise<Value>,
+  summary?: (value: Value) => string,
+) {
   try {
-    return successResult(await operation());
+    const value = await operation();
+    return successResult(value, summary?.(value));
   } catch (cause) {
     return failureResult(cause);
   }
@@ -1868,9 +1878,11 @@ async function toolResult<Value extends object>(operation: () => Promise<Value>)
  */
 async function linkedToolResult<Value extends object>(
   operation: () => Promise<Value>,
+  summary?: (value: Value) => string,
 ) {
   try {
-    return successResult(await operation());
+    const value = await operation();
+    return successResult(value, summary?.(value));
   } catch (cause) {
     if (cause instanceof Error && isArtifactServerFailure(cause)) {
       if (cause._tag === "PublishConflict") {
@@ -1898,6 +1910,17 @@ function successResult<Value extends object>(value: Value, summary?: string) {
     }],
     structuredContent: value,
   };
+}
+
+function publicationSummary(published: {
+  readonly artifact: {readonly name: string};
+  readonly links: {readonly review: string; readonly version: string};
+}): string {
+  return [
+    `Published ${JSON.stringify(published.artifact.name)}.`,
+    `Review and comment: ${published.links.review}`,
+    `Raw artifact: ${published.links.version}`,
+  ].join("\n");
 }
 
 function failureResult(cause: unknown) {

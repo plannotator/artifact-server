@@ -16,10 +16,12 @@ import {
 } from "./protocol.ts";
 
 interface ReviewSession {
+  readonly annotateModeActive: boolean;
   readonly annotations: Annotation[];
   readonly entryPath: string;
   readonly html: string;
   readonly readOnly: boolean;
+  readonly supportsAnnotateMode: boolean;
 }
 
 /** Project one host thread into the record the viewer paints and numbers. */
@@ -45,10 +47,12 @@ function toAnnotation(review: ReviewAnnotation): Annotation {
 
 function sessionFrom(init: ReviewInit): ReviewSession {
   return {
+    annotateModeActive: init.annotateModeActive ?? true,
     annotations: init.annotations.map(toAnnotation),
     entryPath: init.entryPath,
     html: withBaseHref(init.html, init.baseHref),
     readOnly: init.readOnly,
+    supportsAnnotateMode: init.annotateModeActive !== undefined,
   };
 }
 
@@ -99,6 +103,14 @@ export function ReviewFrame(): React.ReactNode {
         const annotations = message.annotations.map(toAnnotation);
         setSession((current) =>
           current === null ? current : {...current, annotations}
+        );
+        return;
+      }
+      if (message.type === "as-review-annotate-mode") {
+        setSession((current) =>
+          current === null
+            ? current
+            : {...current, annotateModeActive: message.active}
         );
         return;
       }
@@ -160,6 +172,14 @@ export function ReviewFrame(): React.ReactNode {
     send({threadIds, type: "as-review-unanchored", v: reviewProtocolVersion});
   }, [send]);
 
+  const requestAnnotateMode = useCallback((active: boolean): void => {
+    send({
+      active,
+      type: "as-review-annotate-mode-request",
+      v: reviewProtocolVersion,
+    });
+  }, [send]);
+
   if (session === null) {
     return (
       <p className="p-4 text-sm text-muted-foreground" role="status">
@@ -170,12 +190,19 @@ export function ReviewFrame(): React.ReactNode {
 
   return (
     <HtmlViewer
+      annotateModeActive={session.annotateModeActive}
       annotations={session.annotations}
       fullViewport
       hideControls
       inputMethod="pinpoint"
       mode="comment"
       onAddAnnotation={handleAdd}
+      onAnnotateModeExit={session.supportsAnnotateMode
+        ? () => requestAnnotateMode(false)
+        : undefined}
+      onAnnotateModeToggle={session.supportsAnnotateMode
+        ? () => requestAnnotateMode(!session.annotateModeActive)
+        : undefined}
       onSelectAnnotation={handleSelect}
       onUnanchoredChange={handleUnanchored}
       rawHtml={session.html}

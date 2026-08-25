@@ -1,0 +1,7 @@
+interface:
+  display_name: "Artifact Server"
+  short_description: "Publish artifacts or operate Artifact Server"
+  default_prompt: "Use $artifact-server to upload this finished file and return its full-screen review link."
+
+policy:
+  allow_implicit_invocation: true

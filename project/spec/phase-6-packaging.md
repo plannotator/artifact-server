@@ -104,8 +104,8 @@ changes:
 | `artifactserver integrity check` | Verify committed manifests, pointers, records, and referenced bytes without repairing them. |
 | `artifactserver transfer export` and `import` | Move one compact installation to empty external providers while preserving identity. |
 
-The command names are one CLI surface for people, automation, and the future
-operator skill. Compose and Helm run these commands directly instead of adding
+The command names are one CLI surface for people, automation, and the explicit
+server-operation route of the Artifact Server skill. Compose and Helm run these commands directly instead of adding
 package-specific scripts with different behavior.
 
 ## Image contract

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { api, type ArtifactPage, type Project } from "@/api/client";
-import { ErrorPanel, PageHeader, StatePanel, StatusBadge } from "@/components/product";
+import { ErrorPanel, StatePanel, StatusBadge } from "@/components/product";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,14 +56,47 @@ export function ArtifactsScreen({ project }: { readonly project: Project }) {
   };
 
   return (
-    <div className="flex flex-col gap-8">
-      <PageHeader
-        description={project.archivedAt === null
-          ? "Browse active artifacts in this project. Publication stays in the CLI and Agent Skill."
-          : "This project is archived. Existing artifacts and versions remain available, but new artifacts and versions are blocked."}
-        eyebrow="Project"
-        title={project.name}
-      />
+    <div className="flex flex-col gap-6 sm:gap-8">
+      <div className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
+          Artifacts
+        </h1>
+        <form
+          className="flex flex-col gap-2 sm:flex-row sm:items-end"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setAppliedTag(tag.trim());
+          }}
+        >
+          <div className="grid gap-1.5 sm:w-64">
+            <Label htmlFor="artifact-tag-filter">Tag</Label>
+            <Input
+              id="artifact-tag-filter"
+              maxLength={40}
+              onChange={(event) => setTag(event.currentTarget.value)}
+              placeholder="Filter by exact tag"
+              value={tag}
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button type="submit" variant="outline">Filter</Button>
+            {appliedTag === ""
+              ? null
+              : (
+                <Button
+                  onClick={() => {
+                    setTag("");
+                    setAppliedTag("");
+                  }}
+                  type="button"
+                  variant="ghost"
+                >
+                  Clear
+                </Button>
+              )}
+          </div>
+        </form>
+      </div>
 
       {project.archivedAt === null ? null : (
         <div className="border border-primary/30 bg-primary/5 p-4 text-sm leading-6">
@@ -71,42 +104,6 @@ export function ArtifactsScreen({ project }: { readonly project: Project }) {
           immutable versions are preserved.
         </div>
       )}
-
-      <form
-        className="flex flex-col gap-3 border-b pb-5 sm:flex-row sm:items-end"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setAppliedTag(tag.trim());
-        }}
-      >
-        <div className="grid flex-1 gap-2">
-          <Label htmlFor="artifact-tag-filter">Exact tag</Label>
-          <Input
-            id="artifact-tag-filter"
-            maxLength={40}
-            onChange={(event) => setTag(event.currentTarget.value)}
-            placeholder="prototype"
-            value={tag}
-          />
-        </div>
-        <div className="flex gap-2">
-          <Button type="submit" variant="outline">Filter</Button>
-          {appliedTag === ""
-            ? null
-            : (
-              <Button
-                onClick={() => {
-                  setTag("");
-                  setAppliedTag("");
-                }}
-                type="button"
-                variant="ghost"
-              >
-                Clear
-              </Button>
-            )}
-        </div>
-      </form>
 
       {error === null ? null : <ErrorPanel error={error} onRetry={() => void load(null, true)} />}
       {loading && items.length === 0
@@ -125,7 +122,7 @@ export function ArtifactsScreen({ project }: { readonly project: Project }) {
                     artifactserver publish &lt;file-or-directory&gt; --project {project.id}
                   </code>
                   <p className="text-muted-foreground">
-                    Agents can also use the <strong>publish-artifact</strong> Agent Skill.
+                    Agents can also use the <strong>artifact-server</strong> Agent Skill.
                   </p>
                 </div>
               )}
@@ -137,12 +134,12 @@ export function ArtifactsScreen({ project }: { readonly project: Project }) {
           )
           : (
             <div className="overflow-x-auto border">
-              <table className="w-full min-w-3xl border-collapse text-left text-sm">
+              <table className="w-full min-w-2xl border-collapse text-left text-sm">
                 <thead className="border-b bg-muted/50 text-xs tracking-widest text-muted-foreground uppercase">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Artifact</th>
                     <th className="px-4 py-3 font-semibold">Access</th>
-                    <th className="px-4 py-3 font-semibold">Current version</th>
+                    <th className="px-4 py-3 font-semibold">Version</th>
                     <th className="px-4 py-3 font-semibold">Created</th>
                     <th className="px-4 py-3 text-right font-semibold">Actions</th>
                   </tr>
@@ -170,8 +167,10 @@ export function ArtifactsScreen({ project }: { readonly project: Project }) {
                           {accessSettingLabel(artifact.accessSetting)}
                         </StatusBadge>
                       </td>
-                      <td className="px-4 py-4 font-mono text-xs align-top">
-                        {artifact.currentVersionId}
+                      <td className="px-4 py-4 font-mono text-xs whitespace-nowrap align-top">
+                        <span title={`Full version ID: ${artifact.currentVersionId}`}>
+                          {compactVersionId(artifact.currentVersionId)}
+                        </span>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-muted-foreground align-top">
                         {formatTimestamp(artifact.createdAt)}
@@ -224,4 +223,9 @@ export function ArtifactsScreen({ project }: { readonly project: Project }) {
         )}
     </div>
   );
+}
+
+function compactVersionId(value: string): string {
+  const identifier = value.startsWith("ver_") ? value.slice(4) : value;
+  return identifier.slice(0, 8);
 }

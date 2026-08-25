@@ -27,6 +27,7 @@ import { SendToAgentDialog } from "@/components/dispatch/send-to-agent-dialog";
 import { ErrorPanel, StatePanel } from "@/components/product";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
 const pageSize = 50;
 const allVersions = "all";
@@ -307,8 +308,8 @@ export function CommentsPanel({
       <div className="flex flex-wrap items-end gap-4">
         <div className="grid gap-2">
           <Label htmlFor={stateFilterId}>State</Label>
-          <select
-            className="h-10 w-44 rounded-none border border-input bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
+          <NativeSelect
+            className="w-44"
             id={stateFilterId}
             onChange={(event) => {
               const value = event.currentTarget.value;
@@ -324,27 +325,29 @@ export function CommentsPanel({
             }}
             value={stateFilter}
           >
-            <option value={anyState}>All comments</option>
-            <option value="open">Open</option>
-            <option value="resolved">Resolved</option>
-            <option value={sentThreads}>Sent to an agent</option>
-          </select>
+            <NativeSelectOption value={anyState}>All comments</NativeSelectOption>
+            <NativeSelectOption value="open">Open</NativeSelectOption>
+            <NativeSelectOption value="resolved">Resolved</NativeSelectOption>
+            <NativeSelectOption value={sentThreads}>
+              Sent to an agent
+            </NativeSelectOption>
+          </NativeSelect>
         </div>
         <div className="grid gap-2">
           <Label htmlFor={versionFilterId}>Version</Label>
-          <select
-            className="h-10 w-64 rounded-none border border-input bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
+          <NativeSelect
+            className="w-64"
             id={versionFilterId}
             onChange={(event) => setVersionFilter(event.currentTarget.value)}
             value={versionFilter}
           >
-            <option value={allVersions}>All versions</option>
+            <NativeSelectOption value={allVersions}>All versions</NativeSelectOption>
             {versions.map((version) => (
-              <option key={version.id} value={version.id}>
+              <NativeSelectOption key={version.id} value={version.id}>
                 Version {version.number}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <Button
           disabled={loading}

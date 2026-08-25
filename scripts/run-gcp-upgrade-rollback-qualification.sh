@@ -4,9 +4,9 @@ set -euo pipefail
 repository_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 stack_name=${ARTIFACT_SERVER_GCP_QUALIFICATION_STACK:-gcp-qualification}
 candidate_image=${ARTIFACT_SERVER_GCP_UPGRADE_IMAGE:-}
-evidence_path=${ARTIFACT_SERVER_GCP_UPGRADE_EVIDENCE:-evidence/gcp-upgrade-rollback.json}
-upgrade_evidence=${ARTIFACT_SERVER_GCP_UPGRADE_PRODUCT_EVIDENCE:-evidence/gcp-upgrade.json}
-rollback_evidence=${ARTIFACT_SERVER_GCP_ROLLBACK_PRODUCT_EVIDENCE:-evidence/gcp-rollback.json}
+evidence_path=${ARTIFACT_SERVER_GCP_UPGRADE_EVIDENCE:-project/evidence/gcp-upgrade-rollback.json}
+upgrade_evidence=${ARTIFACT_SERVER_GCP_UPGRADE_PRODUCT_EVIDENCE:-project/evidence/gcp-upgrade.json}
+rollback_evidence=${ARTIFACT_SERVER_GCP_ROLLBACK_PRODUCT_EVIDENCE:-project/evidence/gcp-rollback.json}
 
 if [[ -z "${PULUMI_BACKEND_URL:-}" ]]; then
   echo "PULUMI_BACKEND_URL must identify the existing qualification backend." >&2

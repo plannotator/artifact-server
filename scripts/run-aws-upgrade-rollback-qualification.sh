@@ -4,9 +4,9 @@ set -euo pipefail
 repository_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 stack_name=${ARTIFACT_SERVER_AWS_QUALIFICATION_STACK:-aws-qualification}
 candidate_image=${ARTIFACT_SERVER_AWS_UPGRADE_IMAGE:-}
-evidence_path=${ARTIFACT_SERVER_AWS_UPGRADE_EVIDENCE:-evidence/aws-upgrade-rollback.json}
-upgrade_evidence=${ARTIFACT_SERVER_AWS_UPGRADE_PRODUCT_EVIDENCE:-evidence/aws-upgrade.json}
-rollback_evidence=${ARTIFACT_SERVER_AWS_ROLLBACK_PRODUCT_EVIDENCE:-evidence/aws-rollback.json}
+evidence_path=${ARTIFACT_SERVER_AWS_UPGRADE_EVIDENCE:-project/evidence/aws-upgrade-rollback.json}
+upgrade_evidence=${ARTIFACT_SERVER_AWS_UPGRADE_PRODUCT_EVIDENCE:-project/evidence/aws-upgrade.json}
+rollback_evidence=${ARTIFACT_SERVER_AWS_ROLLBACK_PRODUCT_EVIDENCE:-project/evidence/aws-rollback.json}
 
 if [[ -z "${PULUMI_BACKEND_URL:-}" ]]; then
   echo "PULUMI_BACKEND_URL must identify the existing qualification backend." >&2

@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { formatTimestamp } from "@/lib/presentation";
 
 const capabilities: readonly {
@@ -173,19 +174,19 @@ export function ApiKeysScreen() {
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="api-key-owner">Owner</Label>
-                  <select
-                    className="h-10 rounded-none border border-input bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
+                  <NativeSelect
+                    className="w-full"
                     id="api-key-owner"
                     onChange={(event) => setMemberId(event.currentTarget.value)}
                     value={memberId}
                   >
-                    <option value="">Service principal</option>
+                    <NativeSelectOption value="">Service principal</NativeSelectOption>
                     {members.filter((member) => member.status === "active").map((member) => (
-                      <option key={member.id} value={member.id}>
+                      <NativeSelectOption key={member.id} value={member.id}>
                         {member.displayName} · {member.email}
-                      </option>
+                      </NativeSelectOption>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 <fieldset className="grid gap-3">
                   <legend className="text-sm font-medium">Capabilities</legend>

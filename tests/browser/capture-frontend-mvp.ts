@@ -52,6 +52,7 @@ try {
 
   await page.getByRole("link", {name: "Release dashboard"}).click();
   await page.getByRole("heading", {name: "Release dashboard"}).waitFor();
+  await page.getByLabel("Account menu").click();
   await page.getByRole("button", {name: "Dark theme"}).click();
   await capture(page, "dark-artifact-detail.png");
 

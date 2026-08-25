@@ -6,6 +6,23 @@ export function artifactBrowserUrl(
   return new URL(`/artifacts/${artifactId}`, applicationUrl).toString();
 }
 
+/** Build the authenticated, exact-version review URL used for review and comments. */
+export function artifactReviewUrl(
+  applicationUrl: URL,
+  projectId: string,
+  artifactId: string,
+  versionId: string,
+): string {
+  const reviewUrl = new URL("/review", applicationUrl);
+  reviewUrl.search = new URLSearchParams({
+    artifact: artifactId,
+    project: projectId,
+    version: versionId,
+    view: "focus",
+  }).toString();
+  return reviewUrl.toString();
+}
+
 /** Build the browser origin for one exact immutable version. */
 export function versionBrowserUrl(
   applicationUrl: URL,

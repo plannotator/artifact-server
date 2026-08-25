@@ -1808,6 +1808,14 @@
               The product stays small enough to explain without a tour. Publishing, viewing,
               versions, and sharing make up the customer experience.
             </p>
+            <p>
+              Every successful publication returns three links with separate jobs. The primary
+              <code>review</code> link opens the exact saved version in the authenticated,
+              full-screen Review with comments available. <code>artifact</code> follows the
+              current version, while <code>version</code> opens immutable raw content. HTTP, CLI,
+              and MCP use the same names; MCP tells agents to share the review link first. A review
+              link never contains a content bootstrap token or credential.
+            </p>
           </div>
 
           <div class="feature-list">
@@ -1819,6 +1827,13 @@
                   controls. Text, JSON, Markdown, and source files open as plain text in the first
                   release. ZIP archives and unknown file types download. Audio and video support
                   byte-range requests so seeking works.
+                </p>
+                <p>
+                  The authenticated Review can present a selected image or video from one exact
+                  immutable version through native browser elements. Its media route accepts only an
+                  authorized matching image or video subresource destination and rejects top-level
+                  document navigation. The download route and version-scoped content origins keep
+                  their existing security roles.
                 </p>
                 <p class="feature-note">
                   The first release does not convert media, generate thumbnails, extract ZIP files,
@@ -2874,20 +2889,20 @@ v12-7f3a.content.example.net</code></pre>
 
           <div class="section-heading">
             <span class="section-label">Skills shipped with Artifact Server</span>
-            <h3>Two skills with different permissions</h3>
+            <h3>One skill with routed instructions</h3>
             <p>
-              Artifact Server ships two Agent Skills: small folders of instructions that Codex,
-              Claude Code, and other compatible clients can install. Publishing and server
-              operation stay separate. This keeps routine publishing instructions short and
-              prevents an ordinary publishing request from loading deployment or administrator instructions.
+              Artifact Server ships one Agent Skill that Codex, Claude Code, and other compatible
+              clients can install. Its entrypoint sends routine artifact work and explicit server
+              operation work to separate internal references. An ordinary publishing request does
+              not load deployment instructions or gain administrator access.
             </p>
           </div>
 
           <div class="scope-grid" aria-label="Artifact Server Agent Skills">
             <article class="scope-panel">
-              <h3><code>publish-artifact</code></h3>
+              <h3><code>artifact-server</code> · artifact work</h3>
               <p>
-                The normal skill. It is used when someone asks an agent to publish, update, open,
+                The normal route. It is used when someone asks an agent to publish, update, open,
                 share, list, or compare an artifact. It uses the command-line program when a local
                 file is involved and MCP or the command-line program for server-only work. Both use
                 the signed-in person's normal Artifact Server permissions.
@@ -2898,13 +2913,13 @@ v12-7f3a.content.example.net</code></pre>
                 <li>Publish one actual file or one finished directory through <code>artifactserver publish</code>. Do not place a local path, raw source text, or base64 file contents in remote MCP arguments.</li>
                 <li>Choose the supported upload method without asking the user to construct a manifest, fingerprint, or upload session.</li>
                 <li>Return the artifact link and exact saved version after publishing.</li>
-                <li>Never install, upgrade, reconfigure, back up, or delete an Artifact Server installation.</li>
+                <li>Route an explicit server-operation request to its separate internal reference.</li>
               </ul>
             </article>
             <article class="scope-panel no-panel">
-              <h3><code>operate-artifact-server</code></h3>
+              <h3><code>artifact-server</code> · server operation</h3>
               <p>
-                An optional administrator skill. It is used only when someone explicitly asks an
+                The administrator route. It is used only when someone explicitly asks an
                 agent to install, deploy, upgrade, back up, restore, inspect, or repair Artifact
                 Server. It uses Artifact Server lifecycle commands for the application and the
                 target's native tool for infrastructure.
@@ -2913,14 +2928,14 @@ v12-7f3a.content.example.net</code></pre>
                 <li>Read only the instructions for the selected target: laptop, server, Kubernetes, Cloudflare, AWS, or GCP. Azure uses the Kubernetes instructions for AKS.</li>
                 <li>Show the proposed change before applying it and verify health after it finishes.</li>
                 <li>Require administrator access. It does not gain infrastructure access through the publishing MCP connection.</li>
-                <li>Remain an explicit, separately installed skill because its actions can change running infrastructure.</li>
+                <li>Load only for an explicit request because its actions can change running infrastructure.</li>
               </ul>
             </article>
           </div>
 
           <figure class="architecture" aria-labelledby="skill-diagram-title">
             <div class="architecture-top">
-              <strong class="architecture-title" id="skill-diagram-title">The publishing skill checks where the files are.</strong>
+              <strong class="architecture-title" id="skill-diagram-title">The skill routes by work type and file location.</strong>
               <p class="architecture-caption">
                 The CLI handles files on the user's computer. MCP or the CLI handles operations
                 that only need server data. Both call the same Artifact Server product services.
@@ -2934,7 +2949,7 @@ v12-7f3a.content.example.net</code></pre>
               <div class="diagram-scroll">
                 <svg class="architecture-diagram skill-diagram" viewBox="0 0 1040 430" role="img" aria-labelledby="skill-flow-title skill-flow-desc">
                   <title id="skill-flow-title">Agent Skill workflow</title>
-                  <desc id="skill-flow-desc">A routine artifact request activates the publish-artifact skill. The skill finds the intended local or team server. It uses the Artifact Server command-line program for files on the user's computer and MCP or the command-line program for information already on the server. Both call the same product services. A separate administrator request activates the optional operate-artifact-server skill and uses Compose, Helm, Alchemy, or Pulumi directly.</desc>
+                  <desc id="skill-flow-desc">A routine artifact request activates the artifact-server skill and its artifact reference. The skill finds the intended local or team server. It uses the Artifact Server command-line program for files on the user's computer and MCP or the command-line program for information already on the server. An explicit administrator request activates the same skill and its server-operation reference, which uses Compose, Helm, Alchemy, or Pulumi directly.</desc>
                   <defs>
                     <marker id="skill-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
                       <path d="M0,0 L8,4 L0,8 Z" style="fill: var(--code-ink)"></path>
@@ -2950,8 +2965,8 @@ v12-7f3a.content.example.net</code></pre>
                   <text class="svg-title" x="72" y="112">User request</text>
                   <text class="svg-copy" x="72" y="135">“Publish this site”</text>
                   <rect class="svg-node-primary" x="260" y="82" width="188" height="76" rx="8"></rect>
-                  <text class="svg-title" x="280" y="112">publish-artifact</text>
-                  <text class="svg-copy" x="280" y="135">Loads for publishing work</text>
+                  <text class="svg-title" x="280" y="112">artifact-server</text>
+                  <text class="svg-copy" x="280" y="135">Loads artifact reference</text>
                   <rect class="svg-node-auth" x="500" y="82" width="188" height="76" rx="8"></rect>
                   <text class="svg-title" x="520" y="112">Find server + files</text>
                   <text class="svg-copy" x="520" y="135">Files here or already on server</text>
@@ -2968,8 +2983,8 @@ v12-7f3a.content.example.net</code></pre>
                   <text class="svg-title" x="72" y="316">Admin request</text>
                   <text class="svg-copy" x="72" y="339">“Deploy to GCP”</text>
                   <rect class="svg-node-auth" x="260" y="286" width="188" height="76" rx="8"></rect>
-                  <text class="svg-title" x="280" y="316">operate-artifact-server</text>
-                  <text class="svg-copy" x="280" y="339">Loads only when requested</text>
+                  <text class="svg-title" x="280" y="316">artifact-server</text>
+                  <text class="svg-copy" x="280" y="339">Loads operation reference</text>
                   <rect class="svg-node" x="500" y="286" width="188" height="76" rx="8"></rect>
                   <text class="svg-title" x="520" y="316">Native tool</text>
                   <text class="svg-copy" x="520" y="339">Compose · Helm · Alchemy · Pulumi</text>
@@ -2997,7 +3012,7 @@ v12-7f3a.content.example.net</code></pre>
                   when needed, the exact version ID. An artifact ID by itself is not enough because
                   the same person may use a local server and one or more team servers.
                 </p>
-                <p>The publishing skill resolves the target in this order:</p>
+                <p>The artifact route resolves the target in this order:</p>
                 <ol>
                   <li>An Artifact Server address, artifact link, or named server stated in the current request.</li>
                   <li>The server contained in an artifact reference already present in the conversation.</li>
@@ -3036,29 +3051,35 @@ v12-7f3a.content.example.net</code></pre>
                   or client opens it on the user's computer. The remote server never attempts to
                   start a browser on the server machine.
                 </p>
+                <p>
+                  A successful publish instead returns a durable <code>links.review</code> address
+                  for the exact version. MCP instructions and the publish tool's text result tell
+                  the agent to give that full-screen commenting link to the user first, then mention
+                  the immutable raw <code>links.version</code> address when it is useful. The
+                  credential-free review address uses normal team authentication.
+                </p>
               </div>
             </details>
             <details>
               <summary>Skill packaging, installation, and updates</summary>
               <div class="detail-body">
                 <p>
-                  Both skills use the open Agent Skills folder format and ship in the official
-                  Artifact Server repository under <code>skills/publish-artifact</code> and
-                  <code>skills/operate-artifact-server</code>. The publishing skill is implemented;
-                  the operator skill follows after the deployment commands stabilize. After the
+                  The skill uses the open Agent Skills folder format and ships in the official
+                  Artifact Server repository under <code>skills/artifact-server</code>. Its
+                  artifact and server-operation references stay separate inside that folder. After the
                   private <code>plannotator/artifact-server</code> repository is published, compatible
-                  clients can install the skills with <code>npx skills add
+                  clients can install the skill with <code>npx skills add
                   plannotator/artifact-server</code>. A skills.sh listing follows the same controlled release.
                 </p>
                 <p>
                   The skill name is the portable contract. A client may display it as a slash
                   command, but Artifact Server does not depend on slash-command spelling because
-                  that behavior differs between clients. Each skill contains a short main
+                  that behavior differs between clients. The skill contains a short main
                   instruction file. Detailed upload errors and deployment-specific procedures live
                   in separate reference files that the agent reads only when required.
                 </p>
                 <p>
-                  The publishing skill does not contain a cloud-specific configuration. It resolves
+                  The artifact route does not contain a cloud-specific configuration. It resolves
                   the target, uses <code>artifactserver publish</code> when it must read a file on the
                   user's computer, and calls <code>artifact_capabilities</code> before choosing a
                   server-supported upload path. Operations that only need information already on
@@ -3074,10 +3095,10 @@ v12-7f3a.content.example.net</code></pre>
                   it saves a version.
                 </p>
                 <p>
-                  Skills are versioned with Artifact Server releases and tested for correct
-                  activation as well as correct output. A skill tells the user when the connected
+                  The skill is versioned with Artifact Server releases and tested for correct
+                  activation, routing, and output. It tells the user when the connected
                   server is too old for a requested operation. The release process tests realistic
-                  requests that should activate each skill and similar requests that must not.
+                  requests that select each route and similar requests that must not activate it.
                 </p>
                 <p>
                   Format and distribution follow the current
@@ -3763,7 +3784,7 @@ artifact_delete</code></pre>
                 <li>Browser access, MCP, the Artifact Server command-line program, and normal web requests from software.</li>
                 <li>An optional connection from one Artifact Server installation to one Plannotator organization, including signed operation requests and temporary browser sessions.</li>
                 <li>An explicit Plannotator review response that may add a credential-free review bridge without changing the stored artifact.</li>
-                <li>A portable <code>publish-artifact</code> skill and a separately installed <code>operate-artifact-server</code> administrator skill.</li>
+                <li>One portable <code>artifact-server</code> skill with separate artifact and explicit server-operation references.</li>
                 <li>Local, one-server, Kubernetes, Cloudflare, AWS, and GCP deployment packages delivered in stages. AKS uses the Kubernetes package.</li>
               </ul>
             </article>
@@ -3821,7 +3842,7 @@ artifact_delete</code></pre>
                   the two sharing modes, with Git handoff off by default. Add secure
                   command-line profiles and make
                   <code>artifactserver publish</code> the local-file path. Ship the
-                  <code>publish-artifact</code> skill after its CLI and MCP routing is stable.
+                  <code>artifact-server</code> skill after its CLI and MCP routing is stable.
                   Reject MCP subscriptions until a real event service exists. Ship it as one running application.
                 </p>
               </div>
@@ -3839,8 +3860,8 @@ artifact_delete</code></pre>
                   Compose file, a Helm chart, backup and restore, and optional private Git handoff.
                   Add structured request logs, standard OTLP export for logs, metrics, and traces,
                   and separate process-health and dependency-readiness checks.
-                  Ship the optional <code>operate-artifact-server</code> skill after install,
-                  upgrade, backup, restore, and health-check commands are stable and tested.
+                  Enable the <code>artifact-server</code> server-operation reference after install,
+                  upgrade, backup, restore, and health-check workflows are stable and tested.
                 </p>
               </div>
             </article>
@@ -3935,7 +3956,7 @@ artifact_delete</code></pre>
             <article class="decision-item"><p>Uploads stage, verify, then write content-addressed blobs without overwrite before the database commit. The first release deletes expired staging only and does not garbage-collect committed blobs.</p></article>
             <article class="decision-item"><p>Browser, normal software requests, the command-line program, and MCP share the same product and authorization rules. Local MCP uses <code>artifactserver connect</code> without a human-visible secret. Hosted MCP uses browser approval through WorkOS AuthKit. Self-hosted MCP uses compatible browser authorization when configured and administration-issued scoped API keys otherwise. Startup logs never distribute keys.</p></article>
             <article class="decision-item"><p>MCP and the command-line program intentionally overlap. Files on the user's computer use the command-line program. Work that only needs information already on Artifact Server may use either. <code>artifactserver auth login</code> gives the command-line program its own secure server profile. A remote MCP server never reads a user's local path.</p></article>
-            <article class="decision-item"><p>Artifact Server ships a routine publishing skill and a separately installed operator skill. The publishing skill uses the command-line program for local files and MCP or the command-line program for information already on the server. Stored references include the server and artifact, so agents open local or team artifacts at the correct address.</p></article>
+            <article class="decision-item"><p>Artifact Server ships one router skill with separate artifact and server-operation references. The artifact route uses the command-line program for local files and MCP or the command-line program for information already on the server. The server-operation route loads only for explicit administrator work. Stored references include the server and artifact, so agents open local or team artifacts at the correct address.</p></article>
             <article class="decision-item"><p>The product core uses narrow database, file-storage, login, background-work, and optional Git interfaces. Operators use Compose for one server, Helm for Kubernetes, Alchemy directly for Cloudflare, and Pulumi directly for AWS and GCP. Artifact Server does not add an infrastructure wrapper.</p></article>
             <article class="decision-item"><p>Azure has no separate installer or release claim. Azure teams use Helm on AKS. The Azure Blob adapter remains preview until it passes a real Azure storage test.</p></article>
             <article class="decision-item"><p>Support is phased: the simple local OSS tool first, then private team and Kubernetes packages, optional Cloudflare, and direct AWS and GCP packages. A target is not supported until its install, upgrade, rollback, backup, restore, and isolation tests pass. Optional artifactserver.com operating policy is not a core OSS release gate.</p></article>

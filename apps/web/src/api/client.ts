@@ -264,6 +264,7 @@ export interface ArtifactPage {
       readonly artifact: string;
       readonly management: string;
     };
+    readonly versionCount: number;
   }[];
   readonly nextCursor: string | null;
 }
@@ -348,6 +349,7 @@ const artifactPageSchema: z.ZodType<ArtifactPage> = z.object({
   artifacts: z.array(z.object({
     artifact: artifactSchema,
     links: z.object({ artifact: z.url(), management: z.url() }),
+    versionCount: z.number().int().positive(),
   })),
   nextCursor: z.string().nullable(),
 });
@@ -757,6 +759,15 @@ async function requestText(path: string): Promise<string> {
   return await response.text();
 }
 
+async function requestHead(path: string): Promise<void> {
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    method: "HEAD",
+  });
+  notifySessionExpiry(response);
+  if (!response.ok) throw await parseFailure(response);
+}
+
 async function requestNoContent(path: string, init: RequestInit): Promise<void> {
   const response = await fetch(path, {
     ...init,
@@ -775,6 +786,19 @@ async function requestNoContent(path: string, init: RequestInit): Promise<void> 
 
 function projectQuery(projectId: string): string {
   return `projectId=${encodeURIComponent(projectId)}`;
+}
+
+function versionAssetUrl(
+  route: "file" | "media",
+  projectId: string,
+  artifactId: string,
+  versionId: string,
+  path: string,
+): string {
+  return `/api/v1/artifacts/${encodeURIComponent(artifactId)}/versions/${encodeURIComponent(versionId)}/${route}?${new URLSearchParams({
+    path,
+    projectId,
+  })}`;
 }
 
 function notifySessionExpiry(response: Response): void {
@@ -1030,12 +1054,37 @@ export const api = {
     artifactId: string,
     versionId: string,
     path: string,
-  ) => requestText(
-    `/api/v1/artifacts/${encodeURIComponent(artifactId)}/versions/${encodeURIComponent(versionId)}/file?${new URLSearchParams({
-      path,
-      projectId,
-    })}`,
-  ),
+  ) => requestText(versionAssetUrl(
+    "file",
+    projectId,
+    artifactId,
+    versionId,
+    path,
+  )),
+  versionFileUrl: (
+    projectId: string,
+    artifactId: string,
+    versionId: string,
+    path: string,
+  ) => versionAssetUrl("file", projectId, artifactId, versionId, path),
+  versionMediaUrl: (
+    projectId: string,
+    artifactId: string,
+    versionId: string,
+    path: string,
+  ) => versionAssetUrl("media", projectId, artifactId, versionId, path),
+  probeVersionMedia: (
+    projectId: string,
+    artifactId: string,
+    versionId: string,
+    path: string,
+  ) => requestHead(versionAssetUrl(
+    "media",
+    projectId,
+    artifactId,
+    versionId,
+    path,
+  )),
   comments: (
     projectId: string,
     artifactId: string,

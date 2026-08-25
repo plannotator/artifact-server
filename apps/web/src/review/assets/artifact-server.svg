@@ -1,0 +1,140 @@
+<svg viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg" font-family="Didot, 'Bodoni 72', 'Bodoni MT', 'Libre Bodoni', 'Playfair Display', Georgia, serif">
+  <defs>
+    <linearGradient id="cream" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#F2ECDC"/>
+      <stop offset="1" stop-color="#E2DAC3"/>
+    </linearGradient>
+    <linearGradient id="white" x1="0" y1="0" x2="0.2" y2="1">
+      <stop offset="0" stop-color="#FAF7EE"/>
+      <stop offset="1" stop-color="#EAE5D6"/>
+    </linearGradient>
+    <linearGradient id="purple" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#8465CC"/>
+      <stop offset="1" stop-color="#6E51B5"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#3477C4"/>
+      <stop offset="1" stop-color="#2560A6"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#EA6A20"/>
+      <stop offset="1" stop-color="#D45412"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .patch {
+      opacity: 0;
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: pop 0.8s cubic-bezier(0.16, 1.5, 0.3, 1) forwards;
+    }
+    @keyframes pop {
+      0%   { opacity: 0; transform: scale(0.3) rotate(-16deg) translateY(70px); }
+      50%  { opacity: 1; }
+      100% { opacity: 1; transform: none; }
+    }
+    .d1  { animation-delay: 0.05s; }
+    .d2  { animation-delay: 0.14s; }
+    .d3  { animation-delay: 0.23s; }
+    .d4  { animation-delay: 0.32s; }
+    .d5  { animation-delay: 0.41s; }
+    .d6  { animation-delay: 0.50s; }
+    .d7  { animation-delay: 0.59s; }
+    .d8  { animation-delay: 0.68s; }
+    .d9  { animation-delay: 0.84s; }
+    .d10 { animation-delay: 0.97s; }
+    @media (prefers-reduced-motion: reduce) {
+      .patch { animation: none; opacity: 1; }
+    }
+    text { user-select: none; }
+  </style>
+
+  <g transform="translate(80,10)">
+
+    <!-- ================= ARTIFACT ================= -->
+
+    <!-- A -->
+    <g class="patch d1">
+      <g transform="rotate(-3.5 217 300)">
+        <polygon points="76,88 364,76 368,512 64,524" fill="url(#cream)"/>
+        <text x="217" y="490" font-size="390" fill="#161513" text-anchor="middle">A</text>
+      </g>
+    </g>
+
+    <!-- r -->
+    <g class="patch d2">
+      <g transform="rotate(2 424 352)">
+        <polygon points="344,210 508,200 512,494 336,504" fill="url(#purple)"/>
+        <text x="424" y="475" font-size="270" fill="#F2ECDC" text-anchor="middle">r</text>
+      </g>
+    </g>
+
+    <!-- t -->
+    <g class="patch d3">
+      <g transform="rotate(-2 565 325)">
+        <polygon points="494,166 644,156 646,484 486,494" fill="url(#cream)"/>
+        <text x="565" y="480" font-size="285" fill="#161513" text-anchor="middle">t</text>
+      </g>
+    </g>
+
+    <!-- i -->
+    <g class="patch d4">
+      <g transform="rotate(2.5 696 325)">
+        <polygon points="629,160 768,150 772,490 621,500" fill="url(#blue)"/>
+        <text x="696" y="478" font-size="285" fill="#F2ECDC" text-anchor="middle">i</text>
+      </g>
+    </g>
+
+    <!-- f -->
+    <g class="patch d5">
+      <g transform="rotate(-3 837 322)">
+        <polygon points="754,146 924,136 928,500 746,510" fill="url(#cream)"/>
+        <text x="838" y="482" font-size="305" fill="#161513" text-anchor="middle">f</text>
+      </g>
+    </g>
+
+    <!-- a -->
+    <g class="patch d6">
+      <g transform="rotate(4 994 352)">
+        <polygon points="909,216 1084,206 1088,490 901,500" fill="url(#orange)"/>
+        <text x="994" y="480" font-size="275" fill="#F2ECDC" text-anchor="middle">a</text>
+      </g>
+    </g>
+
+    <!-- c -->
+    <g class="patch d7">
+      <g transform="rotate(-2 1147 347)">
+        <polygon points="1069,206 1229,196 1233,489 1061,499" fill="url(#cream)"/>
+        <text x="1146" y="478" font-size="275" fill="#161513" text-anchor="middle">c</text>
+      </g>
+    </g>
+
+    <!-- t (black patch) -->
+    <g class="patch d8">
+      <g transform="rotate(3 1294 320)">
+        <polygon points="1219,156 1374,146 1378,484 1211,494" fill="#191919" stroke="#ffffff" stroke-opacity="0.07"/>
+        <text x="1293" y="480" font-size="285" fill="#F2ECDC" text-anchor="middle">t</text>
+      </g>
+    </g>
+
+    <!-- ================= SERVER ================= -->
+
+    <!-- S (black patch) -->
+    <g class="patch d9" font-family="Futura, 'Avenir Next', 'Century Gothic', Poppins, 'Trebuchet MS', sans-serif">
+      <g transform="rotate(-7 503 668)">
+        <polygon points="396,514 616,498 620,822 384,838" fill="#161616" stroke="#ffffff" stroke-opacity="0.07"/>
+        <text x="502" y="780" font-size="275" font-weight="500" fill="#F2ECDC" text-anchor="middle">S</text>
+      </g>
+    </g>
+
+    <!-- erver (white strip) -->
+    <g class="patch d10" font-family="Futura, 'Avenir Next', 'Century Gothic', Poppins, 'Trebuchet MS', sans-serif">
+      <g transform="rotate(-1.2 965 665)">
+        <polygon points="600,565 1310,522 1335,742 618,808" fill="url(#white)"/>
+        <text x="965" y="728" font-size="235" font-weight="500" letter-spacing="10" fill="#161513" text-anchor="middle">erver</text>
+      </g>
+    </g>
+
+  </g>
+</svg>

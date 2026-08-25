@@ -26,6 +26,7 @@ const linkedPublicationSchema = z.object({
   links: z.object({
     artifact: z.string().min(1),
     live: z.string().min(1),
+    review: z.string().min(1),
     version: z.string().min(1),
   }).strict(),
   replayed: z.boolean(),

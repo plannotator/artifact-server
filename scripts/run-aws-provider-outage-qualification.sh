@@ -3,7 +3,7 @@ set -euo pipefail
 
 repository_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 stack_name=${ARTIFACT_SERVER_AWS_QUALIFICATION_STACK:-aws-qualification}
-evidence_path=${ARTIFACT_SERVER_AWS_OUTAGE_EVIDENCE:-evidence/aws-provider-outage.json}
+evidence_path=${ARTIFACT_SERVER_AWS_OUTAGE_EVIDENCE:-project/evidence/aws-provider-outage.json}
 
 if [[ -z "${PULUMI_BACKEND_URL:-}" ]]; then
   echo "PULUMI_BACKEND_URL must identify the existing qualification backend." >&2

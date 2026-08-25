@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   accessSettingLabel,
@@ -1070,18 +1071,18 @@ function VersionSelect({
   return (
     <div className="grid gap-2">
       <Label htmlFor={id}>{label}</Label>
-      <select
-        className="h-10 w-full rounded-none border border-input bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
+      <NativeSelect
+        className="w-full"
         id={id}
         onChange={(event) => onChange(event.currentTarget.value)}
         value={value}
       >
         {versions.map(({ version }) => (
-          <option key={version.id} value={version.id}>
+          <NativeSelectOption key={version.id} value={version.id}>
             Version {version.number} · {formatTimestamp(version.createdAt)}
-          </option>
+          </NativeSelectOption>
         ))}
-      </select>
+      </NativeSelect>
     </div>
   );
 }

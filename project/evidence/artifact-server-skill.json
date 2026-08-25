@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "skill": "artifact-server",
+  "recordedAt": "2026-08-24",
+  "source": "skills/artifact-server",
+  "validation": {
+    "agentSkillsFormat": {
+      "command": "uv run --with pyyaml python quick_validate.py skills/artifact-server",
+      "result": "passed"
+    },
+    "portableDiscovery": {
+      "command": "npx skills add /Users/ramos/oss/artifact-server --list",
+      "discoveredSkills": [
+        "artifact-server"
+      ],
+      "result": "passed"
+    },
+    "portableCopyInstall": {
+      "command": "npx skills add /Users/ramos/oss/artifact-server --skill artifact-server --agent codex -y --copy",
+      "result": "passed",
+      "sourceAndInstalledCopyMatched": true
+    },
+    "repositoryGate": {
+      "command": "pnpm check",
+      "result": "passed",
+      "runtimeTestsPassed": 250
+    }
+  },
+  "forwardTests": [
+    {
+      "case": "local-file publication with a named team server and project",
+      "result": "passed_after_revision",
+      "revisions": [
+        "Require team or local labels to match an actual profile or connection.",
+        "Resolve project display names to stable IDs through project_list.",
+        "Stop for a project ID or MCP connection when a CLI-only profile cannot list projects."
+      ]
+    },
+    {
+      "case": "compare the newest two versions, restore the older one, and open it",
+      "result": "passed_after_revision",
+      "revisions": [
+        "Re-list versions immediately before restoring a relatively described version."
+      ]
+    },
+    {
+      "case": "install on Kubernetes, configure S3, and restore a database backup",
+      "result": "requires_forward_evaluation",
+      "expectedBehavior": "The unified skill selects its server-operation route, identifies the exact cluster and backup, protects credentials, plans the material change, and verifies health and readiness."
+    }
+  ],
+  "remainingReleaseGates": [
+    "Install and exercise the skill in each supported current client against local and remote Artifact Server installations.",
+    "Test real local-file publication, remote MCP reads and writes, login renewal, stale state, and older-server refusal.",
+    "Install from plannotator/artifact-server only after the repository is intentionally published.",
+    "Run server-operation route evaluations against each advertised deployment after lifecycle commands stabilize."
+  ]
+}

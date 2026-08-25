@@ -159,6 +159,9 @@ const artifactRowSchema = z.object({
   name: z.string(),
   projectId: z.string(),
 });
+const artifactListRowSchema = artifactRowSchema.extend({
+  versionCount: z.coerce.number().int().positive(),
+});
 const artifactTagRowSchema = z.object({artifactId: z.string(), tag: z.string()});
 const versionRowSchema = z.object({
   artifactId: z.string(),
@@ -1032,7 +1035,13 @@ export class PostgresArtifactRepository implements
         `SELECT id, project_id AS "projectId", name,
           access_setting AS "accessSetting",
           current_version_id AS "currentVersionId",
-          created_at AS "createdAt", deleted_at AS "deletedAt"
+          created_at AS "createdAt", deleted_at AS "deletedAt",
+          (
+            SELECT COUNT(*)::int FROM versions
+            WHERE versions.installation_id = artifacts.installation_id
+              AND versions.project_id = artifacts.project_id
+              AND versions.artifact_id = artifacts.id
+          ) AS "versionCount"
          FROM artifacts
          WHERE installation_id = $1 AND project_id = $2
            AND deleted_at IS NULL
@@ -1055,7 +1064,7 @@ export class PostgresArtifactRepository implements
           command.limit + 1,
         ],
       );
-      const artifacts = z.array(artifactRowSchema).parse(rows);
+      const artifacts = z.array(artifactListRowSchema).parse(rows);
       return pageFromRows(
         yield* this.#withTagsForArtifacts(artifacts),
         command.limit,
@@ -2562,9 +2571,13 @@ export class PostgresArtifactRepository implements
     });
   }
 
-  #withTagsForArtifacts(
-    artifacts: readonly z.infer<typeof artifactRowSchema>[],
-  ): Effect.Effect<readonly ArtifactRecord[], unknown, SqlClient> {
+  #withTagsForArtifacts<Artifact extends z.infer<typeof artifactRowSchema>>(
+    artifacts: readonly Artifact[],
+  ): Effect.Effect<
+    readonly (Artifact & Pick<ArtifactRecord, "tags">)[],
+    unknown,
+    SqlClient
+  > {
     const installationId = this.#installationId;
     return Effect.gen({self: this}, function*() {
       if (artifacts.length === 0) return [];

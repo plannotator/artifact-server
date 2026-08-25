@@ -665,6 +665,20 @@ requirements:
         run: project/evidence/local-foundation.json
         recorded_at: "2026-08-17T03:17:21.421Z"
 
+  - id: PUB-013
+    kind: behavior
+    behavior: Every successful publication returns a durable exact-version review link, a stable current-version artifact link, and an immutable raw version link; MCP identifies the authenticated full-screen review link as the primary user handoff.
+    owner: publishing
+    source: {file: artifact-server-product-spec.html, anchor: experience}
+    acceptance:
+      behavior: {id: PUB-013-B, description: "Publish through HTTP, CLI, and MCP, receive the same three link roles, open the review URL directly in the exact version's full-screen Review, and observe MCP text and instructions leading with that review URL."}
+      failure: {id: PUB-013-F, description: "A review URL cannot follow the moving current pointer, omit focus view, contain a bootstrap token or credential, replace the immutable raw URL, or leave an agent to infer which link to share first."}
+    deployments: *all
+    status: implementing
+    proof_gap: Focused local HTTP, CLI, MCP, and browser checks are being added; deployment evidence has not yet been recorded for every target.
+    depends_on: [PUB-002, VER-001, MCP-003, CMT-015]
+    evidence: []
+
   - id: CLI-001
     kind: security
     behavior: The Artifact Server CLI keeps profiles by exact server origin and account; remote interactive login uses browser authorization and operating-system credential storage, local mode uses private user-only state without visible secrets, and CI uses scoped service credentials from its secret manager.
@@ -1939,26 +1953,26 @@ requirements:
 
   - id: SKL-001
     kind: behavior
-    behavior: Artifact Server ships one portable publish-artifact skill for routine publishing and one separately installed operate-artifact-server skill for administration.
+    behavior: Artifact Server ships one portable artifact-server skill that routes routine artifact work and explicit server-operation work to separate internal references.
     owner: agent-skills
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
-      behavior: {id: SKL-001-B, description: "Install both skills independently and activate each with realistic in-scope requests."}
-      failure: {id: SKL-001-F, description: "Publishing requests do not load or activate the operator skill, and adjacent non-artifact requests activate neither skill."}
+      behavior: {id: SKL-001-B, description: "Install the one skill and route realistic artifact, review, project, and explicit server-operation requests to the correct internal reference."}
+      failure: {id: SKL-001-F, description: "Routine artifact requests do not load server-operation instructions, implicit infrastructure work does not proceed, and adjacent non-artifact requests do not activate the skill."}
     deployments: *all
     status: implementing
-    proof_gap: The publish-artifact skill is present, while the operator skill is deferred; there is no independent install, activation, non-activation, and adjacent-request evidence for both skills.
+    proof_gap: The unified skill and routing references are present, but there is no independent install, route-selection, non-activation, and adjacent-request evidence across supported agents.
     depends_on: [MCP-003]
     evidence: []
 
   - id: SKL-002
     kind: security
-    behavior: publish-artifact can publish, update, open, share, list, and compare using normal user permissions, routes local-file operations through the CLI and server-only operations through MCP or CLI, and cannot install, upgrade, reconfigure, back up, restore, or delete an Artifact Server installation.
+    behavior: The artifact route can publish, update, open, share, list, and compare using normal user permissions, routes local-file operations through the CLI and server-only operations through MCP or CLI, and does not load or gain server-operation instructions or credentials.
     owner: agent-skills
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
       behavior: {id: SKL-002-B, description: "Complete local-file publishing through the CLI and every server-only routine artifact task through MCP and CLI with equivalent product results."}
-      failure: {id: SKL-002-F, description: "Requests for infrastructure changes never gain administrator commands or credentials through the publishing skill."}
+      failure: {id: SKL-002-F, description: "Routine artifact requests never gain administrator commands or credentials, and an infrastructure request must route through the explicit server-operation path."}
     deployments: *all
     status: implementing
     proof_gap: Skill files and forward tests cover selected publishing paths, but no SKL-002 run exercises every routine operation through MCP and CLI equivalently plus an infrastructure-request denial on each applicable deployment.
@@ -1967,7 +1981,7 @@ requirements:
 
   - id: SKL-003
     kind: security
-    behavior: operate-artifact-server activates only for explicit administrator work, requires administrator access, shows the proposed change, uses the CLI and selected adapter, and verifies health afterward.
+    behavior: The artifact-server skill loads its server-operation reference only for explicit administrator work, requires administrator access, shows the proposed change, uses the selected native adapter, and verifies health afterward.
     owner: agent-skills
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
@@ -1980,7 +1994,7 @@ requirements:
 
   - id: SKL-004
     kind: behavior
-    behavior: The publishing skill resolves the server from explicit request, artifact reference, current conversation, project default, then user default, and asks rather than guessing when ambiguity remains.
+    behavior: The artifact route resolves the server from explicit request, artifact reference, current conversation, project default, then user default, and asks rather than guessing when ambiguity remains.
     owner: agent-skills
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
@@ -2008,15 +2022,15 @@ requirements:
 
   - id: SKL-006
     kind: deployment
-    behavior: Skills use the open Agent Skills folder format, live in the official repository, are versioned with server releases, and are tested for activation, non-activation, output, compatibility, and old-server behavior.
+    behavior: The Artifact Server skill uses the open Agent Skills folder format, lives in the official repository, is versioned with server releases, and is tested for activation, route selection, non-activation, output, compatibility, and old-server behavior.
     owner: agent-skills
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
-      behavior: {id: SKL-006-B, description: "Validate, package, install, and run the release-matched skills in supported clients and publish their distribution metadata."}
+      behavior: {id: SKL-006-B, description: "Validate, package, install, and run the release-matched Artifact Server skill in supported clients and publish its distribution metadata."}
       failure: {id: SKL-006-F, description: "Incompatible server versions produce a clear refusal or supported fallback rather than incorrect tool calls."}
     deployments: *all
     status: implementing
-    proof_gap: Format, validation, and repository forward-test records exist for the publishing skill, but released distribution metadata, supported-client installation, release matching, old-server behavior, and both-skill evidence remain incomplete.
+    proof_gap: Format, validation, and repository forward-test records exist for the unified skill, but released distribution metadata, supported-client installation, release matching, old-server behavior, and route-selection evidence remain incomplete.
     depends_on: [SKL-001, MCP-003]
     evidence: []
 
@@ -3338,7 +3352,7 @@ requirements:
 
   - id: REL-001
     kind: release_gate
-    behavior: The local-owner first-release mode includes automatic credential-free browser access, one-process offline operation, single-file and complete-site publishing, immutable versions, comparisons, restore, two read settings, HTTP, MCP, the publishing skill, and browser isolation. Optional Git history is deferred and is not a first-release gate.
+    behavior: The local-owner first-release mode includes automatic credential-free browser access, one-process offline operation, single-file and complete-site publishing, immutable versions, comparisons, restore, two read settings, HTTP, MCP, the artifact route of the Artifact Server skill, and browser isolation. Optional Git history is deferred and is not a first-release gate.
     owner: product-core
     source: {file: artifact-server-product-spec.html, anchor: implementation}
     acceptance:
@@ -3351,7 +3365,7 @@ requirements:
 
   - id: REL-002
     kind: release_gate
-    behavior: The private-team first-release mode includes Compose, individual browser login, explicit member admission, scoped keys, Postgres and blob drivers, Kubernetes Helm, private multi-file delivery, backup, restore, upgrade, health, and the operator skill.
+    behavior: The private-team first-release mode includes Compose, individual browser login, explicit member admission, scoped keys, Postgres and blob drivers, Kubernetes Helm, private multi-file delivery, backup, restore, upgrade, health, and the explicit server-operation route of the Artifact Server skill.
     owner: product-core
     source: {file: artifact-server-product-spec.html, anchor: implementation}
     acceptance:
@@ -4046,26 +4060,90 @@ requirements:
 
   - id: PRV-001
     kind: behavior
-    behavior: The review screen presents images, video, and audio with native browser elements streaming from the version file route with working range requests, and PDF through the sandboxed version content origin.
+    behavior: The Artifact Server review interface presents one exact-version image with browser-native decoding, contained layout, focus viewing, and no application-DOM insertion for SVG.
     owner: web-application
-    source: {file: local-workspace-spec.md, anchor: conformance-requirements-to-add}
+    source: {file: media-preview-spec.md, anchor: conformance-requirements}
     acceptance:
-      behavior: {id: PRV-001-B, description: "Open image, video, audio, and PDF artifacts in the review screen, seek within media using range requests, and comment on each with a whole-file anchor."}
-      failure: {id: PRV-001-F, description: "Media presentation cannot weaken the version file route's non-renderable document posture, and PDF renders only inside the sandboxed content-origin frame."}
+      behavior: {id: PRV-001-B, description: "Open PNG, JPEG, WebP, GIF, and SVG entries from an exact immutable version, preserve their aspect ratios and natural size, and expand the image through the existing focus view."}
+      failure: {id: PRV-001-F, description: "A mislabeled or undecodable image settles into the typed fallback, and SVG is loaded only as an image resource without inserting its markup or executing its script in the application document."}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [CMT-013, CNT-002]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [PRV-001-B, PRV-001-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-24T03:47:04.897Z"
 
   - id: PRV-002
-    kind: constraint
-    behavior: File types without a native browser presentation appear as a typed download card and never render inline, and no custom viewer, converter, or thumbnail service is added.
+    kind: behavior
+    behavior: The Artifact Server review interface presents one exact-version video with native controls, no autoplay, metadata-only preload, and working ranged seeking.
     owner: web-application
-    source: {file: local-workspace-spec.md, anchor: conformance-requirements-to-add}
+    source: {file: media-preview-spec.md, anchor: conformance-requirements}
     acceptance:
-      behavior: {id: PRV-002-B, description: "Open a ZIP and an office document in the review screen and receive a download card naming the file, size, and media type."}
-      failure: {id: PRV-002-F, description: "An unknown media type is never sniffed into an inline rendering, and no server-side conversion or thumbnail request is issued."}
+      behavior: {id: PRV-002-B, description: "Open a browser-decodable WebM entry with native controls, metadata-only preload, preserved aspect ratio, and successful seeking through single byte-range responses."}
+      failure: {id: PRV-002-F, description: "Video never autoplays or buffers the complete file into a client Blob, and an unsupported codec or abandoned selection settles without stale playback or an infinite loading state."}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [PRV-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [PRV-002-B, PRV-002-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-24T03:47:04.897Z"
+
+  - id: PRV-003
+    kind: security
+    behavior: Authenticated media delivery is same-origin, media-destination-only, correctly typed, range-capable, and cannot become an application-origin document.
+    owner: web-application
+    source: {file: media-preview-spec.md, anchor: conformance-requirements}
+    acceptance:
+      behavior: {id: PRV-003-B, description: "An authorized same-origin image or video subresource request receives the exact manifest entry with its declared media type, immutable validators, and correct full or single-range response."}
+      failure: {id: PRV-003-F, description: "Document, frame, object, embed, empty, cross-site, missing Fetch Metadata, media-destination mismatch, unauthorized, cross-project, and non-manifest requests are refused before any blob body opens; the original download route remains non-renderable."}
+    deployments: *all
+    status: behavior_verified
+    depends_on: [CMT-013, SEC-001]
+    evidence:
+      - deployment: local
+        tests: [PRV-003-B, PRV-003-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-24T03:45:38.177Z"
+
+  - id: PRV-004
+    kind: behavior
+    behavior: Manifest file selection is URL-addressable, pinned to one immutable version, restored by browser history, and protected from stale preview responses.
+    owner: web-application
+    source: {file: media-preview-spec.md, anchor: conformance-requirements}
+    acceptance:
+      behavior: {id: PRV-004-B, description: "Select HTML, image, and video entries from the Files tab, observe the exact manifest path in the review URL, and use browser back and forward without changing the selected version."}
+      failure: {id: PRV-004-F, description: "An absent, non-manifest, or unsupported path reaches an explicit fallback, and late load, metadata, error, or range results from a previous artifact, version, or path cannot replace the current selection."}
+    deployments: *all
+    status: behavior_verified
+    depends_on: [PRV-001, PRV-002]
+    evidence:
+      - deployment: local
+        tests: [PRV-004-B, PRV-004-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-24T03:47:04.897Z"
+
+  - id: PRV-005
+    kind: constraint
+    behavior: Unsupported types, codecs, corrupt media, and delivery failures settle into an honest typed fallback without sniffing, conversion, or an infinite loading state.
+    owner: web-application
+    source: {file: media-preview-spec.md, anchor: conformance-requirements}
+    acceptance:
+      behavior: {id: PRV-005-B, description: "An unsupported or undecodable entry shows its path, declared media type, byte size, and actions to open the exact version or download the file, while session expiry offers sign-in and retry."}
+      failure: {id: PRV-005-F, description: "Unknown or malformed bytes are never sniffed into an inline document, the server starts no conversion, probe, thumbnail, or repair job, and every attempted preview reaches a ready or terminal state."}
+    deployments: *all
+    status: behavior_verified
+    depends_on: [PRV-003, PRV-004]
+    evidence:
+      - deployment: local
+        tests: [PRV-005-B, PRV-005-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-24T03:47:04.897Z"

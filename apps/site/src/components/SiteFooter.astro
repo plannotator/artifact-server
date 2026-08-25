@@ -1,0 +1,21 @@
+---
+import ArtifactMark from "./ArtifactMark.astro";
+
+const year = new Date().getUTCFullYear();
+---
+
+<footer class="site-footer">
+  <div class="site-footer__rail">
+    <a class="site-footer__brand" href="/" aria-label="Artifact Server home">
+      <ArtifactMark />
+      <span>Artifact Server</span>
+    </a>
+    <p>Artifacts are the product of the work. Give them a home.</p>
+    <nav aria-label="Footer navigation">
+      <a href="/docs/">Docs</a>
+      <a href="https://github.com/plannotator/artifact-server">GitHub</a>
+      <a href="/llms.txt">llms.txt</a>
+    </nav>
+    <small>Open source · {year}</small>
+  </div>
+</footer>

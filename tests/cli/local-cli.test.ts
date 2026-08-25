@@ -30,7 +30,7 @@ const publicationSchema = z.object({
     projectId: z.string(),
     tags: z.array(z.string()),
   }),
-  links: z.object({artifact: z.url(), version: z.url()}),
+  links: z.object({artifact: z.url(), review: z.url(), version: z.url()}),
   version: z.object({
     id: z.string(),
     number: z.number().int().positive(),
@@ -73,7 +73,7 @@ describe("local Artifact Server CLI", () => {
       );
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain(
-        "Opened the local Artifact Server management application.",
+        "Opened the local Artifact Server application.",
       );
       const browserCredential = (await readFile(
         path.join(dataDirectory, "local-browser-token"),
@@ -192,6 +192,13 @@ describe("local Artifact Server CLI", () => {
         name: "report.pdf",
         tags: [],
       });
+      expect(Object.fromEntries(new URL(reportPublication.links.review).searchParams))
+        .toEqual({
+          artifact: reportPublication.artifact.id,
+          project: reportPublication.artifact.projectId,
+          version: reportPublication.version.id,
+          view: "focus",
+        });
       expect(openedReport.headers.get("content-type")).toBe("application/pdf");
       expect(Buffer.from(await openedReport.arrayBuffer())).toEqual(reportBytes);
 

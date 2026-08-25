@@ -125,6 +125,7 @@ import {
 import {createMcpHttpAdapter} from "../mcp/create-mcp-http-adapter.js";
 import {
   artifactBrowserUrl,
+  artifactReviewUrl,
   contentBootstrapBrowserUrl,
   versionBrowserUrl,
   versionFileBrowserUrl,
@@ -687,6 +688,18 @@ export function createHttpApp(
     (context) =>
       serveWebAsset(context, dependencies, "/review-frame.html", "review-frame"),
   );
+
+  app.on(
+    ["GET", "HEAD"],
+    "/review",
+    (context) =>
+      serveWebAsset(context, dependencies, "/review.html", "application-shell"),
+  );
+
+  app.on(["GET", "HEAD"], "/workbench", (context) => {
+    const requestUrl = new URL(context.req.url);
+    return context.redirect(`/review${requestUrl.search}`, 308);
+  });
 
   app.on(
     ["GET", "HEAD"],
@@ -1578,6 +1591,34 @@ export function createHttpApp(
         query.path,
         context.req.method,
         context.req.raw.headers,
+        dependencies,
+      );
+    },
+  );
+
+  app.on(
+    ["GET", "HEAD"],
+    "/api/v1/artifacts/:artifactId/versions/:versionId/media",
+    async (context) => {
+      const query = versionFileQuerySchema.parse(context.req.query());
+      const saved = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ArtifactManagementService.use((management) =>
+          management.getVersion({
+            artifactId: context.req.param("artifactId"),
+            principal: context.get("principal"),
+            projectId: requestedProjectId(context),
+            versionId: context.req.param("versionId"),
+          })
+        ),
+      );
+      return serveVersionMedia(
+        saved,
+        query.path,
+        context.req.method,
+        context.req.raw.headers,
+        context.get("authenticationMethod"),
         dependencies,
       );
     },
@@ -2537,6 +2578,7 @@ interface PublishResponse {
   readonly artifact: PublishedVersion["artifact"];
   readonly links: {
     readonly artifact: string;
+    readonly review: string;
     readonly version: string;
   };
   readonly replayed: boolean;
@@ -2572,6 +2614,12 @@ function publishResponse(
   published: PublishedVersion,
 ): PublishResponse {
   const artifactUrl = artifactBrowserUrl(requestUrl, published.artifact.id);
+  const reviewUrl = artifactReviewUrl(
+    requestUrl,
+    published.artifact.projectId,
+    published.artifact.id,
+    published.version.id,
+  );
   const versionUrl = versionBrowserUrl(
     requestUrl,
     contentDomain,
@@ -2581,6 +2629,7 @@ function publishResponse(
     artifact: published.artifact,
     links: {
       artifact: artifactUrl,
+      review: reviewUrl,
       version: versionUrl,
     },
     replayed: published.replayed,
@@ -2670,7 +2719,7 @@ function artifactPageResponse(
   page: ArtifactPage,
 ) {
   return {
-    artifacts: page.items.map((artifact) => ({
+    artifacts: page.items.map(({versionCount, ...artifact}) => ({
       artifact,
       links: {
         artifact: artifactBrowserUrl(requestUrl, artifact.id),
@@ -2679,6 +2728,7 @@ function artifactPageResponse(
           requestUrl,
         ).toString(),
       },
+      versionCount,
     })),
     nextCursor: encodePageCursor(page.nextCursor),
   };
@@ -3260,7 +3310,67 @@ async function serveVersionFile(
       message: "The version file does not exist.",
     });
   }
-  const headers = versionFileHeaders(entry);
+  return serveImmutableVersionEntry(
+    entry,
+    method,
+    requestHeaders,
+    versionFileHeaders(entry),
+    dependencies,
+  );
+}
+
+async function serveVersionMedia(
+  saved: ArtifactVersion,
+  path: string,
+  method: string,
+  requestHeaders: Headers,
+  authenticationMethod: "bearer" | "session",
+  dependencies: HttpAppDependencies,
+): Promise<Response> {
+  const entry = saved.manifest.entries.find(
+    (candidate) => candidate.path === path,
+  );
+  if (entry === undefined) {
+    throw new VersionNotFound({
+      message: "The version file does not exist.",
+    });
+  }
+  const mediaKind = previewMediaKind(entry.mediaType);
+  if (mediaKind === null) {
+    return mediaPreviewFailure(
+      errorCodes.mediaPreviewTypeUnsupported,
+      "This manifest entry is not an image or video preview.",
+      415,
+    );
+  }
+  if (!permitsMediaPreviewRequest(
+    method,
+    requestHeaders,
+    authenticationMethod,
+    mediaKind,
+  )) {
+    return mediaPreviewFailure(
+      errorCodes.mediaPreviewContextRequired,
+      "Media previews require a same-origin application subresource request.",
+      403,
+    );
+  }
+  return serveImmutableVersionEntry(
+    entry,
+    method,
+    requestHeaders,
+    versionMediaHeaders(entry),
+    dependencies,
+  );
+}
+
+async function serveImmutableVersionEntry(
+  entry: ManifestEntry,
+  method: string,
+  requestHeaders: Headers,
+  headers: Headers,
+  dependencies: HttpAppDependencies,
+): Promise<Response> {
   const strongEtag = `"${entry.sha256}"`;
   if (
     etagMatches(requestHeaders.get("if-none-match") ?? undefined, strongEtag)
@@ -3312,6 +3422,43 @@ async function serveVersionFile(
   return new Response(blob.body, {headers, status: 200});
 }
 
+function permitsMediaPreviewRequest(
+  method: string,
+  headers: Headers,
+  authenticationMethod: "bearer" | "session",
+  mediaKind: "image" | "video",
+): boolean {
+  if (
+    authenticationMethod !== "session" ||
+    headers.get("sec-fetch-site") !== "same-origin"
+  ) {
+    return false;
+  }
+  const destination = headers.get("sec-fetch-dest");
+  const mode = headers.get("sec-fetch-mode");
+  if (method === "GET") {
+    return destination === mediaKind && mode === "no-cors";
+  }
+  return method === "HEAD" && destination === "empty" &&
+    (mode === "cors" || mode === "same-origin" || mode === "no-cors");
+}
+
+function previewMediaKind(mediaType: string): "image" | "video" | null {
+  const essence = mediaType.split(";", 1)[0]?.trim().toLowerCase();
+  if (essence?.startsWith("image/") === true) return "image";
+  if (essence?.startsWith("video/") === true) return "video";
+  return null;
+}
+
+function mediaPreviewFailure(
+  code: typeof errorCodes.mediaPreviewContextRequired |
+    typeof errorCodes.mediaPreviewTypeUnsupported,
+  message: string,
+  status: 403 | 415,
+): Response {
+  return Response.json({error: {code, message}}, {status});
+}
+
 function versionFileHeaders(entry: ManifestEntry): Headers {
   return new Headers({
     "Accept-Ranges": "bytes",
@@ -3325,6 +3472,29 @@ function versionFileHeaders(entry: ManifestEntry): Headers {
     ETag: `"${entry.sha256}"`,
     "X-Content-Type-Options": "nosniff",
   });
+}
+
+function versionMediaHeaders(entry: ManifestEntry): Headers {
+  const filename = entry.path.split("/").at(-1) ?? "artifact-media";
+  return new Headers({
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "private, max-age=31536000, immutable",
+    "Content-Disposition": `inline; filename*=UTF-8''${encodeDispositionFilename(filename)}`,
+    "Content-Length": String(entry.size),
+    "Content-Security-Policy": "sandbox; default-src 'none'",
+    "Content-Type": entry.mediaType,
+    "Cross-Origin-Resource-Policy": "same-origin",
+    ETag: `"${entry.sha256}"`,
+    Vary: "Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site",
+    "X-Content-Type-Options": "nosniff",
+  });
+}
+
+function encodeDispositionFilename(filename: string): string {
+  return encodeURIComponent(filename.toWellFormed()).replace(
+    /[!'()*]/gu,
+    (character) => `%${character.codePointAt(0)?.toString(16).toUpperCase() ?? ""}`,
+  );
 }
 
 function etagMatches(value: string | undefined, strongEtag: string): boolean {

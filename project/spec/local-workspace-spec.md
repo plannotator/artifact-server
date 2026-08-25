@@ -1,9 +1,9 @@
 # Local workspace features
 
-**Status:** Accepted; implementation underway — `LNK-001` through `LNK-008` are implemented across the local application, SQLite/Postgres/D1 storage, HTTP, MCP, CLI, and web surfaces and have normal and hostile acceptance-ID tests, but remain `implementing` for the explicit proof gaps recorded in the ledger. `KAN-001` through `KAN-007`, `EDT-001` through `EDT-003`, `OPN-001`/`OPN-002`, and `PRV-001`/`PRV-002` remain specified and unimplemented (August 23, 2026)
+**Status:** Accepted; implementation underway — `LNK-001` through `LNK-008` are implemented across the local application, SQLite/Postgres/D1 storage, HTTP, MCP, CLI, and web surfaces and have normal and hostile acceptance-ID tests, but remain `implementing` for the explicit proof gaps recorded in the ledger. `PRV-001` through `PRV-005` are implemented with local HTTP and browser proof. `KAN-001` through `KAN-007`, `EDT-001` through `EDT-003`, and `OPN-001`/`OPN-002` remain specified and unimplemented (August 23, 2026)
 **Date:** August 19, 2026
 **Owner:** Artifact Server product engineering
-**Companion documents:** [Product specification](./artifact-server-product-spec.md), [Artifact comments](./artifact-comments-spec.md) (the storage and parity precedent this spec follows), [Conformance ledger](./conformance.yml), [ADR 0023](./decisions/0023-linked-artifacts-are-captured-snapshots.md), [ADR 0024](./decisions/0024-kanban-is-first-class-records.md)
+**Companion documents:** [Product specification](./artifact-server-product-spec.md), [Artifact comments](./artifact-comments-spec.md) (the storage and parity precedent this spec follows), [Image and video previews](./media-preview-spec.md), [Conformance ledger](./conformance.yml), [ADR 0023](./decisions/0023-linked-artifacts-are-captured-snapshots.md), [ADR 0024](./decisions/0024-kanban-is-first-class-records.md)
 
 ## 1. What this adds and why
 
@@ -192,14 +192,11 @@ Opens a **linked** artifact's source file in an application on the user's machin
 
 ## 8. Broader previews
 
-The review screen (the comment-capable viewer) currently presents HTML. It gains browser-native presentation for the other formats the product already serves correctly:
+The first broader-preview slice is specified in [Image and video previews](./media-preview-spec.md). The Artifact Server review interface presents one exact-version image or video with native browser elements, manifest file selection, focus viewing, explicit terminal states, and ranged video seeking.
 
-- **Images** (`image/*`), **video** (`video/*`), and **audio** (`audio/*`) render with native `<img>`/`<video controls>`/`<audio controls>` elements sourced from the version file route on the application origin. Subresource requests ignore the route's non-renderable disposition, and the route's existing `ETag`/`Range` support makes media seeking work. `CMT-013`'s posture is unchanged: the response still cannot render as a top-level document.
-- **PDF** presents through the version content origin — the same sandboxed, version-scoped origin HTML review uses — so the browser's native PDF viewer renders inside the isolated frame. No custom viewer is built.
-- **Text** (`text/*`, `application/json`) presents in a preformatted panel with the edit affordance of section 6.
-- **Everything else** presents a typed download card (name, size, media type, download link) and never renders inline.
+The authenticated version-file route remains download-only. Native media uses a separate application-origin route that returns the manifest media type only to authenticated same-origin `image` or `video` subresource requests and rejects top-level document navigation. This corrects the earlier assumption that a browser subresource could render the version-file route despite its `application/octet-stream` and `attachment` response. `CMT-013` remains unchanged.
 
-Comments on non-HTML files use the whole-file anchor (`{kind:"page"}` or point anchors), which the comment model already supports. Deployments: all six; this is web-application work over existing routes.
+Audio, PDF, and preformatted text presentation are follow-on preview slices, not part of `PRV-001` through `PRV-005`. Everything without an implemented browser-native presentation uses a typed fallback and never renders inline. Comments on non-HTML files keep the existing whole-file anchor. Deployments: all six.
 
 ## 9. Security summary
 
@@ -283,8 +280,11 @@ New ledger modules `local-workspace` (LNK, OPN) and `kanban` (KAN); EDT belongs 
 | `EDT-003` | Editing is bounded to text media types and sizes, verified like any publish, and absent from MCP. |
 | `OPN-001` | Open-in launches only catalog applications on verified linked sources, argv-only, on the local deployment over loopback. |
 | `OPN-002` | Client-supplied paths, non-linked artifacts, unavailable sources, non-local deployments, and non-loopback origins are all refused. |
-| `PRV-001` | The review screen presents images, video, and audio natively from the version file route with working range requests, and PDF through the sandboxed content origin. |
-| `PRV-002` | Unpreviewable types present a typed download card and never render inline; existing non-renderable and sandbox postures are unchanged. |
+| `PRV-001` | The review interface presents an exact-version image with browser-native decoding, contained layout, focus viewing, and no DOM insertion for SVG. |
+| `PRV-002` | The review interface presents an exact-version video with native controls, no autoplay, metadata-only preload, and working ranged seeking. |
+| `PRV-003` | Authenticated media delivery is same-origin, media-destination-only, correctly typed, range-capable, and cannot become an application-origin document. |
+| `PRV-004` | Manifest file selection is URL-addressable, version-pinned, back/forward aware, and protected from stale preview responses. |
+| `PRV-005` | Unsupported types, codecs, corrupt media, and delivery failures settle into an honest typed fallback without sniffing, conversion, or an infinite loading state. |
 
 ## 13. Sequencing and effort
 

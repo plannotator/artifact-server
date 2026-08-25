@@ -26,7 +26,13 @@ pnpm --dir "$artifactserver_repository" build
 cp -- "$artifactserver_repository/package.json" "$artifactserver_stage/package.json"
 # Keep the root importer's exact dependency graph without making the staged
 # package install the deployment workspaces represented by the shared lockfile.
-sed '/^  apps\/web:/,/^packages:/ { /^packages:/!d; }' \
+awk '
+  /^importers:$/ { print; in_importers = 1; keep_importer = 0; next }
+  in_importers && /^packages:$/ { in_importers = 0; print; next }
+  in_importers && /^  \.:$/ { keep_importer = 1; print; next }
+  in_importers && /^  [^ ].*:$/ { keep_importer = 0; next }
+  !in_importers || keep_importer { print }
+' \
   "$artifactserver_repository/pnpm-lock.yaml" \
   > "$artifactserver_stage/pnpm-lock.yaml"
 

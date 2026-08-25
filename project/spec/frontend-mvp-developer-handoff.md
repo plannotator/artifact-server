@@ -82,7 +82,7 @@ original frontend assignment and is no longer a current-state inventory.
 Since this handoff was written, the tree has also gained exact-version comments,
 the artifact-first review viewer, agent dispatch, linked local artifacts,
 generic OIDC and local-owner access, plus the first configurable Git-history
-foundation. Public hosting controls, an operator skill, custom domains, and the
+foundation. Public hosting controls, the server-operation route of the Artifact Server skill, custom domains, and the
 remaining Git mirror are still separate work.
 
 ## Read these files before changing code
@@ -404,7 +404,7 @@ The first interface must support these complete workflows.
   publication.
 
 Browser file publication is not an MVP requirement. The existing primary path
-is `artifactserver publish <file-or-directory>` and the `publish-artifact`
+is `artifactserver publish <file-or-directory>` and the `artifact-server`
 Agent Skill. Do not delay the management interface to build drag-and-drop,
 directory hashing, upload progress, or browser retry orchestration.
 

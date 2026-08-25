@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDownIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 
 import {
   api,
@@ -8,8 +10,9 @@ import {
   type Project,
   type Session,
 } from "@/api/client";
-import { ErrorPanel, StatePanel, StatusBadge } from "@/components/product";
+import { ErrorPanel, StatePanel } from "@/components/product";
 import { Button } from "@/components/ui/button";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { ApiKeysScreen } from "@/screens/api-keys-screen";
 import { ArtifactDetailScreen } from "@/screens/artifact-detail-screen";
 import { ArtifactsScreen } from "@/screens/artifacts-screen";
@@ -229,6 +232,9 @@ function ApplicationShell({
     ? route.projectId
     : "";
   const administrator = isAdministrator(principal);
+  const accountName = principal.displayName?.trim()
+    || (localOwner ? "Local owner" : "Account");
+  const accountLabel = localOwner ? "Local admin" : accountName;
 
   const logout = async () => {
     setLogoutError(null);
@@ -249,16 +255,20 @@ function ApplicationShell({
         Skip to content
       </a>
       <header className="border-b bg-background">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-4 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-center gap-5">
-            <a className="shrink-0 font-heading text-base font-semibold tracking-tight" href="/">
-              Artifact Server
-            </a>
-            <span className="hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
-            <label className="min-w-0 text-xs font-semibold tracking-widest text-muted-foreground uppercase">
-              <span className="sr-only">Selected project</span>
-              <select
-                className="h-9 max-w-64 rounded-none border border-input bg-background px-3 text-sm font-normal tracking-normal text-foreground normal-case outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
+        <div className="mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 px-5 py-3 sm:px-8 md:flex md:h-16 md:gap-4 md:py-0">
+          <a
+            className="row-start-1 shrink-0 font-heading text-base font-semibold tracking-tight"
+            href="/"
+          >
+            Artifact Server
+          </a>
+          <span className="hidden h-5 w-px shrink-0 bg-border md:block" aria-hidden="true" />
+          <div className="col-span-2 row-start-2 flex min-w-0 items-center gap-1 md:col-auto md:row-auto md:flex-1">
+            <label className="min-w-0 flex-1 md:max-w-56">
+              <span className="sr-only">Project</span>
+              <NativeSelect
+                aria-label="Project"
+                className="w-full [&_[data-slot=native-select]]:font-medium"
                 onChange={(event) => {
                   if (event.currentTarget.value !== "") {
                     window.location.assign(
@@ -266,75 +276,131 @@ function ApplicationShell({
                     );
                   }
                 }}
+                size="sm"
                 value={selectedProjectId}
               >
-                <option value="">Select project</option>
+                <NativeSelectOption value="">Choose project</NativeSelectOption>
                 {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
+                  <NativeSelectOption key={project.id} value={project.id}>
                     {project.name}{project.archivedAt === null ? "" : " (archived)"}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
             <nav aria-label="Primary navigation" className="flex items-center gap-1">
+              {selectedProjectId === ""
+                ? null
+                : (
+                  <Button
+                    aria-current={route.kind === "artifacts" || route.kind === "artifact"
+                      ? "page"
+                      : undefined}
+                    render={(
+                      <a
+                        href={`/projects/${encodeURIComponent(selectedProjectId)}/artifacts`}
+                      />
+                    )}
+                    size="xs"
+                    variant={route.kind === "artifacts" || route.kind === "artifact"
+                      ? "secondary"
+                      : "ghost"}
+                  >
+                    Artifacts
+                  </Button>
+                )}
               <Button
+                aria-current={route.kind === "projects" ? "page" : undefined}
                 render={<a href="/projects" />}
                 size="xs"
                 variant={route.kind === "projects" ? "secondary" : "ghost"}
               >
                 Projects
               </Button>
+            </nav>
+          </div>
+          <details className="group relative col-start-2 row-start-1 md:ml-auto">
+            <summary
+              aria-label="Account menu"
+              className="flex h-9 cursor-pointer list-none items-center gap-2 border border-transparent px-3 text-xs font-semibold tracking-widest uppercase outline-none select-none hover:bg-muted focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 [&::-webkit-details-marker]:hidden"
+            >
+              <span className="max-w-36 truncate">{accountLabel}</span>
+              <HugeiconsIcon
+                aria-hidden="true"
+                className="size-3.5 shrink-0 text-muted-foreground group-open:rotate-180"
+                icon={ChevronDownIcon}
+                strokeWidth={2}
+              />
+            </summary>
+            <div className="absolute top-full right-0 z-50 mt-2 w-64 border bg-popover p-1 text-popover-foreground shadow-lg">
+              <div className="px-3 py-3">
+                <p className="truncate text-sm font-medium">{accountName}</p>
+                <p
+                  className="mt-1 truncate text-xs capitalize text-muted-foreground"
+                  title={principal.id}
+                >
+                  {principal.membershipRole} · {compactPrincipalId(principal.id)}
+                </p>
+              </div>
               {administrator
                 ? (
-                  <>
+                  <nav
+                    aria-label="Administration"
+                    className="grid gap-1 border-t p-1"
+                  >
                     <Button
+                      aria-current={route.kind === "publicLinks" ? "page" : undefined}
+                      className="w-full justify-start"
                       render={<a href="/administration/public-links" />}
-                      size="xs"
+                      size="sm"
                       variant={route.kind === "publicLinks" ? "secondary" : "ghost"}
                     >
                       Public links
                     </Button>
                     <Button
+                      aria-current={route.kind === "members" ? "page" : undefined}
+                      className="w-full justify-start"
                       render={<a href="/administration/members" />}
-                      size="xs"
+                      size="sm"
                       variant={route.kind === "members" ? "secondary" : "ghost"}
                     >
                       Members
                     </Button>
                     <Button
+                      aria-current={route.kind === "apiKeys" ? "page" : undefined}
+                      className="w-full justify-start"
                       render={<a href="/administration/api-keys" />}
-                      size="xs"
+                      size="sm"
                       variant={route.kind === "apiKeys" ? "secondary" : "ghost"}
                     >
                       API keys
                     </Button>
-                  </>
+                  </nav>
                 )
                 : null}
-            </nav>
-            <span className="hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="min-w-0 text-right">
-                <p className="max-w-40 truncate font-mono text-xs">{principal.id}</p>
-                <p className="text-xs capitalize text-muted-foreground">
-                  {principal.membershipRole}
-                </p>
+              <div className="grid gap-1 border-t p-1">
+                <Button
+                  className="w-full justify-start"
+                  onClick={onThemeChange}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  {dark ? "Light theme" : "Dark theme"}
+                </Button>
+                {localOwner ? null : (
+                  <Button
+                    className="w-full justify-start"
+                    onClick={() => void logout()}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    Log out
+                  </Button>
+                )}
               </div>
-              <StatusBadge tone={administrator ? "primary" : "neutral"}>
-                {principal.kind}
-              </StatusBadge>
             </div>
-            <Button onClick={onThemeChange} size="xs" type="button" variant="ghost">
-              {dark ? "Light theme" : "Dark theme"}
-            </Button>
-            {localOwner ? null : (
-              <Button onClick={() => void logout()} size="xs" type="button" variant="outline">
-                Log out
-              </Button>
-            )}
-          </div>
+          </details>
         </div>
         {logoutError === null ? null : (
           <p className="mx-auto max-w-7xl px-5 pb-3 text-sm text-destructive" role="alert">
@@ -476,6 +542,12 @@ function isDirectHuman(principal: Principal): boolean {
 
 function isAdministrator(principal: Principal): boolean {
   return isDirectHuman(principal) && principal.membershipRole === "administrator";
+}
+
+function compactPrincipalId(value: string): string {
+  const separator = value.indexOf("_");
+  const identifier = separator === -1 ? value : value.slice(separator + 1);
+  return identifier.slice(0, 8);
 }
 
 function parseRoute(pathname: string): Route {

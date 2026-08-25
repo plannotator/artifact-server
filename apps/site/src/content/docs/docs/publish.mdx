@@ -1,0 +1,58 @@
+---
+title: Publish artifacts
+description: Choose the CLI, MCP, or HTTP publishing path and create immutable artifact versions.
+---
+
+Artifact Server supports complete single-file and multi-file publications through one verified upload contract. The best entry point depends on where the files live.
+
+## Publish from an agent
+
+Connect your agent to a running local installation, then install the Artifact Server skill:
+
+```sh
+artifactserver connect
+npx skills add plannotator/artifact-server
+```
+
+Inside the source checkout, use `pnpm artifactserver connect --data .artifact-server` instead.
+
+In clients that expose installed skills as slash commands:
+
+```text
+/artifact-server upload that HTML design doc
+```
+
+The skill uses the CLI when the file is on your machine and MCP when the work already exists in the agent or server. It returns the full-screen review link first.
+
+## Publish manually
+
+Use the installed CLI when the bytes are already on disk:
+
+```sh
+artifactserver publish ./prototype/index.html \
+  --name "Checkout prototype" \
+  --tag prototype \
+  --tag checkout
+```
+
+When working inside the Artifact Server source checkout, use `pnpm artifactserver publish` with the same arguments.
+
+Directory publication walks the declared files, computes the manifest, stages the upload, verifies size and SHA-256, and commits one immutable version.
+
+## Files already in an agent session
+
+Use the connected Artifact Server MCP when an agent has the content and does not need to write it to your machine first. The MCP and CLI expose the same product capabilities and return the same artifact and version identity.
+
+The same Artifact Server skill routes explicit installation, deployment, upgrade, backup, restore, and repair requests to separate server-operation instructions. Routine publication does not load administrator procedures.
+
+## Publish a new version
+
+A new publication never edits a committed version. It creates a new version and moves the artifact's current pointer after stale-write and byte verification succeed.
+
+```text
+Artifact link  ───────────────→ current version
+Exact link v1 ───────────────→ immutable v1
+Exact link v2 ───────────────→ immutable v2
+```
+
+Retries use idempotency records so a repeated successful request resolves to the original version instead of creating a duplicate.

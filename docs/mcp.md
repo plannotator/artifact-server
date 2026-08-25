@@ -62,7 +62,7 @@ Every successful publication returns structured data and a short text summary.
 ```json
 {
   "links": {
-    "review": "https://artifacts.example.com/workbench?...&view=focus",
+    "review": "https://artifacts.example.com/review?...&view=focus",
     "artifact": "https://artifacts.example.com/artifacts/art_example",
     "version": "https://ver-example.content.example.com/"
   }
@@ -71,7 +71,7 @@ Every successful publication returns structured data and a short text summary.
 
 The server instructions tell the agent to share `links.review` first. This link opens the exact version full screen with comments.
 
-`links.artifact` follows the current version. `links.version` opens the immutable raw artifact without the Workbench.
+`links.artifact` follows the current version. `links.version` opens the immutable raw artifact without the Artifact Server interface.
 
 The agent must not place bootstrap URLs, access tokens, or credentials in chat.
 
@@ -89,7 +89,7 @@ The agent must not place bootstrap URLs, access tokens, or credentials in chat.
 
 Linked-artifact tools appear only when the deployment enables linked artifacts.
 
-## Install the publishing skill
+## Install the Artifact Server skill
 
 Install the portable Agent Skill:
 
@@ -97,6 +97,14 @@ Install the portable Agent Skill:
 npx skills add plannotator/artifact-server
 ```
 
-The skill uses the CLI for files on the developer machine. It uses MCP for server data and agent-held context.
+The skill routes artifact work and explicit server-administration work to separate internal instructions. It uses the CLI for files on the developer machine and MCP for server data and agent-held context.
+
+In clients that expose installed skills as slash commands, publish finished work with a request such as:
+
+```text
+/artifact-server upload that HTML design doc
+```
+
+The agent returns the full-screen review link first so the recipient can view and comment on the exact version.
 
 Read the [MCP product baseline](../project/spec/artifact-server-mcp-baseline.md) for the protocol and authorization contracts.

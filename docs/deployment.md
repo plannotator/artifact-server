@@ -25,7 +25,7 @@ Each remote deployment needs these boundaries:
 6. Back up the database and artifact files.
 7. Pin release deployments to an immutable image digest.
 
-The application origin serves the Workbench, API, and MCP endpoint. The content domain serves untrusted artifact files.
+The application origin serves Artifact Server, its API, and its MCP endpoint. The content domain serves untrusted artifact files.
 
 ## Select storage
 

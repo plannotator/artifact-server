@@ -1,0 +1,59 @@
+---
+title: Get started locally
+description: Run Artifact Server on a laptop and publish a first immutable artifact version.
+---
+
+The local target runs directly on the host with SQLite, local blob storage, loopback-only content origins, and frictionless local-owner browser access. Node.js 24.12 or newer and pnpm are required when running from source.
+
+## Run from this repository
+
+<Steps>
+  <Step title="Install dependencies">
+    ```sh
+    pnpm install
+    ```
+  </Step>
+  <Step title="Start the application and backend">
+    ```sh
+    pnpm dev
+    ```
+
+    Open the URL printed by the command. The web application normally starts at `http://127.0.0.1:5173/review`, and the development API listens at `http://127.0.0.1:8787`.
+
+    This is the source-development path. Do not run `artifactserver open` as another setup step. Contributors can run CLI commands from the checkout with `pnpm artifactserver <command>`. An installed release uses `artifactserver open` to start or find its managed local service and open Artifact Server.
+  </Step>
+  <Step title="Publish from an agent">
+    Connect the agent to the running development installation:
+
+    ```sh
+    pnpm artifactserver connect --data .artifact-server
+    ```
+
+    Then install the Artifact Server skill:
+
+    ```sh
+    npx skills add plannotator/artifact-server
+    ```
+
+    Then ask the agent to upload the finished file. In clients that expose skills as slash commands:
+
+    ```text
+    /artifact-server upload that HTML design doc
+    ```
+
+    The agent returns the full-screen review link first.
+  </Step>
+</Steps>
+
+## Local access behavior
+
+Requests from the loopback application origin can obtain the local-owner session without a sign-in form. This behavior does not disable authentication for remote access: hosted and private-team deployments still use their configured identity provider.
+
+<Aside type="caution" title="Loopback is the boundary">
+Do not expose the local-owner development target directly to another device or a public network. Use a private-team deployment when Artifact Server must be reachable remotely.
+</Aside>
+
+## Next
+
+- [Choose a CLI or MCP publishing path](/docs/publish/)
+- [Learn the project and version model](/docs/concepts/mental-model/)

@@ -234,6 +234,9 @@ const artifactRowSchema = z.object({
   name: z.string(),
   projectId: z.string(),
 });
+const artifactListRowSchema = artifactRowSchema.extend({
+  versionCount: z.number().int().positive(),
+});
 const artifactTagRowSchema = z.object({
   artifactId: z.string(),
   tag: z.string(),
@@ -1258,7 +1261,12 @@ export class SqliteArtifactRepository implements
             access_setting AS accessSetting,
             current_version_id AS currentVersionId,
             created_at AS createdAt,
-            deleted_at AS deletedAt
+            deleted_at AS deletedAt,
+            (
+              SELECT COUNT(*) FROM versions
+              WHERE versions.project_id = artifacts.project_id
+                AND versions.artifact_id = artifacts.id
+            ) AS versionCount
            FROM artifacts
            WHERE project_id = ?
              AND deleted_at IS NULL
@@ -1287,9 +1295,9 @@ export class SqliteArtifactRepository implements
           cursorCreatedAt,
           cursorId,
           command.limit + 1,
-        );
+      );
       return pageFromRows(
-        this.#withTagsForArtifacts(z.array(artifactRowSchema).parse(rows)),
+        this.#withTagsForArtifacts(z.array(artifactListRowSchema).parse(rows)),
         command.limit,
       );
     });
@@ -2026,9 +2034,9 @@ export class SqliteArtifactRepository implements
     return {...artifact, tags: this.#readTags(artifact.id)};
   }
 
-  #withTagsForArtifacts(
-    artifacts: readonly z.infer<typeof artifactRowSchema>[],
-  ): readonly ArtifactRecord[] {
+  #withTagsForArtifacts<Artifact extends z.infer<typeof artifactRowSchema>>(
+    artifacts: readonly Artifact[],
+  ): readonly (Artifact & Pick<ArtifactRecord, "tags">)[] {
     if (artifacts.length === 0) return [];
     const tagsByArtifact = new Map<string, string[]>();
     for (const artifact of artifacts) tagsByArtifact.set(artifact.id, []);

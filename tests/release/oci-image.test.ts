@@ -383,7 +383,7 @@ async function verifyArchitectureRuntime(input: {
         "test ! -e node_modules/vitest",
         "test ! -e node_modules/oxlint",
         "test -s dist/web/index.html",
-        "test -s dist/web/workbench.html",
+        "test -s dist/web/review.html",
         "find dist/web/assets -type f -name '*.js' -print -quit | grep -q .",
         "find dist/web/assets -type f -name '*.css' -print -quit | grep -q .",
         "test -r /usr/local/share/ca-certificates/aws-rds-global-bundle.pem",

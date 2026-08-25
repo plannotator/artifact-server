@@ -42,7 +42,11 @@ const linkedPublicationSchema = z.object({
     name: z.string(),
     projectId: z.string().min(1),
   }).loose(),
-  links: z.object({artifact: z.string().min(1), version: z.string().min(1)})
+  links: z.object({
+    artifact: z.url(),
+    review: z.url(),
+    version: z.url(),
+  })
     .loose(),
   replayed: z.boolean(),
   sourceBinding: z.object({

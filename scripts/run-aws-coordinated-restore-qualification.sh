@@ -4,7 +4,7 @@ set -euo pipefail
 repository_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 stack_name=${ARTIFACT_SERVER_AWS_QUALIFICATION_STACK:-aws-qualification}
 aws_region=${AWS_REGION:-us-east-1}
-evidence_path=${ARTIFACT_SERVER_AWS_RESTORE_EVIDENCE:-evidence/aws-coordinated-restore.json}
+evidence_path=${ARTIFACT_SERVER_AWS_RESTORE_EVIDENCE:-project/evidence/aws-coordinated-restore.json}
 
 if [[ -z "${PULUMI_BACKEND_URL:-}" ]]; then
   echo "PULUMI_BACKEND_URL must identify the existing qualification backend." >&2

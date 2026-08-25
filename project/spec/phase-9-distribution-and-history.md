@@ -1,6 +1,6 @@
 # Phase 9: cloud distribution, Agent Skills, and optional Git history
 
-Status: partially implemented; client distribution, optional Git, operator skill, and full cloud release gates remain open
+Status: partially implemented; client distribution, optional Git, server-operation skill routing, and full cloud release gates remain open
 
 This phase turns the working Artifact Server backend into a product that agents
 can use and teams can install in their chosen environment. It covers four
@@ -14,8 +14,8 @@ tracks:
 The tracks share product contracts, but they do not ship as one release.
 Cloudflare adds a new runtime and new storage adapters. The direct-cloud
 installers reuse the existing external-storage runtime. Git history is an
-optional background copy. The two skills ship when the commands they describe
-are stable.
+optional background copy. The unified skill exposes each route when the commands
+that route describes are stable.
 
 ## Decisions
 
@@ -75,14 +75,16 @@ Artifact Server always commits the version record and immutable file bytes
 first. Git receives a private background copy. Git cannot supply browser bytes,
 authorize a request, change an artifact, or block publication.
 
-### Keep publishing and operation in separate skills
+### Keep publishing and operation in separate skill references
 
-`publish-artifact` uses ordinary user permissions and routes routine operations
-through the MCP connection or Artifact Server CLI. Local-file operations use
-the CLI because only a process on the user's computer can read those files.
-`operate-artifact-server` uses the local CLI and separately acquired
-administrator and infrastructure access. Installing the publishing skill does
-not install or activate the operator skill.
+The `artifact-server` skill is one portable entrypoint. Routine artifact work
+uses ordinary user permissions and routes through the MCP connection or
+Artifact Server CLI. Local-file operations use the CLI because only a process
+on the user's computer can read those files.
+
+Explicit server-operation work loads a separate internal reference and uses
+separately acquired administrator and infrastructure access. Routine artifact
+requests do not load this reference or gain its permissions.
 
 ## Deployment lifecycle surface
 
@@ -159,14 +161,14 @@ artifacts but cannot publish a file that exists only on the user's computer.
 The skill states this instead of pretending that a remote MCP server can read
 the path.
 
-### A2. Ship `publish-artifact`
+### A2. Ship `artifact-server`
 
-Location: `skills/publish-artifact/`
+Location: `skills/artifact-server/`
 
 Implemented in the repository. Public distribution and supported-client
 release evidence remain gated until `plannotator/artifact-server` is published.
 Format, local installer, repository-gate, and independent forward-test results
-are recorded in `project/evidence/publish-artifact-skill.json`.
+are recorded in `project/evidence/artifact-server-skill.json`.
 
 The skill covers:
 
@@ -180,7 +182,8 @@ The skill covers:
 - list projects and artifacts, open an artifact, change sharing, compare
   versions, restore a version, and manage tags;
 - return the server, project, artifact ID, exact version ID, and browser link;
-- refuse installation, infrastructure, backup, restore, and repair work.
+- route explicit installation, infrastructure, backup, restore, and repair work
+  to the server-operation reference without loading it for routine artifact work.
 
 The main `SKILL.md` stays short. Upload recovery, target selection, old-server
 compatibility, and client-specific notes live in one-level-deep references.
@@ -188,11 +191,11 @@ The skill invokes the supported CLI rather than reimplementing file inspection,
 authentication, hashing, streaming, or retry behavior in scripts. It never
 writes credentials into a project.
 
-### A3. Ship `operate-artifact-server` after the deployment commands stabilize
+### A3. Enable the server-operation route after deployment commands stabilize
 
-Location: `skills/operate-artifact-server/`
+Location: `skills/artifact-server/references/server-operations.md`
 
-The operator skill covers local packages, Compact Compose, External-storage
+The server-operation reference covers local packages, Compact Compose, External-storage
 Compose, Helm, Cloudflare, AWS, and GCP. AKS uses the Kubernetes reference. It
 loads only the reference for the selected target. It always:
 
@@ -206,9 +209,9 @@ loads only the reference for the selected target. It always:
 
 ### Agent Skill release gate
 
-- Validate both folders with the current Agent Skills reference validator.
-- Test realistic prompts that must activate each skill and similar prompts that
-  must not.
+- Validate the skill folder and each routed reference with the current Agent Skills reference validator.
+- Test realistic prompts that must select each route and similar prompts that
+  must not activate the skill.
 - Run CLI-routed local-file publishing and MCP-routed server operations end to
   end in Codex and Claude Code against local and remote installations.
 - Test browser login, renewal, logout, local automatic authentication,
@@ -218,9 +221,9 @@ loads only the reference for the selected target. It always:
   revoked access, and interrupted uploads.
 - Confirm that no credential, temporary upload address, or local path enters
   model context, project files, process arguments, logs, traces, or results.
-- Test operator plan, refusal, apply, failed health verification, and recovery
+- Test server-operation plan, refusal, apply, failed health verification, and recovery
   on every advertised deployment.
-- Version the skills with the server release and publish their compatibility
+- Version the skill with the server release and publish its compatibility
   range.
 
 This track closes `CLI-001`, `CLI-002`, `SKL-001` through `SKL-006`, and
@@ -520,7 +523,7 @@ This track closes `GIT-001` through `GIT-014` and `GATE-004`.
 ## Build order
 
 1. Add authenticated CLI profiles, finish the local-file publishing command,
-   and ship `publish-artifact` with locality-based routing.
+   and ship `artifact-server` with locality-based routing.
 2. Freeze the cloud configuration, output, evidence, and storage-provider
    contracts. Do not add a deployment wrapper.
 3. Build the one-installation Cloudflare runtime with Git disabled.
@@ -535,7 +538,7 @@ This track closes `GIT-001` through `GIT-014` and `GATE-004`.
 6. Build the AWS installer.
 7. Add the GCS adapter and GCP installer.
 8. Keep the Azure Blob adapter preview and document AKS through Helm.
-9. Ship `operate-artifact-server` after all operations it documents are stable.
+9. Enable the `artifact-server` server-operation route after all operations it documents are stable.
 10. Design the shared artifactserver.com Cloudflare control plane only after
     the one-installation target and D1 growth gate are complete.
 

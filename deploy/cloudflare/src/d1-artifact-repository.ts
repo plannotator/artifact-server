@@ -170,6 +170,9 @@ const artifactRowSchema = z.object({
   name: z.string(),
   projectId: z.string(),
 });
+const artifactListRowSchema = artifactRowSchema.extend({
+  versionCount: z.coerce.number().int().positive(),
+});
 const tagRowSchema = z.object({artifactId: z.string(), tag: z.string()});
 const versionRowSchema = z.object({
   artifactId: z.string(),
@@ -1696,7 +1699,17 @@ export function createD1ArtifactRepository(
       return results[1]?.meta.changes === 1;
     },
     listArtifacts: async (command: ListArtifacts): Promise<ArtifactPage> => {
-      const result = await database.prepare(`${artifactSelect}
+      const result = await database.prepare(`
+        SELECT id, project_id AS projectId, name,
+          access_setting AS accessSetting,
+          current_version_id AS currentVersionId,
+          created_at AS createdAt, deleted_at AS deletedAt,
+          (
+            SELECT COUNT(*) FROM versions
+            WHERE versions.project_id = artifacts.project_id
+              AND versions.artifact_id = artifacts.id
+          ) AS versionCount
+        FROM artifacts
         WHERE project_id = ? AND deleted_at IS NULL
           AND (? IS NULL OR EXISTS (
             SELECT 1 FROM artifact_tags
@@ -1713,10 +1726,10 @@ export function createD1ArtifactRepository(
         command.cursor?.createdAt ?? null,
         command.cursor?.id ?? null,
         command.limit + 1,
-      ).all<z.input<typeof artifactRowSchema>>();
-      const parsed = result.results.map((row) => artifactRowSchema.parse(row));
+      ).all<z.input<typeof artifactListRowSchema>>();
+      const parsed = result.results.map((row) => artifactListRowSchema.parse(row));
       const items = await Promise.all(
-        parsed.slice(0, command.limit).map(async (artifact): Promise<ArtifactRecord> =>
+        parsed.slice(0, command.limit).map(async (artifact) =>
           Object.assign({}, artifact, {tags: await readTags(artifact.id)})),
       );
       return pageResult(items, parsed, command.limit);

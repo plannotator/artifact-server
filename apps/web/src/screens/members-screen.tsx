@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { formatTimestamp } from "@/lib/presentation";
 
 /** Administrator-only installation member lifecycle surface. */
@@ -107,8 +108,8 @@ export function MembersScreen() {
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="member-role">Role</Label>
-                  <select
-                    className="h-10 rounded-none border border-input bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
+                  <NativeSelect
+                    className="w-full"
                     id="member-role"
                     onChange={(event) => {
                       setRole(event.currentTarget.value === "administrator"
@@ -117,9 +118,11 @@ export function MembersScreen() {
                     }}
                     value={role}
                   >
-                    <option value="member">Member</option>
-                    <option value="administrator">Administrator</option>
-                  </select>
+                    <NativeSelectOption value="member">Member</NativeSelectOption>
+                    <NativeSelectOption value="administrator">
+                      Administrator
+                    </NativeSelectOption>
+                  </NativeSelect>
                 </div>
               </div>
               <DialogFooter>

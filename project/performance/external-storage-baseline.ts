@@ -31,7 +31,7 @@ import {
   publishPath,
 } from "../../src/client/file-publication-client.js";
 
-const repositoryRoot = path.resolve(import.meta.dirname, "..");
+const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const externalStorageCli = path.join(repositoryRoot, "dist/cli/main.js");
 const region = "us-east-1";
 const maximumMeasuredPublishBytes = 67_108_864;

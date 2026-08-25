@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "base": "/",
+  "knownRoutes": [
+    "/",
+    "/404",
+    "/docs",
+    "/docs/concepts/mental-model",
+    "/docs/concepts/security-boundary",
+    "/docs/deploy/cloudflare",
+    "/docs/get-started",
+    "/docs/publish"
+  ],
+  "opaqueNamespaces": []
+}

@@ -126,9 +126,14 @@ export interface ArtifactActionRecord {
   readonly versionId: string;
 }
 
+/** One active artifact with exact aggregate data needed by list surfaces. */
+export interface ArtifactListItem extends ArtifactRecord {
+  readonly versionCount: number;
+}
+
 /** One bounded page of active artifacts. */
 export interface ArtifactPage {
-  readonly items: readonly ArtifactRecord[];
+  readonly items: readonly ArtifactListItem[];
   readonly nextCursor: PageCursor | null;
 }
 

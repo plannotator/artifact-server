@@ -4,62 +4,91 @@
 
 **The self-hostable, open-source alternative to Claude Code artifacts.**
 
-Artifact Server gives people and agents one place to publish, review, comment on, version, and share browser artifacts.
+Artifact Server gives people and agents one place to publish, review, comment on, version, and share browser artifacts. Its built-in MCP server gives agents direct access to the same work.
 
 Run it on a laptop for one developer. Deploy it for a private team on Cloudflare, one server, Kubernetes, AWS, or Google Cloud.
 
 ## Contents
 
 - [Why Artifact Server](#why-artifact-server)
+- [Built for AI agents](#built-for-ai-agents)
 - [Cloudflare and Artifact Server](#cloudflare-and-artifact-server)
 - [Run it locally](#run-it-locally)
 - [Deploy it for a team](#deploy-it-for-a-team)
-- [Publish and review artifacts](#publish-and-review-artifacts)
-- [Connect an AI agent](#connect-an-ai-agent)
+- [Publish manually](#publish-manually)
 - [Security model](#security-model)
 - [Development and project records](#development-and-project-records)
 
 ## Why Artifact Server
 
-Agents create useful work that does not belong in an application repository. Examples include reports, screenshots, prototypes, diagrams, and complete websites.
+HTML has become a practical format for much more than websites. Teams use it for plans, mockups, prototypes, reports, and working interfaces. The same process now produces images and videos.
 
-Artifact Server gives that work a durable home:
+Too much of this work stays locked inside the platform that created it. Teams deserve to own their artifacts, data, and design process.
 
-| Need | Artifact Server behavior |
-| --- | --- |
-| Revisit an earlier result | Every save creates an immutable version. |
-| Share the latest result | A stable artifact link follows the current version. |
-| Review one exact result | A review link opens that version full screen with comments. |
-| Run generated HTML safely | Artifact content uses a separate browser origin. |
-| Publish from an agent | MCP, CLI, and HTTP use the same product operations. |
-| Keep control of data | Self-host the application and its storage. |
+Artifact Server gives this collaboration a home. Teams can store artifacts by project, share them, comment on exact versions, and return to earlier results. You can self-host Artifact Server and keep control of the files and data.
 
-Artifact Server previews HTML, images, and video. It accepts one file or a complete directory.
+## Built for AI agents
 
-Artifacts belong to projects. Each artifact contains immutable versions and one current-version pointer.
+<p>
+  <img src="./apps/web/src/review/assets/agents/claude.svg" alt="Claude" width="30" height="30">
+  &nbsp;&nbsp;
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./apps/web/src/review/assets/agents/codex-dark.svg">
+    <img src="./apps/web/src/review/assets/agents/codex-light.svg" alt="Codex" width="30" height="30">
+  </picture>
+  &nbsp;&nbsp;
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./apps/web/src/review/assets/agents/cursor-dark.svg">
+    <img src="./apps/web/src/review/assets/agents/cursor-light.svg" alt="Cursor" width="27" height="30">
+  </picture>
+  &nbsp;&nbsp;
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./apps/web/src/review/assets/agents/copilot-dark.svg">
+    <img src="./apps/web/src/review/assets/agents/copilot-light.svg" alt="GitHub Copilot" width="37" height="30">
+  </picture>
+</p>
+
+[![AI agents connect to Artifact Server through its built-in MCP server](./docs/assets/agent-native-mcp.svg)](./docs/mcp.md)
+
+Artifact Server includes an MCP server at `POST /mcp` and a portable Agent Skill. Agents can publish artifacts, create versions, manage projects and tags, read comments, and share exact review links.
+
+Connect an agent to a running local installation:
+
+```sh
+artifactserver connect
+```
+
+From this source checkout, use `pnpm artifactserver connect --data .artifact-server`. This command connects the agent to the same development service as `pnpm dev`. A team deployment exposes its MCP endpoint at `https://your-server.example/mcp`.
+
+Install the Artifact Server skill in Claude, Codex, Cursor, or another Agent Skills client:
+
+```sh
+npx skills add plannotator/artifact-server
+```
+
+Then ask the agent to publish finished work. In clients that expose skills as slash commands:
 
 ```text
-Artifact Server installation
-└── Project
-    └── Artifact
-        ├── Version 1 (immutable)
-        ├── Version 2 (immutable)
-        └── Current pointer → Version 2
+/artifact-server upload that HTML design doc
 ```
+
+The skill uses the CLI for local files. It uses MCP for server data and work that already exists in the agent. After publication, the agent returns the full-screen review link first.
+
+[Connect an agent with MCP](./docs/mcp.md) for setup, supported operations, permissions, and review-link behavior.
 
 ## Cloudflare and Artifact Server
 
-Cloudflare is the primary hosted deployment target. Workers run the application, D1 stores records, and R2 stores artifact files.
+Cloudflare is the main hosted deployment target. Cloudflare Artifacts adds optional Git history, but it is not generally available. You must sign up for access, so the integration is off by default.
 
-Cloudflare Artifacts adds optional Git history for selected projects. The integration is off by default, and Artifact Server remains the source of truth.
-
-![Cloudflare Artifacts provides version storage through Workers bindings](./docs/assets/cloudflare-artifacts-git-handoff.svg)
+[![Cloudflare Artifacts provides optional Git-backed version history through Workers bindings](./docs/assets/cloudflare-artifacts-git-handoff.svg)](./docs/cloudflare-artifacts.md)
 
 - [Deploy Artifact Server on Cloudflare](./deploy/cloudflare/README.md)
 - [Use Cloudflare Artifacts for optional Git history](./docs/cloudflare-artifacts.md)
 - [Read the Cloudflare Artifacts documentation](https://developers.cloudflare.com/artifacts/)
 
 Cloudflare is optional. Artifact Server also runs locally, on Compose, on Kubernetes, on AWS, and on Google Cloud.
+
+[![Artifact Server supports Cloudflare, Docker Compose, Kubernetes, AWS, and Google Cloud](./docs/assets/supported-deployments.svg)](./docs/deployment.md)
 
 ## Run it locally
 
@@ -80,23 +109,11 @@ pnpm install
 pnpm dev
 ```
 
-Open the Workbench at `http://127.0.0.1:5173/workbench`.
+Open the URL printed by the development command. The web application normally runs at `http://127.0.0.1:5173/review`, and the development API runs at `http://127.0.0.1:8787`.
 
-Open the local application from another terminal:
+`pnpm dev` is the source-development path. It already starts the application and API. Do not run `artifactserver open` as a second setup step. Contributors can run CLI commands from the checkout with `pnpm artifactserver <command>`.
 
-```sh
-node --import tsx src/cli/main.ts open --data .artifact-server
-```
-
-Publish an artifact:
-
-```sh
-node --import tsx src/cli/main.ts publish ./report.html \
-  --data .artifact-server \
-  --name "Release report"
-```
-
-The command returns the project, artifact, version, and browser links as JSON.
+An installed release uses a different local path: `artifactserver open` starts or finds its managed local service and opens Artifact Server in your browser.
 
 CAUTION: Do not expose the local-owner target to another device. Use a private-team deployment for remote access.
 
@@ -115,9 +132,9 @@ Every remote deployment uses one trusted application origin and one isolated wil
 
 [Read the deployment guide](./docs/deployment.md) for shared requirements, storage choices, authentication, and backups.
 
-## Publish and review artifacts
+## Publish manually
 
-The CLI accepts a finished file or directory. It uploads raw bytes through the staged upload protocol.
+The installed `artifactserver` CLI accepts one finished file or a complete directory:
 
 ```sh
 artifactserver publish ./report.pdf
@@ -149,41 +166,13 @@ artifactserver publish ./dist \
 
 The expected version prevents an old client from replacing a newer current pointer.
 
-## Connect an AI agent
-
-Artifact Server exposes the same projects, artifacts, versions, comments, and permissions through MCP.
-
-Connect a local client:
-
-```sh
-artifactserver connect
-artifactserver connect codex
-artifactserver doctor codex
-```
-
-`artifactserver connect` supports Codex, Claude Code, Cursor, and VS Code. It does not place a visible credential in client configuration.
-
-For a remote installation, add `https://artifacts.example.com/mcp` to the MCP client. The configured identity provider handles browser authorization.
-
-After publication, the MCP result tells the agent to share `links.review` first. It also returns the stable and raw artifact links.
-
-[Read the MCP guide](./docs/mcp.md) for connection flows, publishing steps, tool groups, and result contracts.
-
-Install the portable publishing skill:
-
-```sh
-npx skills add plannotator/artifact-server
-```
-
-The skill uses the CLI for files on the developer machine. It uses MCP for server data and agent-held context.
-
 ## Security model
 
 Artifact Server separates the trusted application from untrusted artifact content.
 
 ```text
 Application origin
-  Workbench, API, MCP, authentication, comments
+  Review, API, MCP, authentication, comments
         │
         │ sandboxed review protocol
         ▼
@@ -230,3 +219,5 @@ The [`project`](./project) directory contains specifications, conformance eviden
 Public guides live in the [documentation index](./docs/README.md).
 
 [![Review Artifact Server with Plannotator](./docs/images/star-plannotator.svg)](https://github.com/backnotprop/plannotator)
+
+[![Plannotator Workspaces is the planning context layer for your software factory](./docs/images/plannotator-workspaces.svg)](https://plannotator.ai/workspaces)

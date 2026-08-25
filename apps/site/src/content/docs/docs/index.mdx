@@ -1,0 +1,52 @@
+---
+title: Artifact Server documentation
+description: Run Artifact Server, publish artifacts, understand the version model, and deploy the open-source application.
+---
+
+Artifact Server stores finished browser files as immutable versions and serves each version from an isolated hostname. People and agents can publish, inspect, review, share, and revisit the same work without treating generated output as source code.
+
+<CardGrid>
+  <Card title="Get started locally" icon="ph:laptop">
+    Run the application on your machine with loopback-only owner access and publish a first artifact.
+
+    [Start locally →](/docs/get-started/)
+  </Card>
+  <Card title="Understand the model" icon="ph:stack">
+    Learn why projects contain artifacts, artifacts point at current versions, and versions never change.
+
+    [Read the mental model →](/docs/concepts/mental-model/)
+  </Card>
+  <Card title="Publish from agents" icon="ph:robot">
+    Use the CLI for local files or MCP when the connected agent already has the bytes and context.
+
+    [Choose a publishing path →](/docs/publish/)
+  </Card>
+  <Card title="Deploy on Cloudflare" icon="ph:cloud">
+    Follow the first-class Worker, D1, and R2 deployment track and its current qualification boundary.
+
+    [Review the Cloudflare path →](/docs/deploy/cloudflare/)
+  </Card>
+</CardGrid>
+
+## Product hierarchy
+
+```text
+Artifact Server installation
+└── Project
+    └── Artifact
+        └── Immutable version
+```
+
+One installation represents one person, team, or company. A fresh installation creates a default project. Stable artifact links resolve to the current version; exact version links never move.
+
+<Aside type="note" title="Open-source status">
+Artifact Server is under active development. The local application and several deployment packages exist, but no deployment has completed the repository's entire conformance release gate yet. Each deployment page names its current boundary.
+</Aside>
+
+## Browse by job
+
+- [Run the local application](/docs/get-started/)
+- [Publish an artifact](/docs/publish/)
+- [Understand immutable versions](/docs/concepts/mental-model/)
+- [Understand isolated content origins](/docs/concepts/security-boundary/)
+- [Deploy the Cloudflare package](/docs/deploy/cloudflare/)

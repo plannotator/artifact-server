@@ -1,0 +1,205 @@
+---
+import Icon from "@cloudflare/nimbus-docs/components/Icon.astro";
+import { Button } from "./ui/button";
+import { LinkButton } from "./ui/link-button";
+import { ThemeToggle } from "./ui/theme-toggle";
+import { SearchTrigger } from "./ui/search";
+import { config } from "virtual:nimbus/config";
+import { getSidebarSections } from "@cloudflare/nimbus-docs";
+import ArtifactMark from "./ArtifactMark.astro";
+import { artifactServerAppUrl } from "../lib/public-config";
+
+interface Props {
+  /** Astro collection id for the current page, forwarded from DocsLayout. */
+  collection?: string;
+  /** Astro entry id for the current page, forwarded from DocsLayout. */
+  entryId?: string;
+  /**
+   * Whether the page has a sidebar to open. When `false`, the mobile
+   * menu button is hidden — pages that opted out via `sidebar: false`
+   * shouldn't show a button that opens an empty dialog. Default `true`.
+   */
+  showSidebar?: boolean;
+}
+
+// `entryId` is part of Props as a forward-compat hook (the version-switcher
+// recipe reads it) but the base Header doesn't use it — leave it off the
+// destructure to avoid an unused-var warning.
+const { collection, showSidebar = true } = Astro.props;
+
+// Normalize trailing slash so isActive matches sidebar hrefs.
+const currentSlug = Astro.url.pathname.replace(/\/$/, "") || "/";
+const sections = await getSidebarSections(currentSlug, { collection });
+const showSections = sections.length >= 2;
+const isDocs = currentSlug === "/docs" || currentSlug.startsWith("/docs/");
+---
+
+<header class="site-header sticky top-0 z-30 border-b border-border bg-card/90 backdrop-blur-lg">
+  <div class="site-header__rail mx-auto flex items-center justify-between h-16 px-4 lg:px-6">
+    <div class="flex min-w-0 items-center gap-3">
+      <a href="/" class="site-header__brand group" aria-label={`${config.title} home`}>
+        <ArtifactMark />
+        <span class="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
+          {config.title}
+        </span>
+      </a>
+
+      <nav aria-label="Primary" class="site-header__nav hidden md:flex items-center gap-1 ml-4 pl-4 border-l border-border h-6">
+        <a href="/#how-it-works">How it works</a>
+        <a href="/docs/" aria-current={isDocs ? "page" : undefined}>Docs</a>
+        <a href="https://github.com/plannotator/artifact-server">Open source</a>
+      </nav>
+
+      {showSections && isDocs && (
+        <nav aria-label="Documentation sections" class="hidden xl:flex items-center gap-1 ml-4 pl-4 border-l border-border h-6">
+          {sections.map((section) => (
+            <a
+              href={section.href}
+              aria-current={section.isActive ? "page" : undefined}
+              class:list={[
+                "px-2 py-1 rounded-md text-[0.8125rem] font-medium no-underline transition-colors",
+                section.isActive
+                  ? "text-foreground bg-accent"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/60",
+              ]}
+            >
+              {section.label}
+            </a>
+          ))}
+        </nav>
+      )}
+    </div>
+
+    <div class="flex items-center gap-2">
+      {config.search !== false && <SearchTrigger />}
+      <ThemeToggle />
+      <LinkButton href={artifactServerAppUrl} variant="primary" size="sm" class="site-header__app-link hidden sm:inline-flex">
+        Open app
+        <Icon name="ph:arrow-up-right" class="w-4 h-4" />
+      </LinkButton>
+      {!showSidebar && (
+        <details class="site-header__mobile-menu md:hidden">
+          <summary aria-label="Open navigation"><Icon name="ph:list" /></summary>
+          <nav aria-label="Mobile navigation">
+            <a href="/#how-it-works">How it works</a>
+            <a href="/docs/">Docs</a>
+            <a href="https://github.com/plannotator/artifact-server">Open source</a>
+            <a href={artifactServerAppUrl}>Open app <Icon name="ph:arrow-up-right" /></a>
+          </nav>
+        </details>
+      )}
+      {showSidebar && (
+        <Button
+          variant="ghost"
+          shape="square"
+          size="sm"
+          icon="ph:list"
+          aria-label="Open navigation"
+          data-menu-btn
+          class="lg:hidden text-muted-foreground"
+        />
+      )}
+    </div>
+  </div>
+</header>
+
+<style>
+  .site-header__rail {
+    width: min(100%, 80rem);
+    border-inline: 1px solid var(--nb-border);
+  }
+
+  .site-header__brand {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 0.625rem;
+    color: var(--nb-foreground);
+    text-decoration: none;
+  }
+
+  .site-header__brand :global(svg) {
+    width: 1.5rem;
+    height: 1.5rem;
+    color: var(--nb-primary);
+  }
+
+  .site-header__nav a {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    padding-inline: 0.625rem;
+    color: var(--nb-muted-foreground);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    text-decoration: none;
+  }
+
+  .site-header__nav a:hover,
+  .site-header__nav a[aria-current="page"] {
+    color: var(--nb-foreground);
+  }
+
+  .site-header__mobile-menu {
+    position: relative;
+  }
+
+  .site-header__mobile-menu summary {
+    display: grid;
+    width: 2.25rem;
+    height: 2.25rem;
+    place-items: center;
+    color: var(--nb-muted-foreground);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .site-header__mobile-menu summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .site-header__mobile-menu summary :global(svg) {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .site-header__mobile-menu nav {
+    position: absolute;
+    top: calc(100% + 0.875rem);
+    right: 0;
+    display: grid;
+    width: min(17rem, calc(100vw - 2rem));
+    border: 1px solid var(--nb-border-strong);
+    background: var(--nb-card);
+    box-shadow: 0.75rem 0.75rem 0 color-mix(in oklch, var(--nb-primary) 12%, transparent);
+  }
+
+  .site-header__mobile-menu nav a {
+    display: flex;
+    min-height: 3rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-inline: 1rem;
+    border-bottom: 1px solid var(--nb-border);
+    color: var(--nb-foreground);
+    font-size: 0.875rem;
+    text-decoration: none;
+  }
+
+  .site-header__mobile-menu nav a:last-child {
+    border-bottom: 0;
+    background: var(--nb-primary);
+    color: var(--nb-primary-foreground);
+  }
+
+  .site-header__mobile-menu nav a :global(svg) {
+    width: 1rem;
+  }
+
+  @media (max-width: 39.99rem) {
+    .site-header__rail {
+      border-inline: 0;
+    }
+  }
+</style>

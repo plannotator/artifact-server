@@ -18,7 +18,7 @@ const publishResponseSchema = z.object({
     projectId: z.string(),
     tags: z.array(z.string()),
   }),
-  links: z.object({artifact: z.url(), version: z.url()}),
+  links: z.object({artifact: z.url(), review: z.url(), version: z.url()}),
   replayed: z.boolean(),
   version: z.object({
     artifactId: z.string(),

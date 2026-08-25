@@ -15,12 +15,12 @@ The first release supports both a direct local owner and a private team on one s
 | What does it publish? | Finished HTML, CSS, JavaScript, images, fonts, and other files needed by a client-side site, or one ordinary file such as an image, PDF, audio recording, video, text file, or ZIP archive. |
 | What does a user or agent select? | One actual file or one finished directory. Public API and MCP arguments do not contain raw HTML, CSS, JavaScript, Markdown, or base64-wrapped file contents. The publishing client handles the upload details. |
 | What does it execute? | Only code that a browser can run. Artifact Server does not install packages, compile source code, run Node.js or Python for an artifact, connect an artifact to a database, execute server functions, or perform server-side rendering. |
-| How are files displayed? | Artifact Server sends the correct HTTP headers and lets the browser handle formats it already understands. The first release has no custom document viewer, media converter, thumbnail service, ZIP extractor, Markdown renderer, or syntax-highlighting interface. |
+| How are files displayed? | Artifact Server sends the correct HTTP headers and lets the browser handle formats it already understands. The review interface may present an exact-version image or video through native browser elements, but the first release has no custom document renderer, media decoder, converter, thumbnail service, ZIP extractor, Markdown renderer, or syntax-highlighting interface. |
 | How is work organized? | One installation represents one person, team, or company. It contains projects, and every artifact belongs to one project. A new installation creates a default project. There is no organization switcher or separate Artifact Store object. |
 | What is an artifact? | One published item in a project, with a stable ID, access setting, optional tags, current version, and immutable saved versions. |
 | Who can read it? | Exactly two settings: account required, or public link. On a standalone installation, account required means every person admitted to that one installation may read it. A public link opens only the current version; history and comparisons remain account-required. |
 | Who can change it? | Every admitted human member of the installation. A service principal can perform only the actions granted to its API key. |
-| How do agents use it? | Through MCP, the CLI, or the normal HTTP API. They share the same product operations and permissions. The `publish-artifact` Agent Skill uses the CLI for files on the user's computer and MCP or the CLI for server-only work. The optional `operate-artifact-server` skill handles deployment and administration. |
+| How do agents use it? | Through MCP, the CLI, or the normal HTTP API. They share the same product operations and permissions. The `artifact-server` Agent Skill routes artifact work to the CLI or MCP and loads separate server-operation instructions only for explicit administrator work. |
 | How does an agent hear about feedback? | A person selects comment threads on a version, picks a connected agent, and sends them as one bundle. Sending is consumptive: the sent annotations leave the normal views, and they come back only if the bundle cannot be delivered. Agents connect outward and poll for work; Artifact Server never calls out to an agent. |
 | Where does it run? | Direct local, one server, and Kubernetes are first-release targets. Cloudflare and official AWS and GCP installers follow the same container and storage contracts. Azure teams use Helm on AKS; there is no separate Azure installer. |
 | What stays outside it? | Building source code, artifact backends, workspace collaboration, and general-purpose Git hosting. Plannotator owns its workspaces and their review records; Artifact Server stores comment threads on its own artifact versions. |
@@ -40,6 +40,8 @@ Artifact Server accepts a complete directory of finished client-side files or on
 | ZIP, office document, or unknown file | Download it. |
 
 The server supports `GET`, `HEAD`, byte ranges where applicable, a stable `ETag`, an explicit media type, `X-Content-Type-Options: nosniff`, and a safe `Content-Disposition`. It does not transcode, inspect, repair, or execute uploaded media and documents.
+
+The authenticated Review presents a selected image or video from one exact immutable version through native browser elements. A dedicated same-origin media route supplies typed image or video bytes only to an authorized matching subresource destination, supports ranged video playback, and rejects top-level document navigation. The download-only application route and version-scoped content origins keep their existing security roles. See [Image and video previews](./media-preview-spec.md).
 
 Client-side sites may load scripts, styles, fonts, images, and data from other websites. Normal browser rules still apply. A remote service must allow the artifact's origin, and a private network may block internet access. Artifact Server does not copy dependencies loaded from other websites.
 
@@ -109,6 +111,15 @@ Every version receives a unique content hostname, for example:
 https://app.example.com/artifacts/ARTIFACT_ID
 https://VERSION_TOKEN.content.example.net/
 ```
+
+Every successful publication returns three links with distinct jobs. `review` is
+the primary human handoff: a durable application-origin review URL naming the
+exact project, artifact, and version with focus view active, normal team
+authentication, and commenting available. `artifact` is the stable current-version
+link. `version` is the immutable raw content URL. The review URL contains no
+content bootstrap token or credential. MCP publication results tell agents to
+give the review URL to the user first and mention the raw URL second when useful;
+HTTP and the CLI return the same link object.
 
 The stable application link resolves the current version, checks access, and opens the exact version origin. A local installation uses a unique `*.localhost` hostname. Hosted and external-storage installations require wildcard DNS and a wildcard certificate for the content domain.
 
@@ -378,12 +389,12 @@ uses a scoped service credential from its secret manager. `artifactserver
 connect` remains the command for registering an MCP connection; it is not CLI
 login.
 
-Artifact Server ships two portable Agent Skills:
+Artifact Server ships one portable **`artifact-server`** Agent Skill. Its entrypoint selects one internal reference:
 
-- **`publish-artifact`:** publish, update, open, share, list, and compare artifacts. It uses the CLI when local files are involved and MCP or the CLI for server-only operations.
-- **`operate-artifact-server`:** an optional, separately installed administrator skill for install, deploy, upgrade, backup, restore, inspect, and repair work. It uses Artifact Server lifecycle commands for the application and Compose, Helm, Alchemy, or Pulumi directly for infrastructure.
+- **Artifact work:** publish, update, open, share, list, compare, comment on, and organize artifacts. It uses the CLI when local files are involved and MCP or the CLI for server-only operations.
+- **Server operation:** install, deploy, upgrade, back up, restore, inspect, and repair an Artifact Server installation. This route loads only for an explicit administrator request and uses the target's native Compose, Helm, Alchemy, or Pulumi workflow.
 
-The publishing skill resolves its target in this order: an explicit address or link, the server recorded in the artifact reference, current conversation context, project default, then user default. If more than one server remains possible, it asks and never guesses. A non-secret `.artifactserver.json` project file may name an exact server origin, CLI profile, and stable project ID, but never contains a credential. A project display name is resolved through the selected server and is never passed to an ID field.
+The artifact route resolves its target in this order: an explicit address or link, the server recorded in the artifact reference, current conversation context, project default, then user default. If more than one server remains possible, it asks and never guesses. A non-secret `.artifactserver.json` project file may name an exact server origin, CLI profile, and stable project ID, but never contains a credential. A project display name is resolved through the selected server and is never passed to an ID field.
 
 ## Deployment architecture
 
@@ -453,7 +464,7 @@ A requirement is complete only when both tests pass on every applicable deployme
 - Single-file and complete-site publishing.
 - Browser-native file handling.
 - Immutable versions, canonical manifests, text comparison, restore, and two read settings.
-- `artifactserver connect`, the credential-hidden local stdio bridge, HTTP API, modern MCP, and `publish-artifact` skill.
+- `artifactserver connect`, the credential-hidden local stdio bridge, HTTP API, modern MCP, and `artifact-server` skill.
 - Unique `*.localhost` version origins and the browser security tests.
 - Git handoff disabled by default; an independently configured Cloudflare Artifacts provider is optional.
 - No automatic committed-blob garbage collection.
@@ -469,7 +480,7 @@ A requirement is complete only when both tests pass on every applicable deployme
 - Helm chart for Kubernetes. The chart deploys Artifact Server and connects to
   existing Postgres and object storage; it does not hide durable providers
   inside the application release.
-- Private multi-file content bootstrap, backup and restore, upgrades, separate health and readiness checks, structured logs, OTLP export, and `operate-artifact-server` skill.
+- Private multi-file content bootstrap, backup and restore, upgrades, separate health and readiness checks, structured logs, OTLP export, and the server-operation route of the `artifact-server` skill.
 - Conformance tests on one server and multi-replica Kubernetes.
 
 The optional Plannotator connection builds on this release. Public or already reachable servers support browser approval, signed operation requests, and top-level private opening first. The review bridge and private outbound connector have their own security and compatibility gates.

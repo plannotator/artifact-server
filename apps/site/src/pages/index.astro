@@ -1,0 +1,203 @@
+---
+import Icon from "@cloudflare/nimbus-docs/components/Icon.astro";
+import ArtifactMark from "../components/ArtifactMark.astro";
+import Header from "../components/Header.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { artifactServerAppUrl } from "../lib/public-config";
+import "../styles/landing.css";
+
+const description = "Publish the browser artifacts your agents make, keep every version, and review them with people and agents from one durable place.";
+---
+
+<BaseLayout title="Artifact Server — a durable home for agent-made work" description={description} markdownUrl="/index.md">
+  <div class="landing-shell">
+    <Header showSidebar={false} />
+    <main id="main-content" tabindex="-1">
+      <section class="landing-hero" aria-labelledby="landing-title">
+        <div class="landing-hero__copy">
+          <p class="landing-eyebrow">
+            <span></span>
+            Open-source artifact infrastructure
+          </p>
+          <h1 id="landing-title">Give every artifact a stable home.</h1>
+          <p class="landing-lede">
+            Publish the documents, prototypes, reports, and sites your agents make.
+            Artifact Server keeps every version immutable, makes review precise, and
+            gives people and agents the same source of truth.
+          </p>
+          <div class="landing-actions">
+            <a class="landing-button landing-button--primary" href={artifactServerAppUrl}>
+              Open Artifact Server
+              <Icon name="ph:arrow-up-right" />
+            </a>
+            <a class="landing-button" href="/docs/">
+              Read the docs
+              <Icon name="ph:arrow-right" />
+            </a>
+          </div>
+          <p class="landing-command" aria-label="Install command">
+            <code>npx skills add plannotator/artifact-server</code>
+            <span>CLI · MCP · HTTP</span>
+          </p>
+        </div>
+
+        <figure class="artifact-window" aria-label="Artifact Server review showing an artifact, its immutable version, and review comments">
+          <figcaption class="artifact-window__topbar">
+            <span class="artifact-window__brand"><ArtifactMark /> Artifact Server</span>
+            <span>Default project</span>
+            <span class="artifact-window__status"><i></i> Local</span>
+          </figcaption>
+          <div class="artifact-window__body">
+            <div class="artifact-catalog">
+              <div class="artifact-search"><Icon name="ph:magnifying-glass" /> Search artifacts…</div>
+              <article class="artifact-card artifact-card--active">
+                <strong>Release narrative</strong>
+                <span>documentation · product</span>
+                <small>4 versions</small>
+              </article>
+              <article class="artifact-card">
+                <strong>Checkout prototype</strong>
+                <span>prototype · ui</span>
+                <small>2 versions</small>
+              </article>
+              <article class="artifact-card">
+                <strong>Performance report</strong>
+                <span>report · benchmark</span>
+                <small>8 versions</small>
+              </article>
+            </div>
+            <div class="artifact-preview">
+              <header>
+                <div><strong>Release narrative</strong><span>Version 4 · immutable</span></div>
+                <button type="button" tabindex="-1">Full screen</button>
+              </header>
+              <div class="artifact-preview__canvas">
+                <div class="artifact-document">
+                  <p>RELEASE 04 · READY FOR REVIEW</p>
+                  <h2>A precise record of work worth keeping.</h2>
+                  <span></span><span></span><span></span>
+                  <aside>
+                    <strong>Current state</strong>
+                    <p>One version, five files, three open comments.</p>
+                  </aside>
+                </div>
+              </div>
+            </div>
+            <div class="artifact-inspector">
+              <nav><b>Comments <span>3</span></b><span>Details</span><span>Files</span></nav>
+              <article>
+                <header><i>1</i><strong>Keep this tied to the exact version.</strong></header>
+                <p>The new explanation is clear. The diagram should name the content boundary too.</p>
+                <footer><span>Sam</span><button type="button" tabindex="-1">Reply</button></footer>
+              </article>
+              <article>
+                <header><i>2</i><strong>Ready for the agent.</strong></header>
+                <p>Send this thread with the artifact context and let it close the loop.</p>
+                <footer><span>Ada</span><button type="button" tabindex="-1">Reply</button></footer>
+              </article>
+            </div>
+          </div>
+        </figure>
+      </section>
+
+      <section class="landing-principles" id="how-it-works" aria-labelledby="principles-title">
+        <header class="landing-section-heading">
+          <p>One durable loop</p>
+          <h2 id="principles-title">Publish, review, improve—without losing the work between.</h2>
+        </header>
+        <div class="landing-principle-grid">
+          <article>
+            <span>01</span>
+            <Icon name="ph:upload-simple" />
+            <h3>Publish from where the work happens.</h3>
+            <p>Agents and developers publish complete files or sites through the CLI, MCP, or HTTP.</p>
+            <code>artifactserver publish ./report.html</code>
+          </article>
+          <article>
+            <span>02</span>
+            <Icon name="ph:stack" />
+            <h3>Keep immutable versions.</h3>
+            <p>Every save creates a version with stable bytes and identity. The artifact link moves; history does not.</p>
+            <code>Project → Artifact → Version</code>
+          </article>
+          <article>
+            <span>03</span>
+            <Icon name="ph:chat-centered-text" />
+            <h3>Review with people and agents.</h3>
+            <p>Comments stay attached to the exact version and target, so the next change starts with real context.</p>
+            <code>Comment → Agent → New version</code>
+          </article>
+        </div>
+      </section>
+
+      <section class="landing-boundary" aria-labelledby="boundary-title">
+        <div class="landing-boundary__copy">
+          <p class="landing-eyebrow"><span></span>Built around the trust boundary</p>
+          <h2 id="boundary-title">The artifact gets the canvas. The application keeps control.</h2>
+          <p>
+            Finished HTML runs on an isolated content origin. The trusted review owns
+            identity, comments, versions, and sharing. That separation gives rich artifacts
+            the screen without giving untrusted content the keys.
+          </p>
+          <a href="/docs/concepts/security-boundary/">Understand the two-origin model <Icon name="ph:arrow-right" /></a>
+        </div>
+        <div class="boundary-diagram" role="img" aria-label="Trusted Artifact Server application connected to an isolated artifact content origin">
+          <article>
+            <small>TRUSTED ORIGIN</small>
+            <strong>Artifact Server</strong>
+            <span>Identity · versions · comments</span>
+          </article>
+          <div><span>exact version</span><i></i><span>sandboxed view</span></div>
+          <article>
+            <small>CONTENT ORIGIN</small>
+            <strong>Your artifact</strong>
+            <span>HTML · images · video</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="landing-deploy" aria-labelledby="deploy-title">
+        <header class="landing-section-heading">
+          <p>Yours to run</p>
+          <h2 id="deploy-title">Start on a laptop. Deploy the same product to your team.</h2>
+        </header>
+        <div class="landing-deploy__grid">
+          <article>
+            <Icon name="ph:laptop" />
+            <h3>Local</h3>
+            <p>Loopback-only owner access with no browser sign-in ceremony. SQLite and local files, directly on your machine.</p>
+          </article>
+          <article>
+            <Icon name="ph:cloud" />
+            <h3>Cloudflare</h3>
+            <p>A first-class Worker deployment with D1, R2, private team authentication, and isolated content domains.</p>
+          </article>
+          <article>
+            <Icon name="ph:buildings" />
+            <h3>Your infrastructure</h3>
+            <p>One server, Kubernetes, AWS, or GCP. Product behavior stays independent from the storage and deployment provider.</p>
+          </article>
+        </div>
+        <div class="landing-deploy__cta">
+          <div>
+            <span>Cloudflare is the primary hosted target.</span>
+            <p>Nimbus powers these docs; Workers, D1, and R2 power the deployment.</p>
+          </div>
+          <a class="landing-button" href="/docs/deploy/cloudflare/">Deploy on Cloudflare <Icon name="ph:arrow-right" /></a>
+        </div>
+      </section>
+
+      <section class="landing-close" aria-labelledby="close-title">
+        <ArtifactMark />
+        <p>Artifacts are the product of the work.</p>
+        <h2 id="close-title">Give them a home.</h2>
+        <div class="landing-actions">
+          <a class="landing-button landing-button--primary" href={artifactServerAppUrl}>Open Artifact Server <Icon name="ph:arrow-up-right" /></a>
+          <a class="landing-button" href="/docs/get-started/">Get started locally <Icon name="ph:arrow-right" /></a>
+        </div>
+      </section>
+    </main>
+    <SiteFooter />
+  </div>
+</BaseLayout>

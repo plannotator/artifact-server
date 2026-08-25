@@ -9,13 +9,13 @@ interface OpenManagementOptions {
   readonly data: string;
 }
 
-/** Add the local management-application opener. */
+/** Add the local Artifact Server opener. */
 export function configureOpenManagementCommand(
   program: Command,
   defaultDataDirectory: string,
 ): void {
   program.command("open")
-    .description("Open the local Artifact Server management application.")
+    .description("Open the local Artifact Server application.")
     .addOption(
       new Option("--data <directory>", "persistent data directory")
         .default(defaultDataDirectory),
@@ -27,6 +27,6 @@ export function configureOpenManagementCommand(
         currentCliInvocation(),
       )).origin;
       await openSystemBrowser(new URL(origin), process.env);
-      process.stdout.write("Opened the local Artifact Server management application.\n");
+      process.stdout.write("Opened the local Artifact Server application.\n");
     });
 }

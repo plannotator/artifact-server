@@ -71,6 +71,7 @@ const linkedPublicationResultSchema = z.object({
   links: z.object({
     artifact: z.url(),
     live: z.url().nullable(),
+    review: z.url(),
     version: z.url(),
   }),
   replayed: z.boolean(),
@@ -84,6 +85,9 @@ const publicationResultSchema = z.object({
   artifact: z.object({currentVersionId: z.string(), id: z.string()}).loose(),
   replayed: z.boolean(),
   version: z.object({id: z.string()}).loose(),
+});
+const publicationCommitResultSchema = publicationResultSchema.extend({
+  links: z.object({artifact: z.url(), review: z.url(), version: z.url()}),
 });
 
 describe("modern MCP HTTP", () => {
@@ -146,6 +150,8 @@ describe("modern MCP HTTP", () => {
     expect(discoveryResult.supportedVersions).toEqual([protocolVersion]);
     expect(discoveryResult.instructions).toContain("artifact_create_upload");
     expect(discoveryResult.instructions).toContain("actual files");
+    expect(discoveryResult.instructions).toContain("links.review first");
+    expect(discoveryResult.instructions).toContain("Do not put content bootstrap URLs");
     expect(discoveryBody.result).not.toHaveProperty("capabilities.subscriptions");
 
     const listed = await mcpRequest(
@@ -366,7 +372,7 @@ describe("modern MCP HTTP", () => {
     expect(listenBody.error.message).toContain("Subscription limit");
   });
 
-  test("MCP-006-B MCP-006-F MCP-007-B MCP-007-F MCP-008-B MCP-008-F: every advertised artifact operation runs over real files and shared policy", async () => {
+  test("MCP-006-B MCP-006-F MCP-007-B MCP-007-F MCP-008-B MCP-008-F PUB-013-B PUB-013-F: every advertised artifact operation runs over real files and shared policy", async () => {
     expect.hasAssertions();
     const bytes = new TextEncoder().encode("MCP file publication proof\n");
     const declaredFile = {
@@ -401,14 +407,25 @@ describe("modern MCP HTTP", () => {
       },
       uploadId: upload.uploadId,
     };
-    const committed = publicationResultSchema.parse(
-      (await callTool(server, installation.apiToken, {
-        arguments: commitArguments,
-        name: "artifact_commit_upload",
-      })).structuredContent,
-    );
+    const commitResult = await callTool(server, installation.apiToken, {
+      arguments: commitArguments,
+      name: "artifact_commit_upload",
+    });
+    const committed = publicationCommitResultSchema.parse(commitResult.structuredContent);
     expect(committed.replayed).toBe(false);
-    const replay = publicationResultSchema.parse(
+    expect(commitResult.content[0]?.text).toBe([
+      "Published \"MCP publication proof\".",
+      `Review and comment: ${committed.links.review}`,
+      `Raw artifact: ${committed.links.version}`,
+    ].join("\n"));
+    expect(Object.fromEntries(new URL(committed.links.review).searchParams)).toEqual({
+      artifact: committed.artifact.id,
+      project: "prj_default",
+      version: committed.version.id,
+      view: "focus",
+    });
+    expect(committed.links.review).not.toContain("__artifact_bootstrap=");
+    const replay = publicationCommitResultSchema.parse(
       (await callTool(server, installation.apiToken, {
         arguments: commitArguments,
         name: "artifact_commit_upload",
@@ -517,7 +534,7 @@ describe("modern MCP HTTP", () => {
         ["proof.txt", updatedBytes],
       ]),
     );
-    const updated = publicationResultSchema.parse(
+    const updated = publicationCommitResultSchema.parse(
       (await callTool(server, installation.apiToken, {
         arguments: {
           idempotencyKey: "mcp-file-publication-proof-002",

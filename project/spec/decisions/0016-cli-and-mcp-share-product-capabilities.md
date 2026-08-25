@@ -76,9 +76,9 @@ automation use scoped service credentials supplied by their secret manager.
 `artifactserver connect` continues to register an MCP connection in an AI
 client. It is not renamed or overloaded as CLI login.
 
-### The publishing skill routes by locality
+### The Artifact Server skill routes by locality
 
-`publish-artifact` decides which adapter to use:
+The artifact route of `artifact-server` decides which adapter to use:
 
 - A local source or destination path uses the CLI.
 - Server-only work may use the connected MCP server or the CLI.
@@ -98,7 +98,7 @@ The user asks for the product operation. The skill handles adapter selection.
   on a user's computer.
 - CLI authentication, secure credential storage, renewal, logout, structured
   output, interrupted-upload recovery, and secret-redaction tests are required
-  before the publishing skill ships.
+  before the Artifact Server skill ships.
 
 ## References
 

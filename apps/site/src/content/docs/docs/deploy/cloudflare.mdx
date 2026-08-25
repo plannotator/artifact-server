@@ -1,0 +1,49 @@
+---
+title: Deploy on Cloudflare
+description: The first-class Artifact Server deployment path using Workers, D1, R2, and Alchemy.
+---
+
+Cloudflare is Artifact Server's first-class direct-cloud target. The deployment package composes the same product services as the local and external-storage runtimes with Cloudflare-native infrastructure.
+
+| Product need | Cloudflare service |
+| --- | --- |
+| Application and HTTP runtime | Workers |
+| Durable records | D1 |
+| Artifact and staged-upload bytes | R2 |
+| Provisioning and lifecycle | Alchemy |
+| Hosted browser and MCP authorization | WorkOS |
+| Optional private Git handoff | Cloudflare Artifacts, off by default |
+
+## Current release boundary
+
+<Aside type="caution" title="Qualification is still in progress">
+The Cloudflare package has selected live runtime and recovery evidence, but it has not passed the repository's complete Cloudflare release gate. Treat this page as the integration path, not a declaration of general availability.
+</Aside>
+
+The checked-in deployment package lives in `deploy/cloudflare`. It pins Alchemy, Wrangler, Workers types, and the Cloudflare compatibility date. Team and CI deployments use Cloudflare-hosted Alchemy state.
+
+## Deployment shape
+
+```text
+artifactserver.com        public Artifact Server home and Nimbus docs
+app.example.com           trusted Artifact Server Worker
+*.content.example.com     isolated artifact versions
+```
+
+The public site and a deployed Artifact Server installation are separate Workers. This keeps public documentation, authenticated application routes, `/api`, `/mcp`, and wildcard content delivery from competing for one routing and security policy.
+
+## Operate the package
+
+From `deploy/cloudflare`, authenticate to the approved account and use the pinned lifecycle commands:
+
+```sh
+pnpm plan
+pnpm deploy
+pnpm destroy
+```
+
+The configuration contract requires the Cloudflare account, application and content domains, D1 and R2 bindings, identity-provider settings, and Cloudflare-hosted Alchemy state. Read the repository's `deploy/cloudflare/README.md` before creating resources.
+
+## Optional Cloudflare Artifacts history
+
+Cloudflare Artifacts is a configurable Git handoff, not authoritative storage. It stays off by default because access is not globally available. Enabling it for one project must not change the immutable Artifact Server version or its primary bytes.

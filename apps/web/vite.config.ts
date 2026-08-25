@@ -7,17 +7,19 @@ export default defineConfig({
     emptyOutDir: true,
     outDir: "../../dist/web",
     rollupOptions: {
-      // Two documents ship from this application: the management shell, and
-      // the review frame the shell embeds to host the sandboxed artifact
+      // Three documents ship from this application: the original admin shell,
+      // the artifact-first review application, and the isolated review frame
+      // that the review application embeds to host the sandboxed artifact
       // viewer. They are separate entries so the frame never carries the
-      // shell's API client and the shell never carries the viewer.
+      // application's API client and the application never carries the viewer.
       input: {
         index: new URL("./index.html", import.meta.url).pathname,
         "review-frame": new URL("./review-frame.html", import.meta.url).pathname,
+        review: new URL("./review.html", import.meta.url).pathname,
       },
     },
   },
-  plugins: [react(), tailwindcss(), reviewFrameRoute()],
+  plugins: [react(), tailwindcss(), documentRoutes()],
   resolve: {
     alias: {
       "@": new URL("./src", import.meta.url).pathname,
@@ -38,22 +40,32 @@ export default defineConfig({
 });
 
 /**
- * The server publishes the review frame at `/review-frame`, without the file
- * extension, so the shell embeds one stable path in every environment. The dev
- * server resolves entries by file name, so map the route onto the document.
+ * Production publishes extensionless routes for Artifact Server review and
+ * its isolated frame. Vite resolves multi-page entries by file name, so
+ * development maps the public routes onto those documents and redirects the
+ * former route to its canonical replacement.
  */
-function reviewFrameRoute(): Plugin {
+function documentRoutes(): Plugin {
   return {
     configureServer(server) {
-      server.middlewares.use((request, _response, next) => {
+      server.middlewares.use((request, response, next) => {
         const url = request.url ?? "";
-        if (url === "/review-frame" || url.startsWith("/review-frame?")) {
-          request.url = `/review-frame.html${url.slice("/review-frame".length)}`;
+        if (url === "/workbench" || url.startsWith("/workbench?")) {
+          response.statusCode = 308;
+          response.setHeader("Location", `/review${url.slice("/workbench".length)}`);
+          response.end();
+          return;
+        }
+        for (const route of ["/review-frame", "/review"] as const) {
+          if (url === route || url.startsWith(`${route}?`)) {
+            request.url = `${route}.html${url.slice(route.length)}`;
+            break;
+          }
         }
         next();
       });
     },
-    name: "artifact-server-review-frame-route",
+    name: "artifact-server-document-routes",
   };
 }
 

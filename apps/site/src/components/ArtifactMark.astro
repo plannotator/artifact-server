@@ -1,0 +1,25 @@
+---
+interface Props {
+  class?: string;
+  label?: string;
+}
+
+const { class: className, label } = Astro.props;
+---
+
+<svg
+  aria-hidden={label ? undefined : "true"}
+  aria-label={label}
+  class={className}
+  fill="none"
+  role={label ? "img" : undefined}
+  stroke="currentColor"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  stroke-width="1.7"
+  viewBox="0 0 24 24"
+>
+  <circle cx="12.125" cy="5.5" r="3.5"></circle>
+  <rect height="7" rx="1.75" width="7" x="3.75" y="12"></rect>
+  <path d="m17 11.75 4 7h-8Z"></path>
+</svg>

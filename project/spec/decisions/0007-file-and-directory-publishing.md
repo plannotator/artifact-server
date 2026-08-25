@@ -16,7 +16,7 @@ commit rules.
 The client owns the local filesystem path. A remote Artifact Server never reads
 an arbitrary client path. The Artifact Server CLI reads the selected file,
 uploads its bytes through a server-issued upload plan, and commits the version.
-The publishing skill invokes that CLI when a local path is involved. MCP may
+The artifact route of the Artifact Server skill invokes that CLI when a local path is involved. MCP may
 manage the upload only when its own runtime can already access the bytes; a
 remote MCP server never treats a user-local path as accessible. A local
 installation may use the separately constrained local-import path.

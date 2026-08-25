@@ -64,7 +64,7 @@ A project administrator follows this sequence:
 4. Enable Git history for the project.
 5. Monitor backfill and provider health.
 
-The Workbench, HTTP API, and MCP expose the same project setting.
+The Artifact Server review interface, HTTP API, and MCP expose the same project setting.
 
 ## Keep account data separate
 
