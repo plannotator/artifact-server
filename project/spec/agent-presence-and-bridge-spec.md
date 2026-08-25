@@ -188,9 +188,76 @@ fail open (dormant + one notice, exponential 1–30 s backoff), report
   `kind` remains display/analytics metadata; nothing branches on it, which is
   what makes widening safe. The dispatch spec reserved this for "a future
   ADR" — this is that decision, recorded as ADR when implemented.
+- **Registration advertises capabilities.** Alongside `kind`, registration
+  gains a `capabilities` object (e.g. `{beacon: boolean, delivery:
+  "follow_up", evidence: "native" | "mailbox"}`). Servers and UI branch on
+  capabilities, never on `kind` — the rule the Live Session Bridge research
+  states as "check `capabilities.steer`, not `harness === 'pi'`". Adding it
+  at widening time is cheap; retrofitting it after three harnesses exist is
+  not. Unknown capability keys are ignored (forward compatibility), and the
+  registration response carries a protocol version so a bridge knows what
+  the server it reached supports.
+- **Sanitize rendered bundles.** Comment bodies and quoted selections are
+  untrusted text injected into an agent's context. The render contract
+  strips bidirectional-override and invisible Unicode before composing the
+  message (the same class of control the Live Session Bridge security model
+  requires for tool summaries). This applies server-independent, inside the
+  shared render function.
 - **Non-goals.** No webhook push transport (long-poll stays the only claim
   path in v1); no bridge-side plugin marketplace; no per-kind server
   behavior.
+
+## 4.3 Prior art: the Live Session Bridge research
+
+`~/oss/agent-comms/LIVE_SESSION_BRIDGE_ENGINEERING_HANDOFF.md` (separate
+project) solves the *session-centric* problem — streaming live transcripts
+out of a harness and steering into it. This loop stays *work-centric* and
+deliberately never adopts streaming, steering, or interrupts. What it does
+adopt from that research:
+
+- **Capability descriptors** (above) and its **delivery-evidence ladder**,
+  which maps onto ours: their `queued` = `queued`, `adapter_received` =
+  `claimed`, `native_accepted` = `delivered`, `completed` = `addressed`. The
+  protocol doc records this mapping so the two efforts share vocabulary.
+- **Non-interference wording.** "Native work fails open; remote control
+  fails closed" and the bounded-queue rules enter
+  `docs/agent-bridge-protocol.md` as written there, not re-derived.
+- **The opencode homework.** Their tested adapter fixes our opencode
+  adapter's shape: in-process client, `session.promptAsync` for follow-up
+  input, `session.abort` for interrupt (unused here), steering advertised
+  `false`, and a V2-plugin-API version-pinning caveat to resolve before
+  shipping.
+- **The MCP mailbox as a third bridge.** Artifact Server already has an MCP
+  server; a `dispatch_inbox` MCP tool (list my queued dispatches, claim,
+  report) lets Claude Code or any MCP-capable agent join the loop with no
+  extension at all — with honestly weaker evidence (`evidence: "mailbox"`:
+  delivery means "the agent polled its inbox") and weaker presence (no
+  long-poll heartbeat; connected-ness derives from recent tool calls). The
+  capability object is what lets the UI show this difference truthfully.
+
+## 4.4 Cross-product reuse (Workspaces)
+
+Artifact Server is the open-source offering out of Workspaces; the same
+integrated-agent capability is wanted there. Strategy: promote the protocol,
+not the plugin.
+
+- **One protocol, two servers.** Workspaces implements the same five routes
+  (plus beacon) against its own models and auth. The client package and the
+  harness adapters are shared verbatim; a bridge is pointed at a server by
+  origin + token and cannot tell the products apart.
+- **One extension, many connections.** The bridge client grows multi-
+  connection resolution: local Artifact Server discovery and a Workspaces
+  org credential can both resolve, and one Pi session runs one bridge per
+  connection. Bundles already render with their source named.
+- **Naming follows adoption.** If Workspaces commits, the package publishes
+  at the family level (`@plannotator/agent-bridge`) rather than
+  `@artifact-server/agent-bridge` — this supersedes section 6 decision 3's
+  package name if and when that commitment lands; decide before first
+  publish, because renaming a published package is churn.
+- **What Workspaces adds on its own:** multi-tenant agent-token issuance
+  (device-flow-style), org/workspace scoping on the registry, and rate
+  limits on claim polls. The protocol itself needs none of that to change —
+  which is the point.
 
 ## 5. Conformance sketch (IDs reserved, all `specified`)
 
