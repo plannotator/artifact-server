@@ -12,8 +12,8 @@
   <rect x="0.5" y="0.5" width="679" height="103" rx="14" fill="url(#frame)" stroke="#232637"/>
 
   <g transform="translate(28 22)" aria-hidden="true">
-    <rect x="0" y="32" width="26" height="26" rx="7" fill="#5f74ff"/>
-    <circle cx="39" cy="10" r="10" fill="#a4b3ff"/>
+    <rect x="0" y="32" width="26" height="26" rx="7" fill="#527aff"/>
+    <circle cx="39" cy="10" r="10" fill="#9bb5ff"/>
     <path d="M34 58 48 32 62 58Z" fill="#f7f5ff"/>
   </g>
 
@@ -21,12 +21,12 @@
     <text x="112" y="42" fill="#8f96ab" font-size="12" font-weight="600" letter-spacing="2.4">ARTIFACT SERVER</text>
     <text x="112" y="70" fill="#f5f6f8" font-size="19" font-weight="500" letter-spacing="-0.2">Created with Plannotator.</text>
 
-    <text x="624" y="58" fill="#aab9ff" font-size="16" font-weight="600" text-anchor="end">Star Plannotator</text>
+    <text x="624" y="58" fill="#a1bbff" font-size="16" font-weight="600" text-anchor="end">Star Plannotator</text>
   </g>
 
-  <path transform="translate(482 52)" d="M0-8 1.9-2.6 7.6-2.5 3.1 0.9 4.7 6.5 0 3.2-4.7 6.5-3.1 0.9-7.6-2.5-1.9-2.6Z" fill="#a4b3ff" aria-hidden="true"/>
+  <path transform="translate(482 52)" d="M0-8 1.9-2.6 7.6-2.5 3.1 0.9 4.7 6.5 0 3.2-4.7 6.5-3.1 0.9-7.6-2.5-1.9-2.6Z" fill="#9bb5ff" aria-hidden="true"/>
 
-  <g transform="translate(640 52)" fill="none" stroke="#758cff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" aria-hidden="true">
+  <g transform="translate(640 52)" fill="none" stroke="#6892ff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" aria-hidden="true">
     <path d="M0 0H15"/>
     <path d="m9-6 6 6-6 6"/>
   </g>
