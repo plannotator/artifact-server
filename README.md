@@ -261,7 +261,7 @@ The skill source lives in [`skills/publish-artifact`](./skills/publish-artifact)
 
 ## Use optional Git history with Cloudflare Artifacts
 
-![Optional Git handoff from Artifact Server to Cloudflare Artifacts](./docs/assets/cloudflare-artifacts-git-handoff.svg)
+![Cloudflare Artifacts provides version storage through Workers bindings](./docs/assets/cloudflare-artifacts-git-handoff.svg)
 
 [Cloudflare Artifacts](https://developers.cloudflare.com/artifacts/) provides versioned storage through Workers bindings, a REST API, and standard Git smart HTTP.
 
