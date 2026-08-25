@@ -3,7 +3,6 @@
   <desc id="description">Plannotator Workspaces is the planning context layer for your software factory. Sign up.</desc>
 
   <rect width="680" height="104" fill="#090a0d"/>
-  <path d="M24 20H656" stroke="#282b33" stroke-width="1"/>
 
   <g transform="translate(25 39)" fill="none" stroke-linejoin="miter" aria-hidden="true">
     <rect x="0" y="12" width="28" height="24" stroke="#8b7cff" stroke-width="2"/>

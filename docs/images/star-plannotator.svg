@@ -1,18 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="680" height="92" viewBox="0 0 680 92" role="img" aria-labelledby="title description">
-  <title id="title">Like Artifact Server? Star Plannotator on GitHub</title>
-  <desc id="description">A compact link from Artifact Server to the Plannotator repository.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="104" viewBox="0 0 680 104" role="img" aria-labelledby="title description">
+  <title id="title">Artifact Server is created with Plannotator</title>
+  <desc id="description">Artifact Server is created with Plannotator. Star Plannotator on GitHub.</desc>
 
-  <rect width="680" height="92" fill="#0b0a0d"/>
+  <rect width="680" height="104" fill="#090a0d"/>
 
-  <g transform="translate(24 25)" aria-hidden="true">
+  <g transform="translate(25 31)" aria-hidden="true">
     <rect x="0" y="17" width="24" height="24" rx="6" fill="#7767ff"/>
     <circle cx="35" cy="8" r="8" fill="#b8aeff"/>
     <path d="M31 42 43 22 55 42Z" fill="#f7f5ff"/>
   </g>
 
-  <text x="96" y="39" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="700">Like Artifact Server?</text>
-  <text x="96" y="63" fill="#aaa4b1" font-family="Arial, Helvetica, sans-serif" font-size="13">Review it with Plannotator.</text>
+  <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="92" y="52" fill="#8b93a3" font-size="11" font-weight="500" letter-spacing="2.2">ARTIFACT SERVER</text>
+    <text x="92" y="78" fill="#f5f6f8" font-size="18" font-weight="450" letter-spacing="-0.2">Created with Plannotator.</text>
 
-  <path d="M383 31 388 41 399 43 391 51 393 62 383 57 373 62 375 51 367 43 378 41Z" fill="#ffd16f" stroke="#7767ff" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"/>
-  <text x="414" y="52" fill="#9a93ff" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">Star Plannotator ↗</text>
+    <text x="526" y="66" fill="#b6afff" font-size="15" font-weight="500">Star Plannotator</text>
+  </g>
+
+  <path d="M493 37 498 47 509 49 501 57 503 68 493 63 483 68 485 57 477 49 488 47Z" fill="#ffd16f" stroke="#7767ff" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"/>
+
+  <g transform="translate(647 61)" fill="none" stroke="#8b7cff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" aria-hidden="true">
+    <path d="M0 0H14"/>
+    <path d="m9-5 5 5-5 5"/>
+  </g>
 </svg>

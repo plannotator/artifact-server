@@ -9,7 +9,7 @@ Artifact Server gives people and agents one place to publish, review, comment on
 Run it on a laptop for one developer. Deploy it for a private team on Cloudflare, one server, Kubernetes, AWS, or Google Cloud.
 
 <p align="center">
-  <a href="https://github.com/backnotprop/plannotator"><img src="./docs/images/star-plannotator.svg" alt="Review Artifact Server with Plannotator" width="380"></a>
+  <a href="https://github.com/backnotprop/plannotator"><img src="./docs/images/star-plannotator.svg" alt="Artifact Server is created with Plannotator" width="380"></a>
   &nbsp;&nbsp;&nbsp;&nbsp;
   <a href="https://plannotator.ai/workspaces"><img src="./docs/images/plannotator-workspaces.svg" alt="Plannotator Workspaces is the planning context layer for your software factory" width="380"></a>
 </p>
