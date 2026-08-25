@@ -117,37 +117,7 @@ Every remote deployment uses one trusted application origin and one isolated wil
 
 ## Publish manually
 
-The installed `artifactserver` CLI accepts one finished file or a complete directory:
-
-```sh
-artifactserver publish ./report.pdf
-artifactserver publish ./dist --public --name "Product prototype" --tag prototype
-```
-
-For a remote server, sign in once and save a named profile:
-
-```sh
-artifactserver auth login https://artifacts.example.com --name team
-artifactserver publish ./dist --profile team
-```
-
-Publication returns these links:
-
-| Link | Purpose |
-| --- | --- |
-| `links.review` | Opens the exact version full screen with comments. Share this link first. |
-| `links.artifact` | Opens the stable link that follows the current version. |
-| `links.version` | Opens the immutable raw version without the Artifact Server interface. |
-
-To publish another version, provide the artifact ID and expected current version:
-
-```sh
-artifactserver publish ./dist \
-  --artifact art_example \
-  --expected-version ver_example
-```
-
-The expected version prevents an old client from replacing a newer current pointer.
+Most artifacts are published by an agent through the [Artifact Server Skill](./skills/artifact-server/SKILL.md) or [MCP](./docs/mcp.md). For direct access, use the `artifactserver` CLI to publish files and directories, connect to remote servers, and create new versions. [Read the CLI guide](./docs/cli.md).
 
 ## Security model
 
