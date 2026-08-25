@@ -118,6 +118,8 @@ Every remote deployment uses one trusted application origin and one isolated wil
 | AWS | ECS, RDS, and S3 | [AWS Pulumi guide](./deploy/pulumi/aws/README.md) |
 | Google Cloud | Cloud Run, Cloud SQL, and Cloud Storage | [Google Cloud Pulumi guide](./deploy/pulumi/gcp/README.md) |
 
+Azure teams deploy through the Helm chart on AKS; there is no separate Azure installer. Azure Blob Storage is available as a preview adapter and has not passed live Azure qualification.
+
 [Read the deployment guide](./docs/deployment.md) for shared requirements, storage choices, authentication, and backups.
 
 ## Usage
