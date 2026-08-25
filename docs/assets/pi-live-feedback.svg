@@ -21,7 +21,7 @@
     <text x="84" y="63" fill="#f5f6f8" font-size="16" font-weight="500" letter-spacing="-0.2">Live integrated feedback</text>
   </g>
 
-  <g transform="translate(542 46)" fill="none" stroke="#8286ff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" aria-hidden="true">
+  <g transform="translate(542 46)" fill="none" stroke="#758cff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" aria-hidden="true">
     <path d="M0 0H14"/>
     <path d="m9-5 5 5-5 5"/>
   </g>
