@@ -198,10 +198,11 @@ secret files:
 
 ```sh
 cp .env.external-storage.example .env
-install -d -m 0700 /etc/artifact-server
+install -d -o 1000 -g 1000 -m 0700 /etc/artifact-server
 printf 'as_key_key_%s_%s\n' "$(openssl rand -hex 16)" "$(openssl rand -hex 32)" \
   > /etc/artifact-server/api-token
-chmod 0600 /etc/artifact-server/api-token
+chown 1000:1000 /etc/artifact-server/api-token
+chmod 0400 /etc/artifact-server/api-token
 ```
 
 Write the complete Postgres URL, including its credential, to the database
@@ -210,8 +211,14 @@ secret file. Do not put either secret value in `.env`:
 ```sh
 printf '%s\n' 'postgresql://artifactserver:replace_me@postgres.example/artifactserver' \
   > /etc/artifact-server/database-url
-chmod 0600 /etc/artifact-server/database-url
+chown 1000:1000 /etc/artifact-server/database-url
+chmod 0400 /etc/artifact-server/database-url
 ```
+
+The image runs as UID and GID `1000:1000`. File-backed Compose secrets are
+read-only bind mounts, and Docker Compose cannot remap their ownership. Keep
+each secret owned by `1000:1000` with mode `0400`; a root-owned `0600` file is
+not readable by the application container.
 
 Edit `.env`. Set the image digest, stable installation ID, administrator email,
 application origin, content domain, bucket, region, and exact host paths for the
@@ -221,8 +228,9 @@ AWS installations should use a container-accessible instance, task, or other
 workload identity instead of static S3 keys. For Cloudflare R2, AWS without a
 workload identity, or another supported provider that uses static credentials, copy
 `compose.external-storage.s3-credentials.yaml.example` to a private operator
-file, configure the two additional host secret paths, and include that file in
-every command shown below.
+file, create the two additional secret files with the same `1000:1000`
+ownership and `0400` mode, configure their host paths, and include that file
+in every command shown below.
 
 ### Validate and migrate
 

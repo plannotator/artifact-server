@@ -474,11 +474,15 @@ async function createProject(
     s3AccessKey: path.join(secretDirectory, "s3-access-key-id"),
     s3SecretKey: path.join(secretDirectory, "s3-secret-access-key"),
   };
+  // File-backed Compose secrets are bind mounts, so Linux Compose cannot
+  // remap the test runner's UID to the image's fixed UID. The private 0700
+  // parent directory protects these fixtures on the host; the mounted files
+  // must remain readable by the non-root container process.
   await Promise.all([
-    writeFile(paths.apiToken, `${apiToken}\n`, {mode: 0o600}),
-    writeFile(paths.databaseUrl, `${databaseUrl}\n`, {mode: 0o600}),
-    writeFile(paths.s3AccessKey, `${s3AccessKey}\n`, {mode: 0o600}),
-    writeFile(paths.s3SecretKey, `${s3SecretKey}\n`, {mode: 0o600}),
+    writeFile(paths.apiToken, `${apiToken}\n`, {mode: 0o644}),
+    writeFile(paths.databaseUrl, `${databaseUrl}\n`, {mode: 0o644}),
+    writeFile(paths.s3AccessKey, `${s3AccessKey}\n`, {mode: 0o644}),
+    writeFile(paths.s3SecretKey, `${s3SecretKey}\n`, {mode: 0o644}),
   ]);
   if (options.createBucket !== false) {
     await s3Client.send(new CreateBucketCommand({Bucket: bucket}));
