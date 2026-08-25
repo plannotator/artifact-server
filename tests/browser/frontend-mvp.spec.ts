@@ -622,7 +622,7 @@ test.describe("Artifact Server frontend MVP", () => {
       );
 
       await expect(share.getByRole("img", {
-        name: "Claude, Codex, Cursor, and GitHub Copilot",
+        name: "Claude, Codex, Cursor, GitHub Copilot, and Pi",
       })).toBeVisible();
       await share.getByRole("button", {name: "Copy review prompt"}).click();
       await expect(share.getByRole("button", {name: "Prompt copied"})).toBeVisible();

@@ -1,24 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="184" viewBox="0 0 1200 184" role="img" aria-labelledby="title description">
   <title id="title">Artifact Server includes a built-in MCP server</title>
-  <desc id="description">Claude, Codex, Cursor, and GitHub Copilot connect to Artifact Server through MCP to publish, review, comment, version, and share artifacts.</desc>
+  <desc id="description">Claude, Codex, Cursor, GitHub Copilot, and Pi connect to Artifact Server through MCP to publish, review, comment, version, and share artifacts.</desc>
 
   <rect width="1200" height="184" fill="#070809"/>
   <path d="M56 32H1144" stroke="#282c33" stroke-width="2"/>
 
   <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
     <text x="58" y="80" fill="#858d9b" font-size="14" font-weight="500" letter-spacing="3">YOUR AI AGENT</text>
-    <text x="58" y="120" fill="#f4f6f8" font-size="24" font-weight="500" letter-spacing="-.25">Claude · Codex · Cursor · Copilot</text>
+    <text x="58" y="120" fill="#f4f6f8" font-size="22" font-weight="500" letter-spacing="-.25">Claude · Codex · Cursor · Copilot · Pi</text>
 
-    <g transform="translate(485 62)">
+    <g transform="translate(505 62)">
       <rect width="164" height="60" fill="#17141f" stroke="#7561d7" stroke-width="2"/>
       <text x="82" y="25" fill="#aaa0f7" font-size="13" font-weight="600" text-anchor="middle" letter-spacing="3">BUILT-IN</text>
       <text x="82" y="47" fill="#f4f6f8" font-size="21" font-weight="550" text-anchor="middle">MCP SERVER</text>
     </g>
 
-    <path d="M414 92H466" stroke="#858d9b" stroke-width="2"/>
-    <path d="m456 84 10 8-10 8" fill="none" stroke="#858d9b" stroke-linejoin="miter" stroke-width="2"/>
-    <path d="M668 92H720" stroke="#858d9b" stroke-width="2"/>
-    <path d="m710 84 10 8-10 8" fill="none" stroke="#858d9b" stroke-linejoin="miter" stroke-width="2"/>
+    <path d="M444 92H486" stroke="#858d9b" stroke-width="2"/>
+    <path d="m476 84 10 8-10 8" fill="none" stroke="#858d9b" stroke-linejoin="miter" stroke-width="2"/>
+    <path d="M688 92H730" stroke="#858d9b" stroke-width="2"/>
+    <path d="m720 84 10 8-10 8" fill="none" stroke="#858d9b" stroke-linejoin="miter" stroke-width="2"/>
 
     <g transform="translate(754 60)" aria-hidden="true">
       <circle cx="43" cy="12" r="11" fill="#aaa0f7"/>

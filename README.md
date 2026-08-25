@@ -52,6 +52,8 @@ Artifact Server gives this collaboration a home. Teams can store artifacts by pr
     <source media="(prefers-color-scheme: dark)" srcset="./apps/web/src/review/assets/agents/copilot-dark.svg">
     <img src="./apps/web/src/review/assets/agents/copilot-light.svg" alt="GitHub Copilot" width="37" height="30">
   </picture>
+  &nbsp;&nbsp;
+  <img src="./apps/web/src/review/assets/agents/pi.svg" alt="Pi" width="30" height="30">
 </p>
 
 [![AI agents connect to Artifact Server through its built-in MCP server](./docs/assets/agent-native-mcp.svg)](./docs/mcp.md)

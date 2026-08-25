@@ -25,6 +25,7 @@ import copilotDarkLogoUrl from "./assets/agents/copilot-dark.svg";
 import copilotLightLogoUrl from "./assets/agents/copilot-light.svg";
 import cursorDarkLogoUrl from "./assets/agents/cursor-dark.svg";
 import cursorLightLogoUrl from "./assets/agents/cursor-light.svg";
+import piLogoUrl from "./assets/agents/pi.svg";
 
 type ShareScreen = "access" | "agents" | "overview";
 type CopiedTarget = "agent-prompt" | "link" | "local-command" | "mcp-address";
@@ -263,7 +264,7 @@ export function ReviewShareControl({
 
                 <section aria-labelledby="as-share-agent-heading" className="as-share-agent">
                   <h3 id="as-share-agent-heading">Review with an AI agent</h3>
-                  <p>Copy one complete prompt into Claude, Codex, Cursor, or GitHub Copilot.</p>
+                  <p>Copy one complete prompt into Claude, Codex, Cursor, GitHub Copilot, or Pi.</p>
                   <div className="as-share-agent__actions">
                     <button
                       className="as-share-agent__prompt"
@@ -430,7 +431,7 @@ export function ReviewShareControl({
 export function AgentLogos() {
   return (
     <span
-      aria-label="Claude, Codex, Cursor, and GitHub Copilot"
+      aria-label="Claude, Codex, Cursor, GitHub Copilot, and Pi"
       className="as-agent-logos"
       role="img"
     >
@@ -449,6 +450,9 @@ export function AgentLogos() {
         darkUrl={copilotDarkLogoUrl}
         lightUrl={copilotLightLogoUrl}
       />
+      <span aria-hidden="true" className="as-agent-logo">
+        <img alt="" src={piLogoUrl} />
+      </span>
     </span>
   );
 }
