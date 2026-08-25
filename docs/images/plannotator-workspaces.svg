@@ -4,20 +4,20 @@
 
   <rect width="680" height="104" fill="#090a0d"/>
 
-  <g transform="translate(16 20)" fill="none" stroke-linejoin="miter" aria-hidden="true">
-    <rect x="0" y="24" width="42" height="36" stroke="#8b7cff" stroke-width="3"/>
-    <rect x="11" y="12" width="42" height="36" stroke="#7065d6" stroke-width="3"/>
-    <rect x="22" y="0" width="42" height="36" stroke="#b6afff" stroke-width="3"/>
+  <g transform="translate(24 21)" fill="none" stroke-linejoin="miter" aria-hidden="true">
+    <rect x="0" y="22" width="38" height="32" stroke="#8b7cff" stroke-width="3"/>
+    <rect x="10" y="11" width="38" height="32" stroke="#7065d6" stroke-width="3"/>
+    <rect x="20" y="0" width="38" height="32" stroke="#b6afff" stroke-width="3"/>
   </g>
 
   <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
-    <text x="104" y="38" fill="#8b93a3" font-size="15" font-weight="500" letter-spacing="2.5">PLANNOTATOR WORKSPACES</text>
-    <text x="104" y="81" fill="#f5f6f8" font-size="22" font-weight="450" letter-spacing="-0.35">The planning context layer for your software factory.</text>
+    <text x="112" y="39" fill="#8b93a3" font-size="14" font-weight="550" letter-spacing="2.3">PLANNOTATOR WORKSPACES</text>
+    <text x="112" y="70" fill="#f5f6f8" font-size="17.5" font-weight="450" letter-spacing="-0.25">The planning context layer for your software factory.</text>
 
-    <text x="580" y="43" fill="#b6afff" font-size="20" font-weight="500">Sign up</text>
+    <text x="625" y="68" fill="#b6afff" font-size="18" font-weight="550" text-anchor="end">Sign up</text>
   </g>
 
-  <g transform="translate(649 38)" fill="none" stroke="#8b7cff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2.5" aria-hidden="true">
+  <g transform="translate(649 61)" fill="none" stroke="#8b7cff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2.5" aria-hidden="true">
     <path d="M0 0H18"/>
     <path d="m11-7 7 7-7 7"/>
   </g>
