@@ -8,6 +8,12 @@ Artifact Server gives people and agents one place to publish, review, comment on
 
 Run it on a laptop for one developer. Deploy it for a private team on Cloudflare, one server, Kubernetes, AWS, or Google Cloud.
 
+<p align="center">
+  <a href="https://github.com/backnotprop/plannotator"><img src="./docs/images/star-plannotator.svg" alt="Review Artifact Server with Plannotator" width="350"></a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://plannotator.ai/workspaces"><img src="./docs/images/plannotator-workspaces.svg" alt="Plannotator Workspaces is the planning context layer for your software factory" width="350"></a>
+</p>
+
 ## Contents
 
 - [Why Artifact Server](#why-artifact-server)
@@ -194,7 +200,3 @@ The [`project`](./project) directory contains specifications, conformance eviden
 - [Project records index](./project/README.md)
 
 Public guides live in the [documentation index](./docs/README.md).
-
-[![Review Artifact Server with Plannotator](./docs/images/star-plannotator.svg)](https://github.com/backnotprop/plannotator)
-
-[![Plannotator Workspaces is the planning context layer for your software factory](./docs/images/plannotator-workspaces.svg)](https://plannotator.ai/workspaces)
