@@ -4,7 +4,7 @@
 
 **The self-hostable, open-source alternative to Claude Code artifacts.**
 
-Artifact Server gives people and agents one place to publish, review, comment on, version, and share browser artifacts. Its built-in MCP server gives agents direct access to the same work.
+Artifact Server gives people and agents one place to publish, review, comment on, version, and share the artifacts they create while building products. Its built-in MCP server gives agents direct access to the same work.
 
 Run it on a laptop for one developer. Deploy it for a private team on Cloudflare, one server, Kubernetes, AWS, or Google Cloud.
 
