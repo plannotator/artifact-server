@@ -151,27 +151,9 @@ The expected version prevents an old client from replacing a newer current point
 
 ## Security model
 
-Artifact Server separates the trusted application from untrusted artifact content.
+Artifact Server serves untrusted artifact content from isolated version hosts, separate from the trusted application origin used for authentication, review, comments, API, and MCP. Private content uses version-scoped browser sessions, and untrusted paths cannot select storage locations.
 
-```text
-Application origin
-  Review, API, MCP, authentication, comments
-        │
-        │ sandboxed review protocol
-        ▼
-Content origin
-  Immutable artifact files on isolated version hosts
-```
-
-The server also enforces these rules:
-
-- Untrusted paths never select storage locations.
-- Private content uses version-scoped browser sessions.
-- Publication requires file sizes and SHA-256 fingerprints.
-- Version bytes and IDs remain stable across retries and restarts.
-- Administrative changes use capabilities, expected versions, and idempotency keys.
-
-Read [SECURITY.md](./SECURITY.md) to report a vulnerability. Read the [security-boundary decision](./project/spec/decisions/0002-shared-identity-and-private-content.md) for the full model.
+Read the [security model](./project/spec/decisions/0002-shared-identity-and-private-content.md) or [report a vulnerability](./SECURITY.md).
 
 ## Development and project records
 
