@@ -271,6 +271,48 @@ not the plugin.
   limits on claim polls. The protocol itself needs none of that to change —
   which is the point.
 
+### 4.5 Per-agent support, realistically
+
+| Agent | Tier | The loop | Presence | What "delivered" means |
+| --- | --- | --- | --- | --- |
+| Pi | native | Full, shipped | Heartbeat now; beacon when built | Host accepted the message |
+| OpenCode | native | Full, buildable now | Same as Pi (same bridge core) | Host accepted via `promptAsync` |
+| Claude Code + Channel | channel | Full, near-Pi | Real heartbeat (the Channel process long-polls claims) | Notification handed to the session; queues while busy |
+| Claude Code, plain MCP | mailbox | Passive | Inferred from recent tool calls | The agent checked its inbox |
+| Codex | mailbox | Passive; no deeper path today (desktop has no injection surface) | None | Inbox check |
+| Cursor / Copilot | mailbox | Passive, user-prompted in practice | None | Inbox check |
+
+The mailbox tier still beats copy-pasting feedback, but it is not the
+autonomous loop, and the UI must not pretend otherwise: hollow presence,
+threads say "queued for agent," never "working…". The registration
+capability object is what keeps all tiers honest in one UI.
+
+### 4.6 MCP convergence (the long-term transport)
+
+The MCP roadmap (modelcontextprotocol.io/development/roadmap, 2026-08-22)
+prioritizes exactly the pieces this loop hand-rolls today:
+
+- **Tasks (SEP-2663)** — long-running work units with a shared lifecycle:
+  a dispatch is a Task.
+- **Server-initiated events** (Triggers & Events WG) — channels,
+  subscriptions, and webhooks so servers push instead of clients polling:
+  replaces the claims long-poll, and upgrades the mailbox floor to a real
+  wake path for every MCP-capable agent.
+- **Agent identity** (DPoP, ID-JAG, workload identity federation) — the
+  multi-tenant token story Workspaces otherwise has to invent.
+
+Posture, decided: **when these specs land, standard MCP becomes the
+transport.** Until then the five HTTP routes and harness adapters are the
+interim, built so the swap stays contained: the domain model (dispatch
+lifecycle, evidence ladder, presence states, render contract) is
+transport-independent; only the transport layer (routes, long-poll, harness
+adapters) gets replaced. Concretely that means: no domain logic in route
+handlers or adapters, the protocol version handshake from day one, and the
+capability object expressed in terms MCP can later satisfy (`evidence`,
+delivery mode) rather than harness names. Track the Tasks and
+Triggers & Events working groups; when a Claude/OpenCode/Codex host speaks
+Tasks + server-initiated events natively, its bespoke adapter retires.
+
 ## 5. Conformance sketch (IDs reserved, all `specified`)
 
 | ID | Behavior |
@@ -306,3 +348,56 @@ annotations resolved all four.
    its ring colors come from that agent's brand identity — not the app
    accent, not a generated palette. The `kind` → brand-asset map in the web
    app is the single place a new agent kind registers its look.
+
+## 7. Build-out path
+
+Ordered so each phase ships value alone, the reusable pieces harden before
+anything depends on them, and Workspaces can join without rework.
+
+**Phase 0 — freeze the reusable core (gates everything).**
+Extract `integrations/bridge-core/` as the shared client package; write
+`docs/agent-bridge-protocol.md`; add the capability object and protocol
+version handshake to registration; Unicode sanitization in the shared
+render function. Decide the package name before first publish:
+`@plannotator/agent-bridge` if the Workspaces commitment stands, otherwise
+`@artifact-server/agent-bridge`. Pi extension re-ships on the extracted
+core (behavior unchanged — a refactor proven by BRP-001).
+
+**Phase 1 — the owner-facing UX, no new agents.**
+Derived presence in `GET /agents` (PRS-001) + the avatar/ring/popover in
+the web app (PRS-006); frictionless single-agent send with undo (PRS-004);
+per-artifact bulk clear (PRS-005). Then the beacon route (PRS-002/003) and
+the Pi bridge sending it. All Artifact Server web/server work.
+
+**Phase 2 — the mailbox floor.**
+`dispatch_inbox` MCP tools (list/claim/report) on the existing MCP server,
+registered as `evidence: "mailbox"` agents. Instantly enables Claude Code,
+Codex, Cursor, and Copilot at the passive tier with server-side work only.
+UI honesty (hollow presence, "queued for agent") rides the Phase 1
+capability plumbing.
+
+**Phase 3 — OpenCode, the second native adapter.**
+Pin the supported OpenCode version (V2 plugin API decision), port the
+prior-art adapter onto the shared core, one real integration test proving
+follow-up delivery semantics, publish. This is the proof the extraction is
+actually reusable.
+
+**Phase 4 — Workspaces implements the protocol.**
+Workspaces builds the five routes + beacon against its own models, plus
+its own concerns: multi-tenant agent-token issuance, org/workspace scoping,
+claim-poll rate limits. The client package gains multi-connection
+resolution (local discovery + Workspaces org credential; one bridge per
+connection in one host session). No shared code changes shape — that is
+the acceptance test of the strategy.
+
+**Phase 5 — Claude Channel bridge, when the preview stabilizes.**
+The Channel process on the shared core: long-poll claims (heartbeat),
+push bundles as channel notifications, `evidence: "channel"`. Gated on
+Channels leaving research preview or the owner deciding preview status is
+acceptable.
+
+**Horizon — MCP convergence (section 4.6).**
+Dispatch becomes a Task, server-initiated events replace the long-poll and
+wake the mailbox tier, agent identity replaces bespoke tokens. Bespoke
+adapters retire host by host as hosts speak the new primitives natively.
+The phases above are built to make this a transport swap, not a rewrite.
