@@ -21,7 +21,7 @@ Run it on a laptop for one developer. Deploy it for a private team on Cloudflare
 - [Cloudflare and Artifact Server](#cloudflare-and-artifact-server)
 - [Run it locally](#run-it-locally)
 - [Deploy it for a team](#deploy-it-for-a-team)
-- [Publish manually](#publish-manually)
+- [Usage](#usage)
 - [Security model](#security-model)
 - [Development and project records](#development-and-project-records)
 
@@ -120,7 +120,7 @@ Every remote deployment uses one trusted application origin and one isolated wil
 
 [Read the deployment guide](./docs/deployment.md) for shared requirements, storage choices, authentication, and backups.
 
-## Publish manually
+## Usage
 
 Most artifacts are published by an agent through the [Artifact Server Skill](./skills/artifact-server/SKILL.md) or [MCP](./docs/mcp.md). For direct access, use the `artifactserver` CLI to publish files and directories, connect to remote servers, and create new versions. [Read the CLI guide](./docs/cli.md).
 
