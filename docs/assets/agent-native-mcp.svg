@@ -4,24 +4,24 @@
 
   <defs>
     <linearGradient id="frame" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#111220"/>
-      <stop offset="1" stop-color="#0a0b10"/>
+      <stop offset="0" stop-color="#0e0f19"/>
+      <stop offset="1" stop-color="#07080d"/>
     </linearGradient>
   </defs>
 
-  <rect x="1" y="1" width="1198" height="182" rx="18" fill="url(#frame)" stroke="#272940" stroke-width="1.5"/>
+  <rect x="1" y="1" width="1198" height="182" rx="18" fill="url(#frame)" stroke="#232637" stroke-width="1.5"/>
 
   <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
     <text x="64" y="78" fill="#8f96ab" font-size="13" font-weight="600" letter-spacing="2.8">YOUR AI AGENT</text>
     <text x="64" y="112" fill="#f5f6f8" font-size="21" font-weight="500" letter-spacing="-0.2">Claude · Codex · Cursor · Copilot · Pi</text>
 
     <g transform="translate(518 61)">
-      <rect width="166" height="62" rx="12" fill="#151725" stroke="#7767ff" stroke-width="2"/>
-      <text x="83" y="26" fill="#b8aeff" font-size="12" font-weight="600" text-anchor="middle" letter-spacing="3">BUILT-IN</text>
+      <rect width="166" height="62" rx="12" fill="#12131d" stroke="#6d6eff" stroke-width="2"/>
+      <text x="83" y="26" fill="#adb2ff" font-size="12" font-weight="600" text-anchor="middle" letter-spacing="3">BUILT-IN</text>
       <text x="83" y="48" fill="#f5f6f8" font-size="20" font-weight="600" text-anchor="middle">MCP SERVER</text>
     </g>
 
-    <g fill="none" stroke="#8b7cff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" aria-hidden="true">
+    <g fill="none" stroke="#8286ff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" aria-hidden="true">
       <path d="M474 92H504"/>
       <path d="m497 85 7 7-7 7"/>
       <path d="M698 92H728"/>
@@ -29,8 +29,8 @@
     </g>
 
     <g transform="translate(758 50) scale(1.2)" aria-hidden="true">
-      <rect x="0" y="32" width="26" height="26" rx="7" fill="#7767ff"/>
-      <circle cx="39" cy="10" r="10" fill="#b8aeff"/>
+      <rect x="0" y="32" width="26" height="26" rx="7" fill="#6d6eff"/>
+      <circle cx="39" cy="10" r="10" fill="#adb2ff"/>
       <path d="M34 58 48 32 62 58Z" fill="#f7f5ff"/>
     </g>
 

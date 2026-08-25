@@ -4,12 +4,12 @@
 
   <defs>
     <linearGradient id="frame" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#111220"/>
-      <stop offset="1" stop-color="#0a0b10"/>
+      <stop offset="0" stop-color="#0e0f19"/>
+      <stop offset="1" stop-color="#07080d"/>
     </linearGradient>
   </defs>
 
-  <rect x="1" y="1" width="1198" height="182" rx="18" fill="url(#frame)" stroke="#272940" stroke-width="1.5"/>
+  <rect x="1" y="1" width="1198" height="182" rx="18" fill="url(#frame)" stroke="#232637" stroke-width="1.5"/>
 
   <text x="64" y="52" fill="#8f96ab" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" letter-spacing="2.4">SUPPORTED DEPLOYMENTS</text>
 
@@ -22,7 +22,7 @@
       <text x="58" y="43" fill="#8f96ab" font-size="12" font-weight="400">Workers · D1 · R2</text>
     </g>
 
-    <path d="M282 88V140" stroke="#232540"/>
+    <path d="M282 88V140" stroke="#1f2136"/>
 
     <g transform="translate(304 92)">
       <g transform="translate(0 1) scale(1.78)" fill="#2496ed" aria-hidden="true">
@@ -32,7 +32,7 @@
       <text x="58" y="43" fill="#8f96ab" font-size="12" font-weight="400">Compose</text>
     </g>
 
-    <path d="M508 88V140" stroke="#232540"/>
+    <path d="M508 88V140" stroke="#1f2136"/>
 
     <g transform="translate(530 92)">
       <g transform="translate(0 0) scale(1.75)" fill="#326ce5" aria-hidden="true">
@@ -42,7 +42,7 @@
       <text x="58" y="43" fill="#8f96ab" font-size="12" font-weight="400">Helm</text>
     </g>
 
-    <path d="M738 88V140" stroke="#232540"/>
+    <path d="M738 88V140" stroke="#1f2136"/>
 
     <g transform="translate(760 92)">
       <g transform="translate(0 2)" aria-hidden="true">
@@ -54,7 +54,7 @@
       <text x="67" y="43" fill="#8f96ab" font-size="12" font-weight="400">ECS · RDS · S3</text>
     </g>
 
-    <path d="M960 88V140" stroke="#232540"/>
+    <path d="M960 88V140" stroke="#1f2136"/>
 
     <g transform="translate(982 92)">
       <g transform="translate(0 4) scale(0.164)" aria-hidden="true">
