@@ -26,6 +26,7 @@ import copilotLightLogoUrl from "./assets/agents/copilot-light.svg";
 import cursorDarkLogoUrl from "./assets/agents/cursor-dark.svg";
 import cursorLightLogoUrl from "./assets/agents/cursor-light.svg";
 import piLogoUrl from "./assets/agents/pi.svg";
+import piLightLogoUrl from "./assets/agents/pi-light.svg";
 
 type ShareScreen = "access" | "agents" | "overview";
 type CopiedTarget = "agent-prompt" | "link" | "local-command" | "mcp-address";
@@ -450,9 +451,7 @@ export function AgentLogos() {
         darkUrl={copilotDarkLogoUrl}
         lightUrl={copilotLightLogoUrl}
       />
-      <span aria-hidden="true" className="as-agent-logo">
-        <img alt="" src={piLogoUrl} />
-      </span>
+      <ThemedAgentLogo darkUrl={piLogoUrl} lightUrl={piLightLogoUrl} />
     </span>
   );
 }

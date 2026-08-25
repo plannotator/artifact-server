@@ -51,7 +51,10 @@ Artifact Server gives teams a self-hosted place to organize and collaborate on t
     <img src="./apps/web/src/review/assets/agents/copilot-light.svg" alt="GitHub Copilot" width="37" height="30">
   </picture>
   &nbsp;&nbsp;
-  <img src="./apps/web/src/review/assets/agents/pi.svg" alt="Pi" width="30" height="30">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./logo.svg">
+    <img src="./apps/web/src/review/assets/agents/pi-light.svg" alt="Pi" width="30" height="30">
+  </picture>
 </p>
 
 [![AI agents connect to Artifact Server through its built-in MCP server](./docs/assets/agent-native-mcp.svg)](./docs/mcp.md)
@@ -72,6 +75,8 @@ Then ask:
 ```
 
 The agent returns the full-screen review link first. [Read the MCP guide](./docs/mcp.md) for source checkouts, remote servers, permissions, and supported operations.
+
+[![Artifact Server has first-class Pi support through a live feedback extension](./docs/assets/pi-live-feedback.svg)](./integrations/pi/README.md)
 
 ## Cloudflare and Artifact Server
 
