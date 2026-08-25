@@ -83,15 +83,7 @@ Cloudflare is optional. Artifact Server also runs locally, on Compose, on Kubern
 
 ## Run it locally
 
-The local target stores records in SQLite and files on local disk. It grants local-owner access only on an exact loopback origin.
-
-### Requirements
-
-- Node.js 24.12 or newer
-- pnpm 10.34.3
-- Git
-
-### Start from source
+Local mode stores metadata in SQLite and files on disk. It grants owner access only from the same loopback origin. It requires Node.js 24.12+ and pnpm 10.34.3.
 
 ```sh
 git clone https://github.com/plannotator/artifact-server.git
@@ -100,13 +92,7 @@ pnpm install
 pnpm dev
 ```
 
-Open the URL printed by the development command. The web application normally runs at `http://127.0.0.1:5173/review`, and the development API runs at `http://127.0.0.1:8787`.
-
-`pnpm dev` is the source-development path. It already starts the application and API. Do not run `artifactserver open` as a second setup step. Contributors can run CLI commands from the checkout with `pnpm artifactserver <command>`.
-
-An installed release uses a different local path: `artifactserver open` starts or finds its managed local service and opens Artifact Server in your browser.
-
-CAUTION: Do not expose the local-owner target to another device. Use a private-team deployment for remote access.
+Open the printed URL. Packaged installs use `artifactserver open` instead. For remote access, [deploy the private-team target](./docs/deployment.md).
 
 ## Deploy it for a team
 
