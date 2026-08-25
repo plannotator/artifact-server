@@ -106,7 +106,7 @@ Every remote deployment uses one trusted application origin and one isolated wil
 
 | Deployment | Data layer | Guide |
 | --- | --- | --- |
-| Cloudflare | D1 and R2 | [Cloudflare guide](./deploy/cloudflare/README.md) |
+| Cloudflare | D1 and R2 (in preview: Artifacts) | [Cloudflare guide](./deploy/cloudflare/README.md) |
 | Compact Compose | SQLite and one file volume | [Compose guide](./packaging/compose/README.md) |
 | External-storage Compose | PostgreSQL and S3-compatible storage | [Compose guide](./packaging/compose/README.md) |
 | Kubernetes | PostgreSQL and object storage | [Helm guide](./packaging/helm/artifact-server/README.md) |
