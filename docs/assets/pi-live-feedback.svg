@@ -1,27 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="184" viewBox="0 0 1200 184" role="img" aria-labelledby="title description">
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="92" viewBox="0 0 600 92" role="img" aria-labelledby="title description">
   <title id="title">First-class Pi support</title>
   <desc id="description">The Artifact Server Pi extension sends review comments to a live Pi session. Pi replies to and resolves the comments in Artifact Server.</desc>
 
-  <rect width="1200" height="184" fill="#070809"/>
-  <path d="M56 32H1144" stroke="#282c33" stroke-width="2"/>
+  <defs>
+    <linearGradient id="frame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#111220"/>
+      <stop offset="1" stop-color="#0a0b10"/>
+    </linearGradient>
+  </defs>
 
-  <g transform="translate(50 45) scale(.12)" fill="#f4f6f8" aria-hidden="true">
+  <rect x="0.5" y="0.5" width="599" height="91" rx="14" fill="url(#frame)" stroke="#272940"/>
+
+  <g transform="translate(14 17) scale(.072)" fill="#f5f6f8" aria-hidden="true">
     <path fill-rule="evenodd" d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"/>
     <path d="M517.36 400H634.72V634.72H517.36Z"/>
   </g>
 
   <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
-    <text x="176" y="88" fill="#858d9b" font-size="18" font-weight="500" letter-spacing="4">FIRST-CLASS PI SUPPORT</text>
-    <text x="176" y="130" fill="#f4f6f8" font-size="34" font-weight="450" letter-spacing="-.7">Live integrated feedback</text>
-
-    <text x="746" y="91" fill="#d4d8de" font-size="20" font-weight="400" letter-spacing="-.15">
-      <tspan x="746" dy="0">Send review comments to a live Pi session.</tspan>
-      <tspan x="746" dy="29">Replies return to Artifact Server.</tspan>
-    </text>
+    <text x="84" y="39" fill="#8f96ab" font-size="10.5" font-weight="600" letter-spacing="2.2">FIRST-CLASS PI SUPPORT</text>
+    <text x="84" y="63" fill="#f5f6f8" font-size="16" font-weight="500" letter-spacing="-0.2">Live integrated feedback</text>
   </g>
 
-  <g transform="translate(1100 107)" fill="none" stroke="#8b7cff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="3" aria-hidden="true">
-    <path d="M0 0H30"/>
-    <path d="m21-9 9 9-9 9"/>
+  <g transform="translate(542 46)" fill="none" stroke="#8b7cff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" aria-hidden="true">
+    <path d="M0 0H14"/>
+    <path d="m9-5 5 5-5 5"/>
   </g>
 </svg>

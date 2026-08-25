@@ -52,7 +52,7 @@ Artifact Server gives teams a self-hosted place to organize and collaborate on t
   </picture>
   &nbsp;&nbsp;
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./logo.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="./apps/web/src/review/assets/agents/pi.svg">
     <img src="./apps/web/src/review/assets/agents/pi-light.svg" alt="Pi" width="30" height="30">
   </picture>
 </p>
@@ -130,7 +130,7 @@ Artifact Server serves untrusted artifact content from isolated version hosts, s
 
 Read the [security model](./project/spec/decisions/0002-shared-identity-and-private-content.md) or [report a vulnerability](./SECURITY.md).
 
-Read about Artifact Server's [software supply-chain security](./project/spec/security-release-plan.md).
+Read about Artifact Server's [software supply-chain security](https://artifactserver.com/docs/open-source/security/).
 
 ## Development and project records
 

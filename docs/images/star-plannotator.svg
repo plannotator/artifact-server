@@ -2,25 +2,32 @@
   <title id="title">Artifact Server is created with Plannotator</title>
   <desc id="description">Artifact Server is created with Plannotator. Star Plannotator on GitHub.</desc>
 
-  <rect width="680" height="104" fill="#090a0d"/>
+  <defs>
+    <linearGradient id="frame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#111220"/>
+      <stop offset="1" stop-color="#0a0b10"/>
+    </linearGradient>
+  </defs>
 
-  <g transform="translate(24 18)" aria-hidden="true">
-    <rect x="0" y="25" width="30" height="30" rx="7.5" fill="#7767ff"/>
-    <circle cx="44" cy="11" r="11" fill="#b8aeff"/>
-    <path d="M38 66 53 38 68 66Z" fill="#f7f5ff"/>
+  <rect x="0.5" y="0.5" width="679" height="103" rx="14" fill="url(#frame)" stroke="#272940"/>
+
+  <g transform="translate(28 22)" aria-hidden="true">
+    <rect x="0" y="32" width="26" height="26" rx="7" fill="#7767ff"/>
+    <circle cx="39" cy="10" r="10" fill="#b8aeff"/>
+    <path d="M34 58 48 32 62 58Z" fill="#f7f5ff"/>
   </g>
 
   <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
-    <text x="112" y="39" fill="#8b93a3" font-size="14" font-weight="550" letter-spacing="2.3">ARTIFACT SERVER</text>
-    <text x="112" y="70" fill="#f5f6f8" font-size="20" font-weight="450" letter-spacing="-0.3">Created with Plannotator.</text>
+    <text x="112" y="42" fill="#8f96ab" font-size="12" font-weight="600" letter-spacing="2.4">ARTIFACT SERVER</text>
+    <text x="112" y="70" fill="#f5f6f8" font-size="19" font-weight="500" letter-spacing="-0.2">Created with Plannotator.</text>
 
-    <text x="625" y="68" fill="#b6afff" font-size="18" font-weight="550" text-anchor="end">Star Plannotator</text>
+    <text x="624" y="58" fill="#beb4ff" font-size="16" font-weight="600" text-anchor="end">Star Plannotator</text>
   </g>
 
-  <path d="M458 34 463 44 475 46 466 54 468 66 458 61 448 66 450 54 441 46 453 44Z" fill="#ffd16f" stroke="#7767ff" stroke-width="2" stroke-linejoin="round" aria-hidden="true"/>
+  <path transform="translate(482 52)" d="M0-8 1.9-2.6 7.6-2.5 3.1 0.9 4.7 6.5 0 3.2-4.7 6.5-3.1 0.9-7.6-2.5-1.9-2.6Z" fill="#b8aeff" aria-hidden="true"/>
 
-  <g transform="translate(649 61)" fill="none" stroke="#8b7cff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2.5" aria-hidden="true">
-    <path d="M0 0H18"/>
-    <path d="m11-7 7 7-7 7"/>
+  <g transform="translate(640 52)" fill="none" stroke="#8b7cff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" aria-hidden="true">
+    <path d="M0 0H15"/>
+    <path d="m9-6 6 6-6 6"/>
   </g>
 </svg>
