@@ -32,4 +32,4 @@ exec "$artifactserver_repository/scripts/with-external-storage-test-providers.sh
     --config vitest.external-storage-compose.config.ts \
     --reporter=default \
     --reporter=json \
-    --outputFile.json=evidence/external-storage-compose.json
+    --outputFile.json=project/evidence/external-storage-compose.json

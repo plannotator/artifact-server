@@ -62,4 +62,4 @@ try {
 pnpm exec vitest run --config vitest.pi-live.config.ts \
   --reporter=default \
   --reporter=json \
-  --outputFile.json=evidence/pi-live.json
+  --outputFile.json=project/evidence/pi-live.json

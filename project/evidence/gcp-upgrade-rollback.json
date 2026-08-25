@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-08-15T20:25:10Z",
+  "completedAt": "2026-08-15T20:27:01Z",
+  "target": "gcp",
+  "originalImage": "us-central1-docker.pkg.dev/artifact-server-qual/artifact-server-images/artifact-server@sha256:a807d98dda29fb19c7e25b1136b3052e2e304134942b66a1dfbccff55d4c5b00",
+  "candidateImage": "us-central1-docker.pkg.dev/artifact-server-qual/artifact-server-images/artifact-server@sha256:e20af84de187a01d39ed6b20a53d60a1a19ba4de7a079271e61c761b16493a6b",
+  "upgrade": {
+    "productEvidence": "project/evidence/gcp-upgrade.json",
+    "stableResourceIdentity": true
+  },
+  "rollback": {
+    "productEvidence": "project/evidence/gcp-rollback.json",
+    "stableResourceIdentity": true
+  }
+}

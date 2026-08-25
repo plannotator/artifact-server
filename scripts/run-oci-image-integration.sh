@@ -33,4 +33,4 @@ bash scripts/with-external-storage-test-providers.sh \
     --config vitest.oci.config.ts \
     --reporter=default \
     --reporter=json \
-    --outputFile.json=evidence/oci-image.json
+    --outputFile.json=project/evidence/oci-image.json

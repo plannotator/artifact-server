@@ -198,7 +198,7 @@ describe("shared cloud deployment contract", () => {
       }),
       deploymentEvidence([{
         completedAt: "2026-08-14T10:00:00.000Z",
-        evidenceLocation: "evidence/aws-clean-apply.json",
+        evidenceLocation: "project/evidence/aws-clean-apply.json",
         id: "clean-apply",
         result: "pass",
         startedAt: "2026-08-14T11:00:00.000Z",
@@ -344,7 +344,7 @@ function releaseCheck(
 ): CloudDeploymentDocument {
   return {
     completedAt: "2026-08-14T10:01:00.000Z",
-    evidenceLocation: `evidence/aws-${id}.json`,
+    evidenceLocation: `project/evidence/aws-${id}.json`,
     id,
     result: "pass",
     startedAt: "2026-08-14T10:00:00.000Z",

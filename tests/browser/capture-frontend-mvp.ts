@@ -10,7 +10,7 @@ import {
 } from "../support/runtime-harness.js";
 import {publishNew, publishVersion} from "../support/publishing.js";
 
-const outputDirectory = path.resolve("evidence/frontend-mvp");
+const outputDirectory = path.resolve("project/evidence/frontend-mvp");
 const installation = await createTestInstallation();
 const server = await startTestServer(installation);
 const browser = await chromium.launch({headless: true});

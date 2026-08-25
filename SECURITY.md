@@ -4,13 +4,15 @@ Artifact Server stores and serves untrusted files, connects agents to review wor
 
 ## Supported versions
 
-Artifact Server is in private pre-release development. Until the first tagged release, only the latest commit on `main` receives security fixes. We will publish a supported-version table before the repository becomes public.
+Security fixes apply to the latest tagged release and the current `main` branch. Update to the latest release before you report an issue that affects an older version.
 
 ## Report a vulnerability
 
 Do not open a public issue for a suspected vulnerability.
 
-While the repository is private, report the issue directly to a repository administrator through an established private channel. Include:
+Use [GitHub private vulnerability reporting](https://github.com/plannotator/artifact-server/security/advisories/new). If that form is not available to you, contact a repository administrator through an established private channel.
+
+Include:
 
 - the affected commit or version;
 - the deployment mode;
@@ -18,8 +20,6 @@ While the repository is private, report the issue directly to a repository admin
 - the security impact;
 - any proof-of-concept files or requests; and
 - whether the issue is already public.
-
-Before the repository becomes public, we will enable GitHub private vulnerability reporting and replace this paragraph with the repository's private report link.
 
 Do not include real credentials, access tokens, private artifact contents, or personal data in a report. Use a minimal synthetic reproduction when possible.
 
@@ -40,4 +40,4 @@ The repository's conformance requirements remain the source of truth for product
 
 ## Disclosure
 
-We will acknowledge a complete report, investigate it, and coordinate a repair and disclosure timeline with the reporter. We do not promise a fixed response window during private development. We will add explicit response targets before the public release.
+We will acknowledge a complete report, investigate it, and coordinate a repair and disclosure timeline with the reporter.

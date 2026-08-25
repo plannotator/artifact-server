@@ -50,4 +50,4 @@ pnpm exec vitest run \
   --config vitest.helm.config.ts \
   --reporter=default \
   --reporter=json \
-  --outputFile.json=evidence/helm-kubernetes.json
+  --outputFile.json=project/evidence/helm-kubernetes.json

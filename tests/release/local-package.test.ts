@@ -293,7 +293,7 @@ describe("direct local release package", () => {
       });
 
       await writeFile(
-        path.join(repositoryRoot, "evidence/local-package-build.json"),
+        path.join(repositoryRoot, "project/evidence/local-package-build.json"),
         `${JSON.stringify({
           ...releaseManifest,
           verification: {

@@ -65,4 +65,4 @@ pnpm exec vitest run \
   --config vitest.aws-s3-probe.config.ts \
   --reporter=default \
   --reporter=json \
-  --outputFile.json=evidence/s3-aws-probe.json
+  --outputFile.json=project/evidence/s3-aws-probe.json

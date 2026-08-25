@@ -51,10 +51,10 @@ The corrected image and 70-resource public stack ran in the isolated
   credential, ECS task replacement, and publication through the replacement
   task's workload identity.
 
-The secret-free records are in `evidence/aws-deployment-product.json`,
-`evidence/aws-deployment-horizontal.json`, `evidence/aws-provider-outage.json`,
-`evidence/aws-state-recovery.json`, `evidence/aws-coordinated-restore.json`,
-`evidence/aws-upgrade-rollback.json`, and `evidence/aws-secret-rotation.json`.
+The secret-free records are in `project/evidence/aws-deployment-product.json`,
+`project/evidence/aws-deployment-horizontal.json`, `project/evidence/aws-provider-outage.json`,
+`project/evidence/aws-state-recovery.json`, `project/evidence/aws-coordinated-restore.json`,
+`project/evidence/aws-upgrade-rollback.json`, and `project/evidence/aws-secret-rotation.json`.
 
 The default public stack has passed its create-to-delete gate, including safe
 destroy. The separately advertised private-ingress variant still requires its

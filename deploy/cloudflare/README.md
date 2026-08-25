@@ -26,7 +26,7 @@ be advertised as the complete hosted Artifact Server service.
 
 The isolated WorkOS staging environment has CIMD, compatibility DCR, the exact
 staging MCP resource, and its callback configured. The secret-free dashboard
-record is `../../evidence/workos-mcp-staging-configuration.json`. That record
+record is `../../project/evidence/workos-mcp-staging-configuration.json`. That record
 proves configuration only; it does not replace the live client-flow gate.
 
 ## Pinned tools
@@ -221,7 +221,7 @@ identifiers.
 
 The evidence file is in `evidence/account-probe-<timestamp>.json`. The package
 ignores this generated file until a reviewer approves it for durable evidence.
-The approved repository summary is `../../evidence/cloudflare-runtime.json`.
+The approved repository summary is `../../project/evidence/cloudflare-runtime.json`.
 
 If cleanup fails, use only the exact names and identifiers in the evidence
 file. Do not use a wildcard or an account-wide cleanup command.
@@ -260,7 +260,7 @@ release gate, not a dependency of artifact publication.
 The live Cloudflare provider qualification now includes public TLS, separate
 trusted and untrusted domains, static and SPA routing, conditional requests,
 and exact media ranges. The redacted result is
-`../../evidence/cloudflare-phase11-content.json`.
+`../../project/evidence/cloudflare-phase11-content.json`.
 
 The current Cloudflare release work still excludes or has not qualified these
 functions:

@@ -22,7 +22,7 @@
   },
   "include": [
     "deploy/**/*.ts",
-    "performance/**/*.ts",
+    "project/performance/**/*.ts",
     "scripts/**/*.ts",
     "src/**/*.ts",
     "tests/**/*.ts",

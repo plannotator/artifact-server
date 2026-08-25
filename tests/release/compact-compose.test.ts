@@ -303,7 +303,7 @@ describe.sequential("Compact Compose release", () => {
     expect(restoredSupport.installationId).toBe(initialization.installationId);
 
     await writeFile(
-      path.join(repositoryRoot, "evidence/compact-compose-runtime-baseline.json"),
+      path.join(repositoryRoot, "project/evidence/compact-compose-runtime-baseline.json"),
       `${JSON.stringify({
         backupMilliseconds,
         measuredAt: new Date().toISOString(),

@@ -331,7 +331,7 @@ interface LinkedArtifactOperations {
  * artifact-scoped live origin. Every deployment provides this service; only
  * the local deployment with linked files enabled provides the enabled layer,
  * and everywhere else the disabled layer answers the stable
- * capability-unavailable shape (spec/local-workspace-spec.md section 3).
+ * capability-unavailable shape (project/spec/local-workspace-spec.md section 3).
  */
 export class LinkedArtifactService extends Context.Service<
   LinkedArtifactService,

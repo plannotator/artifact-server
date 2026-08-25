@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "target": "aws",
+  "completedAt": "2026-08-16T03:24:47Z",
+  "services": ["ECS Fargate", "RDS PostgreSQL", "S3", "EventBridge"],
+  "results": {
+    "staticAndSpaRouting": "pass",
+    "mediaRanges": "pass",
+    "scheduledAbandonedUploadCleanup": "pass",
+    "committedArtifactsPreservedByCleanup": "pass",
+    "populatedDatabaseMigration": "pass",
+    "redeploymentPreservesData": "pass",
+    "providerInterruptionFailsClosedAndRecovers": "pass",
+    "backupAndRestorePreserveIdsAndBytes": "pass",
+    "restoredIntegrityCheck": "pass",
+    "temporaryRestoreResourcesRemoved": "pass",
+    "qualificationStackSafeDestroy": "pass"
+  },
+  "details": {
+    "scheduledCleanup": "The real EventBridge schedule started the cleanup Fargate task. It removed one expired uncommitted upload record and its exact S3 staging object. Committed artifacts and bytes remained readable.",
+    "migration": "The Phase 11 image migrated an existing populated RDS catalog. The source integrity task passed after the integrity scanner was corrected to read each saved version's routing mode.",
+    "restore": "The application was quiesced, an RDS snapshot and S3 object copy were restored into clean providers, 60 objects were verified, and the restored installation passed the normal integrity check.",
+    "destroy": "Pulumi deleted all 73 managed resources and reports zero remaining stack resources. The versioned S3 bucket was emptied only after its qualification tags were verified. The encrypted qualification-only RDS final snapshot was verified, then deleted. AWS may retain inactive ECS task-definition revisions and Secrets Manager deletion tombstones; they cannot serve traffic or retain Artifact Server data."
+  },
+  "testResults": [
+    {
+      "name": "live AWS Phase 11 qualification",
+      "status": "passed",
+      "assertionResults": [
+        {"title": "PUB-009-B: scheduled cleanup removed an expired uncommitted upload and its staging bytes", "status": "passed"},
+        {"title": "CNT-007-B: static and SPA routing followed the saved routing mode", "status": "passed"},
+        {"title": "CNT-007-F: missing SPA assets returned 404 instead of entry HTML", "status": "passed"},
+        {"title": "OPS-003-B: RDS and S3 restored into clean providers with stable IDs and exact bytes", "status": "passed"},
+        {"title": "OPS-004-B: the restored installation passed the normal read-only integrity scan", "status": "passed"},
+        {"title": "OPS-005-B: the repository qualification procedure produced a verified clean restore", "status": "passed"},
+        {"title": "OPS-006-F: cleanup selected only the expired uncommitted staging record", "status": "passed"}
+      ]
+    }
+  ],
+  "supportingEvidence": [
+    "project/evidence/aws-phase11-content.json",
+    "project/evidence/aws-provider-outage.json",
+    "project/evidence/aws-upgrade-rollback.json",
+    "project/evidence/aws-coordinated-restore.json"
+  ]
+}

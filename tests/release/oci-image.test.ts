@@ -622,7 +622,7 @@ async function recordRuntimeBaseline(
   kind: "compact" | "externalStorage",
   measurement: RuntimeMeasurement,
 ): Promise<void> {
-  const outputPath = path.join(repositoryRoot, "evidence/oci-runtime-baseline.json");
+  const outputPath = path.join(repositoryRoot, "project/evidence/oci-runtime-baseline.json");
   let current: z.infer<typeof runtimeBaselineSchema> = {};
   try {
     current = runtimeBaselineSchema.parse(

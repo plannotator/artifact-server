@@ -83,5 +83,5 @@ if [[ "$running" != "2" ]]; then
 fi
 
 export ARTIFACT_SERVER_AWS_QUALIFICATION_EVIDENCE=\
-"evidence/aws-deployment-horizontal.json"
+"project/evidence/aws-deployment-horizontal.json"
 scripts/run-aws-deployment-product-qualification.sh

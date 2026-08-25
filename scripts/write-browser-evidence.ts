@@ -4,7 +4,7 @@ import path from "node:path";
 import {z} from "zod";
 
 const rawEvidencePath = "test-results/browser/playwright-report.json";
-const evidencePath = "evidence/browser.json";
+const evidencePath = "project/evidence/browser.json";
 
 const resultSchema = z.object({
   duration: z.number().nonnegative(),

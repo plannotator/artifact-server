@@ -2,7 +2,7 @@ node_modules/
 dist/
 coverage/
 test-results/
-performance/results/
+project/performance/results/
 /release/
 .artifact-server/
 .env

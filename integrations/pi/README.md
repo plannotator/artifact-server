@@ -66,6 +66,6 @@ the session. It never blocks a Pi event handler on the network.
   The bridge fails soft on missing API surface (dormant plus one notice,
   never a crash).
 - The package version tracks Artifact Server releases; it is a client of the
-  server's dispatch API (`spec/agent-dispatch-spec.md`).
+  server's dispatch API (`project/spec/agent-dispatch-spec.md`).
 - Ships TypeScript source; Pi loads extensions through jiti with no build
   step.

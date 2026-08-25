@@ -53,4 +53,4 @@ NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--max-old-space-size=4096" \
 pnpm exec vitest run --coverage --config vitest.integration.config.ts \
   --reporter=default \
   --reporter=json \
-  --outputFile=evidence/s3-minio.json
+  --outputFile=project/evidence/s3-minio.json

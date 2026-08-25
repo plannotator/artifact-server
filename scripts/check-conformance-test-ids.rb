@@ -3,7 +3,7 @@
 require "yaml"
 
 root = File.expand_path("..", __dir__)
-ledger_path = File.join(root, "spec", "conformance.yml")
+ledger_path = File.join(root, "project", "spec", "conformance.yml")
 ledger = YAML.safe_load(File.read(ledger_path), aliases: true)
 requirements = ledger.fetch("requirements")
 known_test_ids = requirements.flat_map do |requirement|
@@ -16,7 +16,7 @@ test_id_pattern = /\b[A-Z]{3,5}-\d{3}-[BF]\b/u
 claimed_by = Hash.new { |claims, test_id| claims[test_id] = [] }
 errors = []
 
-test_roots = %w[apps deploy packaging performance skills src tests tools]
+test_roots = %w[apps deploy packaging project/performance skills src tests tools]
 test_files = test_roots.flat_map do |directory|
   Dir.glob(File.join(root, directory, "**", "*.test.ts"))
 end.uniq.sort

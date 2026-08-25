@@ -534,7 +534,7 @@ describe.sequential("Artifact Server Helm release", () => {
     );
 
     await writeFile(
-      path.join(repositoryRoot, "evidence/helm-kubernetes-runtime-baseline.json"),
+      path.join(repositoryRoot, "project/evidence/helm-kubernetes-runtime-baseline.json"),
       `${JSON.stringify({
         clusterReadyMilliseconds,
         helmVersion,

@@ -133,7 +133,7 @@ D1 database, and one R2 bucket in the approved standalone Cloudflare account.
 It verified health, readiness, API-token rejection, upload, publication,
 idempotent replay, listing, no-drift deployment, retention, and exact cleanup.
 It made no DNS changes. The redacted durable result is
-`../../evidence/cloudflare-runtime.json`.
+`../../project/evidence/cloudflare-runtime.json`.
 
 This proves the Cloudflare application core and private deployment lifecycle.
 Hosted load and abuse controls remain separate release gates.
@@ -146,7 +146,7 @@ beneath `agentartifacts.org`. Cloudflare served valid edge certificates for
 both. Real publications proved static 404 behavior, SPA navigation fallback,
 missing-asset 404 behavior, full media delivery, conditional requests, ranged
 HEAD, exact single byte ranges, and multiple-range rejection. Redacted evidence
-is checked in at `../../evidence/cloudflare-phase11-content.json`.
+is checked in at `../../project/evidence/cloudflare-phase11-content.json`.
 
 The live operator used a proxied wildcard `AAAA` record with the reserved
 originless address `100::` plus a wildcard Worker route. The application used
@@ -169,7 +169,7 @@ healthy against only the restored targets, and the current Worker returned
 Qualification cleanup deleted both exact D1 UUIDs, both exact R2 buckets and
 their ten objects each, and the exact helper and restored Workers. The command
 did not access DNS or the account-level Alchemy state Worker. Redacted evidence
-is checked in at `../../evidence/cloudflare-coordinated-recovery.json`.
+is checked in at `../../project/evidence/cloudflare-coordinated-recovery.json`.
 
 The live qualification also exposed Worker revision propagation between rapid
 helper redeployments. The command now waits until the helper reports the exact

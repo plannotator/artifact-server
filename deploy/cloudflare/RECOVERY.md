@@ -112,4 +112,4 @@ or changes during recovery, do not copy around the failed gate. Correct the
 target selection or repeat with a fresh empty pair.
 
 The live qualification result is
-`../../evidence/cloudflare-coordinated-recovery.json`.
+`../../project/evidence/cloudflare-coordinated-recovery.json`.

@@ -307,7 +307,7 @@ describe.sequential("External-storage Compose release", () => {
     await writeFile(
       path.join(
         repositoryRoot,
-        "evidence/external-storage-compose-runtime-baseline.json",
+        "project/evidence/external-storage-compose-runtime-baseline.json",
       ),
       `${JSON.stringify({
         composeVersion: await composeVersion(),

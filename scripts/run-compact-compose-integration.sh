@@ -28,4 +28,4 @@ pnpm exec vitest run \
   --config vitest.compose.config.ts \
   --reporter=default \
   --reporter=json \
-  --outputFile.json=evidence/compact-compose.json
+  --outputFile.json=project/evidence/compact-compose.json

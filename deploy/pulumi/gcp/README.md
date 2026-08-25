@@ -144,7 +144,7 @@ instance deletion. The service-networking connection therefore uses
 Google removes its producer-side resources after the recovery window. See
 [Google's private services access deletion documentation](https://docs.cloud.google.com/vpc/docs/configure-private-services-access#delete-connection).
 
-Live records are in `evidence/gcp-deployment-product.json`,
-`evidence/gcp-upgrade-rollback.json`, `evidence/gcp-secret-rotation.json`,
-`evidence/gcp-state-recovery.json`, `evidence/gcp-minimum-recovery.json`, and
-`evidence/gcp-destroy.json`.
+Live records are in `project/evidence/gcp-deployment-product.json`,
+`project/evidence/gcp-upgrade-rollback.json`, `project/evidence/gcp-secret-rotation.json`,
+`project/evidence/gcp-state-recovery.json`, `project/evidence/gcp-minimum-recovery.json`, and
+`project/evidence/gcp-destroy.json`.

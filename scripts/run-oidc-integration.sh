@@ -79,4 +79,4 @@ ARTIFACT_SERVER_TEST_KEYCLOAK_URL="${keycloak_url}" \
 pnpm exec vitest run --config vitest.oidc.config.ts \
   --reporter=default \
   --reporter=json \
-  --outputFile.json=evidence/oidc-keycloak.json
+  --outputFile.json=project/evidence/oidc-keycloak.json

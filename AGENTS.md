@@ -1,6 +1,6 @@
 # Artifact Server agent instructions
 
-Build toward the contracts in `spec/conformance.yml`. Product prose lives in `spec/artifact-server-product-spec.html`; the ledger is the machine-checkable index of its promises.
+Build toward the contracts in `project/spec/conformance.yml`. Product prose lives in `project/spec/artifact-server-product-spec.html`; the ledger is the machine-checkable index of its promises.
 
 ## Engineering rules
 
@@ -33,7 +33,7 @@ guide does not cover, search through the source code in `node_modules/effect/src
 - Run `pnpm verify:object-storage` after changing remote blob or staging storage. It requires Docker and proves the S3-compatible adapter against pinned MinIO.
 - Run `pnpm verify:external-storage-runtime` after changing Postgres persistence, external-storage composition, external-storage configuration, migrations, or backup behavior. It requires Docker and drives multiple compiled server processes against pinned Postgres and MinIO.
 - Run `pnpm verify:external-storage-performance` after changing the compiled external-storage publish/read path, Postgres query shape, S3 object operations, connection-pool settings, or file-client concurrency. It requires Docker and records a bounded two-process Postgres/MinIO baseline.
-- Treat `performance/FINDINGS.md` as the current risk register, not as a permanent excuse for a known bottleneck.
+- Treat `project/performance/FINDINGS.md` as the current risk register, not as a permanent excuse for a known bottleneck.
 - Do not tighten machine-timing gates from one laptop run. CI smoke limits catch gross failures; controlled repeated baselines establish regression budgets.
 - Do not reintroduce inline base64 publication to add large-file support. Use the specified staged direct-upload and streaming-delivery paths.
 

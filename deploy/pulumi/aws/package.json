@@ -11,7 +11,7 @@
   "scripts": {
     "preview": "pulumi preview",
     "test": "vitest run tests/aws-pulumi.test.ts",
-    "test:evidence": "vitest run tests/aws-pulumi.test.ts --reporter=default --reporter=json --outputFile.json=../../../evidence/aws-pulumi.json",
+    "test:evidence": "vitest run tests/aws-pulumi.test.ts --reporter=default --reporter=json --outputFile.json=../../../project/evidence/aws-pulumi.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify": "pnpm typecheck && pnpm test:evidence"
   },

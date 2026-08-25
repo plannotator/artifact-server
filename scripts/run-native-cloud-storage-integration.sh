@@ -63,4 +63,4 @@ ARTIFACT_SERVER_TEST_AZURE_BLOB_ENDPOINT="${azure_endpoint}" \
     --config vitest.native-storage.config.ts \
     --reporter=default \
     --reporter=json \
-    --outputFile=evidence/native-cloud-storage.json
+    --outputFile=project/evidence/native-cloud-storage.json

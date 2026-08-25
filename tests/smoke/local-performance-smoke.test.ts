@@ -3,7 +3,7 @@ import {describe, expect, test} from "vitest";
 import {
   runLocalBaseline,
   smokeBaselineConfig,
-} from "../../performance/local-baseline.js";
+} from "../../project/performance/local-baseline.js";
 
 describe("bounded local runtime smoke", () => {
   test("publishes, reads concurrently, restarts, and stays within gross safety limits", async () => {
