@@ -29,7 +29,7 @@ Run it on a laptop for one developer. Deploy it for a private team on Cloudflare
 
 Teams now use HTML, images, and video for plans, mockups, prototypes, code reviews, and other work created during product development. That work quickly becomes disorganized, and providers try to lock it inside their platforms.
 
-Artifact Server gives teams a self-hosted place to organize and collaborate on that work. Store artifacts by project, share them, comment on exact versions, and revisit earlier results while keeping control of the files and data.
+Artifact Server gives teams a self-hosted place to organize and collaborate on that work. Store artifacts by project, share them, comment on them, and keep control of the files and data.
 
 ## Built for AI agents
 
