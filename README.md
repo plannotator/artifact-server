@@ -130,6 +130,8 @@ Artifact Server serves untrusted artifact content from isolated version hosts, s
 
 Read the [security model](./project/spec/decisions/0002-shared-identity-and-private-content.md) or [report a vulnerability](./SECURITY.md).
 
+Read about Artifact Server's [software supply-chain security](./project/spec/security-release-plan.md).
+
 ## Development and project records
 
 Install dependencies and run the focused development checks:
