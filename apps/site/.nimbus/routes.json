@@ -9,7 +9,8 @@
     "/docs/concepts/security-boundary",
     "/docs/deploy/cloudflare",
     "/docs/get-started",
-    "/docs/publish"
+    "/docs/publish",
+    "/docs/security"
   ],
   "opaqueNamespaces": []
 }

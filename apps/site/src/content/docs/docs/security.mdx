@@ -1,0 +1,101 @@
+---
+title: Software supply-chain security
+description: What Artifact Server checks, what its package metadata proves, and how to verify it.
+---
+
+Artifact Server treats workflow, dependency, package, and container integrity as part of product security. This page documents controls that are implemented in the repository today. It separates continuous-integration evidence from public release proof.
+
+<CardGrid>
+  <Card title="Changes are tested" icon="ph:checks">
+    Pull requests, merge-queue candidates, and changes to `main` run the portable macOS gate and the complete Linux iteration gate.
+  </Card>
+  <Card title="Secrets are scanned" icon="ph:key">
+    Gitleaks scans the complete Git history. Its downloaded binary is checksum-verified, and a synthetic token proves the detector before the repository scan starts.
+  </Card>
+  <Card title="Workflows are audited" icon="ph:shield-check">
+    zizmor checks GitHub workflows and Dependabot configuration in strict offline mode. A synthetic unsafe workflow proves the detector first.
+  </Card>
+  <Card title="Dependencies are reviewed" icon="ph:arrows-clockwise">
+    Dependabot checks pnpm and GitHub Actions each week. Routine version updates wait seven days before opening a pull request.
+  </Card>
+</CardGrid>
+
+## Checks on every change
+
+The [CI workflow](https://github.com/plannotator/artifact-server/actions/workflows/ci.yml) runs with read-only repository permissions. Third-party actions are pinned to complete commit SHAs, checkout credentials are not persisted, and dependencies install from the committed lockfile.
+
+The macOS job runs the portable code gate. The Linux job runs `pnpm verify:iteration`, which covers linting, type checking, builds, conformance tests, browser tests, package tests, deployment checks, storage integrations, and bounded performance checks.
+
+The separate [security workflow](https://github.com/plannotator/artifact-server/actions/workflows/security.yml) runs on the same change events and every Monday:
+
+- Gitleaks scans all repository history with findings redacted from logs.
+- zizmor audits workflow and Dependabot files without sending source to a hosted scanner.
+- Both scanners are downloaded at pinned versions and verified with SHA-256 before use.
+- Both scanners must detect a synthetic problem before their real analysis can pass.
+
+See the [Actions history](https://github.com/plannotator/artifact-server/actions) for individual runs and logs.
+
+## Evidence in package outputs
+
+Artifact Server currently creates two package formats. Each includes a machine-readable manifest next to the archive.
+
+| Package | Command | Evidence |
+| --- | --- | --- |
+| Portable Node archive | `pnpm package:local` | Archive SHA-256, size, package name and version, Node.js requirement, and native-extension status. |
+| Multi-platform OCI archive | `pnpm package:oci` | Archive SHA-256, image-index digest, source revision, source-tree status, `linux/amd64` and `linux/arm64` manifests, and the embedded attestation predicate types. |
+
+The OCI builder requests maximum-mode BuildKit provenance and an SPDX software bill of materials for each platform. Before it writes the package manifest, Artifact Server verifies every OCI blob digest and requires both of these predicates:
+
+```text
+https://slsa.dev/provenance/v1
+https://spdx.dev/Document
+```
+
+It also verifies the image entry point, non-root runtime user, working directory, product version, source revision, and source-tree status. The build fails if any required platform, digest, runtime property, or attestation is missing.
+
+## Verify an archive checksum
+
+Build either package from a source checkout:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm package:local
+# or: pnpm package:oci
+```
+
+Then compare the archive with its adjacent manifest. This Node.js command works for both package formats:
+
+```sh
+node -e '
+  const crypto = require("node:crypto");
+  const fs = require("node:fs");
+  const [archive, manifestPath] = process.argv.slice(1);
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const expected = manifest.sha256 ?? manifest.archiveSha256;
+  const actual = crypto.createHash("sha256")
+    .update(fs.readFileSync(archive))
+    .digest("hex");
+  if (actual !== expected) throw new Error("Archive checksum mismatch");
+  console.log(actual);
+' release/<archive> release/<archive>.manifest.json
+```
+
+For an OCI build, `pnpm package:oci` also runs the repository's attestation and image-layout verifier before returning. Open the generated `.manifest.json` to inspect the verified revision, platforms, and `attestationPredicates` values.
+
+<Aside type="note" title="What a checksum proves">
+A matching checksum proves that the archive matches its manifest. Until the manifest is published through an authenticated release channel, it does not prove who created either file.
+</Aside>
+
+## Public release verification
+
+Artifact Server does not yet publish tagged GitHub Releases or GitHub/Sigstore attestations. There is therefore no honest `gh attestation verify` command for a public Artifact Server release today.
+
+The current OCI packages contain BuildKit SLSA provenance and SPDX SBOM attestations, and the repository verifies them while building. The first public release must additionally publish checksums, SBOMs, and identity-bound provenance through GitHub before this page can document public release verification.
+
+This distinction matters: a green workflow proves that the source revision passed its checks, while a public attestation must connect a downloadable asset to the repository and workflow that produced it.
+
+## Reporting and product boundaries
+
+Supply-chain controls complement the product's [two-origin security boundary](/docs/concepts/security-boundary/). They do not replace authentication, authorization, content isolation, or deployment hardening.
+
+Read the repository's [security policy](https://github.com/plannotator/artifact-server/blob/main/SECURITY.md) before reporting a vulnerability. Do not include real credentials, private artifact contents, or personal data in a report.
