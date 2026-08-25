@@ -103,7 +103,7 @@ pnpm install
 pnpm dev
 ```
 
-Open the printed URL. Packaged installs use `artifactserver open` instead. For remote access, [deploy the private-team target](./docs/deployment.md).
+Open the printed URL. Packaged installs use `artifactserver open` instead.
 
 ## Deploy it for a team
 
