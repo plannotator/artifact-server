@@ -9,9 +9,9 @@ Artifact Server gives people and agents one place to publish, review, comment on
 Run it on a laptop for one developer. Deploy it for a private team on Cloudflare, one server, Kubernetes, AWS, or Google Cloud.
 
 <p align="center">
-  <a href="https://github.com/backnotprop/plannotator"><img src="./docs/images/star-plannotator.svg" alt="Artifact Server is created with Plannotator" width="380"></a>
+  <a href="https://github.com/backnotprop/plannotator"><img src="./docs/images/star-plannotator.svg" alt="Artifact Server is created with Plannotator" width="410"></a>
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://plannotator.ai/workspaces"><img src="./docs/images/plannotator-workspaces.svg" alt="Plannotator Workspaces is the planning layer for your software factory" width="380"></a>
+  <a href="https://plannotator.ai/workspaces"><img src="./docs/images/plannotator-workspaces.svg" alt="Plannotator Workspaces is the planning layer for your software factory" width="410"></a>
 </p>
 
 ## Contents
@@ -57,7 +57,7 @@ Artifact Server gives teams a self-hosted place to organize and collaborate on t
   </picture>
 </p>
 
-[![AI agents connect to Artifact Server through its built-in MCP server](./docs/assets/agent-native-mcp.svg)](./docs/mcp.md)
+<a href="./docs/mcp.md"><img src="./docs/assets/agent-native-mcp.svg" alt="AI agents connect to Artifact Server through its built-in MCP server" width="800"></a>
 
 Artifact Server includes a built-in MCP server and a portable Agent Skill. Agents can publish, organize, review, comment on, and share versioned artifacts.
 
@@ -76,13 +76,13 @@ Then ask:
 
 The agent returns the full-screen review link first. [Read the MCP guide](./docs/mcp.md) for source checkouts, remote servers, permissions, and supported operations.
 
-[![Artifact Server has first-class Pi support through a live feedback extension](./docs/assets/pi-live-feedback.svg)](./integrations/pi/README.md)
+<a href="./integrations/pi/README.md"><img src="./docs/assets/pi-live-feedback.svg" alt="Artifact Server has first-class Pi support through a live feedback extension" width="500"></a>
 
 ## Cloudflare and Artifact Server
 
 Cloudflare is the main hosted deployment target. Cloudflare Artifacts adds optional Git history, but it is not generally available. You must sign up for access, so the integration is off by default.
 
-[![Cloudflare Artifacts provides optional Git-backed version history through Workers bindings](./docs/assets/cloudflare-artifacts-git-handoff.svg)](./docs/cloudflare-artifacts.md)
+<a href="./docs/cloudflare-artifacts.md"><img src="./docs/assets/cloudflare-artifacts-git-handoff.svg" alt="Cloudflare Artifacts provides optional Git-backed version history through Workers bindings" width="800"></a>
 
 - [Deploy Artifact Server on Cloudflare](./deploy/cloudflare/README.md)
 - [Use Cloudflare Artifacts for optional Git history](./docs/cloudflare-artifacts.md)
@@ -163,9 +163,9 @@ Public guides live in the [documentation index](./docs/README.md).
 ---
 
 <p align="center">
-  <a href="https://github.com/backnotprop/plannotator"><img src="./docs/images/star-plannotator.svg" alt="Artifact Server is created with Plannotator" width="380"></a>
+  <a href="https://github.com/backnotprop/plannotator"><img src="./docs/images/star-plannotator.svg" alt="Artifact Server is created with Plannotator" width="410"></a>
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://plannotator.ai/workspaces"><img src="./docs/images/plannotator-workspaces.svg" alt="Plannotator Workspaces is the planning layer for your software factory" width="380"></a>
+  <a href="https://plannotator.ai/workspaces"><img src="./docs/images/plannotator-workspaces.svg" alt="Plannotator Workspaces is the planning layer for your software factory" width="410"></a>
 </p>
 
 <p align="center">
