@@ -62,7 +62,7 @@ cd "$artifactserver_repository"
 ARTIFACT_SERVER_AWS_S3_PROBE_BUCKET="$artifactserver_bucket" \
 ARTIFACT_SERVER_AWS_S3_PROBE_REGION="$artifactserver_region" \
 pnpm exec vitest run \
-  --config vitest.aws-s3-probe.config.ts \
+  --config tests/configs/vitest.aws-s3-probe.config.ts \
   --reporter=default \
   --reporter=json \
   --outputFile.json=project/evidence/s3-aws-probe.json

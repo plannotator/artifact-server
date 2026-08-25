@@ -29,7 +29,7 @@ export ARTIFACT_SERVER_EXTERNAL_COMPOSE_REVISION="$artifactserver_revision"
 
 exec "$artifactserver_repository/scripts/with-external-storage-test-providers.sh" \
   pnpm exec vitest run \
-    --config vitest.external-storage-compose.config.ts \
+    --config tests/configs/vitest.external-storage-compose.config.ts \
     --reporter=default \
     --reporter=json \
     --outputFile.json=project/evidence/external-storage-compose.json

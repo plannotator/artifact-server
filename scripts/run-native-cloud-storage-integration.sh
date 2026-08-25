@@ -60,7 +60,7 @@ fi
 ARTIFACT_SERVER_TEST_GCS_ENDPOINT="${gcs_endpoint}" \
 ARTIFACT_SERVER_TEST_AZURE_BLOB_ENDPOINT="${azure_endpoint}" \
   pnpm exec vitest run --coverage \
-    --config vitest.native-storage.config.ts \
+    --config tests/configs/vitest.native-storage.config.ts \
     --reporter=default \
     --reporter=json \
     --outputFile=project/evidence/native-cloud-storage.json

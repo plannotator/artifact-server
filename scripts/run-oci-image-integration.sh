@@ -30,7 +30,7 @@ export ARTIFACT_SERVER_OCI_REVISION="$artifactserver_revision"
 
 bash scripts/with-external-storage-test-providers.sh \
   pnpm exec vitest run \
-    --config vitest.oci.config.ts \
+    --config tests/configs/vitest.oci.config.ts \
     --reporter=default \
     --reporter=json \
     --outputFile.json=project/evidence/oci-image.json

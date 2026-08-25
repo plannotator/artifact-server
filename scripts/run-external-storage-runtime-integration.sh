@@ -6,7 +6,7 @@ pnpm build
 pnpm test:observability
 
 bash scripts/with-external-storage-test-providers.sh \
-  pnpm exec vitest run --coverage --config vitest.external-storage.config.ts \
+  pnpm exec vitest run --coverage --config tests/configs/vitest.external-storage.config.ts \
   --reporter=default \
   --reporter=json \
   --outputFile=project/evidence/external-storage-runtime.json

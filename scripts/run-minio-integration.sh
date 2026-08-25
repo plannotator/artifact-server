@@ -50,7 +50,7 @@ ARTIFACT_SERVER_MINIO_CONTAINER="${container_name}" \
 ARTIFACT_SERVER_MINIO_IMAGE="${minio_image}" \
 ARTIFACT_SERVER_MINIO_VOLUME="${volume_name}" \
 NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--max-old-space-size=4096" \
-pnpm exec vitest run --coverage --config vitest.integration.config.ts \
+pnpm exec vitest run --coverage --config tests/configs/vitest.integration.config.ts \
   --reporter=default \
   --reporter=json \
   --outputFile=project/evidence/s3-minio.json

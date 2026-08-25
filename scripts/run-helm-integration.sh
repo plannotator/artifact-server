@@ -47,7 +47,7 @@ export ARTIFACT_SERVER_HELM_MINIO_CONTAINER="$artifactserver_minio_container"
 export ARTIFACT_SERVER_HELM_MINIO_VOLUME="$artifactserver_minio_volume"
 
 pnpm exec vitest run \
-  --config vitest.helm.config.ts \
+  --config tests/configs/vitest.helm.config.ts \
   --reporter=default \
   --reporter=json \
   --outputFile.json=project/evidence/helm-kubernetes.json
