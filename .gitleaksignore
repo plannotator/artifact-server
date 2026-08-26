@@ -20,3 +20,11 @@ c0ba5fe73ea141a39713d282e4beec9544683b9e:tests/conformance/cmt-005-state-transit
 eba636d2c4f05808d8b1edb06420ca3329cf313e:tests/conformance/cmt-005-state-transitions.test.ts:generic-api-key:154
 55363f446b616f7371f87b0de2802b3f2bdb11df:tests/conformance/mcp-modern-http.test.ts:generic-api-key:513
 c5554532a9acd8c94bf28060a38fbc80995cd09f:tests/integration/azure-blob-object-storage.test.ts:generic-api-key:15
+# Reviewed false-positive fingerprints from the 2026-08-26 full-history scan.
+# These are literal idempotency keys used only by browser and conformance tests.
+9c4e45b3e35427daf4288a150351b53521f04e0a:tests/browser/snd-send-all.spec.ts:generic-api-key:250
+f68874e3cf0e5becc95734f176f3438b93ed6044:tests/browser/drf-001-draft-durability.spec.ts:generic-api-key:34
+f68874e3cf0e5becc95734f176f3438b93ed6044:tests/browser/drf-001-draft-durability.spec.ts:generic-api-key:41
+966a36f370b0f689f663e5f769d218cf3631ef88:tests/conformance/ndg-001-queued-work-nudge.test.ts:generic-api-key:68
+966a36f370b0f689f663e5f769d218cf3631ef88:tests/conformance/ndg-001-queued-work-nudge.test.ts:generic-api-key:148
+966a36f370b0f689f663e5f769d218cf3631ef88:tests/conformance/ndg-002-nudge-isolation.test.ts:generic-api-key:71
