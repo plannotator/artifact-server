@@ -35,6 +35,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {Dialog} from "@base-ui/react/dialog";
 import {motion} from "motion/react";
 
+import {setDraftPrincipal, writeDraft} from "@/components/comments/comment-drafts";
 import {useCommentPoll} from "@/components/comments/comment-poll";
 import {
   api,
@@ -100,6 +101,9 @@ interface ReviewLocation {
 /** Start the artifact-first Artifact Server review application. */
 export function ReviewApp() {
   const [session, setSession] = useState<Session | null>(null);
+  useEffect(() => {
+    setDraftPrincipal(session?.principal.id ?? null);
+  }, [session]);
   const accessContextRef = useRef<AccessContext | null>(null);
   const bootstrapInFlightRef = useRef(false);
   const [projects, setProjects] = useState<readonly Project[]>([]);
@@ -1269,6 +1273,7 @@ function ArtifactReview({
                     canDeleteAny={canDeleteAnyComment}
                     principalId={session.principal.id}
                     session={comments}
+                    versionId={selectedVersionId}
                   />
                 </div>
               </aside>
@@ -1364,6 +1369,16 @@ function ArtifactReview({
                 }}
                 onSubmitAnnotation={async (body, anchor, path) => {
                   const saved = await comments.submit(body, anchor, path);
+                  if (!saved && selectedArtifactId !== null && selectedVersionId !== null) {
+                    // The in-frame composer discards its text on failure; keep
+                    // it as this version's new-thread draft instead.
+                    writeDraft({
+                      artifactId: selectedArtifactId,
+                      principalId: session.principal.id,
+                      threadId: null,
+                      versionId: selectedVersionId,
+                    }, body);
+                  }
                   if (saved) {
                     setInspectorTab("comments");
                     if (focusMode) {
@@ -1483,6 +1498,7 @@ function ArtifactReview({
                 canDeleteAny={canDeleteAnyComment}
                 principalId={session.principal.id}
                 session={comments}
+                versionId={selectedVersionId}
               />
             ) : inspectorTab === "files" ? (
               <FilesInspector

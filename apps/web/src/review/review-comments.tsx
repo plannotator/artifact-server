@@ -8,8 +8,10 @@ import {
   type CommentThread,
   type CommentThreadDetails,
   type CommentThreadQuery,
+  type AgentPresence,
 } from "@/api/client";
 import {CommentComposer} from "@/components/comments/comment-composer";
+import {useCommentDraft} from "@/components/comments/comment-drafts";
 import {maximumCommentBodyCharacters} from "@/components/comments/comment-limits";
 import {
   mergeThreads,
@@ -370,21 +372,131 @@ export function useReviewComments({
   };
 }
 
+/** The new-thread composer, drafted per artifact and version. */
+function NewThreadComposer({
+  artifactId,
+  principalId,
+  session,
+  versionId,
+}: {
+  readonly artifactId: string;
+  readonly principalId: string;
+  readonly session: ReviewCommentSession;
+  readonly versionId: string;
+}) {
+  const draft = useCommentDraft({
+    artifactId,
+    principalId,
+    threadId: null,
+    versionId,
+  });
+  return (
+    <div className="mb-3 grid gap-2" data-new-thread-composer>
+      <CommentComposer
+        cancelLabel={null}
+        draftRestored={draft.restored}
+        initialBody={draft.initialBody}
+        inputId={`review-new-thread-${versionId}`}
+        key={`new-thread-${versionId}-${draft.restored ? "draft" : "empty"}`}
+        label="Comment on this version"
+        maximumCharacters={maximumCommentBodyCharacters}
+        onBodyChange={draft.onBodyChange}
+        onCancel={null}
+        onDiscardDraft={draft.onDiscard}
+        onSubmit={async (body) => {
+          const saved = await session.submit(body, null, null);
+          if (saved) draft.onPosted();
+          return saved;
+        }}
+        submitLabel="Post comment"
+      />
+    </div>
+  );
+}
+
+/** One thread's reply composer, drafted per thread. */
+function ReplyComposer({
+  artifactId,
+  principalId,
+  session,
+  thread,
+}: {
+  readonly artifactId: string;
+  readonly principalId: string;
+  readonly session: ReviewCommentSession;
+  readonly thread: CommentThread;
+}) {
+  const draft = useCommentDraft({
+    artifactId,
+    principalId,
+    threadId: thread.id,
+    versionId: null,
+  });
+  return (
+    <CommentComposer
+      cancelLabel={null}
+      draftRestored={draft.restored}
+      initialBody={draft.initialBody}
+      inputId={`review-reply-${thread.id}`}
+      label="Reply"
+      maximumCharacters={maximumCommentBodyCharacters}
+      onBodyChange={draft.onBodyChange}
+      onCancel={null}
+      onDiscardDraft={draft.onDiscard}
+      onSubmit={async (body, idempotencyKey) => {
+        const saved = await session.createReply(thread, body, idempotencyKey);
+        if (saved) draft.onPosted();
+        return saved;
+      }}
+      submitLabel="Post reply"
+    />
+  );
+}
+
 /** Review-native thread list kept beside, never over, the artifact. */
 export function ReviewCommentsInspector({
   canDeleteAny,
   canComment,
   principalId,
   session,
+  versionId,
 }: {
   readonly canDeleteAny: boolean;
   readonly canComment: boolean;
   readonly principalId: string;
   readonly session: ReviewCommentSession;
+  readonly versionId: string | null;
 }) {
   const unanchored = new Set(session.unanchoredIds);
+  const [agents, setAgents] = useState<readonly AgentPresence[] | null>(null);
+  const [agentError, setAgentError] = useState<Error | null>(null);
+  const dispatchUndo = useDispatchUndo(session.projectId, session.reload);
+  const loadAgents = useCallback(async (): Promise<void> => {
+    try {
+      setAgents(await api.agentPresence());
+      setAgentError(null);
+    } catch (caught) {
+      setAgentError(caught instanceof Error ? caught : new Error("Agent presence failed."));
+    }
+  }, []);
+  useEffect(() => {
+    void loadAgents();
+  }, [loadAgents]);
+  useCommentPoll(loadAgents, session.projectId !== "");
+  const now = Date.now();
   return (
     <div className="as-comments">
+      {dispatchUndo.element}
+      <div className="as-comments__agents">
+        <div>
+          <strong>Agents</strong>
+          <span>{agents?.filter((agent) => agent.connected).length ?? 0} connected</span>
+        </div>
+        <div>
+          {agents?.map((agent) => <PresenceAvatar agent={agent} key={agent.id} now={now} size="md" />)}
+        </div>
+      </div>
+      {agentError === null ? null : <p className="as-comments__agent-error">{agentError.message}</p>}
       <div className="as-comments__intro">
         <p>
           {canComment
@@ -403,6 +515,15 @@ export function ReviewCommentsInspector({
       {session.error === null ? null : (
         <p className="as-comments__error" role="alert">{session.error.message}</p>
       )}
+      {canComment && versionId !== null && session.artifactId !== null ? (
+        <NewThreadComposer
+          artifactId={session.artifactId}
+          key={`${session.artifactId}-${versionId}`}
+          principalId={principalId}
+          session={session}
+          versionId={versionId}
+        />
+      ) : null}
       {session.loading && session.threads.length === 0 ? (
         <p className="as-inspector-empty">Loading comments…</p>
       ) : null}
@@ -461,23 +582,26 @@ export function ReviewCommentsInspector({
                       {thread.state === "open" ? "Resolve" : "Reopen"}
                     </button>
                   ) : null}
+                  {canComment && thread.state === "open" ? (
+                    <SendToAgentControl
+                      agents={agents}
+                      feedback={dispatchUndo.feedback}
+                      label="Send to agent"
+                      onSent={session.reload}
+                      oneAgentLabel={(name) => `Send to ${name}`}
+                      projectId={session.projectId}
+                      resolveBundle={() => Promise.resolve(bundleOfThreads([thread]))}
+                    />
+                  ) : null}
                 </div>
               </footer>
-              {canComment && thread.state === "open" ? (
+              {canComment && thread.state === "open" && session.artifactId !== null ? (
                 <div className="as-comment-reply-composer">
-                  <CommentComposer
-                    cancelLabel={null}
-                    initialBody=""
-                    inputId={`review-reply-${thread.id}`}
-                    label="Reply"
-                    maximumCharacters={maximumCommentBodyCharacters}
-                    onCancel={null}
-                    onSubmit={(body, idempotencyKey) => session.createReply(
-                      thread,
-                      body,
-                      idempotencyKey,
-                    )}
-                    submitLabel="Post reply"
+                  <ReplyComposer
+                    artifactId={session.artifactId}
+                    principalId={principalId}
+                    session={session}
+                    thread={thread}
                   />
                 </div>
               ) : null}

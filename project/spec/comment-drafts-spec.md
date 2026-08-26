@@ -37,6 +37,13 @@ reload or browser restart restores them:
 Posting the comment deletes the store entry and the localStorage mirror;
 so does the explicit discard.
 
+Two behaviors added at build time, recorded here: a **failed** in-frame
+pinpoint submit stashes its text as the version's new-thread draft rather
+than losing it (only on failure — a success never leaves a draft); and
+because the app's only new-thread composer lives inside the
+`@plannotator/ui` viewer popup with no draft API, a minimal
+"Comment on this version" composer is the drafted new-thread surface.
+
 ## 3. Accepted trades (owner decision)
 
 - Comment content now touches browser storage. Until now localStorage

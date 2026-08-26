@@ -59,6 +59,13 @@ export function ReviewSettings({
               <HugeiconsIcon data-icon="inline-start" icon={ArrowLeft01Icon} strokeWidth={1.8} />
               Back to Review
             </Button>
+            <Button
+              onClick={() => void api.logout().finally(() => window.location.assign("/review"))}
+              size="sm"
+              variant="ghost"
+            >
+              Sign out
+            </Button>
           </div>
         </div>
       </header>

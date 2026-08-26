@@ -13,20 +13,28 @@ import { Textarea } from "@/components/ui/textarea";
  */
 export function CommentComposer({
   cancelLabel,
+  draftRestored = false,
   initialBody,
   inputId,
   label,
   maximumCharacters,
+  onBodyChange,
   onCancel,
+  onDiscardDraft,
   onSubmit,
   submitLabel,
 }: {
   readonly cancelLabel: string | null;
+  /** True when `initialBody` came out of the draft store, not the caller. */
+  readonly draftRestored?: boolean;
   readonly initialBody: string;
   readonly inputId: string;
   readonly label: string;
   readonly maximumCharacters: number;
+  /** Draft wiring: hears every edit, including the clearing submit/discard. */
+  readonly onBodyChange?: (body: string) => void;
   readonly onCancel: (() => void) | null;
+  readonly onDiscardDraft?: () => void;
   readonly onSubmit: (body: string, idempotencyKey: string) => Promise<boolean>;
   readonly submitLabel: string;
 }) {
@@ -45,17 +53,44 @@ export function CommentComposer({
     if (!accepted) return;
     attemptKey.current = null;
     setBody("");
+    onBodyChange?.("");
+  };
+
+  const discardDraft = () => {
+    setBody("");
+    onDiscardDraft?.();
   };
 
   return (
     <div className="grid gap-2">
-      <Label htmlFor={inputId}>{label}</Label>
+      <div className="flex items-baseline justify-between gap-2">
+        <Label htmlFor={inputId}>{label}</Label>
+        {draftRestored && trimmed !== "" ? (
+          <span className="flex items-baseline gap-2">
+            <span className="text-xs text-muted-foreground" data-draft-marker>
+              Draft
+            </span>
+            {onDiscardDraft === undefined ? null : (
+              <button
+                className="text-xs text-muted-foreground underline"
+                onClick={discardDraft}
+                type="button"
+              >
+                Discard
+              </button>
+            )}
+          </span>
+        ) : null}
+      </div>
       <Textarea
         aria-describedby={tooLong ? `${inputId}-limit` : undefined}
         aria-invalid={tooLong}
         disabled={pending}
         id={inputId}
-        onChange={(event) => setBody(event.currentTarget.value)}
+        onChange={(event) => {
+          setBody(event.currentTarget.value);
+          onBodyChange?.(event.currentTarget.value);
+        }}
         placeholder="Describe what should change and why."
         value={body}
       />

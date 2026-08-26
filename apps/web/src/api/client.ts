@@ -860,10 +860,14 @@ export const api = {
     method: "POST",
   }),
   session: () => request(sessionSchema, "/api/v1/session"),
-  logout: () => requestNoContent("/api/v1/session/logout", {
-    headers: mutationHeaders(),
-    method: "POST",
-  }),
+  logout: async () => {
+    await requestNoContent("/api/v1/session/logout", {
+      headers: mutationHeaders(),
+      method: "POST",
+    });
+    // Drafts and other departing-principal state listen for this.
+    window.dispatchEvent(new Event("artifact-session-logout"));
+  },
   publicLinks: (cursor: string | null) => {
     const query = new URLSearchParams({ limit: "25" });
     if (cursor !== null) query.set("cursor", cursor);
