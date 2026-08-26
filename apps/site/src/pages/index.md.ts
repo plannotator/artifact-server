@@ -2,9 +2,9 @@ export const prerender = true;
 
 const markdown = `# Artifact Server
 
-Self-hostable, fair-source infrastructure for publishing, reviewing, and sharing immutable browser artifacts with people and agents.
+The self-hostable, fair-source alternative to Claude Code artifacts.
 
-Artifact Server gives the documents, prototypes, reports, and sites created by people and agents a stable home. Every publication creates an immutable version. Review comments stay attached to the exact version and target. People and agents use the same artifact record through the CLI, MCP, HTTP API, and browser review.
+Artifact Server gives people and agents one place to publish, review, comment on, version, and share the artifacts they create while building products. Its built-in MCP server gives agents direct access to the same work. Every publication creates an immutable version; review comments stay attached to the exact version and target. Run it on a laptop for one developer, or deploy it for a private team on Cloudflare, one server, Kubernetes, AWS, or Google Cloud.
 
 ## Product model
 

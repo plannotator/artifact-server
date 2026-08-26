@@ -1,0 +1,87 @@
+---
+/**
+ * Decorative artifact shapes scattered behind the landing page: documents,
+ * image frames, video marks, and plain geometry in the product's accent
+ * palette. Positions are fixed (not random at render) so the page is stable
+ * between builds. Purely decorative — hidden from assistive tech, no
+ * pointer events, motion disabled under prefers-reduced-motion.
+ */
+type Kind = "doc" | "image" | "video" | "square" | "circle" | "ring" | "triangle";
+
+interface Shape {
+  kind: Kind;
+  color: string;
+  top: number; // percent of page height
+  left: number; // percent of page width
+  size: number; // rem
+  rotate: number; // deg
+  drift: number; // seconds
+}
+
+const shapes: Shape[] = [
+  { kind: "doc", color: "#6d6eff", top: 4, left: 3, size: 5, rotate: -8, drift: 18 },
+  { kind: "circle", color: "#2dd4bf", top: 9, left: 92, size: 3, rotate: 0, drift: 14 },
+  { kind: "triangle", color: "#f5b342", top: 14, left: 47, size: 2.5, rotate: 18, drift: 16 },
+  { kind: "square", color: "#e05cff", top: 21, left: 7, size: 2.25, rotate: 12, drift: 20 },
+  { kind: "image", color: "#4ade80", top: 26, left: 88, size: 5.5, rotate: 6, drift: 22 },
+  { kind: "ring", color: "#6d6eff", top: 33, left: 55, size: 3.5, rotate: 0, drift: 15 },
+  { kind: "video", color: "#ff7a59", top: 38, left: 12, size: 4.5, rotate: -6, drift: 19 },
+  { kind: "square", color: "#2dd4bf", top: 45, left: 95, size: 1.75, rotate: 30, drift: 13 },
+  { kind: "doc", color: "#f5b342", top: 51, left: 2, size: 4, rotate: 10, drift: 21 },
+  { kind: "circle", color: "#e05cff", top: 57, left: 70, size: 2, rotate: 0, drift: 17 },
+  { kind: "triangle", color: "#4ade80", top: 63, left: 90, size: 3, rotate: -24, drift: 16 },
+  { kind: "image", color: "#6d6eff", top: 69, left: 6, size: 5, rotate: -4, drift: 23 },
+  { kind: "ring", color: "#ff7a59", top: 75, left: 48, size: 2.5, rotate: 0, drift: 14 },
+  { kind: "video", color: "#2dd4bf", top: 81, left: 93, size: 4, rotate: 8, drift: 20 },
+  { kind: "square", color: "#f5b342", top: 88, left: 15, size: 2.5, rotate: -15, drift: 18 },
+  { kind: "doc", color: "#e05cff", top: 94, left: 84, size: 4.5, rotate: 5, drift: 22 },
+  { kind: "circle", color: "#f5b342", top: 17, left: 78, size: 1.5, rotate: 0, drift: 15 },
+  { kind: "image", color: "#e05cff", top: 42, left: 40, size: 3.5, rotate: 14, drift: 19 },
+  { kind: "triangle", color: "#6d6eff", top: 60, left: 30, size: 2, rotate: 40, drift: 17 },
+  { kind: "video", color: "#4ade80", top: 84, left: 62, size: 3.5, rotate: -10, drift: 21 },
+  { kind: "ring", color: "#2dd4bf", top: 28, left: 22, size: 1.75, rotate: 0, drift: 13 },
+  { kind: "square", color: "#ff7a59", top: 72, left: 77, size: 1.5, rotate: 22, drift: 16 },
+];
+---
+
+<div class="landing-shapes" aria-hidden="true">
+  {shapes.map((s, i) => (
+    <span
+      class={`landing-shape landing-shape--${s.kind}`}
+      style={`--top:${s.top}%;--left:${s.left}%;--size:${s.size}rem;--rotate:${s.rotate}deg;--drift:${s.drift}s;--delay:${-(i * 1.7)}s;color:${s.color}`}
+    >
+      {s.kind === "doc" && (
+        <svg viewBox="0 0 40 52" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 2h22l10 10v38H4z" />
+          <path d="M26 2v10h10" />
+          <path d="M11 24h18M11 31h18M11 38h12" />
+        </svg>
+      )}
+      {s.kind === "image" && (
+        <svg viewBox="0 0 52 40" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="2" width="48" height="36" />
+          <circle cx="16" cy="14" r="4" />
+          <path d="M2 32l14-12 10 8 8-6 16 12" />
+        </svg>
+      )}
+      {s.kind === "video" && (
+        <svg viewBox="0 0 52 40" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="2" width="48" height="36" />
+          <path d="M21 13l12 7-12 7z" fill="currentColor" stroke="none" />
+        </svg>
+      )}
+      {s.kind === "square" && (
+        <svg viewBox="0 0 40 40"><rect x="2" y="2" width="36" height="36" fill="currentColor" /></svg>
+      )}
+      {s.kind === "circle" && (
+        <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="currentColor" /></svg>
+      )}
+      {s.kind === "ring" && (
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="3"><circle cx="20" cy="20" r="16" /></svg>
+      )}
+      {s.kind === "triangle" && (
+        <svg viewBox="0 0 40 40"><path d="M20 3l17 32H3z" fill="currentColor" /></svg>
+      )}
+    </span>
+  ))}
+</div>

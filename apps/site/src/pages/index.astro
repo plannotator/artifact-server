@@ -2,6 +2,7 @@
 import Icon from "@cloudflare/nimbus-docs/components/Icon.astro";
 import ArtifactMark from "../components/ArtifactMark.astro";
 import Header from "../components/Header.astro";
+import LandingShapes from "../components/LandingShapes.astro";
 import SiteFooter from "../components/SiteFooter.astro";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { artifactServerAppUrl } from "../lib/public-config";
@@ -14,23 +15,26 @@ import cursorDark from "../../../web/src/review/assets/agents/cursor-dark.svg";
 import cursorLight from "../../../web/src/review/assets/agents/cursor-light.svg";
 import piDark from "../../../web/src/review/assets/agents/pi.svg";
 import piLight from "../../../web/src/review/assets/agents/pi-light.svg";
+import plannotatorBadge from "../../../../docs/images/star-plannotator.svg";
+import workspacesBadge from "../../../../docs/images/plannotator-workspaces.svg";
 import "../styles/landing.css";
+
+const description = "The self-hostable, fair-source alternative to Claude Code artifacts. One place for people and agents to publish, review, comment on, version, and share the artifacts they create while building products.";
 
 // Each agent carries a light- and dark-theme mark; CSS shows the one that
 // matches `[data-mode]` so single-color marks stay visible on both grounds.
 const agents = [
-  { name: "Pi", tier: "native", light: piLight.src, dark: piDark.src },
   { name: "Claude Code", tier: "channel", light: claudeLogo.src, dark: claudeLogo.src },
   { name: "Codex", tier: "mailbox", light: codexLight.src, dark: codexDark.src },
   { name: "Cursor", tier: "mailbox", light: cursorLight.src, dark: cursorDark.src },
   { name: "GitHub Copilot", tier: "mailbox", light: copilotLight.src, dark: copilotDark.src },
+  { name: "Pi", tier: "native", light: piLight.src, dark: piDark.src },
 ];
-
-const description = "Publish the browser artifacts your agents make, keep every version, and review them with people and agents from one durable place.";
 ---
 
-<BaseLayout title="Artifact Server — a durable home for agent-made work" description={description} markdownUrl="/index.md">
+<BaseLayout title="Artifact Server — self-hostable Claude Code artifacts" description={description} markdownUrl="/index.md">
   <div class="landing-shell">
+    <LandingShapes />
     <Header showSidebar={false} />
     <main id="main-content" tabindex="-1">
       <section class="landing-hero" aria-labelledby="landing-title">
@@ -39,72 +43,58 @@ const description = "Publish the browser artifacts your agents make, keep every 
             <span></span>
             Self-hostable · fair source
           </p>
-          <h1 id="landing-title">Give every artifact a stable home.</h1>
+          <h1 id="landing-title">Self-hostable Claude&nbsp;Code artifacts.</h1>
           <p class="landing-lede">
-            Publish the documents, prototypes, reports, and sites your agents make.
-            Artifact Server keeps every version immutable, makes review precise, and
-            gives people and agents the same source of truth.
+            The fair-source alternative to Claude Code artifacts. Artifact Server gives
+            people and agents one place to publish, review, comment on, version, and
+            share the artifacts they create while building products. Its built-in MCP
+            server gives agents direct access to the same work.
           </p>
           <div class="landing-actions">
-            <a class="landing-button landing-button--primary" href={artifactServerAppUrl}>
-              Open Artifact Server
-              <Icon name="ph:arrow-up-right" />
+            <a class="landing-button landing-button--primary" href="/docs/get-started/">
+              Run it locally
+              <Icon name="ph:arrow-right" />
             </a>
             <a class="landing-button" href="/docs/">
               Read the docs
               <Icon name="ph:arrow-right" />
             </a>
           </div>
-          <p class="landing-command" aria-label="Install command">
-            <code>npx skills add plannotator/artifact-server</code>
-            <span>CLI · MCP · HTTP</span>
-          </p>
+          <div class="landing-commands" aria-label="Install commands">
+            <p><code>artifactserver connect</code><span>connect your agent</span></p>
+            <p><code>npx skills add plannotator/artifact-server</code><span>install the skill</span></p>
+          </div>
         </div>
 
-        <figure class="artifact-window" aria-label="Artifact Server review showing an artifact, its immutable version, and review comments">
+        <figure class="artifact-window" aria-label="Artifact Server full-screen review: the artifact fills the canvas with the comment panel open beside it">
           <figcaption class="artifact-window__topbar">
             <span class="artifact-window__brand"><ArtifactMark /> Artifact Server</span>
-            <span>Default project</span>
-            <span class="artifact-window__status"><i></i> Local</span>
+            <span class="artifact-window__title"><strong>Release narrative</strong> · Version 4 · immutable</span>
+            <span class="artifact-window__status"><i></i> Full screen</span>
           </figcaption>
           <div class="artifact-window__body">
-            <div class="artifact-catalog">
-              <div class="artifact-search"><Icon name="ph:magnifying-glass" /> Search artifacts…</div>
-              <article class="artifact-card artifact-card--active">
-                <strong>Release narrative</strong>
-                <span>documentation · product</span>
-                <small>4 versions</small>
-              </article>
-              <article class="artifact-card">
-                <strong>Checkout prototype</strong>
-                <span>prototype · ui</span>
-                <small>2 versions</small>
-              </article>
-              <article class="artifact-card">
-                <strong>Performance report</strong>
-                <span>report · benchmark</span>
-                <small>8 versions</small>
-              </article>
-            </div>
-            <div class="artifact-preview">
-              <header>
-                <div><strong>Release narrative</strong><span>Version 4 · immutable</span></div>
-                <button type="button" tabindex="-1">Full screen</button>
-              </header>
-              <div class="artifact-preview__canvas">
-                <div class="artifact-document">
-                  <p>RELEASE 04 · READY FOR REVIEW</p>
-                  <h2>A precise record of work worth keeping.</h2>
-                  <span></span><span></span><span></span>
-                  <aside>
-                    <strong>Current state</strong>
-                    <p>One version, five files, three open comments.</p>
-                  </aside>
+            <div class="artifact-canvas">
+              <div class="artifact-document">
+                <p>RELEASE 04 · READY FOR REVIEW</p>
+                <h2>A precise record of work worth keeping.</h2>
+                <span></span><span></span><span></span>
+                <div class="artifact-document__media">
+                  <div></div><div></div><div></div>
                 </div>
+                <span></span><span></span>
+                <aside>
+                  <strong>Current state</strong>
+                  <p>One version, five files, three open comments.</p>
+                </aside>
               </div>
             </div>
             <div class="artifact-inspector">
-              <nav><b>Comments <span>3</span></b><span>Details</span><span>Files</span></nav>
+              <nav>
+                <b>Comments <span>3</span></b><span>Details</span><span>Files</span>
+                <em class="artifact-inspector__presence" title="Pi · idle">
+                  <i class="loop-presence"><img alt="" src={piLight.src} class="theme-light" /><img alt="" src={piDark.src} class="theme-dark" /></i>
+                </em>
+              </nav>
               <article>
                 <header><i>1</i><strong>Keep this tied to the exact version.</strong></header>
                 <p>The new explanation is clear. The diagram should name the content boundary too.</p>
@@ -115,6 +105,14 @@ const description = "Publish the browser artifacts your agents make, keep every 
                 <p>Send this thread with the artifact context and let it close the loop.</p>
                 <footer><span>Ada</span><button type="button" tabindex="-1">Reply</button></footer>
               </article>
+              <article>
+                <header><i>3</i><strong>Swap the hero image for the new render.</strong></header>
+                <p>The one in v3 is the old palette.</p>
+                <footer><span>Sam</span><button type="button" tabindex="-1">Reply</button></footer>
+              </article>
+              <div class="artifact-inspector__send">
+                <button type="button" tabindex="-1">Send all open (3) to docs-site</button>
+              </div>
             </div>
           </div>
         </figure>
@@ -122,29 +120,38 @@ const description = "Publish the browser artifacts your agents make, keep every 
 
       <section class="landing-principles" id="how-it-works" aria-labelledby="principles-title">
         <header class="landing-section-heading">
-          <p>One durable loop</p>
-          <h2 id="principles-title">Publish, review, improve—without losing the work between.</h2>
+          <p>Why Artifact Server</p>
+          <div>
+            <h2 id="principles-title">Keep the work your team makes, not just the code.</h2>
+            <p class="landing-section-lede">
+              Teams now use HTML, images, and video for plans, mockups, prototypes, code
+              reviews, and other work created during product development. That work
+              quickly becomes disorganized, and providers try to lock it inside their
+              platforms. Artifact Server gives teams a self-hosted place to organize and
+              collaborate on it, and to keep control of the files and data.
+            </p>
+          </div>
         </header>
         <div class="landing-principle-grid">
           <article>
             <span>01</span>
             <Icon name="ph:upload-simple" />
             <h3>Publish from where the work happens.</h3>
-            <p>Agents and developers publish complete files or sites through the CLI, MCP, or HTTP.</p>
-            <code>artifactserver publish ./report.html</code>
+            <p>Agents publish through MCP or the Agent Skill; people use the CLI or the browser. Complete files or whole sites, one verified upload.</p>
+            <code>/artifact-server upload that HTML design doc</code>
           </article>
           <article>
             <span>02</span>
             <Icon name="ph:stack" />
             <h3>Keep immutable versions.</h3>
-            <p>Every save creates a version with stable bytes and identity. The artifact link moves; history does not.</p>
+            <p>Every save creates a version with stable bytes and identity, organized by project. The artifact link moves; history does not.</p>
             <code>Project → Artifact → Version</code>
           </article>
           <article>
             <span>03</span>
             <Icon name="ph:chat-centered-text" />
-            <h3>Review with people and agents.</h3>
-            <p>Comments stay attached to the exact version and target, so the next change starts with real context.</p>
+            <h3>Review, comment, share.</h3>
+            <p>Comments stay attached to the exact version and target. Share a review link, not a file path, and the next change starts with real context.</p>
             <code>Comment → Agent → New version</code>
           </article>
         </div>
@@ -152,13 +159,15 @@ const description = "Publish the browser artifacts your agents make, keep every 
 
       <section class="landing-loop" id="agents" aria-labelledby="loop-title">
         <div class="landing-loop__copy">
-          <p class="landing-eyebrow"><span></span>Live review with coding agents</p>
+          <p class="landing-eyebrow"><span></span>Built for AI agents</p>
           <h2 id="loop-title">Comment. Send all. The agent closes every thread.</h2>
           <p>
-            Connect Pi, OpenCode, or Claude Code and it appears in the review with a live
-            presence avatar. One click sends every open comment on the version into its
-            running session as follow-up work. It replies in each thread, resolves what it
-            fixed, and publishes the next version. Nothing gets pasted into a chat.
+            Every agent that speaks MCP can publish, organize, review, comment on, and
+            share versioned artifacts through the built-in MCP server. Connect Pi,
+            OpenCode, or Claude Code as a live agent and it appears in the review with a
+            presence avatar: one click sends every open comment into its running session,
+            and it replies, resolves, and publishes the next version. Nothing gets pasted
+            into a chat.
           </p>
           <ul class="landing-loop__agents" aria-label="Supported agents">
             {agents.map((agent) => (
@@ -202,12 +211,13 @@ const description = "Publish the browser artifacts your agents make, keep every 
 
       <section class="landing-boundary" aria-labelledby="boundary-title">
         <div class="landing-boundary__copy">
-          <p class="landing-eyebrow"><span></span>Built around the trust boundary</p>
+          <p class="landing-eyebrow"><span></span>Security model</p>
           <h2 id="boundary-title">The artifact gets the canvas. The application keeps control.</h2>
           <p>
-            Finished HTML runs on an isolated content origin. The trusted review owns
-            identity, comments, versions, and sharing. That separation gives rich artifacts
-            the screen without giving untrusted content the keys.
+            Untrusted artifact content is served from isolated version hosts, separate
+            from the trusted application origin that owns authentication, review,
+            comments, the API, and MCP. Private content uses version-scoped browser
+            sessions, and untrusted paths never select storage locations.
           </p>
           <a href="/docs/concepts/security-boundary/">Understand the two-origin model <Icon name="ph:arrow-right" /></a>
         </div>
@@ -215,7 +225,7 @@ const description = "Publish the browser artifacts your agents make, keep every 
           <article>
             <small>TRUSTED ORIGIN</small>
             <strong>Artifact Server</strong>
-            <span>Identity · versions · comments</span>
+            <span>Identity · versions · comments · MCP</span>
           </article>
           <div><span>exact version</span><i></i><span>sandboxed view</span></div>
           <article>
@@ -229,29 +239,32 @@ const description = "Publish the browser artifacts your agents make, keep every 
       <section class="landing-deploy" aria-labelledby="deploy-title">
         <header class="landing-section-heading">
           <p>Yours to run</p>
-          <h2 id="deploy-title">Start on a laptop. Deploy the same product to your team.</h2>
+          <h2 id="deploy-title">Run it on a laptop. Deploy it for a team.</h2>
         </header>
         <div class="landing-deploy__grid">
           <article>
             <Icon name="ph:laptop" />
             <h3>Local</h3>
-            <p>Loopback-only owner access with no browser sign-in ceremony. SQLite and local files, directly on your machine.</p>
+            <p>Loopback-only owner access with no sign-in ceremony. SQLite and files on disk, directly on your machine.</p>
+            <code>git clone … && pnpm dev</code>
           </article>
           <article>
             <Icon name="ph:cloud" />
             <h3>Cloudflare</h3>
-            <p>A first-class Worker deployment with D1, R2, private team authentication, and isolated content domains.</p>
+            <p>The main hosted target: Workers, D1, and R2 with private team authentication and isolated content domains. Cloudflare Artifacts can add Git-backed history per project.</p>
+            <code>Workers · D1 · R2 · Artifacts (optional)</code>
           </article>
           <article>
             <Icon name="ph:buildings" />
             <h3>Your infrastructure</h3>
-            <p>One server, Kubernetes, AWS, or GCP. Product behavior stays independent from the storage and deployment provider.</p>
+            <p>Docker Compose, Kubernetes with Helm, AWS with ECS and RDS, or Google Cloud with Cloud Run and Cloud SQL. Product behavior stays independent of the provider.</p>
+            <code>Compose · Kubernetes · AWS · Google Cloud</code>
           </article>
         </div>
         <div class="landing-deploy__cta">
           <div>
-            <span>Cloudflare is the primary hosted target.</span>
-            <p>Nimbus powers these docs; Workers, D1, and R2 power the deployment.</p>
+            <span>Every remote deployment uses one trusted application origin and one isolated wildcard content domain.</span>
+            <p>The deployment guide covers shared requirements, storage choices, authentication, and backups.</p>
           </div>
           <a class="landing-button" href="/docs/deploy/cloudflare/">Deploy on Cloudflare <Icon name="ph:arrow-right" /></a>
         </div>
@@ -262,8 +275,12 @@ const description = "Publish the browser artifacts your agents make, keep every 
         <p>Artifacts are the product of the work.</p>
         <h2 id="close-title">Give them a home.</h2>
         <div class="landing-actions">
-          <a class="landing-button landing-button--primary" href={artifactServerAppUrl}>Open Artifact Server <Icon name="ph:arrow-up-right" /></a>
-          <a class="landing-button" href="/docs/get-started/">Get started locally <Icon name="ph:arrow-right" /></a>
+          <a class="landing-button landing-button--primary" href="/docs/get-started/">Get started locally <Icon name="ph:arrow-right" /></a>
+          <a class="landing-button" href={artifactServerAppUrl}>Open Artifact Server <Icon name="ph:arrow-up-right" /></a>
+        </div>
+        <div class="landing-badges">
+          <a href="https://github.com/backnotprop/plannotator"><img src={plannotatorBadge.src} alt="Artifact Server is created with Plannotator" width="395" height="60" /></a>
+          <a href="https://plannotator.ai/workspaces"><img src={workspacesBadge.src} alt="Plannotator Workspaces is the planning layer for your software factory" width="395" height="60" /></a>
         </div>
       </section>
     </main>
