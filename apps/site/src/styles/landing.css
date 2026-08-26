@@ -142,9 +142,42 @@
   line-height: 0.92;
 }
 
+.landing-byline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 1.5rem;
+  padding: 0.375rem 0.75rem 0.375rem 0.625rem;
+  border: 1px solid var(--nb-border-strong);
+  background: color-mix(in oklch, var(--nb-card) 92%, transparent);
+  color: var(--nb-foreground);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.landing-byline span {
+  color: var(--nb-muted-foreground);
+  font-weight: 500;
+}
+
+.landing-byline svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--nb-primary);
+}
+
+.landing-byline:hover {
+  border-color: var(--nb-primary);
+  color: var(--nb-primary);
+}
+
 .landing-lede {
   max-width: 54ch;
-  margin-top: 2rem !important;
+  margin-top: 1.75rem !important;
   color: var(--nb-muted-foreground);
   font-size: clamp(1rem, 1.3vw, 1.125rem);
   line-height: 1.65;

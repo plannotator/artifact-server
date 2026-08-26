@@ -1,0 +1,60 @@
+---
+title: Deploy for a team
+description: Choose a deployment target for a private team — Cloudflare, Docker Compose, Kubernetes, AWS, or Google Cloud — and the boundaries every remote installation shares.
+---
+
+Artifact Server runs on a laptop for one developer and deploys for a private team on Cloudflare, one server, Kubernetes, AWS, or Google Cloud. Product behavior is the same everywhere; only the storage and infrastructure providers change.
+
+## Choose a deployment
+
+| Deployment | Data layer | Guide |
+| --- | --- | --- |
+| Cloudflare | D1 and R2 | [Deploy on Cloudflare](/docs/deploy/cloudflare/) |
+| Compact Compose | SQLite and one file volume | [Compose guide](https://github.com/plannotator/artifact-server/blob/main/packaging/compose/README.md) |
+| External-storage Compose | PostgreSQL and S3-compatible storage | [Compose guide](https://github.com/plannotator/artifact-server/blob/main/packaging/compose/README.md) |
+| Kubernetes | PostgreSQL and object storage | [Helm guide](https://github.com/plannotator/artifact-server/blob/main/packaging/helm/artifact-server/README.md) |
+| AWS | ECS, RDS, and S3 | [AWS Pulumi guide](https://github.com/plannotator/artifact-server/blob/main/deploy/pulumi/aws/README.md) |
+| Google Cloud | Cloud Run, Cloud SQL, and Cloud Storage | [Google Cloud Pulumi guide](https://github.com/plannotator/artifact-server/blob/main/deploy/pulumi/gcp/README.md) |
+
+Cloudflare is the main hosted target, and [Cloudflare Artifacts](/docs/deploy/cloudflare/) can add private Git-backed history for selected projects. Azure teams deploy through the Helm chart on AKS; there is no separate Azure installer, and Azure Blob Storage is a preview adapter that has not passed live qualification.
+
+<Aside type="note" title="Release status">
+No deployment has completed the repository's entire conformance release gate yet. Each guide names its current boundary; do not treat a target as generally available until its gate has passing evidence.
+</Aside>
+
+## The boundaries every remote deployment shares
+
+<Steps>
+  <Step title="One trusted application origin">
+    A single HTTPS origin serves Artifact Server, its API, and its MCP endpoint. This is where people sign in and where agents connect.
+  </Step>
+  <Step title="One isolated wildcard content domain">
+    Untrusted artifact files are served from a separate wildcard domain, one hostname per version. The application origin never serves artifact bytes. [Why the two origins are separate →](/docs/concepts/security-boundary/)
+  </Step>
+  <Step title="An identity provider">
+    Remote deployments authenticate through WorkOS or one generic OIDC provider. Local-owner access works only on an exact loopback origin and is never used remotely. Network access and application authorization stay separate controls; team members are admitted inside Artifact Server.
+  </Step>
+  <Step title="Credentials outside source control">
+    Service credentials live in the platform's secret store, never in the repository or the image.
+  </Step>
+  <Step title="Coordinated backups">
+    Back up metadata and artifact files as one recovery set, using the procedure in the chosen guide. Do a restore test before the first production release and again after any storage or deployment change.
+  </Step>
+  <Step title="Pinned releases">
+    Pin production deployments to an immutable image digest, and verify the release the way the [supply-chain evidence](/docs/security/) describes.
+  </Step>
+</Steps>
+
+## Pick a data layer
+
+**Compact Compose** uses one SQLite database and one file volume. It is the smallest remote installation; run only one application process against this data layer.
+
+**External storage** — PostgreSQL plus object storage — is what Kubernetes, AWS, Google Cloud, and external-storage Compose use. Application processes become replaceable and can scale horizontally.
+
+**Cloudflare** uses D1 and R2 through the Worker runtime, with the same product services as the other targets.
+
+## After deploying
+
+- [Welcome your team](/docs/connect-agents/) — the one page to send each teammate.
+- [Connect agents to the MCP server](/docs/mcp/) — one command per client.
+- [Review with coding agents](/docs/agents/) — live feedback into Pi, OpenCode, and Claude Code.

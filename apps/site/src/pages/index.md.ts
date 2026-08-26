@@ -32,6 +32,7 @@ Open source under the GNU Affero General Public License v3.0 (AGPL-3.0-only): us
 - [Get started locally](https://artifactserver.com/docs/get-started/index.md)
 - [Built-in MCP server](https://artifactserver.com/docs/mcp/index.md)
 - [Review with coding agents](https://artifactserver.com/docs/agents/index.md)
+- [Deploy for a team](https://artifactserver.com/docs/deploy/index.md)
 - [Cloudflare deployment](https://artifactserver.com/docs/deploy/cloudflare/index.md)
 - [Source](https://github.com/plannotator/artifact-server)
 `;
