@@ -111,6 +111,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@oxlint/plugins": "1.78.0",
     "@playwright/test": "1.62.1",
     "@types/node": "24.13.3",

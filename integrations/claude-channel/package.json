@@ -1,0 +1,25 @@
+{
+  "name": "@artifact-server/claude-channel",
+  "version": "0.0.0",
+  "description": "Claude Code channel bridge for Artifact Server: pushes annotation bundles into an opted-in Claude Code session and closes them through the comment API.",
+  "type": "module",
+  "keywords": [
+    "claude-channel",
+    "artifact-server"
+  ],
+  "files": [
+    "index.ts",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@plannotator/agent-bridge": "workspace:*",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}

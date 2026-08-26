@@ -266,6 +266,12 @@ export const clientCapabilities = {
   evidence: "native",
 } as const;
 
+/** The capability declaration one adapter advertises at registration. */
+export interface ClientCapabilities {
+  readonly beacon: boolean;
+  readonly evidence: "channel" | "mailbox" | "native";
+}
+
 const registeredAgentSchema = z.object({id: z.string()}).loose();
 const agentRegistrationSchema = z.object({
   agent: registeredAgentSchema,
@@ -832,6 +838,13 @@ export interface StartBridgeOptions {
    * on each accepted bundle through a private instance.
    */
   readonly beacon?: ActivityBeacon;
+  /**
+   * The capability declaration for this adapter; defaults to
+   * {@link clientCapabilities} (native evidence). A channel adapter passes
+   * `evidence: "channel"` because delivery proves transport admission, not
+   * host acceptance.
+   */
+  readonly capabilities?: ClientCapabilities;
   /** Null when nothing resolved: the bridge stays dormant after one notice. */
   readonly credentials: BridgeCredentials | null;
   readonly displayName: string;
@@ -938,7 +951,7 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
     let response = await apiFetch(session, "/api/v1/agents", {
       body: JSON.stringify({
         ...registration,
-        capabilities: clientCapabilities,
+        capabilities: options.capabilities ?? clientCapabilities,
       }),
       method: "POST",
       signal: controller.signal,
