@@ -40,6 +40,11 @@ interface RememberedAgent {
   readonly id: string;
 }
 
+interface RememberedAgentPreference {
+  readonly agent: RememberedAgent | null;
+  readonly storageKey: string;
+}
+
 const rememberedAgentSchema = z.object({
   displayName: z.string().min(1),
   id: z.string().min(1),
@@ -52,10 +57,10 @@ function readRememberedAgent(storageKey: string): RememberedAgent | null {
     const parsed = rememberedAgentSchema.safeParse(JSON.parse(stored));
     if (parsed.success) return parsed.data;
   } catch {
-    // Older builds stored the id alone. Preserve the destination lock even
-    // when its display name is not available for the migration.
+    // Invalid local convenience state is disposable; it is never authority.
   }
-  return {displayName: "Previous agent", id: stored};
+  window.localStorage.removeItem(storageKey);
+  return null;
 }
 
 function dispatchBatches(threadIds: readonly string[]): readonly (readonly string[])[] {
@@ -155,27 +160,46 @@ export function SendToAgentControl({
   const [note, setNote] = useState("");
   const [error, setError] = useState<Error | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const [rememberedDefault, setRememberedDefault] = useState<RememberedAgent | null>(null);
   const attemptKeys = useRef<readonly string[]>([]);
   const dialogId = useId();
   const storageKey = defaultAgentStorageKey(principalId, projectId);
+  const [rememberedPreference, setRememberedPreference] =
+    useState<RememberedAgentPreference>(() => ({
+      agent: readRememberedAgent(storageKey),
+      storageKey,
+    }));
 
   useEffect(() => {
-    setRememberedDefault(readRememberedAgent(storageKey));
+    setRememberedPreference({
+      agent: readRememberedAgent(storageKey),
+      storageKey,
+    });
   }, [storageKey]);
 
+  const rememberedDefault = rememberedPreference.storageKey === storageKey
+    ? rememberedPreference.agent
+    : null;
   const knownConnected = agents?.filter((agent) => agent.connected) ?? null;
   const rememberedAgent = agents?.find((agent) => agent.id === rememberedDefault?.id) ?? null;
+  const rememberedDefaultMissing = agents !== null
+    && rememberedDefault !== null
+    && rememberedAgent === null;
+
+  useEffect(() => {
+    if (!rememberedDefaultMissing) return;
+    window.localStorage.removeItem(storageKey);
+    setRememberedPreference({agent: null, storageKey});
+  }, [rememberedDefaultMissing, storageKey]);
+
   const mainAgent = rememberedAgent?.connected === true
     ? rememberedAgent
-    : rememberedDefault === null && knownConnected?.length === 1
+    : (rememberedDefault === null || rememberedDefaultMissing)
+        && knownConnected?.length === 1
       ? knownConnected[0] ?? null
       : null;
   const disconnectedDefaultName = rememberedAgent !== null && !rememberedAgent.connected
     ? rememberedAgent.displayName
-    : rememberedDefault !== null && agents !== null && rememberedAgent === null
-      ? rememberedDefault.displayName
-      : null;
+    : null;
   const noAgents = knownConnected !== null && knownConnected.length === 0;
   const nothingToSend = openCount === 0;
   const mainReason = nothingToSend
@@ -200,7 +224,7 @@ export function SendToAgentControl({
   const rememberAgent = (agent: AgentPresence): void => {
     const next = {displayName: agent.displayName, id: agent.id};
     window.localStorage.setItem(storageKey, JSON.stringify(next));
-    setRememberedDefault(next);
+    setRememberedPreference({agent: next, storageKey});
   };
 
   const reportAttempt = async (

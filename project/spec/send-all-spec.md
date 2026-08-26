@@ -45,11 +45,10 @@ already polls (`GET /api/v1/agents`: `connected`, `activity`,
 | Default disconnected | Disabled: `‹default› disconnected — pick another`; caret still open | Never falls through silently to a different agent. |
 | Target is mailbox tier (`evidence: "mailbox"`) | Enabled; label after send: `Queued for ‹name› — it picks this up when it next checks in.` | Sends; the tool-result nudges (NDG-001) make that promise real. |
 
-The **default** is remembered per principal and project (`localStorage`, key
-`dispatch-default:<principalId>:<projectId>`): the last agent sent to. The
-stored value carries the agent ID and display name so a registration that
-disappears is shown as disconnected instead of silently falling through.
-It is a convenience, never authority.
+The **default** is remembered per project (`localStorage`, key
+`dispatch-default:<principalId>:<projectId>`): the last agent sent to.
+It is a convenience, never authority — if the remembered agent is gone
+from the listing, the control treats it as "no default yet."
 
 `N` counts open threads on the current version that are not inside an
 active dispatch (the server's default `dispatched=exclude` listing).

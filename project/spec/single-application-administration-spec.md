@@ -188,7 +188,7 @@ remain so bookmarks do not strand users:
 
 | Old route | Redirect |
 | --- | --- |
-| `/` | `/review` |
+| `/?...` | `/review?...` |
 | `/workbench?...` | `/review?...` |
 | `/projects` | `/review/settings/projects` |
 | `/projects/:projectId/artifacts` | `/review?project=:projectId` |

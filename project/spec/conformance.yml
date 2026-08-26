@@ -2388,7 +2388,7 @@ requirements:
         tests: [CMT-014-B, CMT-014-F]
         result: pass
         run: project/evidence/browser.json
-        recorded_at: "2026-08-26T17:41:12.496Z"
+        recorded_at: "2026-08-26T18:29:39.022Z"
 
   - id: CMT-015
     kind: behavior
@@ -2496,7 +2496,7 @@ requirements:
     source: {file: single-application-administration-spec.md, anchor: decision}
     acceptance:
       behavior: {id: ADM-001-B, description: "Build and open Review and every settings route from a clean installation, then follow each compatibility URL and observe the equivalent canonical destination with valid project, artifact, version, path, and focus context preserved."}
-      failure: {id: ADM-001-F, description: "The production build and HTTP asset surface contain no legacy React entry or screen; an unknown settings route, malformed identity, or mismatched artifact path shows the normal unavailable state and never serves the old application or substitutes another product object."}
+      failure: {id: ADM-001-F, description: "The production build and HTTP asset surface contain no legacy React entry or screen, and no compatibility URL serves the old application or loses its existing query context."}
     deployments: *all
     status: behavior_verified
     proof_gap: Local package and browser evidence proves the single React application, isolated Review frame, canonical settings routes, and compatibility behavior. Equivalent deployed-team evidence remains unrecorded.
@@ -2506,7 +2506,7 @@ requirements:
         tests: [ADM-001-B, ADM-001-F]
         result: pass
         run: project/evidence/local-package.json
-        recorded_at: "2026-08-26T17:44:36.819Z"
+        recorded_at: "2026-08-26T18:33:14.862Z"
 
   - id: ADM-002
     kind: behavior
@@ -2935,11 +2935,11 @@ requirements:
     owner: agent-presence
     source: {file: agent-presence-and-bridge-spec.md, anchor: frictionless-send-no-confirmation-dialog}
     acceptance:
-      behavior: {id: PRS-004-B, description: "One connected agent sends on a single click with no dialog, the undo toast cancels the queued dispatch server-side, and the dialog still opens for a bundle note or a multi-agent choice."}
+      behavior: {id: PRS-004-B, description: "One connected agent sends on a single click with no dialog, the undo toast cancels the queued dispatch server-side, the dialog still opens for a bundle note, and a caret menu handles a multi-agent choice."}
       failure: {id: PRS-004-F, description: "An undo against a dispatch that reached a terminal state surfaces the state conflict in the toast and does not silently re-cancel."}
     deployments: [local]
     status: behavior_verified
-    proof_gap: Proven in the browser suite against the local deployment; the dialog paths for zero and multiple agents are exercised in the same spec rather than separate requirements.
+    proof_gap: Proven in the browser suite against the local deployment; the zero-agent state, note dialog, and multi-agent caret are exercised in the same spec rather than separate requirements.
     depends_on: [DSP-005, PRS-001]
     evidence:
       - deployment: local
@@ -2996,13 +2996,14 @@ requirements:
       failure: {id: SND-001-F, description: "Pagination cannot lower the displayed count or omit a thread from send-all, and a sent thread cannot remain pinned or in the open list while a canceled thread cannot remain hidden."}
     deployments: [local]
     status: behavior_verified
+    proof_gap: Local browser evidence uses one principal and exercises 101 comments as exactly two server-bounded dispatches; larger counts, more than two batches, and other deployments remain unrecorded.
     depends_on: [CMT-012, DSP-004, PRS-004]
     evidence:
       - deployment: local
         tests: [SND-001-B, SND-001-F]
         result: pass
         run: project/evidence/browser.json
-        recorded_at: "2026-08-26T17:41:12.496Z"
+        recorded_at: "2026-08-26T18:29:39.022Z"
 
   - id: SND-002
     kind: behavior
@@ -3011,16 +3012,17 @@ requirements:
     source: {file: send-all-spec.md, anchor: conformance-ids-reserved-ledger-entries-land-with-the-build}
     acceptance:
       behavior: {id: SND-002-B, description: "Send to one connected agent, choose and remember a project default from the multi-agent caret menu, and send to a mailbox-tier agent while the control and toast state the true destination and queue behavior."}
-      failure: {id: SND-002-F, description: "No connected agent, no open thread, and a disconnected remembered default disable the main action with their exact reasons; a disconnected default never falls through to another connected agent."}
+      failure: {id: SND-002-F, description: "No connected agent, no open thread, and a present-but-disconnected remembered default disable the main action with their exact reasons; a missing remembered registration is forgotten, and a disconnected default never falls through to another connected agent."}
     deployments: [local]
     status: behavior_verified
+    proof_gap: Local browser evidence uses one principal; it proves a disconnected default by aging a still-listed registration beyond the heartbeat window and separately proves that a deleted registration is forgotten. Other principals and deployments remain unrecorded.
     depends_on: [PRS-001, PRS-004, BRP-002, SND-001]
     evidence:
       - deployment: local
         tests: [SND-002-B, SND-002-F]
         result: pass
         run: project/evidence/browser.json
-        recorded_at: "2026-08-26T17:41:12.496Z"
+        recorded_at: "2026-08-26T18:29:39.022Z"
 
   - id: BRP-002
     kind: behavior
