@@ -1,9 +1,14 @@
 import {createHash} from "node:crypto";
 
 import {
+  isCallToolResult,
   McpServer,
   ResourceTemplate,
   type McpRequestContext,
+  type RegisteredTool,
+  type StandardSchemaWithJSON,
+  type ToolAnnotations,
+  type ToolCallback,
 } from "@modelcontextprotocol/server";
 import {type Effect, Redacted} from "effect";
 import {z} from "zod";
@@ -46,6 +51,7 @@ import {
   commentThreadStates,
   dispatchedThreadFilters,
   type AgentDispatchRecord,
+  type AgentDispatchState,
   type ArtifactVersion,
   type CommentThreadRecord,
   type PageCursor,
@@ -93,6 +99,12 @@ import {
   type BundleItem,
   type RenderableBundle,
 } from "./dispatch-bundle-message.js";
+import {
+  appendToolResultNudge,
+  composeToolResultNudge,
+  nudgeFreeTools,
+  type ToolResultNudgeFacts,
+} from "./tool-result-nudges.js";
 
 const serverVersion = "0.0.0";
 const maximumListedArtifacts = 100;
@@ -321,6 +333,40 @@ const mailboxReportSchema = z.object({
     agentDispatchStates.queued,
   ]),
 }).strict();
+/** The arguments a progress echo reads from a comment_reply or comment_resolve call. */
+const nudgeProgressArgumentsSchema = z.object({
+  projectId: z.string().min(1).max(200).nullable().optional(),
+  resolved: z.boolean().optional(),
+  threadId: z.string().min(1).max(200),
+}).loose();
+
+/**
+ * The thread (and the project it was addressed in) that a comment_reply or
+ * a resolving comment_resolve call acted on — the only calls that can settle
+ * a bundle — or null for every other call.
+ */
+interface NudgeProgressThread {
+  readonly projectId: string | null;
+  readonly threadId: string;
+}
+
+function progressEchoThread(
+  toolName: string,
+  parsed: ReturnType<typeof nudgeProgressArgumentsSchema.safeParse>,
+): NudgeProgressThread | null {
+  if (toolName !== "comment_reply" && toolName !== "comment_resolve") return null;
+  if (!parsed.success) return null;
+  if (toolName === "comment_resolve" && parsed.data.resolved !== true) return null;
+  return {projectId: parsed.data.projectId ?? null, threadId: parsed.data.threadId};
+}
+
+/**
+ * The queued-work nudge scans at most this many of the caller's projects, so
+ * the read cost of one nudge stays bounded for members of many projects; the
+ * dispatch port lists per project, and a queue the scan does not reach is
+ * still claimable through dispatch_inbox.
+ */
+const nudgeProjectScanLimit = 10;
 const manifestResource = new ResourceTemplate(
   "artifact://projects/{projectId}/artifacts/{artifactId}/versions/{versionId}/manifest",
   {list: undefined},
@@ -378,7 +424,149 @@ export function createArtifactMcpServer(
     },
   );
 
-  server.registerTool(
+  /**
+   * Register one tool and append the nudge pass to its results. The pass
+   * wraps the SDK's arity-neutral executor, so a tool with or without an
+   * input schema is invoked exactly as before; only successful tool results
+   * gain a trailing text item, and only for tools that are not nudge-free.
+   */
+  function registerNudgedTool<
+    InputArgs extends StandardSchemaWithJSON | undefined = undefined,
+  >(
+    name: string,
+    config: {
+      title?: string;
+      description?: string;
+      inputSchema?: InputArgs;
+      outputSchema?: StandardSchemaWithJSON;
+      annotations?: ToolAnnotations;
+    },
+    callback: ToolCallback<InputArgs>,
+  ): RegisteredTool {
+    const registered = server.registerTool(name, config, callback);
+    // A schemaless tool keeps its original callback on purpose: the SDK
+    // invokes such a tool with a single context argument, which the
+    // two-argument nudge wrapper below cannot forward. None exist today.
+    if (nudgeFreeTools.has(name) || config.inputSchema === undefined) {
+      return registered;
+    }
+    const execute = registered.executor;
+    registered.update({
+      callback: async (toolArguments, context) => {
+        const result = await execute(toolArguments, context);
+        if (!isCallToolResult(result) || result.isError === true) return result;
+        // The call's arguments are parsed here, at the protocol boundary; only
+        // the thread a progress echo may name travels further.
+        const nudge = await deriveNudge(progressEchoThread(
+          name,
+          nudgeProgressArgumentsSchema.safeParse(toolArguments),
+        ));
+        return nudge === null ? result : appendToolResultNudge(result, nudge);
+      },
+    });
+    return registered;
+  }
+
+  /**
+   * Derive the one nudge for this call from the caller's own mailbox agent.
+   * Every failure is swallowed: a nudge is best-effort context and must never
+   * turn a successful tool result into a failure.
+   */
+  async function deriveNudge(
+    progress: NudgeProgressThread | null,
+  ): Promise<string | null> {
+    try {
+      const facts = await gatherNudgeFacts(progress);
+      return facts === null ? null : composeToolResultNudge(facts);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Gather nudge facts in priority order, stopping as soon as a higher
+   * priority kind applies so lower kinds cost no queries. Read budget per
+   * successful call: one registry read for every principal; for one with a
+   * mailbox agent, one project listing plus at most `nudgeProjectScanLimit`
+   * first-page queue reads, the presence-derived active dispatch for free,
+   * and one addressed-page read on a reply or resolve.
+   */
+  async function gatherNudgeFacts(
+    progress: NudgeProgressThread | null,
+  ): Promise<ToolResultNudgeFacts | null> {
+    const connectionKey = mailboxConnectionKey(identity.principal.id);
+    const agents = await runMcpApplicationEffect(
+      dependencies,
+      AgentDispatchService.use((registry) =>
+        registry.listAgents({principal: identity.principal})
+      ),
+    );
+    const own = agents.find((candidate) =>
+      candidate.agent.connectionKey === connectionKey &&
+      candidate.agent.principalId === identity.principal.id
+    );
+    if (own === undefined) return null;
+    const firstPage = (projectId: string | null, state: AgentDispatchState) =>
+      runMcpApplicationEffect(
+        dependencies,
+        AgentDispatchService.use((dispatches) =>
+          dispatches.listDispatches({
+            agentId: own.agent.id,
+            cursor: null,
+            limit: maximumCommentPageSize,
+            principal: identity.principal,
+            projectId,
+            state,
+          })
+        ),
+      );
+
+    // Kind 1: queued work, counted from one page per scanned project — a
+    // queue deeper than one page still nudges, just with the page's count.
+    const projects = await runMcpApplicationEffect(
+      dependencies,
+      ProjectManagementService.use((management) =>
+        management.listProjects(identity.principal)
+      ),
+    );
+    let queuedBundles = 0;
+    for (const project of projects.slice(0, nudgeProjectScanLimit)) {
+      // eslint-disable-next-line no-await-in-loop
+      queuedBundles += (await firstPage(project.id, agentDispatchStates.queued)).items.length;
+    }
+    if (queuedBundles > 0) {
+      return {activeBundle: null, queuedBundles, settledBundle: null};
+    }
+
+    // Kind 2: the unfinished claim is exactly the presence derivation's
+    // active dispatch, already computed by the registry read.
+    if (own.activeDispatchId !== null) {
+      return {
+        activeBundle: {dispatchId: own.activeDispatchId},
+        queuedBundles: 0,
+        settledBundle: null,
+      };
+    }
+
+    // Kind 3: the settling call names the thread's project, so the addressed
+    // bundle is one newest-first page away.
+    if (progress === null) {
+      return {activeBundle: null, queuedBundles: 0, settledBundle: null};
+    }
+    const addressed = await firstPage(progress.projectId, agentDispatchStates.addressed);
+    const settled = addressed.items.find((dispatch) =>
+      dispatch.threadIds.includes(progress.threadId)
+    );
+    return {
+      activeBundle: null,
+      queuedBundles: 0,
+      settledBundle: settled === undefined
+        ? null
+        : {dispatchId: settled.id, threadCount: settled.threadIds.length},
+    };
+  }
+
+  registerNudgedTool(
     "artifact_capabilities",
     {
       title: "Artifact Server capabilities",
@@ -434,7 +622,7 @@ export function createArtifactMcpServer(
       "Artifact Server publishes actual files through an upload plan. It does not accept inline HTML, CSS, JavaScript, or base64 content."),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "project_list",
     {
       title: "List projects",
@@ -456,7 +644,7 @@ export function createArtifactMcpServer(
     })),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "project_create",
     {
       title: "Create a project",
@@ -480,7 +668,7 @@ export function createArtifactMcpServer(
     })),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "project_rename",
     {
       title: "Rename a project",
@@ -510,7 +698,7 @@ export function createArtifactMcpServer(
   );
 
   for (const lifecycle of ["archive", "unarchive"] as const) {
-    server.registerTool(
+    registerNudgedTool(
       `project_${lifecycle}`,
       {
         title: `${lifecycle === "archive" ? "Archive" : "Unarchive"} a project`,
@@ -542,7 +730,7 @@ export function createArtifactMcpServer(
     );
   }
 
-  server.registerTool(
+  registerNudgedTool(
     "project_git_history_status",
     {
       title: "Read project Git history status",
@@ -565,7 +753,7 @@ export function createArtifactMcpServer(
     })),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "project_git_history_estimate",
     {
       title: "Estimate project Git history",
@@ -586,7 +774,7 @@ export function createArtifactMcpServer(
     })),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "project_set_git_history",
     {
       title: "Set project Git history",
@@ -627,7 +815,7 @@ export function createArtifactMcpServer(
     }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "artifact_history_clone_token",
     {
       title: "Issue a Git history clone token",
@@ -661,7 +849,7 @@ export function createArtifactMcpServer(
     ),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "artifact_list",
     {
       title: "List artifacts",
@@ -720,7 +908,7 @@ export function createArtifactMcpServer(
     }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "artifact_get",
     {
       title: "Get an artifact",
@@ -766,7 +954,7 @@ export function createArtifactMcpServer(
     }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "artifact_open",
     {
       title: "Open an artifact",
@@ -826,7 +1014,7 @@ export function createArtifactMcpServer(
     }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "artifact_version_list",
     {
       title: "List saved versions",
@@ -880,7 +1068,7 @@ export function createArtifactMcpServer(
     }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "artifact_diff",
     {
       title: "Compare saved versions",
@@ -986,7 +1174,7 @@ export function createArtifactMcpServer(
     }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "artifact_create_upload",
     {
       title: "Begin a file upload",
@@ -1037,7 +1225,7 @@ export function createArtifactMcpServer(
     }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "artifact_commit_upload",
     {
       title: "Commit an uploaded version",
@@ -1087,7 +1275,7 @@ export function createArtifactMcpServer(
     }, publicationSummary),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "artifact_set_visibility",
     {
       title: "Change artifact visibility",
@@ -1132,7 +1320,7 @@ export function createArtifactMcpServer(
     }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "artifact_set_tags",
     {
       title: "Replace artifact tags",
@@ -1163,7 +1351,7 @@ export function createArtifactMcpServer(
     }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "artifact_restore_version",
     {
       title: "Restore a saved version",
@@ -1194,7 +1382,7 @@ export function createArtifactMcpServer(
     }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "artifact_delete",
     {
       title: "Delete an artifact",
@@ -1224,7 +1412,7 @@ export function createArtifactMcpServer(
     }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "artifact_link",
     {
       title: "Link a file on this machine",
@@ -1264,7 +1452,7 @@ export function createArtifactMcpServer(
     }, publicationSummary),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "artifact_capture",
     {
       title: "Capture a linked file's current bytes",
@@ -1305,7 +1493,7 @@ export function createArtifactMcpServer(
       ),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "artifact_relink",
     {
       title: "Point a linked artifact at a moved file",
@@ -1349,7 +1537,7 @@ export function createArtifactMcpServer(
       })),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "comment_list",
     {
       title: "List comment threads",
@@ -1398,7 +1586,7 @@ export function createArtifactMcpServer(
       }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "comment_get",
     {
       title: "Get a comment thread",
@@ -1434,7 +1622,7 @@ export function createArtifactMcpServer(
     }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "comment_create",
     {
       title: "Open a comment thread",
@@ -1486,7 +1674,7 @@ export function createArtifactMcpServer(
     }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "comment_reply",
     {
       title: "Reply to a comment thread",
@@ -1524,7 +1712,7 @@ export function createArtifactMcpServer(
       }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "comment_resolve",
     {
       title: "Resolve or reopen a comment thread",
@@ -1557,7 +1745,7 @@ export function createArtifactMcpServer(
     })),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "comment_update",
     {
       title: "Edit a comment",
@@ -1619,7 +1807,7 @@ export function createArtifactMcpServer(
       }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "comment_delete",
     {
       title: "Delete a comment",
@@ -1653,7 +1841,7 @@ export function createArtifactMcpServer(
     }),
   );
 
-  server.registerTool(
+  registerNudgedTool(
     "comment_clear",
     {
       title: "Clear comment threads in bulk",
@@ -1909,7 +2097,7 @@ export function createArtifactMcpServer(
     }
   };
 
-  server.registerTool(
+  registerNudgedTool(
     "dispatch_inbox",
     {
       title: "Agent dispatch inbox",

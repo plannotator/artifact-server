@@ -45,6 +45,13 @@ v1 nudge kinds, in priority order (at most ONE block per result):
 
 - Derived at read time from existing dispatch/thread state. No new
   storage, no timers, no background jobs.
+- Read-bounded: one registry read for every principal; for one with a
+  mailbox agent, one project listing plus a first-page queue read for at
+  most the first 10 of its projects (the dispatch port lists per project),
+  the presence derivation's active dispatch at no extra cost, and one
+  addressed-page read on a reply or resolve. A queue in an unscanned
+  project is still claimable through `dispatch_inbox`; the nudge simply
+  does not count it.
 - Appended as a trailing text content item only; `structuredContent` is
   never touched, so typed consumers are unaffected.
 - Never appended to error results (an actionable error is its own
