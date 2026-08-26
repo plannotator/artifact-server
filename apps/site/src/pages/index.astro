@@ -64,54 +64,76 @@ const agents = [
             </a>
           </div>
           <div class="landing-commands" aria-label="Install commands">
-            <p><code>artifactserver connect</code><span>connect your agent</span></p>
-            <p><code>npx skills add plannotator/artifact-server</code><span>install the skill</span></p>
+            <p>
+              <code>artifactserver connect</code>
+              <a href="/docs/mcp/">connect your agent</a>
+              <button type="button" data-copy="artifactserver connect" aria-label="Copy the connect command">
+                <Icon name="ph:copy" /><Icon name="ph:check" />
+              </button>
+            </p>
+            <p>
+              <code>npx skills add plannotator/artifact-server</code>
+              <a href="/docs/mcp/#install-the-artifact-server-skill">install the skill</a>
+              <button type="button" data-copy="npx skills add plannotator/artifact-server" aria-label="Copy the skill install command">
+                <Icon name="ph:copy" /><Icon name="ph:check" />
+              </button>
+            </p>
           </div>
         </div>
 
-        <figure class="artifact-window" aria-label="Artifact Server full-screen review: the artifact fills the canvas with the comment panel open beside it">
-          <figcaption class="artifact-window__topbar">
-            <span class="artifact-window__brand"><ArtifactMark /> Artifact Server</span>
-            <span class="artifact-window__title"><strong>Release narrative</strong> · Version 4 · immutable</span>
-            <span class="artifact-window__status"><i></i> Full screen</span>
-          </figcaption>
+        <figure class="artifact-window" aria-label="Artifact Server review: the artifact fills the canvas with the comment panel open beside it, showing two reviewers and a connected Pi agent">
           <div class="artifact-window__body">
             <div class="artifact-canvas">
               <div class="artifact-document">
                 <p>RELEASE 04 · READY FOR REVIEW</p>
                 <h2>A precise record of work worth keeping.</h2>
                 <span></span><span></span><span></span>
-                <div class="artifact-document__media">
-                  <div></div><div></div><div></div>
+                <div class="artifact-collage" aria-hidden="true">
+                  <i class="collage collage--image">
+                    <svg viewBox="0 0 52 40" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="48" height="36" /><circle cx="16" cy="14" r="4" /><path d="M2 32l14-12 10 8 8-6 16 12" /></svg>
+                  </i>
+                  <i class="collage collage--video">
+                    <svg viewBox="0 0 52 40" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="48" height="36" /><path d="M21 13l12 7-12 7z" fill="currentColor" stroke="none" /></svg>
+                  </i>
+                  <i class="collage collage--puzzle">
+                    <svg viewBox="0 0 48 48" fill="currentColor"><path d="M6 12h10c0-6 12-6 12 0h10v10c6 0 6 12 0 12v10H6z" /></svg>
+                  </i>
+                  <i class="collage collage--image collage--alt">
+                    <svg viewBox="0 0 52 40" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="48" height="36" /><circle cx="36" cy="14" r="4" /><path d="M2 34l18-16 12 10 6-5 12 11" /></svg>
+                  </i>
+                  <i class="collage collage--video collage--alt">
+                    <svg viewBox="0 0 52 40" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="48" height="36" /><path d="M21 13l12 7-12 7z" fill="currentColor" stroke="none" /></svg>
+                  </i>
+                  <i class="collage collage--puzzle collage--alt">
+                    <svg viewBox="0 0 48 48" fill="currentColor"><path d="M6 12h10c0-6 12-6 12 0h10v10c6 0 6 12 0 12v10H6z" /></svg>
+                  </i>
                 </div>
                 <span></span><span></span>
-                <aside>
-                  <strong>Current state</strong>
-                  <p>One version, five files, three open comments.</p>
-                </aside>
               </div>
             </div>
             <div class="artifact-inspector">
-              <nav>
-                <b>Comments <span>3</span></b><span>Details</span><span>Files</span>
-                <em class="artifact-inspector__presence" title="Pi · idle">
-                  <i class="loop-presence"><img alt="" src={piLight.src} class="theme-light" /><img alt="" src={piDark.src} class="theme-dark" /></i>
-                </em>
-              </nav>
+              <header class="artifact-inspector__people">
+                <span class="avatar-stack" aria-label="Pi agent, Ada Lovelace, and Sam Kim are in this review">
+                  <i class="human-avatar" title="Ada Lovelace">AL</i>
+                  <i class="human-avatar" title="Sam Kim">SK</i>
+                  <i class="loop-presence" title="Pi · idle"><img alt="" src={piLight.src} class="theme-light" /><img alt="" src={piDark.src} class="theme-dark" /></i>
+                </span>
+                <b>Comments <span>3</span></b>
+              </header>
               <article>
                 <header><i>1</i><strong>Keep this tied to the exact version.</strong></header>
                 <p>The new explanation is clear. The diagram should name the content boundary too.</p>
-                <footer><span>Sam</span><button type="button" tabindex="-1">Reply</button></footer>
+                <footer><span><i class="human-avatar human-avatar--xs">SK</i> Sam Kim</span><button type="button" tabindex="-1">Reply</button></footer>
               </article>
               <article>
                 <header><i>2</i><strong>Ready for the agent.</strong></header>
                 <p>Send this thread with the artifact context and let it close the loop.</p>
-                <footer><span>Ada</span><button type="button" tabindex="-1">Reply</button></footer>
+                <footer><span><i class="human-avatar human-avatar--xs">AL</i> Ada Lovelace</span><button type="button" tabindex="-1">Reply</button></footer>
               </article>
               <article>
                 <header><i>3</i><strong>Swap the hero image for the new render.</strong></header>
                 <p>The one in v3 is the old palette.</p>
-                <footer><span>Sam</span><button type="button" tabindex="-1">Reply</button></footer>
+                <footer><span><i class="human-avatar human-avatar--xs">SK</i> Sam Kim</span><button type="button" tabindex="-1">Reply</button></footer>
               </article>
               <div class="artifact-inspector__send">
                 <button type="button" tabindex="-1">Send all open (3) to docs-site</button>
@@ -290,3 +312,22 @@ const agents = [
     <SiteFooter />
   </div>
 </BaseLayout>
+
+<script>
+  // Copy buttons on the hero commands. Progressive: without clipboard access
+  // the button does nothing and the command text is still selectable.
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
+    button.addEventListener("click", async () => {
+      const text = button.dataset.copy ?? "";
+      try {
+        await navigator.clipboard.writeText(text);
+        button.dataset.copied = "true";
+        window.setTimeout(() => {
+          delete button.dataset.copied;
+        }, 1600);
+      } catch {
+        // Clipboard unavailable (insecure context or permission denied).
+      }
+    });
+  }
+</script>

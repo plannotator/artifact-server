@@ -35,96 +35,118 @@ Different agents expose different amounts of their runtime. Artifact Server repo
 
 **Native** and **channel** tiers deliver into the running session. The **mailbox** tier is passive: the agent picks work up when it next calls its inbox, and the review says "Queued for ‹agent›" rather than "working". It still beats pasting feedback by hand.
 
-## Connect Pi
+## Connect your agent
 
-<Steps>
-  <Step title="Install the extension">
-    ```sh
-    pi install npm:@artifact-server/pi-extension
-    ```
+Pick the agent you use. The choice is remembered across pages.
 
-    Or add it to Pi's `settings.json`:
+<Tabs syncKey="agent">
+  <TabItem label="Pi">
+    <Steps>
+      <Step title="Install the extension">
+        ```sh
+        pi install npm:@artifact-server/pi-extension
+        ```
 
-    ```json
-    {
-      "packages": ["npm:@artifact-server/pi-extension"]
-    }
-    ```
-  </Step>
-  <Step title="Point it at your server">
-    A local Artifact Server needs nothing: the extension reads the managed local service's discovery record. For a team server, set two variables before starting Pi:
+        Or add it to Pi's `settings.json`:
 
-    ```sh
-    export ARTIFACT_SERVER_ORIGIN=https://artifacts.example.com
-    export ARTIFACT_SERVER_AGENT_TOKEN=<token with agent:connect and comment scopes>
-    ```
-
-    `ARTIFACT_SERVER_AGENT_NAME` overrides the display name; the default is the working directory's name.
-  </Step>
-  <Step title="Send a bundle">
-    Open a review, comment, and click **Send all open to ‹name›**. Restarts, `/new`, and `/resume` keep the same agent identity, so pending bundles survive.
-  </Step>
-</Steps>
-
-## Connect OpenCode
-
-Add the plugin to `opencode.json`:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@artifact-server/opencode-extension"]
-}
-```
-
-Configuration is identical to Pi's. The plugin targets the most recently active top-level session and never a subagent session. It is built against OpenCode 1.18.18 and the V1 plugin API.
-
-## Connect Claude Code through a channel
-
-Claude Code channels are a research preview, so this runs behind a development flag today.
-
-<Steps>
-  <Step title="Register the channel">
-    Add it to the project's `.mcp.json`:
-
-    ```json
-    {
-      "mcpServers": {
-        "artifact-server": {
-          "command": "npx",
-          "args": ["tsx", "/path/to/artifact-server/integrations/claude-channel/index.ts"]
+        ```json
+        {
+          "packages": ["npm:@artifact-server/pi-extension"]
         }
-      }
-    }
-    ```
+        ```
+      </Step>
+      <Step title="Point it at your server">
+        A local Artifact Server needs nothing: the extension reads the managed local service's discovery record. For a team server, set two variables before starting Pi:
 
-    The bridge resolves the server the same way Pi's extension does: the local discovery record, or `ARTIFACT_SERVER_ORIGIN` and `ARTIFACT_SERVER_AGENT_TOKEN` for a team server.
-  </Step>
-  <Step title="Start Claude Code with the channel allowed">
+        ```sh
+        export ARTIFACT_SERVER_ORIGIN=https://artifacts.example.com
+        export ARTIFACT_SERVER_AGENT_TOKEN=<token with agent:connect and comment scopes>
+        ```
+
+        `ARTIFACT_SERVER_AGENT_NAME` overrides the display name; the default is the working directory's name.
+      </Step>
+      <Step title="Send a bundle">
+        Open a review, comment, and click **Send all open to ‹name›**. Restarts, `/new`, and `/resume` keep the same agent identity, so pending bundles survive.
+      </Step>
+    </Steps>
+
+    <Aside type="note" title="Before the npm release">
+      Until the package is published, load it from a source checkout: `pi -e integrations/pi/index.ts`.
+    </Aside>
+  </TabItem>
+
+  <TabItem label="OpenCode">
+    <Steps>
+      <Step title="Add the plugin">
+        In `opencode.json`:
+
+        ```json
+        {
+          "$schema": "https://opencode.ai/config.json",
+          "plugin": ["@artifact-server/opencode-extension"]
+        }
+        ```
+      </Step>
+      <Step title="Point it at your server">
+        Configuration is identical to Pi's: a local Artifact Server is discovered automatically; a team server takes `ARTIFACT_SERVER_ORIGIN` and `ARTIFACT_SERVER_AGENT_TOKEN`.
+      </Step>
+      <Step title="Send a bundle">
+        The plugin targets the most recently active top-level session and never a subagent session. It is built against OpenCode 1.18.18 and the V1 plugin API.
+      </Step>
+    </Steps>
+
+    <Aside type="note" title="Before the npm release">
+      Until the package is published, symlink `integrations/opencode/index.ts` into an OpenCode plugin directory (`.opencode/plugins/` or `~/.config/opencode/plugins/`) with `@plannotator/agent-bridge` and `zod` resolvable.
+    </Aside>
+  </TabItem>
+
+  <TabItem label="Claude Code">
+    Claude Code channels are a research preview, so this runs behind a development flag today.
+
+    <Steps>
+      <Step title="Register the channel">
+        Add it to the project's `.mcp.json`:
+
+        ```json
+        {
+          "mcpServers": {
+            "artifact-server": {
+              "command": "npx",
+              "args": ["tsx", "/path/to/artifact-server/integrations/claude-channel/index.ts"]
+            }
+          }
+        }
+        ```
+
+        The bridge resolves the server the same way Pi's extension does: the local discovery record, or `ARTIFACT_SERVER_ORIGIN` and `ARTIFACT_SERVER_AGENT_TOKEN` for a team server.
+      </Step>
+      <Step title="Start Claude Code with the channel allowed">
+        ```sh
+        claude --dangerously-load-development-channels server:artifact-server
+        ```
+
+        Claude Code prints one line at startup if a channel failed to register and names why. On Team and Enterprise plans the organization's `channelsEnabled` policy must be on, and `MCP_PROTOCOL_NEGOTIATION=auto` must be unset for the session.
+      </Step>
+      <Step title="Send a bundle">
+        The session appears in the review as a `claude` agent with live presence. Bundles arrive as `<channel source="artifact-server">` events; Claude replies and resolves through `artifact_comments`.
+      </Step>
+    </Steps>
+
+    Without a channel, Claude Code still works at the mailbox tier through plain MCP — see the **Any MCP client** tab.
+  </TabItem>
+
+  <TabItem label="Any MCP client">
+    Claude Code without a channel, Codex, Cursor, and GitHub Copilot connect through the [built-in MCP server](/docs/mcp/):
+
     ```sh
-    claude --dangerously-load-development-channels server:artifact-server
+    artifactserver connect
     ```
 
-    Claude Code prints one line at startup if a channel failed to register and names why. On Team and Enterprise plans the organization's `channelsEnabled` policy must be on, and `MCP_PROTOCOL_NEGOTIATION=auto` must be unset for the session.
-  </Step>
-  <Step title="Send a bundle">
-    The session appears in the review as a `claude` agent with live presence. Bundles arrive as `<channel source="artifact-server">` events; Claude replies and resolves through `artifact_comments`.
-  </Step>
-</Steps>
+    Comments sent to such an agent wait in its inbox. Every MCP tool result the agent receives carries a short nudge (`2 review bundles are queued for your inbox. Call dispatch_inbox …`) until it claims them, so a busy agent learns about waiting work without anyone prompting it.
 
-## Any MCP client (mailbox tier)
-
-Claude Code without a channel, Codex, Cursor, and GitHub Copilot connect through the built-in MCP server:
-
-```sh
-artifactserver connect
-```
-
-Comments sent to such an agent wait in its inbox. Every MCP tool result the agent receives carries a short nudge (`2 review bundles are queued for your inbox. Call dispatch_inbox …`) until it claims them, so a busy agent learns about waiting work without anyone prompting it. [Read the MCP guide →](/docs/publish/)
-
-<Aside type="note" title="Package availability">
-The Pi and OpenCode extension packages publish to npm with the public release. Until then, load them from a source checkout: `pi -e integrations/pi/index.ts`, or a symlink into an OpenCode plugin directory. The Claude channel bridge runs from a checkout as shown above. Each package's README in the repository has the exact steps.
-</Aside>
+    [Read the MCP guide →](/docs/mcp/)
+  </TabItem>
+</Tabs>
 
 ## Several agents at once
 

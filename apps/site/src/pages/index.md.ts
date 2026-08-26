@@ -30,6 +30,7 @@ Fair Source under the Functional Source License (FSL-1.1-Apache-2.0): use, self-
 
 - [Documentation](https://artifactserver.com/docs/index.md)
 - [Get started locally](https://artifactserver.com/docs/get-started/index.md)
+- [Built-in MCP server](https://artifactserver.com/docs/mcp/index.md)
 - [Review with coding agents](https://artifactserver.com/docs/agents/index.md)
 - [Cloudflare deployment](https://artifactserver.com/docs/deploy/cloudflare/index.md)
 - [Source](https://github.com/plannotator/artifact-server)

@@ -1,0 +1,140 @@
+---
+title: Built-in MCP server
+description: Connect Claude Code, Codex, Cursor, or any MCP client to Artifact Server's built-in MCP server, install the Agent Skill, and publish from an agent.
+---
+
+Artifact Server exposes one MCP endpoint at `POST /mcp`. MCP uses the same product operations and permissions as the CLI and HTTP API, so an agent can publish, organize, review, comment on, and share versioned artifacts with exactly the authority its user has.
+
+## Connect a local client
+
+Run the automatic connection command:
+
+```sh
+artifactserver connect
+```
+
+If more than one supported client is installed, name the one to connect:
+
+<Tabs syncKey="mcp-client">
+  <TabItem label="Claude Code">
+    ```sh
+    artifactserver connect claude
+    ```
+  </TabItem>
+  <TabItem label="Codex">
+    ```sh
+    artifactserver connect codex
+    ```
+  </TabItem>
+  <TabItem label="Cursor">
+    ```sh
+    artifactserver connect cursor
+    ```
+  </TabItem>
+  <TabItem label="VS Code">
+    ```sh
+    artifactserver connect vscode
+    ```
+  </TabItem>
+</Tabs>
+
+The command registers a local stdio bridge. The bridge starts or locates the local service and handles its private credential; the credential never appears in client configuration, command output, or startup logs.
+
+Inspect or remove a managed connection:
+
+```sh
+artifactserver doctor codex
+artifactserver disconnect codex
+```
+
+## Connect to a team server
+
+Add the exact MCP address to the client:
+
+```text
+https://artifacts.example.com/mcp
+```
+
+The client opens the configured identity provider. Complete browser authorization, then return to the client. The access token is valid for that exact `/mcp` resource; a token for another installation or application resource does not qualify.
+
+## Install the Artifact Server skill
+
+The portable Agent Skill teaches an agent when to use the CLI (files on the developer machine) and when to use MCP (server data and agent-held context), and keeps artifact work separate from server administration:
+
+```sh
+npx skills add plannotator/artifact-server
+```
+
+In clients that expose installed skills as slash commands, publish finished work with a request such as:
+
+```text
+/artifact-server upload that HTML design doc
+```
+
+The agent returns the full-screen review link first so the recipient can view and comment on the exact version.
+
+## Publish from an agent
+
+MCP carries metadata and small results; artifact files go through the staged upload API. An agent uses this sequence:
+
+<Steps>
+  <Step title="Read the limits">
+    Call `artifact_capabilities` to read limits and available features.
+  </Step>
+  <Step title="Stage the files">
+    Call `artifact_create_upload` with each path, size, media type, and SHA-256 fingerprint, then upload each file to its returned opaque upload URL.
+  </Step>
+  <Step title="Commit one version">
+    Call `artifact_commit_upload` with the publication target and an idempotency key. When publishing a new version of an existing artifact, send the current version ID as `expectedCurrentVersionId` so a stale publish is rejected instead of racing.
+  </Step>
+</Steps>
+
+Every successful publication returns structured data and a short text summary:
+
+```json
+{
+  "links": {
+    "review": "https://artifacts.example.com/review?...&view=focus",
+    "artifact": "https://artifacts.example.com/artifacts/art_example",
+    "version": "https://ver-example.content.example.com/"
+  }
+}
+```
+
+The server instructions tell the agent to share `links.review` first: it opens the exact version full screen with comments. `links.artifact` follows the current version; `links.version` opens the immutable raw artifact without the Artifact Server interface.
+
+<Aside type="caution" title="Never in chat">
+The agent must not place bootstrap URLs, access tokens, or credentials in chat.
+</Aside>
+
+## Tool groups
+
+| Group | Tools |
+| --- | --- |
+| Discovery | `artifact_capabilities` |
+| Projects | `project_list`, `project_create`, `project_rename`, `project_archive`, `project_unarchive` |
+| Artifacts | `artifact_list`, `artifact_get`, `artifact_open`, `artifact_version_list`, `artifact_diff` |
+| Publication | `artifact_create_upload`, `artifact_commit_upload` |
+| Management | `artifact_set_visibility`, `artifact_set_tags`, `artifact_restore_version`, `artifact_delete` |
+| Comments | `comment_list`, `comment_get`, `comment_create`, `comment_reply`, `comment_update`, `comment_resolve`, `comment_delete` |
+| Review dispatch | `dispatch_inbox` — claim review bundles sent to this agent from the review UI |
+| Git history planning | `project_git_history_status`, `project_git_history_estimate` |
+
+Linked-artifact tools appear only when the deployment enables linked artifacts. `project_set_git_history` enables one project only after an authorized caller confirms a fresh estimate; provider configuration alone copies nothing.
+
+## Review feedback over MCP
+
+Comments sent to an MCP-connected agent from the review UI wait in that agent's inbox. Every MCP tool result the agent receives carries a short trailing nudge until the work is claimed:
+
+```text
+— artifact server —
+2 review bundles are queued for your inbox. Call dispatch_inbox
+{"operation": "claim"} to pick up the oldest.
+```
+
+That is the mailbox tier of the agent loop: honest, and better than pasting feedback by hand, but not a push into the running session. Pi, OpenCode, and Claude Code (through a channel) get the bundle delivered live. [Compare the tiers and connect a live agent →](/docs/agents/)
+
+## Further reading
+
+- [Publishing paths](/docs/publish/) — CLI versus MCP versus HTTP.
+- [MCP product baseline](https://github.com/plannotator/artifact-server/blob/main/project/spec/artifact-server-mcp-baseline.md) — protocol and authorization contracts.
