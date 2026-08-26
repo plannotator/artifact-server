@@ -803,7 +803,7 @@ test.describe("Artifact Server frontend MVP", () => {
       }
 
       await expect(share.getByRole("img", {
-        name: "Claude, Codex, Cursor, GitHub Copilot, and Pi",
+        name: "Claude, Codex, Cursor, GitHub Copilot, Pi, and OpenCode",
       })).toBeVisible();
       if (canInspectClipboard) {
         await share.getByRole("button", {name: "Copy review prompt"}).click();

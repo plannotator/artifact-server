@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/presentation";
+import opencodeGlyphUrl from "@/review/assets/agents/opencode-dark.svg";
 import piGlyphUrl from "@/review/assets/agents/pi.svg";
 
 /**
@@ -32,8 +33,10 @@ interface AgentBrand {
 }
 
 /**
- * The one place a new agent kind registers its look. Pi's brand is
- * monochrome: a white glyph on a dark tile, ringed in the page's own ink.
+ * The one place a new agent kind registers its look. Pi's and OpenCode's
+ * brands are monochrome: a light mark on a dark tile, ringed in the page's
+ * own ink. The dark tile is fixed rather than themed so one asset serves
+ * both review themes.
  */
 const brandByKind = new Map<string, AgentBrand>([
   [
@@ -41,6 +44,14 @@ const brandByKind = new Map<string, AgentBrand>([
     {
       accent: "var(--foreground)",
       glyphUrl: piGlyphUrl,
+      tile: "oklch(0.205 0 0)",
+    },
+  ],
+  [
+    "opencode",
+    {
+      accent: "var(--foreground)",
+      glyphUrl: opencodeGlyphUrl,
       tile: "oklch(0.205 0 0)",
     },
   ],

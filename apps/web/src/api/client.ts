@@ -556,7 +556,8 @@ const registeredAgentSchema = z.object({
   createdAt: z.string(),
   displayName: z.string(),
   id: z.string(),
-  kind: z.enum(["pi"]),
+  /** Open slug, matching the server (`registeredAgentKindPattern`): nothing branches on it. */
+  kind: z.string(),
   lastSeenAt: z.string(),
   principalId: z.string(),
   workingDirectory: z.string(),

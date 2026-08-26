@@ -55,6 +55,11 @@ Artifact Server gives teams a self-hosted place to organize and collaborate on t
     <source media="(prefers-color-scheme: dark)" srcset="./apps/web/src/review/assets/agents/pi.svg">
     <img src="./apps/web/src/review/assets/agents/pi-light.svg" alt="Pi" width="30" height="30">
   </picture>
+  &nbsp;&nbsp;
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./apps/web/src/review/assets/agents/opencode-dark.svg">
+    <img src="./apps/web/src/review/assets/agents/opencode-light.svg" alt="OpenCode" width="24" height="30">
+  </picture>
 </p>
 
 <a href="./docs/mcp.md"><img src="./docs/assets/agent-native-mcp.svg" alt="AI agents connect to Artifact Server through its built-in MCP server" width="800"></a>
