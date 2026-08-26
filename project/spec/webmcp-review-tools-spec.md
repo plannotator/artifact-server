@@ -35,10 +35,13 @@ help"; every mutation echoes the updated state it changed.
 | Tool | Contract |
 | --- | --- |
 | `get_view` | The one situational call: current project, artifact, version, and dispatch in flight; the view's threads (open-first, bodies included, bounded — `state?` filter, `limit?` default 20, `cursor?` for more); and connected agents with kind, tier, and activity. |
-| `list_artifacts` | Project scope (not view scope): artifacts with id, name, latest version, open thread count — for "open the pricing page one" flows. |
+| `list_artifacts` | Project scope (not view scope): artifacts with id, name, latest version, version count, tags — for "open the pricing page one" flows. Open-thread counts are not carried by the artifact listing endpoint today; adding them is server work recorded as a v2 item. |
 
 **Comment loop** — each returns the updated thread plus the view's
-remaining open/sent counts, so no follow-up read is ever needed.
+`{open, resolved}` counts, so no follow-up read is ever needed. (Threads
+inside an active dispatch are hidden from the view by server default —
+send is consumptive — so there is no separate "sent" count; in-flight
+dispatches surface through `get_view`'s `activeDispatches` instead.)
 | Tool | Contract |
 | --- | --- |
 | `comment` | New thread on the current version `{body, path?}`. |
@@ -76,9 +79,13 @@ remaining open/sent counts, so no follow-up read is ever needed.
   session and they are present — assisted input, like autocomplete. If
   presence-of-an-agent attribution is ever wanted, it is a server-side
   model change and out of scope here.
-- **Nudge reuse.** Tool results ride the same nudge composer specced in
-  `tool-result-nudges-spec.md` (pending feedback, unfinished bundles), so
-  the mid-conversation pull gap is patched the same way in both surfaces.
+- **No nudges in v1 (corrected at build time).** The first draft of this
+  spec assumed WebMCP results could ride the MCP nudge composer; they
+  cannot — that composer lives on the server's MCP surface, while these
+  tools call the web API directly from the page. The human-present
+  copilot also has a human present, which is the push channel. If
+  mid-conversation context ever proves necessary here, it is a separate,
+  page-side design.
 - **Churn tolerance.** One thin adapter module wraps
   `document.modelContext`; every call is guarded, absence degrades
   silently (no console noise, no UI change), and the adapter is the only
@@ -91,9 +98,17 @@ remaining open/sent counts, so no follow-up read is ever needed.
 | ID | Behavior |
 | --- | --- |
 | WMC-001 | With a `modelContext` present (fake in the browser suite), the seven tools register with provenance-prefixed names; a `get_view`→`reply`→`resolve` sequence produces the same server state and UI updates as the equivalent human actions, with each mutation result carrying the updated thread and counts (no read-back); with no `modelContext`, the app behaves identically and logs nothing. |
-| WMC-002 | Tools never widen authority: every call is rejected or allowed exactly as the same operation from the UI for that session; tools are absent on content origins; tool descriptions stay within the spec's size guidance and quote no untrusted content. |
+| WMC-002 | Tools never widen authority: every call is rejected or allowed exactly as the same operation from the UI for that session; tools are absent on content origins; tool descriptions stay at or under 300 characters (the bound this spec sets, pending the WebMCP spec's own guidance) and quote no untrusted content. |
 
-## 6. Cost and gate
+## 6. Known proof gap
+
+The browser suite fakes `document.modelContext` with a fake written to
+match the adapter (draft commit `bd99438`, August 2026). A mismatch
+between the adapter and the real browser API is therefore untested until
+a real WebMCP-capable browser or the origin-trial extension drives it;
+the ledger entries carry this gap.
+
+## 7. Cost and gate
 
 ~1–2 days: the adapter module, seven thin tool bindings over the existing
 client, the settings toggle, two browser conformance tests with a faked

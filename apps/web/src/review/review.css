@@ -3079,3 +3079,30 @@ body:has(.as-settings),
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Browser agent tools (WebMCP) preference, kept beside the settings nav. */
+.as-settings__webmcp {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin-top: 1.25rem;
+  padding: 0.75rem;
+  border: 1px solid var(--as-border);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.as-settings__webmcp input {
+  margin-top: 0.2rem;
+}
+
+.as-settings__webmcp span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.as-settings__webmcp small {
+  color: var(--as-muted);
+  line-height: 1.4;
+}

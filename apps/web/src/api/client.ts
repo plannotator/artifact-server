@@ -644,6 +644,10 @@ const agentPresenceSchema = z.object({
   activity: agentActivitySchema.optional(),
   agentSessionId: z.string().nullable(),
   beacon: agentBeaconSchema.nullable().optional(),
+  capabilities: z.object({
+    beacon: z.boolean(),
+    evidence: z.enum(["channel", "mailbox", "native"]),
+  }).optional(),
   /** Derived from the agent's own claim polling; the poll is the heartbeat. */
   connected: z.boolean(),
   connectionKey: z.string(),

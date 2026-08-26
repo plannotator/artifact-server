@@ -71,6 +71,7 @@ import {ReviewPanelEdge} from "./review-panel-edge.tsx";
 import {AgentLogos, ReviewShareControl} from "./review-share.tsx";
 import {useReviewPanelMotion} from "./use-review-panel-motion.ts";
 import {useReviewResizablePanel} from "./use-review-resizable-panel.ts";
+import {useWebmcp, type WebmcpBindings} from "./webmcp.tsx";
 
 type ReviewTheme = "dawn" | "moon";
 type InspectorTab = "activity" | "comments" | "compare" | "details" | "files" | "versions";
@@ -361,6 +362,42 @@ function ArtifactReview({
     projectId,
     versionId: selectedVersionId,
   });
+
+  // Browser agent tools (WebMCP): the ref hands the adapter live view state
+  // each render; registration itself lives entirely in webmcp.tsx.
+  const webmcpRef = useRef<WebmcpBindings>({
+    getSnapshot: () => webmcpSnapshot(),
+    openArtifact: () => undefined,
+    reloadComments: () => Promise.resolve(),
+  });
+  const webmcpSnapshot = (): ReturnType<WebmcpBindings["getSnapshot"]> => ({
+    artifact: details === null ? null : {
+      currentVersionId: details.artifact.currentVersionId,
+      id: details.artifact.id,
+      name: details.artifact.name,
+    },
+    loading: detailLoading || comments.loading
+      || (selectedArtifactId !== null && selectedVersion === null),
+    projectId,
+    projectName: projects.find((project) => project.id === projectId)?.name ?? null,
+    replies: comments.repliesByThread,
+    threads: comments.threads,
+    version: selectedVersion === null ? null : {
+      createdAt: selectedVersion.version.createdAt,
+      id: selectedVersion.version.id,
+    },
+  });
+  webmcpRef.current = {
+    getSnapshot: webmcpSnapshot,
+    openArtifact: (artifactId, versionId) => {
+      setDetailError(null);
+      setSelectedArtifactId(artifactId);
+      setSelectedVersionId(versionId);
+      setSelectedPath(null);
+    },
+    reloadComments: comments.reload,
+  };
+  useWebmcp(webmcpRef);
 
   useEffect(() => {
     if (!htmlAnnotateModeActive) return undefined;
