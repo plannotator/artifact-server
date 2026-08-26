@@ -47,7 +47,8 @@ const isDocs = currentSlug === "/docs" || currentSlug.startsWith("/docs/");
       <nav aria-label="Primary" class="site-header__nav hidden md:flex items-center gap-1 ml-4 pl-4 border-l border-border h-6">
         <a href="/#how-it-works">How it works</a>
         <a href="/docs/" aria-current={isDocs ? "page" : undefined}>Docs</a>
-        <a href="https://github.com/plannotator/artifact-server">Open source</a>
+        <a href="/docs/agents/">Agents</a>
+        <a href="https://github.com/plannotator/artifact-server">GitHub</a>
       </nav>
 
       {showSections && isDocs && (
@@ -83,7 +84,8 @@ const isDocs = currentSlug === "/docs" || currentSlug.startsWith("/docs/");
           <nav aria-label="Mobile navigation">
             <a href="/#how-it-works">How it works</a>
             <a href="/docs/">Docs</a>
-            <a href="https://github.com/plannotator/artifact-server">Open source</a>
+            <a href="/docs/agents/">Agents</a>
+            <a href="https://github.com/plannotator/artifact-server">GitHub</a>
             <a href={artifactServerAppUrl}>Open app <Icon name="ph:arrow-up-right" /></a>
           </nav>
         </details>

@@ -1,6 +1,6 @@
 ---
 title: Artifact Server documentation
-description: Run Artifact Server, publish artifacts, understand the version model, and deploy the open-source application.
+description: Run Artifact Server, publish artifacts, review them live with coding agents, understand the version model, and deploy it for a team.
 ---
 
 Artifact Server stores finished browser files as immutable versions and serves each version from an isolated hostname. People and agents can publish, inspect, review, share, and revisit the same work without treating generated output as source code.
@@ -26,6 +26,11 @@ Artifact Server stores finished browser files as immutable versions and serves e
 
     [Choose a publishing path →](/docs/publish/)
   </Card>
+  <Card title="Review with your coding agent" icon="ph:chats-circle">
+    Leave comments, send them all to Pi, OpenCode, or Claude Code in one click, and watch the agent reply and resolve each thread.
+
+    [Connect a coding agent →](/docs/agents/)
+  </Card>
   <Card title="Deploy on Cloudflare" icon="ph:cloud">
     Follow the first-class Worker, D1, and R2 deployment track and its current qualification boundary.
 
@@ -49,14 +54,21 @@ Artifact Server installation
 
 One installation represents one person, team, or company. A fresh installation creates a default project. Stable artifact links resolve to the current version; exact version links never move.
 
-<Aside type="note" title="Open-source status">
+<Aside type="note" title="Release status">
 Artifact Server is under active development. The local application and several deployment packages exist, but no deployment has completed the repository's entire conformance release gate yet. Each deployment page names its current boundary.
 </Aside>
+
+## License
+
+Artifact Server is [Fair Source](https://fair.io) under the [Functional Source License](https://github.com/plannotator/artifact-server/blob/main/LICENSE.md) (FSL-1.1-Apache-2.0). Use it, self-host it, modify it, and deploy it inside your team freely; the one restriction is offering it as a competing product or service. Each release becomes Apache 2.0 two years after it ships.
+
+The pieces built for maximum adoption are MIT: the [@plannotator/agent-bridge](https://github.com/plannotator/agent-bridge) protocol client and the agent extensions under [`integrations/`](https://github.com/plannotator/artifact-server/tree/main/integrations).
 
 ## Browse by job
 
 - [Run the local application](/docs/get-started/)
 - [Publish an artifact](/docs/publish/)
+- [Connect a coding agent for live review](/docs/agents/)
 - [Understand immutable versions](/docs/concepts/mental-model/)
 - [Understand isolated content origins](/docs/concepts/security-boundary/)
 - [Verify software supply-chain evidence](/docs/security/)

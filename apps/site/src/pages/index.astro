@@ -5,7 +5,26 @@ import Header from "../components/Header.astro";
 import SiteFooter from "../components/SiteFooter.astro";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { artifactServerAppUrl } from "../lib/public-config";
+import claudeLogo from "../../../web/src/review/assets/agents/claude.svg";
+import codexDark from "../../../web/src/review/assets/agents/codex-dark.svg";
+import codexLight from "../../../web/src/review/assets/agents/codex-light.svg";
+import copilotDark from "../../../web/src/review/assets/agents/copilot-dark.svg";
+import copilotLight from "../../../web/src/review/assets/agents/copilot-light.svg";
+import cursorDark from "../../../web/src/review/assets/agents/cursor-dark.svg";
+import cursorLight from "../../../web/src/review/assets/agents/cursor-light.svg";
+import piDark from "../../../web/src/review/assets/agents/pi.svg";
+import piLight from "../../../web/src/review/assets/agents/pi-light.svg";
 import "../styles/landing.css";
+
+// Each agent carries a light- and dark-theme mark; CSS shows the one that
+// matches `[data-mode]` so single-color marks stay visible on both grounds.
+const agents = [
+  { name: "Pi", tier: "native", light: piLight.src, dark: piDark.src },
+  { name: "Claude Code", tier: "channel", light: claudeLogo.src, dark: claudeLogo.src },
+  { name: "Codex", tier: "mailbox", light: codexLight.src, dark: codexDark.src },
+  { name: "Cursor", tier: "mailbox", light: cursorLight.src, dark: cursorDark.src },
+  { name: "GitHub Copilot", tier: "mailbox", light: copilotLight.src, dark: copilotDark.src },
+];
 
 const description = "Publish the browser artifacts your agents make, keep every version, and review them with people and agents from one durable place.";
 ---
@@ -18,7 +37,7 @@ const description = "Publish the browser artifacts your agents make, keep every 
         <div class="landing-hero__copy">
           <p class="landing-eyebrow">
             <span></span>
-            Open-source artifact infrastructure
+            Self-hostable · fair source
           </p>
           <h1 id="landing-title">Give every artifact a stable home.</h1>
           <p class="landing-lede">
@@ -129,6 +148,56 @@ const description = "Publish the browser artifacts your agents make, keep every 
             <code>Comment → Agent → New version</code>
           </article>
         </div>
+      </section>
+
+      <section class="landing-loop" id="agents" aria-labelledby="loop-title">
+        <div class="landing-loop__copy">
+          <p class="landing-eyebrow"><span></span>Live review with coding agents</p>
+          <h2 id="loop-title">Comment. Send all. The agent closes every thread.</h2>
+          <p>
+            Connect Pi, OpenCode, or Claude Code and it appears in the review with a live
+            presence avatar. One click sends every open comment on the version into its
+            running session as follow-up work. It replies in each thread, resolves what it
+            fixed, and publishes the next version. Nothing gets pasted into a chat.
+          </p>
+          <ul class="landing-loop__agents" aria-label="Supported agents">
+            {agents.map((agent) => (
+              <li title={`${agent.name} · ${agent.tier}`}>
+                <img alt="" src={agent.light} class="theme-light" />
+                <img alt="" src={agent.dark} class="theme-dark" />
+                <span>{agent.name}</span>
+              </li>
+            ))}
+          </ul>
+          <a href="/docs/agents/">Connect a coding agent <Icon name="ph:arrow-right" /></a>
+        </div>
+        <figure class="loop-panel" aria-label="Comments panel with a connected Pi agent and the send-all control">
+          <figcaption>
+            <b>Comments <span>3</span></b>
+            <span class="loop-panel__presence" title="Pi · replying">
+              <i class="loop-presence loop-presence--replying"><img alt="" src={piLight.src} class="theme-light" /><img alt="" src={piDark.src} class="theme-dark" /></i>
+              docs-site · replying
+            </span>
+          </figcaption>
+          <div class="loop-panel__send">
+            <button type="button" tabindex="-1">
+              Send all open (3) to docs-site
+            </button>
+            <button type="button" tabindex="-1" aria-label="Choose another agent"><Icon name="ph:caret-down" /></button>
+          </div>
+          <article>
+            <header><i>1</i><strong>Name the content boundary in the diagram.</strong></header>
+            <p class="loop-panel__reply"><img alt="" src={piLight.src} class="theme-light" /><img alt="" src={piDark.src} class="theme-dark" /> Added the isolated content origin to the diagram and the caption. Resolved.</p>
+          </article>
+          <article>
+            <header><i>2</i><strong>The install command is stale.</strong></header>
+            <p class="loop-panel__reply"><img alt="" src={piLight.src} class="theme-light" /><img alt="" src={piDark.src} class="theme-dark" /> Updated to the current command in both places. Resolved.</p>
+          </article>
+          <article class="loop-panel__open">
+            <header><i>3</i><strong>Tighten the second paragraph.</strong></header>
+            <p>Sent · replying…</p>
+          </article>
+        </figure>
       </section>
 
       <section class="landing-boundary" aria-labelledby="boundary-title">

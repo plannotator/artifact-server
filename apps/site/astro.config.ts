@@ -6,7 +6,7 @@ import { tableScroll } from "@cloudflare/nimbus-docs/markdown";
 const nimbusConfig = defineNimbusConfig({
   site: process.env["ARTIFACT_SERVER_SITE_ORIGIN"] ?? "https://artifactserver.com",
   title: "Artifact Server",
-  description: "Open-source infrastructure for publishing, reviewing, and sharing immutable browser artifacts.",
+  description: "Self-hostable, fair-source infrastructure for publishing, reviewing, and sharing immutable browser artifacts with people and agents.",
   locale: "en",
   homeLabel: "Artifact Server",
   github: "https://github.com/plannotator/artifact-server",

@@ -1,0 +1,137 @@
+---
+title: Review with coding agents
+description: Connect Pi, OpenCode, Claude Code, or any MCP client so review comments reach the agent in one click and it replies and resolves them in place.
+---
+
+Artifact Server closes the loop between a review and the agent that did the work. You comment on the exact version you are looking at; the agent receives every open comment as one bundle, replies in each thread, resolves what it fixed, and publishes the next version. No copying feedback into a chat window.
+
+## How the loop works
+
+<Steps>
+  <Step title="The agent connects">
+    An extension in the agent's own harness registers it with your Artifact Server and starts listening. The agent appears in the review as a presence avatar, with a ring that shows whether it is idle, thinking, or replying.
+  </Step>
+  <Step title="You review and send">
+    Leave comments on the version. The comment panel's main control reads **Send all open (N) to ‹agent›**. One click sends the batch; an Undo toast covers the next few seconds. Selecting a subset of comments is the secondary path.
+  </Step>
+  <Step title="The agent replies and resolves">
+    The bundle arrives in the agent's session as follow-up work, never as an interruption of what it is doing. The agent reads each thread, replies, and resolves the ones it addressed. Replies appear in the review as they land, attributed to the agent.
+  </Step>
+</Steps>
+
+Bundles are delivered at most once per work boundary, held while the session is compacting, and reported as delivered only after the host accepted the message. A bundle that is not delivered stays queued; nothing in the UI claims delivery that did not happen.
+
+## What each agent supports
+
+Different agents expose different amounts of their runtime. Artifact Server reports the tier honestly in the review rather than pretending every agent behaves like the best one.
+
+| Agent | Tier | What happens on send | Presence |
+| --- | --- | --- | --- |
+| Pi | Native | Bundle is injected into the running session as a follow-up message; the agent replies and resolves through a native `artifact_comments` tool. | Live |
+| OpenCode | Native | Same bridge core as Pi, delivered through OpenCode's prompt queue into the active top-level session. | Live |
+| Claude Code, channel | Channel | Bundle is pushed into the opted-in session as a channel event; the same `artifact_comments` tool closes threads. | Live |
+| Claude Code, plain MCP | Mailbox | Bundle waits in the agent's inbox; every MCP tool result carries a one-line nudge until it is claimed. | Inferred from recent tool calls |
+| Codex, Cursor, Copilot | Mailbox | Same inbox path through MCP. | None |
+
+**Native** and **channel** tiers deliver into the running session. The **mailbox** tier is passive: the agent picks work up when it next calls its inbox, and the review says "Queued for ‹agent›" rather than "working". It still beats pasting feedback by hand.
+
+## Connect Pi
+
+<Steps>
+  <Step title="Install the extension">
+    ```sh
+    pi install npm:@artifact-server/pi-extension
+    ```
+
+    Or add it to Pi's `settings.json`:
+
+    ```json
+    {
+      "packages": ["npm:@artifact-server/pi-extension"]
+    }
+    ```
+  </Step>
+  <Step title="Point it at your server">
+    A local Artifact Server needs nothing: the extension reads the managed local service's discovery record. For a team server, set two variables before starting Pi:
+
+    ```sh
+    export ARTIFACT_SERVER_ORIGIN=https://artifacts.example.com
+    export ARTIFACT_SERVER_AGENT_TOKEN=<token with agent:connect and comment scopes>
+    ```
+
+    `ARTIFACT_SERVER_AGENT_NAME` overrides the display name; the default is the working directory's name.
+  </Step>
+  <Step title="Send a bundle">
+    Open a review, comment, and click **Send all open to ‹name›**. Restarts, `/new`, and `/resume` keep the same agent identity, so pending bundles survive.
+  </Step>
+</Steps>
+
+## Connect OpenCode
+
+Add the plugin to `opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["@artifact-server/opencode-extension"]
+}
+```
+
+Configuration is identical to Pi's. The plugin targets the most recently active top-level session and never a subagent session. It is built against OpenCode 1.18.18 and the V1 plugin API.
+
+## Connect Claude Code through a channel
+
+Claude Code channels are a research preview, so this runs behind a development flag today.
+
+<Steps>
+  <Step title="Register the channel">
+    Add it to the project's `.mcp.json`:
+
+    ```json
+    {
+      "mcpServers": {
+        "artifact-server": {
+          "command": "npx",
+          "args": ["tsx", "/path/to/artifact-server/integrations/claude-channel/index.ts"]
+        }
+      }
+    }
+    ```
+
+    The bridge resolves the server the same way Pi's extension does: the local discovery record, or `ARTIFACT_SERVER_ORIGIN` and `ARTIFACT_SERVER_AGENT_TOKEN` for a team server.
+  </Step>
+  <Step title="Start Claude Code with the channel allowed">
+    ```sh
+    claude --dangerously-load-development-channels server:artifact-server
+    ```
+
+    Claude Code prints one line at startup if a channel failed to register and names why. On Team and Enterprise plans the organization's `channelsEnabled` policy must be on, and `MCP_PROTOCOL_NEGOTIATION=auto` must be unset for the session.
+  </Step>
+  <Step title="Send a bundle">
+    The session appears in the review as a `claude` agent with live presence. Bundles arrive as `<channel source="artifact-server">` events; Claude replies and resolves through `artifact_comments`.
+  </Step>
+</Steps>
+
+## Any MCP client (mailbox tier)
+
+Claude Code without a channel, Codex, Cursor, and GitHub Copilot connect through the built-in MCP server:
+
+```sh
+artifactserver connect
+```
+
+Comments sent to such an agent wait in its inbox. Every MCP tool result the agent receives carries a short nudge (`2 review bundles are queued for your inbox. Call dispatch_inbox …`) until it claims them, so a busy agent learns about waiting work without anyone prompting it. [Read the MCP guide →](/docs/publish/)
+
+<Aside type="note" title="Package availability">
+The Pi and OpenCode extension packages publish to npm with the public release. Until then, load them from a source checkout: `pi -e integrations/pi/index.ts`, or a symlink into an OpenCode plugin directory. The Claude channel bridge runs from a checkout as shown above. Each package's README in the repository has the exact steps.
+</Aside>
+
+## Several agents at once
+
+With more than one agent connected, the send control becomes a split button. The main part sends to the agent you last sent to on this project; the caret lists the others with their presence avatars. If the remembered agent goes away, the control asks you to pick again instead of quietly sending somewhere else.
+
+## Build an extension for another agent
+
+Every extension is a thin adapter over [@plannotator/agent-bridge](https://github.com/plannotator/agent-bridge) (MIT), which owns registration, the claim loop, bundle rendering, and the comment operations. An adapter supplies a `HostPort`: how to notify the user, how to inject a message into the session, and whether the session is compacting. The wire protocol is documented in the package's `PROTOCOL.md`; the Pi, OpenCode, and Claude channel adapters in [`integrations/`](https://github.com/plannotator/artifact-server/tree/main/integrations) are each a few hundred lines.
+
+When MCP's Tasks and server-initiated events land, standard MCP becomes the transport and these adapters retire; the domain model is built so only the transport layer changes.

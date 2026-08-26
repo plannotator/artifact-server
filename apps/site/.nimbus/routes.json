@@ -5,6 +5,7 @@
     "/",
     "/404",
     "/docs",
+    "/docs/agents",
     "/docs/concepts/mental-model",
     "/docs/concepts/security-boundary",
     "/docs/connect-agents",
