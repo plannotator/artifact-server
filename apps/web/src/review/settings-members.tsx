@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import {useEffect, useState} from "react";
 
 import { api, type InstallationMember } from "@/api/client";
 import { ErrorPanel, PageHeader, StatePanel, StatusBadge } from "@/components/product";

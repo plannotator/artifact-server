@@ -39,7 +39,7 @@ const reviewGifBase64 = "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 const reviewWebmBase64 = "GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAAK0EU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHYTbuMU6uEElTDZ1OsggElTbuMU6uEHFO7a1OsggKe7AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmsirXsYMPQkBNgI1MYXZmNjIuMTIuMTAxV0GNTGF2ZjYyLjEyLjEwMUSJiEB5AAAAAAAAFlSua8iuAQAAAAAAAD/XgQFzxYj918nP8i2d+ZyBACK1nIN1bmSIgQCGhVZfVlA5g4EBI+ODhAJiWgDgkLCBILqBGJqBAlWwhFW5gQESVMNnQIBzc6BjwIBnyJpFo4dFTkNPREVSRIeNTGF2ZjYyLjEyLjEwMXNz2mPAi2PFiP3Xyc/yLZ35Z8ilRaOHRU5DT0RFUkSHmExhdmM2Mi4yOC4xMDEgbGlidnB4LXZwOWfIoUWjiERVUkFUSU9ORIeTMDA6MDA6MDAuNDAwMDAwMDAwAB9DtnVA7eeBAKOrgQAAgIJJg0IAAfABdgA4JBwYSgAAMGAAABDf//Xtp/////2Ecf//+rwAAKOTgQAoAIYAQJKcAFAAAAMgAABDQKOTgQBQAIYAQJKcAE7gAAMgAABDQKOTgQB4AIYAQJKcAFAAAAMgAABDQKOTgQCgAIYAQJKcAE1AAAMgAABDQKOTgQDIAIYAQJKcAFAAAAMgAABDQKOTgQDwAIYAQJKcAE7gAAMgAABDQKOTgQEYAIYAQJKcAFAAAAMgAABDQKOTgQFAAIYAQJKcAEogAAMgAABDQKOTgQFoAIYAQJKcAFAAAAMgAABDQBxTu2uRu4+zgQC3iveBAfGCAavwgQM=";
 
 test.describe("Artifact Server frontend MVP", () => {
-  test("the Artifact Server review application navigates projects and artifacts", async ({browser}) => {
+  test("CMT-014-B CMT-014-F CMT-015-B CMT-015-F: the Artifact Server review application navigates projects and artifacts", async ({browser}) => {
     const fixture = await startBrowserFixture(browser);
     try {
       const first = await publishNew(fixture.server, fixture.installation, {
@@ -360,7 +360,7 @@ test.describe("Artifact Server frontend MVP", () => {
       await fixture.page.getByRole("tab", {name: /Versions/u}).click();
       await expect(fixture.page.getByRole("button", {name: /Version 2/u}))
         .toHaveAttribute("aria-current", "true");
-      await expect(fixture.page.locator('a[href^="/projects"], a[href="/"]'))
+      await expect(fixture.page.locator('a[href^="/projects"], a[href^="/workbench"]'))
         .toHaveCount(0);
 
       await expect(fixture.page.getByRole("complementary", {name: "Review navigation"}))
@@ -994,37 +994,32 @@ test.describe("Artifact Server frontend MVP", () => {
       });
 
       await localLogin(fixture);
-      await expect(
-        fixture.page.getByRole("heading", {exact: true, name: "Artifacts"}),
-      ).toBeVisible();
-      await expect(fixture.page.getByText("Private fixture")).toBeVisible();
-      await expect(fixture.page.getByText("Public fixture")).toBeVisible();
+      await expect(fixture.page.getByRole("button", {name: /Private fixture/u})).toBeVisible();
+      await expect(fixture.page.getByRole("button", {name: /Public fixture/u})).toBeVisible();
 
-      await fixture.page.getByLabel("Tag").fill("READY");
-      await fixture.page.getByRole("button", {name: "Filter"}).click();
-      await expect(fixture.page.getByText("Public fixture")).toBeVisible();
-      await expect(fixture.page.getByText("Private fixture")).toHaveCount(0);
-      await fixture.page.getByRole("button", {name: "Clear"}).click();
+      await fixture.page.getByRole("searchbox", {name: "Search artifacts"}).fill("ready");
+      await expect(fixture.page.getByRole("button", {name: /Public fixture/u})).toBeVisible();
+      await expect(fixture.page.getByRole("button", {name: /Private fixture/u})).toHaveCount(0);
+      await fixture.page.getByRole("searchbox", {name: "Search artifacts"}).fill("");
 
-      const publicRow = fixture.page.getByRole("row").filter({hasText: "Public fixture"});
+      await fixture.page.getByRole("button", {name: /Public fixture/u}).click();
       const [publicPage] = await Promise.all([
         fixture.context.waitForEvent("page"),
-        publicRow.getByRole("link", {name: "Open artifact"}).click(),
+        fixture.page.getByRole("button", {name: "Open raw artifact"}).click(),
       ]);
       await expect(publicPage.locator("body")).toContainText("public browser content");
       await publicPage.close();
 
-      const privateRow = fixture.page.getByRole("row").filter({hasText: "Private fixture"});
+      await fixture.page.getByRole("button", {name: /Private fixture/u}).click();
       const [privatePage] = await Promise.all([
         fixture.context.waitForEvent("page"),
-        privateRow.getByRole("button", {name: "Open artifact"}).click(),
+        fixture.page.getByRole("button", {name: "Open raw artifact"}).click(),
       ]);
       await expect(privatePage.locator("body")).toContainText("private browser content");
       await privatePage.close();
 
-      await fixture.page.getByRole("link", {name: "Private fixture"}).click();
       await expect(fixture.page).toHaveURL(
-        new RegExp(`/projects/prj_default/artifacts/${privateArtifact.body.artifact.id}$`, "u"),
+        new RegExp(`/review\\?project=prj_default&artifact=${privateArtifact.body.artifact.id}`, "u"),
       );
       await fixture.page.reload();
       await expect(fixture.page.getByRole("heading", {name: "Private fixture"})).toBeVisible();
@@ -1032,14 +1027,10 @@ test.describe("Artifact Server frontend MVP", () => {
       const cookies = await fixture.context.cookies();
       expect(cookies.some((cookie) => cookie.name === "artifact_session")).toBe(true);
       expect(await fixture.page.evaluate(() => document.cookie)).not.toContain("artifact_session");
-      expect(await browserStorage(fixture.page)).toEqual({
-        indexedDatabaseNames: [],
-        localStorageKeys: [],
-        sessionStorageKeys: [],
-      });
+      expect((await browserStorage(fixture.page)).indexedDatabaseNames).toEqual([]);
 
       await fixture.context.clearCookies();
-      await fixture.page.getByRole("button", {name: "Reload"}).click();
+      await fixture.page.reload();
       await expect(fixture.page.getByRole("heading", {name: "Private fixture"})).toBeVisible();
       await expect(fixture.page.getByRole("button", {name: "Log out"})).toHaveCount(0);
 
@@ -1049,7 +1040,7 @@ test.describe("Artifact Server frontend MVP", () => {
     }
   });
 
-  test("history, comparisons, artifact mutations, members, and one-time API keys work", async ({browser}) => {
+  test("ADM-003-B ADM-003-F ADM-004-B ADM-004-F ADM-007-B ADM-007-F: Review owns artifact history, mutations, members, and API keys", async ({browser}) => {
     const fixture = await startBrowserFixture(browser);
     try {
       const first = await publishNew(fixture.server, fixture.installation, {
@@ -1072,70 +1063,36 @@ test.describe("Artifact Server frontend MVP", () => {
       await createActionHistory(fixture, first.body.artifact.id, second.body.version.id);
 
       await localLogin(fixture);
-      await fixture.page.getByRole("link", {name: "Workflow fixture"}).click();
+      await expect(fixture.page.getByRole("heading", {name: "Workflow fixture"})).toBeVisible();
 
       await fixture.page.getByRole("button", {name: "Edit tags"}).click();
       await fixture.page
         .getByRole("textbox", {name: "Tags"})
         .fill("approved, release");
-      await fixture.page.getByRole("button", {name: "Replace tags"}).click();
-      await closeTopDialog(fixture.page);
+      await fixture.page.getByRole("button", {name: "Save tags"}).click();
       await expect(fixture.page.getByText("approved", {exact: true})).toBeVisible();
 
-      await fixture.page.getByRole("button", {name: "Make public"}).click();
-      await fixture.page.getByRole("button", {name: "Make public", exact: true}).last().click();
-      await closeTopDialog(fixture.page);
-      await expect(fixture.page.getByText("Public link", {exact: true})).toBeVisible();
-
       await fixture.page.getByRole("tab", {name: "Versions"}).click();
-      await expect(fixture.page.getByRole("heading", {name: "Version 2"})).toBeVisible();
-      await fixture.page.getByRole("button", {name: "Inspect manifest"}).first().click();
-      await expect(fixture.page.getByText(second.body.version.manifestDigest)).toBeVisible();
-
-      await fixture.page.getByRole("tab", {name: "Compare"}).click();
       await fixture.page.getByRole("button", {name: "Compare"}).click();
-      await expect(fixture.page.getByRole("heading", {name: "Changed"})).toBeVisible();
-      await expect(fixture.page.getByText(/Binary metadata only/u)).toBeVisible();
-      await expect(fixture.page.getByRole("link", {name: "Open before"})).toHaveCount(0);
-      const [beforePage, beforeSessionRequest] = await Promise.all([
-        fixture.context.waitForEvent("page"),
-        fixture.page.waitForRequest((request) =>
-          request.method() === "POST"
-          && request.url().includes(
-            `/versions/${first.body.version.id}/content-sessions`,
-          )
-        ),
-        fixture.page.getByRole("button", {name: "Open before"}).click(),
-      ]);
-      expect(new URL(beforeSessionRequest.url()).searchParams.get("path")).toBe(
-        "payload.txt",
-      );
-      await expect(beforePage.locator("body")).toContainText("before");
-      await beforePage.close();
-      const [afterPage] = await Promise.all([
-        fixture.context.waitForEvent("page"),
-        fixture.page.getByRole("button", {name: "Open after"}).click(),
-      ]);
-      await expect(afterPage.locator("body")).toContainText("after");
-      await afterPage.close();
+      await expect(fixture.page.getByRole("heading", {name: "Changed files"})).toBeVisible();
+      await expect(
+        fixture.page.getByRole("tabpanel", {name: "Compare"}).getByText("payload.txt", {exact: true}),
+      ).toBeVisible();
 
       await fixture.page.getByRole("tab", {name: "Versions"}).click();
-      const earlierVersion = fixture.page.getByRole("article").filter({hasText: "Version 1"});
-      await earlierVersion.getByRole("button", {name: "Restore version"}).click();
-      await fixture.page.getByRole("button", {name: "Restore version 1"}).click();
-      await closeTopDialog(fixture.page);
-      await expect(fixture.page.getByText("Current", {exact: true})).toBeVisible();
+      await fixture.page.getByRole("button", {name: "Make current"}).click();
+      await fixture.page.getByRole("button", {name: "Make current", exact: true}).last().click();
+      await expect(fixture.page.getByText("current", {exact: true})).toBeVisible();
 
-      await fixture.page.getByRole("tab", {name: "Action history"}).click();
+      await fixture.page.getByRole("tab", {name: "Activity"}).click();
       await expect(fixture.page.getByText("Restored version")).toBeVisible();
       await expect(fixture.page.getByText("Replaced tags").first()).toBeVisible();
       await expect(fixture.page.getByRole("button", {name: "Load more"})).toBeVisible();
-      expect(await fixture.page.locator("ol > li").count()).toBe(50);
+      await expect(fixture.page.locator(".as-activity-list > li")).toHaveCount(50);
       await fixture.page.getByRole("button", {name: "Load more"}).click();
-      await expect(fixture.page.locator("ol > li")).toHaveCount(57);
+      await expect(fixture.page.locator(".as-activity-list > li")).toHaveCount(56);
 
-      await openAccountMenu(fixture);
-      await fixture.page.getByRole("link", {name: "Members"}).click();
+      await fixture.page.goto(`${fixture.server.baseUrl}/review/settings/members`);
       await fixture.page.getByRole("button", {name: "Admit member"}).click();
       await fixture.page.getByLabel("Display name").fill("Frontend member");
       await fixture.page.getByLabel("Email").fill("frontend-member@example.test");
@@ -1148,7 +1105,6 @@ test.describe("Artifact Server frontend MVP", () => {
       await closeTopDialog(fixture.page);
       await expect(memberRow.getByText("inactive", {exact: true})).toBeVisible();
 
-      await openAccountMenu(fixture);
       await fixture.page.getByRole("link", {name: "API keys"}).click();
       await fixture.page.getByRole("button", {name: "Issue API key"}).click();
       await fixture.page
@@ -1169,8 +1125,8 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(fixture.page.getByText(secretValue ?? "missing-secret")).toHaveCount(0);
       expect(await browserStorage(fixture.page)).toEqual({
         indexedDatabaseNames: [],
-        localStorageKeys: [],
-        sessionStorageKeys: [],
+        localStorageKeys: ["artifact-review-theme"],
+        sessionStorageKeys: ["artifact-review-return-url"],
       });
 
       const keyCard = fixture.page.getByRole("article").filter({hasText: "Browser workflow key"});
@@ -1180,21 +1136,18 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(keyCard.getByText("Revoked", {exact: true})).toBeVisible();
 
       await fixture.page.goto(
-        `${fixture.server.baseUrl}/projects/prj_default/artifacts/${first.body.artifact.id}`,
+        `${fixture.server.baseUrl}/review?project=prj_default&artifact=${first.body.artifact.id}`,
       );
-      await fixture.page.getByRole("button", {name: "Tombstone artifact"}).click();
-      await fixture.page.getByLabel(/Type Workflow fixture/u).fill("Workflow fixture");
-      await fixture.page.getByRole("button", {name: "Tombstone artifact", exact: true}).last().click();
-      await expect(
-        fixture.page.getByRole("heading", {exact: true, name: "Artifacts"}),
-      ).toBeVisible();
-      await expect(fixture.page.getByText("Workflow fixture")).toHaveCount(0);
+      await fixture.page.getByRole("button", {name: "Delete artifact"}).click();
+      await fixture.page.getByRole("textbox", {name: "Artifact name"}).fill("Workflow fixture");
+      await fixture.page.getByRole("button", {name: "Delete artifact", exact: true}).last().click();
+      await expect(fixture.page.getByRole("button", {name: /Workflow fixture/u})).toHaveCount(0);
     } finally {
       await stopBrowserFixture(fixture);
     }
   });
 
-  test("administrators inventory public links across projects and retry stale bulk changes accessibly", async ({browser}) => {
+  test("ADM-005-B ADM-005-F: administrators inventory public links across projects and retry stale bulk changes accessibly", async ({browser}) => {
     const fixture = await startBrowserFixture(browser);
     try {
       const first = await publishNew(fixture.server, fixture.installation, {
@@ -1219,8 +1172,7 @@ test.describe("Artifact Server frontend MVP", () => {
       });
 
       await localLogin(fixture);
-      await openAccountMenu(fixture);
-      await fixture.page.getByRole("link", {name: "Public links"}).click();
+      await fixture.page.goto(`${fixture.server.baseUrl}/review/settings/public-links`);
       await expect(fixture.page.getByRole("heading", {name: "Public links"})).toBeVisible();
       const firstRow = fixture.page.getByRole("row").filter({hasText: "First public link"});
       await expect(firstRow.getByText("Default", {exact: true})).toBeVisible();
@@ -1271,7 +1223,7 @@ test.describe("Artifact Server frontend MVP", () => {
     }
   });
 
-  test("hostile boundaries, packaged routing, and accessibility fail closed", async ({browser}) => {
+  test("ADM-001-B ADM-001-F ADM-002-B ADM-002-F ADM-006-B ADM-006-F: canonical routing, project settings, and hostile boundaries fail closed", async ({browser}) => {
     const fixture = await startBrowserFixture(browser);
     try {
       const first = await publishNew(fixture.server, fixture.installation, {
@@ -1283,7 +1235,7 @@ test.describe("Artifact Server frontend MVP", () => {
       const otherProject = await createProject(fixture, "Other project");
 
       await localLogin(fixture);
-      const shell = await fixture.page.request.get(`${fixture.server.baseUrl}/projects`);
+      const shell = await fixture.page.request.get(`${fixture.server.baseUrl}/review`);
       expect(shell.status()).toBe(200);
       expect(shell.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
       expect(shell.headers()["referrer-policy"]).toBe("no-referrer");
@@ -1313,18 +1265,28 @@ test.describe("Artifact Server frontend MVP", () => {
       expect(isolated.headers()["content-type"]).toContain("application/json");
 
       await fixture.page.goto(`${fixture.server.baseUrl}/projects`);
-      await fixture.page.reload();
+      await expect(fixture.page).toHaveURL(/\/review\/settings\/projects$/u);
       await expect(fixture.page.getByRole("heading", {name: "Projects"})).toBeVisible();
-      const defaultProjectCard = fixture.page.getByRole("article").filter({
-        has: fixture.page.getByRole("heading", {name: "Default"}),
-      });
-      await expect(defaultProjectCard.getByText("Git history", {exact: true})).toBeVisible();
-      await expect(defaultProjectCard.getByText("disabled", {exact: true})).toBeVisible();
-      await expect(defaultProjectCard).toContainText(
-        "This deployment has no Git history provider.",
-      );
-      await expect(defaultProjectCard.getByRole("button", {name: "Enable Git history"}))
-        .toHaveCount(0);
+      const defaultProjectRow = fixture.page.getByRole("row").filter({hasText: "Default"});
+      await defaultProjectRow.getByRole("link", {name: "Settings"}).click();
+      await expect(fixture.page.getByRole("heading", {name: "Project identity"})).toBeVisible();
+      await expect(fixture.page.getByRole("heading", {name: "Git history"})).toHaveCount(0);
+      await fixture.page.getByLabel("Project name").fill("Default renamed");
+      await fixture.page.getByRole("button", {name: "Save name"}).click();
+      await expect(fixture.page.getByRole("heading", {name: "Default renamed"})).toBeVisible();
+      await fixture.page.getByRole("button", {name: "Archive project"}).click();
+      await fixture.page.getByRole("button", {name: "Archive project", exact: true}).last().click();
+      await expect(
+        fixture.page.getByLabel("Project lifecycle").getByRole("button", {name: "Unarchive project"}),
+      ).toBeVisible();
+      await closeTopDialog(fixture.page);
+      await fixture.page.getByLabel("Project lifecycle").getByRole("button", {name: "Unarchive project"}).click();
+      await fixture.page.getByRole("button", {name: "Unarchive project", exact: true}).last().click();
+      await expect(
+        fixture.page.getByLabel("Project lifecycle").getByRole("button", {name: "Archive project"}),
+      ).toBeVisible();
+      await closeTopDialog(fixture.page);
+      await expect(fixture.page.getByRole("dialog")).toHaveCount(0);
       const accessibility = await new AxeBuilder({page: fixture.page})
         .withTags(["wcag2a", "wcag2aa"])
         .analyze();
@@ -1355,17 +1317,14 @@ test.describe("Artifact Server frontend MVP", () => {
         });
       });
       await localLogin(fixture, false);
-      await expect(fixture.page.getByRole("heading", {name: "Request failed"})).toBeVisible();
+      await expect(fixture.page.getByRole("heading", {name: "Artifact Server unavailable"})).toBeVisible();
       await expect(fixture.page.getByRole("heading", {name: "No projects"})).toHaveCount(0);
 
       await fixture.page.unroute("**/api/v1/projects");
       await fixture.page.getByRole("button", {name: "Try again"}).click();
-      await expect(
-        fixture.page.getByRole("heading", {exact: true, name: "Artifacts"}),
-      ).toBeVisible();
+      await expect(fixture.page.getByRole("link", {name: "Artifact Server"})).toBeVisible();
 
-      await openAccountMenu(fixture);
-      await fixture.page.getByRole("link", {name: "API keys"}).click();
+      await fixture.page.goto(`${fixture.server.baseUrl}/review/settings/api-keys`);
       await fixture.page.getByRole("button", {name: "Issue API key"}).click();
       await expect(fixture.page.getByLabel("Expires at", {exact: true})).toHaveAttribute(
         "min",
@@ -1557,10 +1516,6 @@ async function publishReviewMediaFixture(
     projectId: committed.body.artifact.projectId,
     versionId: committed.body.version.id,
   };
-}
-
-async function openAccountMenu(fixture: BrowserFixture): Promise<void> {
-  await fixture.page.getByLabel("Account menu").click();
 }
 
 async function createProject(

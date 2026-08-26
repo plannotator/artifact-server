@@ -283,7 +283,7 @@ The artifact route of the `artifact-server` Agent Skill gets one paragraph: afte
 
 Two surfaces.
 
-**Comments tab** in `apps/web/src/screens/artifact-detail-screen.tsx`, next to Overview, Versions, Compare, and History:
+**Comments tab** in `apps/web/src/review/review-comments.tsx`, inside the canonical Review inspector:
 
 - Thread list across all versions, newest activity first, filter by state and by version, with a "review this version" link per thread.
 - Thread detail: body, author, anchor summary, replies, reply box, resolve/reopen button, edit (author only) and delete (author or admin).
@@ -420,7 +420,7 @@ Verified in the current checkout (`main` at `4c72ff4`):
 - The `actions` table already carries `version_id`, `principal_id`, `authorized_by_principal_id`, `idempotency_key` (`sqlite-artifact-repository.ts:1969-1979`), so comment audit rows fit without a schema change; `ArtifactActionKind` is a closed set in `model.ts:10-16` that the web UI labels.
 - HTTP mutations use `Idempotency-Key` header + zod bodies + `runHttpApplicationEffect` (`create-http-app.ts:1094-1179`); MCP tools use `noun_verb` names, `idempotencyKeySchema` 16..200, and `toolResult` (`artifact-mcp-server.ts:769-800`).
 - Archived projects reject new work through `resolveActiveProject` (`project-management.ts:160-170`); tombstoned artifacts are hidden by `findArtifact` and visible through `findArtifactForAdministration`.
-- The web app has an artifact detail screen with tabs and a version list (`apps/web/src/screens/artifact-detail-screen.tsx`), and opening a version is a top-level navigation to the content domain, which is why the first UI keeps comments in the app and in-page anchoring is its own slice.
+- The web app has a canonical Review inspector with comments and versions (`apps/web/src/review/review-app.tsx`), while untrusted content stays in the isolated Review frame. Comment writes therefore remain in the trusted application and in-page anchoring remains its own slice.
 - Conformance IDs, statuses, modules, and required source sections are enforced by `project/spec/conformance.yml` structure; `SCP-003` and `PLN-003` are the two entries that contradict this spec.
 
 Assumed, to confirm during implementation:

@@ -27,6 +27,7 @@ import {
   PanelRightIcon,
   RefreshIcon,
   Search01Icon,
+  Settings02Icon,
   Sun03Icon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
@@ -34,10 +35,13 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {Dialog} from "@base-ui/react/dialog";
 import {motion} from "motion/react";
 
+import {useCommentPoll} from "@/components/comments/comment-poll";
 import {
   api,
   ApiError,
   type AccessContext,
+  type ArtifactAction,
+  type ArtifactComparison,
   type ArtifactDetails,
   type ArtifactPage,
   type ArtifactVersion,
@@ -46,23 +50,29 @@ import {
   type Version,
 } from "@/api/client";
 import {
+  actionLabel,
   formatBytes,
   formatTimestamp,
+  sourceDriftDescription,
+  sourceFreshnessLabel,
 } from "@/lib/presentation";
 import artifactServerAnimationUrl from "./assets/artifact-server.svg";
+import {ArtifactMark} from "./artifact-mark.tsx";
 import {
   useReviewComments,
   ReviewCommentsInspector,
 } from "./review-comments.tsx";
 import { ReviewPreview } from "./review-preview.tsx";
 import {ReviewProjectPicker} from "./review-project-picker.tsx";
+import {isSettingsPath} from "./review-routes.ts";
+import {ReviewSettings} from "./review-settings.tsx";
 import {ReviewPanelEdge} from "./review-panel-edge.tsx";
 import {AgentLogos, ReviewShareControl} from "./review-share.tsx";
 import {useReviewPanelMotion} from "./use-review-panel-motion.ts";
 import {useReviewResizablePanel} from "./use-review-resizable-panel.ts";
 
 type ReviewTheme = "dawn" | "moon";
-type InspectorTab = "comments" | "details" | "files" | "versions";
+type InspectorTab = "activity" | "comments" | "compare" | "details" | "files" | "versions";
 type ArtifactListLoadResult = "failed" | "loaded" | "skipped";
 type CatalogRefreshState = "complete" | "idle" | "loading";
 const catalogDefaultWidth = 336;
@@ -175,6 +185,11 @@ export function ReviewApp() {
     ]);
     return created;
   }, []);
+  const loadProjects = useCallback(async (): Promise<readonly Project[]> => {
+    const loaded = await api.projects();
+    setProjects(loaded);
+    return loaded;
+  }, []);
 
   if (sessionState === "loading") {
     return <ReviewGate description="Opening the local artifact catalog." title="Loading Artifact Server" />;
@@ -203,6 +218,23 @@ export function ReviewApp() {
     );
   }
   if (session === null) return null;
+
+  if (isSettingsPath(window.location.pathname)) {
+    return (
+      <ReviewSettings
+        onProjectsChanged={loadProjects}
+        onThemeChange={() => setTheme((current) => current === "moon" ? "dawn" : "moon")}
+        projects={projects}
+        session={session}
+        theme={theme}
+      />
+    );
+  }
+
+  window.sessionStorage.setItem(
+    "artifact-review-return-url",
+    `${window.location.pathname}${window.location.search}`,
+  );
 
   return (
     <ArtifactReview
@@ -254,6 +286,13 @@ function ArtifactReview({
   );
   const [details, setDetails] = useState<ArtifactDetails | null>(null);
   const [versions, setVersions] = useState<readonly VersionListItem[]>([]);
+  const [actions, setActions] = useState<readonly ArtifactAction[]>([]);
+  const [actionNextCursor, setActionNextCursor] = useState<string | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState<Error | null>(null);
+  const [comparison, setComparison] = useState<ArtifactComparison | null>(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [comparisonError, setComparisonError] = useState<Error | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<ArtifactVersion | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<Error | null>(null);
@@ -420,10 +459,16 @@ function ArtifactReview({
     if (selectedArtifactId === null || projectId === "") {
       setDetails(null);
       setVersions([]);
+      setActions([]);
+      setActionNextCursor(null);
+      setComparison(null);
       setSelectedVersion(null);
       return undefined;
     }
     let current = true;
+    setActions([]);
+    setActionNextCursor(null);
+    setComparison(null);
     setDetailLoading(true);
     setDetailError(null);
     void (async () => {
@@ -454,6 +499,41 @@ function ArtifactReview({
       current = false;
     };
   }, [projectId, selectedArtifactId]);
+
+  const refreshLinkedDetails = useCallback(async (): Promise<void> => {
+    if (selectedArtifactId === null || projectId === "") return;
+    try {
+      setDetails(await api.artifact(projectId, selectedArtifactId));
+    } catch {
+      // Ambient freshness never replaces the last readable artifact state.
+    }
+  }, [projectId, selectedArtifactId]);
+
+  useCommentPoll(
+    refreshLinkedDetails,
+    session.capabilities.linkedArtifacts && details?.sourceBinding !== undefined,
+  );
+
+  const loadActions = useCallback(async (cursor: string | null): Promise<void> => {
+    if (selectedArtifactId === null || projectId === "") return;
+    setActivityLoading(true);
+    setActivityError(null);
+    try {
+      const page = await api.actions(projectId, selectedArtifactId, cursor);
+      setActions((current) => cursor === null ? page.actions : [...current, ...page.actions]);
+      setActionNextCursor(page.nextCursor);
+    } catch (caught) {
+      setActivityError(caught instanceof Error ? caught : new Error("Activity loading failed."));
+    } finally {
+      setActivityLoading(false);
+    }
+  }, [projectId, selectedArtifactId]);
+
+  useEffect(() => {
+    if (inspectorTab === "activity" && actions.length === 0 && !activityLoading) {
+      void loadActions(null);
+    }
+  }, [actions.length, activityLoading, inspectorTab, loadActions]);
 
   useEffect(() => {
     if (
@@ -651,6 +731,88 @@ function ArtifactReview({
       setDetailError(
         caught instanceof Error ? caught : new Error("The version could not be made current."),
       );
+      return false;
+    }
+  };
+  const compareVersions = async (fromVersionId: string, toVersionId: string): Promise<void> => {
+    if (details === null || fromVersionId === toVersionId) return;
+    setComparisonLoading(true);
+    setComparisonError(null);
+    try {
+      setComparison(await api.comparison(
+        details.artifact.projectId,
+        details.artifact.id,
+        fromVersionId,
+        toVersionId,
+      ));
+      setInspectorTab("compare");
+    } catch (caught) {
+      setComparisonError(caught instanceof Error ? caught : new Error("Version comparison failed."));
+    } finally {
+      setComparisonLoading(false);
+    }
+  };
+  const captureLinkedArtifact = async (): Promise<void> => {
+    if (details === null) return;
+    setDetailLoading(true);
+    setDetailError(null);
+    try {
+      const captured = await api.captureArtifact(
+        details.artifact.projectId,
+        details.artifact.id,
+        details.artifact.currentVersionId,
+        crypto.randomUUID(),
+      );
+      const [loadedDetails, loadedVersions] = await Promise.all([
+        api.artifact(details.artifact.projectId, details.artifact.id),
+        api.versions(details.artifact.projectId, details.artifact.id),
+      ]);
+      setDetails(loadedDetails);
+      setVersions(loadedVersions);
+      setSelectedVersionId(captured.version.id);
+      updateArtifact(loadedDetails.artifact);
+    } catch (caught) {
+      setDetailError(caught instanceof Error ? caught : new Error("Linked artifact capture failed."));
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+  const openLinkedArtifact = async (): Promise<void> => {
+    if (details === null) return;
+    const popup = window.open("about:blank", "_blank");
+    setDetailError(null);
+    try {
+      const issued = await api.liveSession(details.artifact.projectId, details.artifact.id);
+      if (popup === null) window.location.assign(issued.bootstrapUrl);
+      else {
+        popup.opener = null;
+        popup.location.replace(issued.bootstrapUrl);
+      }
+    } catch (caught) {
+      popup?.close();
+      setDetailError(caught instanceof Error ? caught : new Error("Live artifact opening failed."));
+    }
+  };
+  const tombstoneArtifact = async (): Promise<boolean> => {
+    if (details === null) return false;
+    setDetailError(null);
+    try {
+      await api.deleteArtifact(
+        details.artifact.projectId,
+        details.artifact.id,
+        details.artifact.currentVersionId,
+        crypto.randomUUID(),
+      );
+      setItems((current) => current.filter(({artifact}) => artifact.id !== details.artifact.id));
+      setSelectedArtifactId(null);
+      setSelectedVersionId(null);
+      setSelectedPath(null);
+      setDetails(null);
+      setVersions([]);
+      void loadArtifacts(null, true);
+      return true;
+    } catch (caught) {
+      setDetailError(caught instanceof Error ? caught : new Error("Artifact deletion failed."));
       return false;
     }
   };
@@ -856,7 +1018,7 @@ function ArtifactReview({
               onClick={returnHome}
               title="Artifact Server"
             >
-              <ArtifactMark />
+              <ArtifactMark className="as-catalog__brand-mark" />
             </a>
             <ReviewProjectPicker
               canCreate={canManageProjects}
@@ -873,6 +1035,16 @@ function ArtifactReview({
             >
               <HugeiconsIcon icon={theme === "moon" ? Sun03Icon : Moon02Icon} strokeWidth={1.8} />
             </IconButton>
+            <a
+              aria-label="Open settings"
+              className="as-icon-button"
+              href={selectedProject === null
+                ? "/review/settings/projects"
+                : `/review/settings/projects/${encodeURIComponent(selectedProject.id)}`}
+              title="Open settings"
+            >
+              <HugeiconsIcon icon={Settings02Icon} strokeWidth={1.8} />
+            </a>
             <IconButton label="Collapse artifact catalog" onClick={() => setCatalogOpen(false)}>
               <HugeiconsIcon icon={LayoutLeftIcon} strokeWidth={1.8} />
             </IconButton>
@@ -1277,6 +1449,10 @@ function ArtifactReview({
               <InspectorTabButton active={inspectorTab === "details"} label="Details" onClick={() => setInspectorTab("details")} tab="details" />
               <InspectorTabButton active={inspectorTab === "files"} count={selectedVersion?.manifest.entries.length ?? 0} label="Files" onClick={() => setInspectorTab("files")} tab="files" />
               <InspectorTabButton active={inspectorTab === "versions"} count={versions.length} label="Versions" onClick={() => setInspectorTab("versions")} tab="versions" />
+              <InspectorTabButton active={inspectorTab === "activity"} label="Activity" onClick={() => setInspectorTab("activity")} tab="activity" />
+              {comparison === null ? null : (
+                <InspectorTabButton active={inspectorTab === "compare"} label="Compare" onClick={() => setInspectorTab("compare")} tab="compare" />
+              )}
             </div>
             <IconButton label="Close inspector" onClick={() => setInspectorOpen(false)}>
               <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.8} />
@@ -1292,8 +1468,13 @@ function ArtifactReview({
               <InlineState description="Select an artifact to inspect its immutable record." title="Nothing selected" />
             ) : inspectorTab === "details" ? (
               <DetailsInspector
+                canManage={canManageArtifacts}
                 details={details}
+                linkedArtifacts={session.capabilities.linkedArtifacts}
+                onCapture={captureLinkedArtifact}
+                onOpenLive={openLinkedArtifact}
                 onTagsChange={changeTags}
+                onTombstone={tombstoneArtifact}
                 version={selectedVersion}
               />
             ) : inspectorTab === "comments" ? (
@@ -1309,10 +1490,12 @@ function ArtifactReview({
                 selectedPath={selectedPath ?? selectedVersion.manifest.entryPath}
                 version={selectedVersion}
               />
-            ) : (
+            ) : inspectorTab === "versions" ? (
               <VersionsInspector
                 canManage={canManageArtifacts}
+                comparisonLoading={comparisonLoading}
                 currentVersionId={details.artifact.currentVersionId}
+                onCompare={compareVersions}
                 onMakeCurrent={makeVersionCurrent}
                 onSelect={(versionId) => {
                   setDetailError(null);
@@ -1322,6 +1505,16 @@ function ArtifactReview({
                 selectedVersionId={selectedVersionId}
                 versions={versions}
               />
+            ) : inspectorTab === "activity" ? (
+              <ActivityInspector
+                actions={actions}
+                error={activityError}
+                loading={activityLoading}
+                nextCursor={actionNextCursor}
+                onLoadMore={() => void loadActions(actionNextCursor)}
+              />
+            ) : (
+              <ComparisonInspector comparison={comparison} error={comparisonError} />
             )}
           </div>
               </motion.aside>
@@ -1334,14 +1527,27 @@ function ArtifactReview({
 }
 
 function DetailsInspector({
+  canManage,
   details,
+  linkedArtifacts,
+  onCapture,
+  onOpenLive,
   onTagsChange,
+  onTombstone,
   version,
 }: {
+  readonly canManage: boolean;
   readonly details: ArtifactDetails;
+  readonly linkedArtifacts: boolean;
+  readonly onCapture: () => Promise<void>;
+  readonly onOpenLive: () => Promise<void>;
   readonly onTagsChange: (tags: readonly string[]) => Promise<void>;
+  readonly onTombstone: () => Promise<boolean>;
   readonly version: ArtifactVersion;
 }) {
+  const linkedDriftDescription = details.sourceBinding === undefined
+    ? null
+    : sourceDriftDescription(details.sourceBinding.status, "captured");
   return (
     <div className="as-inspector-stack">
       <InspectorSection count={5} title="Artifact">
@@ -1368,10 +1574,30 @@ function DetailsInspector({
       />
       {details.sourceBinding === undefined ? null : (
         <InspectorSection count={2} title="Linked source">
-          <InspectorRow label="state" value={details.sourceBinding.status} />
+          <InspectorRow label="state" value={sourceFreshnessLabel(details.sourceBinding.status)} />
           <InspectorRow label="path" mono value={details.sourceBinding.path} />
+          {linkedDriftDescription === null ? null : (
+            <p className="as-inspector-empty">{linkedDriftDescription}</p>
+          )}
+          <div className="as-inspector-actions">
+            {canManage && details.sourceBinding.status !== "in-sync" ? (
+              <button className="as-button as-button--primary" onClick={() => void onCapture()} type="button">
+                Capture current file
+              </button>
+            ) : null}
+            {linkedArtifacts && details.links.live !== undefined ? (
+              <button className="as-button" onClick={() => void onOpenLive()} type="button">
+                Open live file
+              </button>
+            ) : null}
+          </div>
         </InspectorSection>
       )}
+      {canManage ? (
+        <InspectorSection count={0} title="Danger zone">
+          <TombstoneArtifactControl artifact={details.artifact} onConfirm={onTombstone} />
+        </InspectorSection>
+      ) : null}
     </div>
   );
 }
@@ -1505,14 +1731,18 @@ function FilesInspector({
 
 function VersionsInspector({
   canManage,
+  comparisonLoading,
   currentVersionId,
+  onCompare,
   onMakeCurrent,
   onSelect,
   selectedVersionId,
   versions,
 }: {
   readonly canManage: boolean;
+  readonly comparisonLoading: boolean;
   readonly currentVersionId: string;
+  readonly onCompare: (fromVersionId: string, toVersionId: string) => Promise<void>;
   readonly onMakeCurrent: (
     versionId: string,
     expectedCurrentVersionId: string,
@@ -1521,8 +1751,39 @@ function VersionsInspector({
   readonly selectedVersionId: string | null;
   readonly versions: readonly VersionListItem[];
 }) {
+  const [fromVersionId, setFromVersionId] = useState(
+    versions.at(-1)?.version.id ?? currentVersionId,
+  );
+  const [toVersionId, setToVersionId] = useState(currentVersionId);
   return (
     <div className="as-inspector-stack">
+      {versions.length < 2 ? null : (
+        <InspectorSection count={2} title="Compare versions">
+          <form
+            className="as-compare-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void onCompare(fromVersionId, toVersionId);
+            }}
+          >
+            <label>
+              <span>From</span>
+              <select onChange={(event) => setFromVersionId(event.currentTarget.value)} value={fromVersionId}>
+                {versions.map(({version}) => <option key={version.id} value={version.id}>Version {version.number}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>To</span>
+              <select onChange={(event) => setToVersionId(event.currentTarget.value)} value={toVersionId}>
+                {versions.map(({version}) => <option key={version.id} value={version.id}>Version {version.number}</option>)}
+              </select>
+            </label>
+            <button className="as-button" disabled={comparisonLoading || fromVersionId === toVersionId} type="submit">
+              {comparisonLoading ? "Comparing…" : "Compare"}
+            </button>
+          </form>
+        </InspectorSection>
+      )}
       <InspectorSection count={versions.length} title="Immutable history">
         <ol className="as-version-list">
           {versions.map(({version}) => (
@@ -1556,6 +1817,129 @@ function VersionsInspector({
         </ol>
       </InspectorSection>
     </div>
+  );
+}
+
+function ActivityInspector({
+  actions,
+  error,
+  loading,
+  nextCursor,
+  onLoadMore,
+}: {
+  readonly actions: readonly ArtifactAction[];
+  readonly error: Error | null;
+  readonly loading: boolean;
+  readonly nextCursor: string | null;
+  readonly onLoadMore: () => void;
+}) {
+  return (
+    <div className="as-inspector-stack">
+      <InspectorSection count={actions.length} title="Artifact activity">
+        {error === null ? null : <p className="as-inspector-error" role="alert">{error.message}</p>}
+        {actions.length === 0 && loading ? <p className="as-inspector-empty">Loading activity…</p> : null}
+        {actions.length === 0 && !loading ? <p className="as-inspector-empty">No activity recorded.</p> : null}
+        <ol className="as-activity-list">
+          {actions.map((action) => (
+            <li key={action.id}>
+              <strong>{actionLabel(action.action)}</strong>
+              <time dateTime={action.createdAt}>{formatTimestamp(action.createdAt)}</time>
+              <code title={action.principalId}>{compactId(action.principalId)}</code>
+            </li>
+          ))}
+        </ol>
+        {nextCursor === null ? null : (
+          <button className="as-button" disabled={loading} onClick={onLoadMore} type="button">
+            {loading ? "Loading…" : "Load more"}
+          </button>
+        )}
+      </InspectorSection>
+    </div>
+  );
+}
+
+function ComparisonInspector({
+  comparison,
+  error,
+}: {
+  readonly comparison: ArtifactComparison | null;
+  readonly error: Error | null;
+}) {
+  if (error !== null) return <InlineState description={error.message} title="Comparison unavailable" />;
+  if (comparison === null) return <InlineState description="Choose two versions from Versions." title="No comparison" />;
+  const changedEntries = [
+    ...comparison.added.map((entry) => ({kind: "Added", path: entry.path})),
+    ...comparison.changed.map((entry) => ({kind: "Changed", path: entry.after.path})),
+    ...comparison.removed.map((entry) => ({kind: "Removed", path: entry.path})),
+    ...comparison.renamed.map((entry) => ({kind: "Renamed", path: `${entry.from.path} → ${entry.to.path}`})),
+  ];
+  return (
+    <div className="as-inspector-stack">
+      <InspectorSection count={2} title={`Version ${comparison.from.number} → ${comparison.to.number}`}>
+        <div className="as-comparison-summary">
+          <span>{comparison.added.length} added</span>
+          <span>{comparison.changed.length} changed</span>
+          <span>{comparison.removed.length} removed</span>
+          <span>{comparison.renamed.length} renamed</span>
+          <span>{comparison.unchangedCount} unchanged</span>
+        </div>
+      </InspectorSection>
+      <InspectorSection count={changedEntries.length} title="Changed files">
+        {changedEntries.length === 0 ? <p className="as-inspector-empty">These versions have the same files.</p> : (
+          <ol className="as-comparison-list">
+            {changedEntries.map((entry) => (
+              <li key={`${entry.kind}-${entry.path}`}><span>{entry.kind}</span><code>{entry.path}</code></li>
+            ))}
+          </ol>
+        )}
+      </InspectorSection>
+    </div>
+  );
+}
+
+function TombstoneArtifactControl({
+  artifact,
+  onConfirm,
+}: {
+  readonly artifact: ArtifactDetails["artifact"];
+  readonly onConfirm: () => Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [pending, setPending] = useState(false);
+  const confirm = async (): Promise<void> => {
+    if (value !== artifact.name) return;
+    setPending(true);
+    const removed = await onConfirm();
+    setPending(false);
+    if (removed) setOpen(false);
+  };
+  return (
+    <Dialog.Root onOpenChange={(nextOpen) => {
+      setOpen(nextOpen);
+      if (!nextOpen) setValue("");
+    }} open={open}>
+      <Dialog.Trigger className="as-button as-button--danger">Delete artifact</Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Backdrop className="as-confirm-dialog__backdrop" />
+        <Dialog.Popup className="as-confirm-dialog">
+          <Dialog.Title>Delete {artifact.name}?</Dialog.Title>
+          <Dialog.Description>
+            This removes the artifact from normal use but retains its immutable version records. Type the artifact name to confirm.
+          </Dialog.Description>
+          <label>
+            <span className="as-visually-hidden">Artifact name</span>
+            <input autoFocus onChange={(event) => setValue(event.currentTarget.value)} value={value} />
+          </label>
+          <div className="as-confirm-dialog__actions">
+            <Dialog.Close className="as-button">Cancel</Dialog.Close>
+            <button className="as-button as-button--danger" disabled={pending || value !== artifact.name} onClick={() => void confirm()} type="button">
+              {pending ? "Deleting…" : "Delete artifact"}
+            </button>
+          </div>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -1682,25 +2066,6 @@ function InspectorTabButton({
       {label}
       {count === undefined ? null : <span>{count}</span>}
     </button>
-  );
-}
-
-function ArtifactMark() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="as-catalog__brand-mark"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.7"
-      viewBox="0 0 24 24"
-    >
-      <circle cx="12.125" cy="5.5" r="3.5" />
-      <rect height="7" rx="1.75" width="7" x="3.75" y="12" />
-      <path d="m17 11.75 4 7h-8Z" />
-    </svg>
   );
 }
 

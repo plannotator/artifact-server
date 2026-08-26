@@ -541,7 +541,7 @@ Before implementing Effect services or layers, the engineer must read
 | Runtime mode and validation | `src/cli/main.ts`, `src/cli/lifecycle-commands.ts`, `src/lifecycle/runtime-configuration.ts`, `src/local/create-local-runtime.ts`, `src/external-storage/create-external-storage-runtime.ts` |
 | Local principal and session lifecycle | `src/application/installation-access.ts`, `src/application/authentication.ts`, identity repository conformance tests |
 | HTTP boundary and cookies | `src/http/create-http-app.ts`, local HTTP and conformance tests |
-| Browser bootstrap and mode-specific UI | `apps/web/src/api/client.ts`, `apps/web/src/app.tsx`, Playwright fixtures and browser tests |
+| Browser bootstrap and mode-specific UI | `apps/web/src/api/client.ts`, `apps/web/src/review/review-app.tsx`, Playwright fixtures and browser tests |
 | Local open and development proxy | `src/cli/open-management-command.ts`, `scripts/run-web-development.ts`, `apps/web/vite.config.ts`, CLI and release-package tests |
 | Team packaging and startup | `packaging/compose`, `packaging/helm/artifact-server`, compact, external-storage, and Helm release tests |
 | OIDC team qualification | `tests/integration/oidc-keycloak.test.ts`, Keycloak runner, TLS and wildcard gateway fixture |

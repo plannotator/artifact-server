@@ -63,7 +63,7 @@ afterAll(async () => {
 
 describe("Cloudflare Worker runtime", () => {
   it("serves the management application only from its configured origin", async () => {
-    const shell = await worker.fetch(`${origin}/projects/prj_default/artifacts`);
+    const shell = await worker.fetch(`${origin}/review?project=prj_default`);
     const shellHtml = await shell.text();
     if (shell.status !== 200) {
       throw new Error(`Management shell returned ${shell.status}: ${shellHtml}`);
@@ -73,7 +73,7 @@ describe("Cloudflare Worker runtime", () => {
     expect(shell.headers.get("content-security-policy")).toContain(
       "frame-ancestors 'none'",
     );
-    expect(shellHtml).toContain('id="root"');
+    expect(shellHtml).toContain('id="review-root"');
 
     const scriptPath = /src="(?<path>\/assets\/[^"]+\.js)"/u.exec(shellHtml)
       ?.groups?.["path"];

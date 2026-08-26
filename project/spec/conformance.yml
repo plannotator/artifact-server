@@ -6,6 +6,7 @@ evidence_root: "../.."
 source:
   product_spec: artifact-server-product-spec.html
   supporting_spec: artifact-server-product-spec.md
+  administration_spec: single-application-administration-spec.md
   mcp_spec: artifact-server-mcp-baseline.md
   plannotator_spec: plannotator-artifact-server-integration-spec.md
 
@@ -2487,6 +2488,139 @@ requirements:
         result: pass
         run: project/evidence/browser.json
         recorded_at: "2026-08-25T19:16:53.330Z"
+
+  - id: ADM-001
+    kind: behavior
+    behavior: Artifact Server ships one canonical React application for Review and settings, plus the isolated Review frame; every former application route redirects to the equivalent canonical destination without serving or loading a legacy application bundle.
+    owner: web-application
+    source: {file: single-application-administration-spec.md, anchor: decision}
+    acceptance:
+      behavior: {id: ADM-001-B, description: "Build and open Review and every settings route from a clean installation, then follow each compatibility URL and observe the equivalent canonical destination with valid project, artifact, version, path, and focus context preserved."}
+      failure: {id: ADM-001-F, description: "The production build and HTTP asset surface contain no legacy React entry or screen; an unknown settings route, malformed identity, or mismatched artifact path shows the normal unavailable state and never serves the old application or substitutes another product object."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local build and browser evidence proves the two-entry application, canonical settings routes, and compatibility behavior. Equivalent deployed-team evidence remains unrecorded.
+    depends_on: [AUTH-026, CMT-015, CMT-016]
+    evidence:
+      - deployment: local
+        tests: [ADM-001-B, ADM-001-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-26T03:02:41.357Z"
+
+  - id: ADM-002
+    kind: behavior
+    behavior: Canonical settings list active and archived projects, create and open a project, and provide one project-local surface for rename, archive, unarchive, and capability-gated optional Git history with estimate confirmation before enablement.
+    owner: web-application
+    source: {file: single-application-administration-spec.md, anchor: project-settings}
+    acceptance:
+      behavior: {id: ADM-002-B, description: "Create and rename a project, archive and unarchive it, return to it in Review, and—when an optional Git provider is available—review an estimate before enabling and later disabling Git history while the displayed state follows the server result."}
+      failure: {id: ADM-002-F, description: "A failed create or rename preserves the entered name, archive cannot erase reads or immutable history, unavailable Git cannot be enabled, enablement without estimate confirmation is refused, and the interface never invents project ACLs or exposes provider secrets and internals."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local browser evidence proves project lifecycle behavior and the absent-provider boundary. A configured provider's estimate and enable-disable browser flow, plus team deployments, remain unrecorded.
+    depends_on: [PRJ-003, GIT-010, GIT-012]
+    evidence:
+      - deployment: local
+        tests: [ADM-002-B, ADM-002-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-26T03:02:41.357Z"
+
+  - id: ADM-003
+    kind: security
+    behavior: Canonical member settings let an installation administrator list, admit, and deactivate members through the closed admission model while preserving the existing self, last-administrator, local-owner, session, key, and attribution protections.
+    owner: web-application
+    source: {file: single-application-administration-spec.md, anchor: members}
+    acceptance:
+      behavior: {id: ADM-003-B, description: "As an administrator, list active and inactive members, admit a member and administrator by provider email, and deactivate an eligible member while durable attributed records remain."}
+      failure: {id: ADM-003-F, description: "A non-administrator direct route or mutation is forbidden, the UI does not claim to send an invitation, and current-member, last-administrator, and local-owner administrator deactivation remain refused without changing membership."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local browser evidence proves member admission and deactivation in the canonical application. Equivalent browser evidence for a non-administrator and each team deployment remains unrecorded; service tests retain those authority boundaries.
+    depends_on: [AUTH-001, AUTH-027, AUTH-028]
+    evidence:
+      - deployment: local
+        tests: [ADM-003-B, ADM-003-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-26T03:02:41.357Z"
+
+  - id: ADM-004
+    kind: security
+    behavior: Canonical API-key settings let an installation administrator list, issue, rotate, and revoke scoped expiring keys, and expose a newly issued or rotated secret exactly once before discarding it from frontend state.
+    owner: web-application
+    source: {file: single-application-administration-spec.md, anchor: api-keys}
+    acceptance:
+      behavior: {id: ADM-004-B, description: "Issue a minimally scoped expiring member or service key, copy its one-time secret, rotate it and copy the replacement, then revoke the active key and observe its status."}
+      failure: {id: ADM-004-F, description: "A non-administrator, missing capability, missing future expiration, inactive owner, stale key, or repeated reveal attempt fails without exposing a full existing secret or leaving it recoverable from frontend state."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local browser evidence proves issue, one-time display, frontend secret disposal, rotation, and revocation. Equivalent browser evidence for every rejected owner or capability case and each team deployment remains unrecorded; service tests retain those authority boundaries.
+    depends_on: [AUTH-009, AUTH-027]
+    evidence:
+      - deployment: local
+        tests: [ADM-004-B, ADM-004-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-26T03:02:41.357Z"
+
+  - id: ADM-005
+    kind: security
+    behavior: Canonical public-link settings let an installation administrator page across projects, inspect active public destinations, and make a bounded selection account-required with explicit partial-success retry and cache-recall copy; public-link creation remains on the artifact Share surface.
+    owner: web-application
+    source: {file: single-application-administration-spec.md, anchor: public-links}
+    acceptance:
+      behavior: {id: ADM-005-B, description: "Page through active public links from multiple projects, open their public and Review destinations, make one and a bounded selection private, and retry a stale failed item without rolling back successful items."}
+      failure: {id: ADM-005-F, description: "A non-administrator, oversized or duplicate selection, stale version, or cross-installation item is refused per item; the interface does not create links here or promise recall of downloaded or externally cached copies."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local browser evidence proves cross-project inventory, one and bulk access reduction, partial success, and stale retry. Equivalent browser evidence for each authorization rejection and team deployment remains unrecorded; service tests retain those boundaries.
+    depends_on: [AUTH-007, AUTH-018, CMT-017]
+    evidence:
+      - deployment: local
+        tests: [ADM-005-B, ADM-005-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-26T03:02:41.357Z"
+
+  - id: ADM-006
+    kind: behavior
+    behavior: Every canonical settings route is refresh- and history-safe, responsive, keyboard accessible, and explicit about loading, empty, success, pending, forbidden, conflict, partial-failure, and retry states without weakening server authorization or crowding the artifact-first Review layout.
+    owner: web-application
+    source: {file: single-application-administration-spec.md, anchor: shared-interaction-contract}
+    acceptance:
+      behavior: {id: ADM-006-B, description: "Navigate each settings route by pointer and keyboard at wide and narrow viewports, refresh and use browser history, complete its primary operation, return to the preserved Review context, and receive visible and announced progress and success states."}
+      failure: {id: ADM-006-F, description: "Direct unauthorized routes show a forbidden state rather than empty data, failed mutations retain recoverable input and offer bounded retry, settings do not cause page-level horizontal overflow, and no permanent settings navigation consumes Review viewport space."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local browser evidence proves accessible canonical settings, stable direct routes, preserved Review return context, and bounded failure states. The complete narrow-screen and non-administrator matrix for every settings page and team deployment remains unrecorded.
+    depends_on: [AUTH-008, AUTH-026, ADM-001]
+    evidence:
+      - deployment: local
+        tests: [ADM-006-B, ADM-006-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-26T03:02:41.357Z"
+
+  - id: ADM-007
+    kind: behavior
+    behavior: Before the legacy application is removed, canonical Review provides the existing browser operations for version comparison, action history, artifact tombstoning, linked-source freshness and capture, eligible live view, and comment dispatch with agent presence by reusing their established product contracts.
+    owner: web-application
+    source: {file: single-application-administration-spec.md, anchor: legacy-capability-parity}
+    acceptance:
+      behavior: {id: ADM-007-B, description: "In canonical Review, compare two versions, page action history, tombstone an artifact after confirmation, inspect and capture a drifted linked source, open its eligible live view, and send a comment to a connected agent while observing its stated presence."}
+      failure: {id: ADM-007-F, description: "Unavailable capabilities remain absent, destructive confirmation cannot be bypassed, linked operations cannot appear outside the qualified local deployment, dispatch authority and presence follow existing contracts, and deleting the legacy bundle cannot remove a still-specified browser operation."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local browser evidence proves canonical comparison, action history, tombstoning, linked capture, dispatch, and presence through their existing contracts. Eligible live-view and equivalent team-deployment evidence remain unrecorded.
+    depends_on: [ART-006, AUD-001, DIF-001, LNK-003, LNK-004, LNK-007, DSP-010, PRS-004, PRS-006, ADM-001]
+    evidence:
+      - deployment: local
+        tests: [ADM-007-B, ADM-007-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-26T03:02:41.357Z"
 
   - id: DSP-001
     kind: behavior

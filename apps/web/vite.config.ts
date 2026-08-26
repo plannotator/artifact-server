@@ -7,13 +7,10 @@ export default defineConfig({
     emptyOutDir: true,
     outDir: "../../dist/web",
     rollupOptions: {
-      // Three documents ship from this application: the original admin shell,
-      // the artifact-first review application, and the isolated review frame
-      // that the review application embeds to host the sandboxed artifact
-      // viewer. They are separate entries so the frame never carries the
-      // application's API client and the application never carries the viewer.
+      // Review is the only trusted application. The isolated frame remains a
+      // separate entry so untrusted artifact rendering never carries the
+      // application's API client.
       input: {
-        index: new URL("./index.html", import.meta.url).pathname,
         "review-frame": new URL("./review-frame.html", import.meta.url).pathname,
         review: new URL("./review.html", import.meta.url).pathname,
       },
@@ -56,17 +53,43 @@ function documentRoutes(): Plugin {
           response.end();
           return;
         }
-        for (const route of ["/review-frame", "/review"] as const) {
-          if (url === route || url.startsWith(`${route}?`)) {
-            request.url = `${route}.html${url.slice(route.length)}`;
-            break;
-          }
+        const pathname = url.split("?", 1)[0] ?? "";
+        const query = url.slice(pathname.length);
+        const redirect = legacyReviewRoute(pathname, query);
+        if (redirect !== null) {
+          response.statusCode = 308;
+          response.setHeader("Location", redirect);
+          response.end();
+          return;
+        }
+        if (pathname === "/review-frame") {
+          request.url = `/review-frame.html${query}`;
+        } else if (pathname === "/review" || pathname.startsWith("/review/")) {
+          request.url = `/review.html${query}`;
         }
         next();
       });
     },
     name: "artifact-server-document-routes",
   };
+}
+
+function legacyReviewRoute(pathname: string, query: string): string | null {
+  if (pathname === "/") return `/review${query}`;
+  if (pathname === "/projects") return "/review/settings/projects";
+  if (pathname === "/administration/members") return "/review/settings/members";
+  if (pathname === "/administration/api-keys") return "/review/settings/api-keys";
+  if (pathname === "/administration/public-links") return "/review/settings/public-links";
+  const match = /^\/projects\/([^/]+)\/artifacts(?:\/([^/]+)(?:\/versions\/([^/]+)\/review)?)?$/u.exec(pathname);
+  if (match === null) return null;
+  const parameters = new URLSearchParams(query);
+  parameters.set("project", decodeURIComponent(match[1] ?? ""));
+  if (match[2] !== undefined) parameters.set("artifact", decodeURIComponent(match[2]));
+  if (match[3] !== undefined) {
+    parameters.set("version", decodeURIComponent(match[3]));
+    parameters.set("view", "focus");
+  }
+  return `/review?${parameters.toString()}`;
 }
 
 function backendProxy(): ProxyOptions {

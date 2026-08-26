@@ -73,6 +73,7 @@ describe("Cloudflare Worker linked-artifact absence", () => {
   it("exposes no live origin: a live-labelled content host never serves a live document", async () => {
     const liveHost = await worker.fetch(`${origin}/`, {
       headers: {Host: `live-00000000000000000000000000000000.${contentDomain}`},
+      redirect: "manual",
     });
     // The worker has no per-artifact live origin and no disk to stream from. A
     // live document is recognisable by the freshness header only the live view

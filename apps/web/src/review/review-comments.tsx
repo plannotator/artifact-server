@@ -18,6 +18,10 @@ import {
   useCommentPoll,
 } from "@/components/comments/comment-poll";
 import {formatTimestamp} from "@/lib/presentation";
+import {bundleOfThreads} from "@/components/dispatch/dispatch-bundle";
+import {useDispatchUndo} from "@/components/dispatch/dispatch-toast";
+import {PresenceAvatar} from "@/components/dispatch/presence-avatar";
+import {SendToAgentControl} from "@/components/dispatch/send-to-agent-dialog";
 import {
   reviewAnchorSchema,
   type ReviewAnchor,
@@ -74,6 +78,7 @@ async function loadConversations(
 }
 
 export interface ReviewCommentSession {
+  readonly artifactId: string | null;
   readonly annotations: readonly ReviewAnnotation[];
   readonly changeState: (thread: CommentThread) => Promise<void>;
   readonly createReply: (
@@ -84,6 +89,7 @@ export interface ReviewCommentSession {
   readonly deleteReply: (reply: CommentReply) => Promise<void>;
   readonly error: Error | null;
   readonly loading: boolean;
+  readonly projectId: string;
   readonly reload: () => Promise<void>;
   readonly repliesByThread: ReadonlyMap<string, readonly CommentReply[]>;
   readonly selectedThreadId: string | null;
@@ -91,7 +97,7 @@ export interface ReviewCommentSession {
   readonly submit: (
     body: string,
     anchor: ReviewAnchor | null,
-    path: string,
+    path: string | null,
   ) => Promise<boolean>;
   readonly threads: readonly CommentThread[];
   readonly unanchoredIds: readonly string[];
@@ -230,7 +236,7 @@ export function useReviewComments({
   const submit = useCallback(async (
     body: string,
     anchor: ReviewAnchor | null,
-    path: string,
+    path: string | null,
   ): Promise<boolean> => {
     if (artifactId === null || projectId === "" || versionId === null) return false;
     setError(null);
@@ -345,11 +351,13 @@ export function useReviewComments({
 
   return {
     annotations,
+    artifactId,
     changeState,
     createReply,
     deleteReply,
     error,
     loading,
+    projectId,
     reload,
     repliesByThread,
     selectedThreadId,

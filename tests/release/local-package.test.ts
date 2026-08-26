@@ -94,10 +94,10 @@ describe("direct local release package", () => {
       const executableA = path.join(firstInstallation, "artifactserver/bin/artifactserver");
       const executableB = path.join(secondInstallation, "artifactserver/bin/artifactserver");
       const packagedShell = await readFile(
-        path.join(firstInstallation, "artifactserver/dist/web/index.html"),
+        path.join(firstInstallation, "artifactserver/dist/web/review.html"),
         "utf8",
       );
-      expect(packagedShell).toContain('id="root"');
+      expect(packagedShell).toContain('id="review-root"');
       expect(await readdir(
         path.join(firstInstallation, "artifactserver/dist/web/assets"),
       )).toEqual(expect.arrayContaining([
@@ -218,14 +218,14 @@ describe("direct local release package", () => {
       const startupOutput = await waitForReady(server, port);
       const management = await fetchPackagedManagement(
         port,
-        "/projects/prj_default/artifacts",
+        "/review?project=prj_default",
       );
       expect(management.status).toBe(200);
       expect(management.headers.get("content-type")).toContain("text/html");
       expect(management.headers.get("content-security-policy")).toContain(
         "frame-ancestors 'none'",
       );
-      expect(await management.text()).toContain('id="root"');
+      expect(await management.text()).toContain('id="review-root"');
 
       const publicationResult = await runCommand(
         executableA,

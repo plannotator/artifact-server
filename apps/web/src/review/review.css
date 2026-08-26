@@ -549,6 +549,16 @@ select:focus-visible {
   padding: 0.85rem;
 }
 
+.as-project-actions {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.as-project-actions > * {
+  justify-content: flex-start;
+  width: 100%;
+}
+
 :root[data-review-theme="dawn"] .as-project-popover {
   box-shadow:
     0 1.75rem 5rem rgb(0 0 0 / 20%),
@@ -1932,6 +1942,28 @@ select:focus-visible {
   margin: 0.25rem 0;
 }
 
+.as-inspector-error {
+  color: var(--as-love);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  margin: 0.25rem 0;
+}
+
+.as-inspector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+}
+
+.as-button--danger {
+  background: color-mix(in oklab, var(--as-love) 18%, transparent);
+  border-color: color-mix(in oklab, var(--as-love) 52%, var(--as-border));
+  color: var(--as-love);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 .as-tag-editor {
   display: grid;
   gap: 0.5rem;
@@ -1977,6 +2009,40 @@ select:focus-visible {
 
 .as-comments {
   display: grid;
+}
+
+.as-comments__agents {
+  align-items: center;
+  border-bottom: 1px solid var(--as-border);
+  display: flex;
+  justify-content: space-between;
+  padding: 0.65rem 0.75rem;
+}
+
+.as-comments__agents > div:first-child {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.as-comments__agents strong {
+  font-size: 0.75rem;
+}
+
+.as-comments__agents span,
+.as-comments__agent-error {
+  color: var(--as-muted);
+  font-size: 0.66rem;
+}
+
+.as-comments__agents > div:last-child {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.as-comments__agent-error {
+  color: var(--as-love);
+  margin: 0;
+  padding: 0.55rem 0.75rem;
 }
 
 .as-comments__intro {
@@ -2323,6 +2389,88 @@ select:focus-visible {
   font-size: 0.65rem;
 }
 
+.as-compare-form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.as-compare-form label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.as-compare-form label > span {
+  color: var(--as-muted);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.as-compare-form select,
+.as-confirm-dialog input {
+  appearance: none;
+  background: var(--as-canvas);
+  border: 1px solid var(--as-border);
+  border-radius: var(--as-radius);
+  color: var(--as-text);
+  font: 0.75rem/1.4 "Atkinson Hyperlegible Mono", monospace;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.55rem;
+  width: 100%;
+}
+
+.as-confirm-dialog label {
+  display: block;
+  margin-top: 1rem;
+}
+
+.as-activity-list,
+.as-comparison-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.as-activity-list li,
+.as-comparison-list li {
+  border-top: 1px solid color-mix(in oklab, var(--as-border) 62%, transparent);
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.65rem 0;
+}
+
+.as-activity-list li:first-child,
+.as-comparison-list li:first-child {
+  border-top: 0;
+}
+
+.as-activity-list strong,
+.as-comparison-list span {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.as-activity-list time,
+.as-activity-list code,
+.as-comparison-list code {
+  color: var(--as-muted);
+  font-size: 0.65rem;
+  overflow-wrap: anywhere;
+}
+
+.as-comparison-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.as-comparison-summary span {
+  background: var(--as-iris-soft);
+  color: var(--as-subtle);
+  font-size: 0.65rem;
+  padding: 0.2rem 0.4rem;
+}
+
 .as-preview-welcome,
 .as-preview-state {
   align-items: center;
@@ -2630,6 +2778,118 @@ select:focus-visible {
   }
 }
 
+.as-settings {
+  --as-settings-accent: color-mix(in oklab, var(--as-iris) 72%, var(--as-text));
+  background: var(--as-canvas);
+  color: var(--as-text);
+  min-height: 100dvh;
+}
+
+.as-settings .text-primary {
+  color: var(--as-settings-accent);
+}
+
+body:has(.as-settings),
+#review-root:has(.as-settings) {
+  height: auto;
+  min-height: 100%;
+  overflow: auto;
+}
+
+.as-settings .font-heading {
+  font-family: inherit;
+}
+
+.as-settings__header {
+  background: color-mix(in oklab, var(--as-surface) 96%, transparent);
+  border-bottom: 1px solid var(--as-border);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.as-settings__header-inner {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin: 0 auto;
+  max-width: 82rem;
+  min-height: 3.75rem;
+  padding: 0.55rem 1.25rem;
+}
+
+.as-settings__brand {
+  align-items: center;
+  color: inherit;
+  display: inline-flex;
+  font-size: 0.95rem;
+  font-weight: 600;
+  gap: 0.65rem;
+  text-decoration: none;
+}
+
+.as-settings__mark {
+  color: var(--as-iris);
+  height: 1.75rem;
+  width: 1.75rem;
+}
+
+.as-settings__header-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.as-settings__layout {
+  display: grid;
+  gap: clamp(2rem, 5vw, 5rem);
+  grid-template-columns: 12rem minmax(0, 1fr);
+  margin: 0 auto;
+  max-width: 82rem;
+  min-width: 0;
+  padding: clamp(2rem, 5vw, 4.5rem) 1.25rem 5rem;
+}
+
+.as-settings__nav {
+  align-self: start;
+  display: grid;
+  gap: 0.2rem;
+  position: sticky;
+  top: 6rem;
+}
+
+.as-settings__nav > p {
+  color: var(--as-subtle);
+  font-family: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.15em;
+  margin: 0 0 0.55rem;
+  text-transform: uppercase;
+}
+
+.as-settings__nav > a {
+  border-left: 2px solid transparent;
+  color: var(--as-subtle);
+  font-size: 0.9rem;
+  padding: 0.5rem 0.7rem;
+  text-decoration: none;
+}
+
+.as-settings__nav > a:hover,
+.as-settings__nav > a[data-active="true"] {
+  background: var(--as-hover);
+  color: var(--as-text);
+}
+
+.as-settings__nav > a[data-active="true"] {
+  border-left-color: var(--as-iris);
+}
+
+.as-settings__content {
+  min-width: 0;
+}
+
 @media (max-width: 1180px) {
   .as-panel-assembly[data-side="right"] {
     bottom: 0;
@@ -2673,6 +2933,41 @@ select:focus-visible {
 }
 
 @media (max-width: 720px) {
+  .as-settings__header-inner {
+    padding-inline: 0.8rem;
+  }
+
+  .as-settings__brand > span {
+    display: none;
+  }
+
+  .as-settings__layout {
+    display: block;
+    padding: 1.25rem 0.8rem 3rem;
+  }
+
+  .as-settings__nav {
+    display: flex;
+    margin-bottom: 1.5rem;
+    overflow-x: auto;
+    padding-bottom: 0.3rem;
+    position: static;
+  }
+
+  .as-settings__nav > p {
+    display: none;
+  }
+
+  .as-settings__nav > a {
+    border-bottom: 2px solid transparent;
+    border-left: 0;
+    flex: 0 0 auto;
+  }
+
+  .as-settings__nav > a[data-active="true"] {
+    border-bottom-color: var(--as-iris);
+  }
+
   .as-app {
     display: block;
   }

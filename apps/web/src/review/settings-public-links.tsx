@@ -427,7 +427,10 @@ export function PublicLinksScreen() {
                         <td className="max-w-xs px-4 py-4 align-top">
                           <a
                             className="font-heading font-semibold hover:underline"
-                            href={`/projects/${encodeURIComponent(item.project.id)}/artifacts/${encodeURIComponent(item.artifact.id)}`}
+                            href={`/review?${new URLSearchParams({
+                              artifact: item.artifact.id,
+                              project: item.project.id,
+                            })}`}
                           >
                             {item.artifact.name}
                           </a>

@@ -166,14 +166,14 @@ test.describe("Linked artifacts", () => {
 
       await localLogin(fixture);
       await fixture.page.goto(
-        `${fixture.server.baseUrl}/projects/prj_default/artifacts/${linked.artifact.id}`,
+        `${fixture.server.baseUrl}/review?project=prj_default&artifact=${linked.artifact.id}`,
       );
 
       // The binding is ordinary artifact metadata: a row, a path, a badge.
       await expect(
         fixture.page.getByRole("heading", {name: "Quarterly report"}),
       ).toBeVisible();
-      await expect(fixture.page.getByText("Linked file", {exact: true})).toBeVisible();
+      await expect(fixture.page.getByRole("heading", {name: "Linked source"})).toBeVisible();
       await expect(fixture.page.getByText(sourcePath, {exact: true})).toBeVisible();
       await expect(fixture.page.getByText("In sync", {exact: true})).toBeVisible();
 
@@ -194,18 +194,18 @@ test.describe("Linked artifacts", () => {
       expect(await versionCount(fixture, linked.artifact.id)).toBe(1);
 
       // Capturing is the explicit, attributed act that moves the artifact.
-      await fixture.page.getByRole("button", {name: "Capture now"}).click();
+      await fixture.page.getByRole("button", {name: "Capture current file"}).click();
       await expect(
         fixture.page.getByText("In sync", {exact: true}),
       ).toBeVisible({timeout: 30_000});
-      await expect(fixture.page.getByText("Version 2", {exact: true})).toBeVisible();
+      await expect(fixture.page.getByRole("tab", {name: "Versions 2"})).toBeVisible();
 
       await expect(async () => {
         expect(await versionCount(fixture, linked.artifact.id)).toBe(2);
       }).toPass();
 
       // The capture is in the artifact's own attributed history.
-      await fixture.page.getByRole("tab", {name: "Action history"}).click();
+      await fixture.page.getByRole("tab", {name: "Activity"}).click();
       await expect(
         fixture.page.getByText("Captured linked file", {exact: true}),
       ).toBeVisible();
@@ -217,16 +217,12 @@ test.describe("Linked artifacts", () => {
       // bytes, and a later edit stays ambient: the review never blocks on it.
       const read = await readArtifactOverApi(fixture, linked.artifact.id);
       await fixture.page.goto(
-        `${fixture.server.baseUrl}/projects/prj_default/artifacts/${linked.artifact.id}/versions/${read.artifact.currentVersionId}/review`,
+        `${fixture.server.baseUrl}/review?project=prj_default&artifact=${linked.artifact.id}&version=${read.artifact.currentVersionId}`,
       );
       await expect(
         fixture.page.getByRole("heading", {name: "Quarterly report"}),
       ).toBeVisible();
-      const sourceControl = fixture.page.getByRole("button", {
-        name: /Linked source:/u,
-      });
-      await sourceControl.click();
-      const liveButton = fixture.page.getByRole("button", {name: "Open live view"});
+      const liveButton = fixture.page.getByRole("button", {name: "Open live file"});
       await expect(liveButton).toBeVisible();
 
       await writeFile(
@@ -234,9 +230,7 @@ test.describe("Linked artifacts", () => {
         pageHtml("Quarterly report", "The third draft is live on disk."),
         "utf8",
       );
-      await expect(
-        fixture.page.getByText("File changed on disk — showing live bytes."),
-      ).toBeVisible({timeout: 30_000});
+      await expect(fixture.page.getByText("Modified on disk", {exact: true})).toBeVisible({timeout: 30_000});
       await expect(
         fixture.page.getByRole("heading", {name: "Quarterly report"}),
       ).toBeVisible();

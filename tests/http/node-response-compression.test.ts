@@ -55,7 +55,7 @@ describe("Node server response compression and asset caching", () => {
       path.join(tmpdir(), "artifact-server-web-assets-"),
     );
     await mkdir(path.join(webAssetsRoot, "assets"), {recursive: true});
-    await writeFile(path.join(webAssetsRoot, "index.html"), shellFixture);
+    await writeFile(path.join(webAssetsRoot, "review.html"), shellFixture);
     await writeFile(
       path.join(webAssetsRoot, "assets", "app-fixture.js"),
       scriptFixture,
@@ -159,7 +159,7 @@ describe("Node server response compression and asset caching", () => {
   });
 
   test("foundation: the application shell compresses without losing revalidation", async () => {
-    const shell = await rawRequest(server, "/", {"Accept-Encoding": "gzip"});
+    const shell = await rawRequest(server, "/review", {"Accept-Encoding": "gzip"});
     expect(shell.status).toBe(200);
     expect(shell.headers.get("content-encoding")).toBe("gzip");
     expect(shell.headers.get("cache-control")).toBe("no-cache, must-revalidate");

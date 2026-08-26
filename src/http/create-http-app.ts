@@ -742,7 +742,7 @@ export function createHttpApp(
 
   app.on(
     ["GET", "HEAD"],
-    "/review",
+    ["/review", "/review/*"],
     (context) =>
       serveWebAsset(context, dependencies, "/review.html", "application-shell"),
   );
@@ -752,20 +752,38 @@ export function createHttpApp(
     return context.redirect(`/review${requestUrl.search}`, 308);
   });
 
+  app.on(["GET", "HEAD"], "/", (context) => context.redirect("/review", 308));
+  app.on(["GET", "HEAD"], "/projects", (context) =>
+    context.redirect("/review/settings/projects", 308));
+  app.on(["GET", "HEAD"], "/administration/members", (context) =>
+    context.redirect("/review/settings/members", 308));
+  app.on(["GET", "HEAD"], "/administration/api-keys", (context) =>
+    context.redirect("/review/settings/api-keys", 308));
+  app.on(["GET", "HEAD"], "/administration/public-links", (context) =>
+    context.redirect("/review/settings/public-links", 308));
+  app.on(["GET", "HEAD"], "/projects/:projectId/artifacts", (context) => {
+    const query = new URLSearchParams({project: context.req.param("projectId")});
+    return context.redirect(`/review?${query}`, 308);
+  });
+  app.on(["GET", "HEAD"], "/projects/:projectId/artifacts/:artifactId", (context) => {
+    const query = new URLSearchParams({
+      artifact: context.req.param("artifactId"),
+      project: context.req.param("projectId"),
+    });
+    return context.redirect(`/review?${query}`, 308);
+  });
   app.on(
     ["GET", "HEAD"],
-    [
-      "/",
-      "/projects",
-      "/projects/:projectId/artifacts",
-      "/projects/:projectId/artifacts/:artifactId",
-      "/projects/:projectId/artifacts/:artifactId/versions/:versionId/review",
-      "/administration/members",
-      "/administration/api-keys",
-      "/administration/public-links",
-    ],
-    (context) =>
-      serveWebAsset(context, dependencies, "/index.html", "application-shell"),
+    "/projects/:projectId/artifacts/:artifactId/versions/:versionId/review",
+    (context) => {
+      const query = new URLSearchParams({
+        artifact: context.req.param("artifactId"),
+        project: context.req.param("projectId"),
+        version: context.req.param("versionId"),
+        view: "focus",
+      });
+      return context.redirect(`/review?${query}`, 308);
+    },
   );
 
   app.use("/api/*", async (context, next) => {

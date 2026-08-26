@@ -83,9 +83,8 @@ test.describe("PRS-004 one-click send and undo", () => {
 
       await localLogin(fixture);
       const page = fixture.page;
-      await page.waitForURL(/\/projects\/[^/]+\/artifacts$/);
       await page.goto(
-        `${fixture.server.baseUrl}/projects/prj_default/artifacts/${artifactId}`,
+        `${fixture.server.baseUrl}/review?project=prj_default&artifact=${artifactId}&version=${versionId}`,
       );
       await page.getByRole("tab", {name: "Comments"}).click();
       const cards = page.getByRole("article");
@@ -170,8 +169,8 @@ test.describe("PRS-004 one-click send and undo", () => {
 
       expect(await browserStorage(page)).toEqual({
         indexedDatabaseNames: [],
-        localStorageKeys: [],
-        sessionStorageKeys: [],
+        localStorageKeys: ["artifact-review-theme"],
+        sessionStorageKeys: ["artifact-review-return-url"],
       });
     } finally {
       await stopBrowserFixture(fixture);

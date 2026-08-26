@@ -1,6 +1,7 @@
 import {
   Add01Icon,
   ArrowDown01Icon,
+  Settings02Icon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import {HugeiconsIcon} from "@hugeicons/react";
@@ -23,6 +24,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {Separator} from "@/components/ui/separator";
+import {projectSettingsHref} from "./review-routes.ts";
 
 interface ReviewProjectPickerProps {
   readonly canCreate: boolean;
@@ -135,17 +137,36 @@ export function ReviewProjectPicker({
                   );
                 })}
               </div>
-              {canCreate
-                ? (
-                  <>
-                    <Separator />
+              {canCreate ? (
+                <>
+                  <Separator />
+                  <div className="as-project-actions">
+                    {selectedProject === null ? null : (
+                      <Button
+                        onClick={() => setPickerOpen(false)}
+                        render={<a href={projectSettingsHref(selectedProject.id)} />}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        <HugeiconsIcon data-icon="inline-start" icon={Settings02Icon} strokeWidth={2} />
+                        Project settings
+                      </Button>
+                    )}
+                    <Button
+                      onClick={() => setPickerOpen(false)}
+                      render={<a href="/review/settings/projects" />}
+                      size="sm"
+                      variant="ghost"
+                    >
+                      Manage projects
+                    </Button>
                     <Button onClick={showCreateForm} size="sm" type="button" variant="ghost">
                       <HugeiconsIcon data-icon="inline-start" icon={Add01Icon} strokeWidth={2} />
                       New project
                     </Button>
-                  </>
-                )
-                : null}
+                  </div>
+                </>
+              ) : null}
             </>
           )
           : (

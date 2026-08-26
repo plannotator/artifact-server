@@ -25,11 +25,11 @@ try {
   await page.goto(server.baseUrl);
   await page.getByRole("link", {name: "Artifact Server"}).waitFor();
 
-  await page.goto(`${server.baseUrl}/projects`);
+  await page.goto(`${server.baseUrl}/review/settings/projects`);
   await page.getByRole("heading", {name: "Projects"}).waitFor();
   await capture(page, "light-projects.png");
 
-  await page.goto(`${server.baseUrl}/projects/prj_default/artifacts`);
+  await page.goto(`${server.baseUrl}/review?project=prj_default`);
   await page.getByText("No artifacts yet").waitFor();
   await capture(page, "empty-artifacts.png");
 
@@ -46,26 +46,22 @@ try {
     expectedCurrentVersionId: first.body.version.id,
     idempotencyKey: "frontend-screenshot-second",
   });
-  await page.reload();
-  await page.getByText("Release dashboard").waitFor();
+  await page.goto(`${server.baseUrl}/review?project=prj_default`);
+  await page.getByRole("heading", {name: "Release dashboard"}).waitFor();
   await capture(page, "populated-artifacts.png");
 
-  await page.getByRole("link", {name: "Release dashboard"}).click();
-  await page.getByRole("heading", {name: "Release dashboard"}).waitFor();
-  await page.getByLabel("Account menu").click();
-  await page.getByRole("button", {name: "Dark theme"}).click();
   await capture(page, "dark-artifact-detail.png");
 
   await page.setViewportSize({height: 844, width: 390});
-  await page.goto(`${server.baseUrl}/projects/prj_default/artifacts`);
-  await page.getByText("Release dashboard").waitFor();
+  await page.goto(`${server.baseUrl}/review?project=prj_default`);
+  await page.getByRole("heading", {name: "Release dashboard"}).waitFor();
   await capture(page, "narrow-artifacts.png");
 
   await page.setViewportSize({height: 900, width: 1440});
   await page.goto(
-    `${server.baseUrl}/projects/prj_default/artifacts/art_missing`,
+    `${server.baseUrl}/review?project=prj_default&artifact=art_missing`,
   );
-  await page.getByRole("heading", {name: "Request failed"}).waitFor();
+  await page.getByRole("heading", {name: "Review target unavailable"}).waitFor();
   await capture(page, "error-not-found.png");
 } finally {
   await context.close();

@@ -40,9 +40,7 @@ export async function localLogin(
   await fixture.page.goto(fixture.server.baseUrl);
   if (waitForApplication) {
     await expect(fixture.page.getByRole("link", {name: "Artifact Server"})).toBeVisible();
-    await expect(fixture.page).toHaveURL(
-      `${fixture.server.baseUrl}/projects/prj_default/artifacts`,
-    );
+    await expect(fixture.page).toHaveURL(/\/review\?project=prj_default/u);
   }
 }
 

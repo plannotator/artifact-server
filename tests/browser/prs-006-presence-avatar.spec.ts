@@ -99,9 +99,8 @@ test.describe("PRS-006 presence avatar", () => {
 
       await localLogin(fixture);
       const page = fixture.page;
-      await page.waitForURL(/\/projects\/[^/]+\/artifacts$/);
       await page.goto(
-        `${fixture.server.baseUrl}/projects/prj_default/artifacts/${artifactId}`,
+        `${fixture.server.baseUrl}/review?project=prj_default&artifact=${artifactId}&version=${published.version.id}`,
       );
       await page.getByRole("tab", {name: "Comments"}).click();
       const cards = page.getByRole("article");
@@ -122,20 +121,17 @@ test.describe("PRS-006 presence avatar", () => {
       await expect(page.getByText("Sent 1 thread to pres")).toBeVisible();
       expect((await agent.client.claim(agent.agentId, 2)).status).toBe(200);
 
-      // The Sent view shows the live line under the state pill.
-      await page.getByLabel("State", {exact: true})
-        .selectOption({label: "Sent to an agent"});
-      await expect(page.getByText("pres is working…")).toBeVisible();
-      const workingRing = page.getByRole("article")
-        .locator("[data-presence-ring=\"working\"]");
+      // The Review agent strip follows live presence independently of the
+      // comment that was sent.
+      const avatarButton = page.getByRole("button", {name: "pres — Working"});
+      await expect(avatarButton).toBeVisible({timeout: 30_000});
+      const workingRing = avatarButton.locator("[data-presence-ring=\"working\"]");
       await expect(workingRing).toHaveCount(1);
       await expect(
         workingRing.locator(".presence-ring"),
       ).toHaveCSS("animation-name", "presence-pulse");
 
       // Hovering the avatar explains the state in words; so does focusing it.
-      const avatarButton = page.getByRole("article")
-        .getByRole("button", {name: "pres — Working"});
       await avatarButton.hover();
       await expect(page.getByText(/Working — took a bundle/)).toBeVisible();
       await expect(page.getByText("/work/pres")).toBeVisible();
@@ -153,9 +149,9 @@ test.describe("PRS-006 presence avatar", () => {
           {body: JSON.stringify({state: "replying"}), method: "POST"},
         )).status,
       ).toBe(204);
-      await expect(page.getByText("pres is replying…")).toBeVisible();
-      const replyingRing = page.getByRole("article")
-        .locator("[data-presence-ring=\"replying\"]");
+      const replyingAvatar = page.getByRole("button", {name: "pres — Replying"});
+      await expect(replyingAvatar).toBeVisible({timeout: 30_000});
+      const replyingRing = replyingAvatar.locator("[data-presence-ring=\"replying\"]");
       await expect(
         replyingRing.locator(".presence-ring"),
       ).toHaveCSS("animation-name", "presence-spin");
@@ -182,13 +178,12 @@ test.describe("PRS-006 presence avatar", () => {
       expect(replyingTone.top).not.toBe(replyingTone.side);
 
       // Age the heartbeat past the 90-second window: the server now derives
-      // disconnected, and the live line honestly disappears.
+      // disconnected.
       fixture.clock.advance(100_000);
-      await expect(page.getByText("pres is replying…")).toHaveCount(0);
+      await expect(page.getByRole("button", {name: "pres — Disconnected"}))
+        .toBeVisible({timeout: 30_000});
 
       // With no connected agent left, send is disabled with the reason.
-      await page.getByLabel("State", {exact: true})
-        .selectOption({label: "All comments"});
       const dimmedSend = page.getByRole("button", {name: "Send to agent"});
       await expect(dimmedSend).toBeVisible();
       await expect(dimmedSend).toHaveAttribute("title", "Connect an agent");
@@ -223,8 +218,8 @@ test.describe("PRS-006 presence avatar", () => {
 
       expect(await browserStorage(page)).toEqual({
         indexedDatabaseNames: [],
-        localStorageKeys: [],
-        sessionStorageKeys: [],
+        localStorageKeys: ["artifact-review-theme"],
+        sessionStorageKeys: ["artifact-review-return-url"],
       });
     } finally {
       await stopPresenceFixture(fixture);
