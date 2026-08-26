@@ -17,10 +17,10 @@ browser, and the tools make our app operable — reliable typed calls
 instead of DOM-driving, with the user's existing session as auth (no API
 keys, no MCP config). It composes with, and never replaces, the dispatch
 loop: there is no site-to-agent push, the human is the push channel, and
-delegated work still flows through `send_to_agent` into the real
-pipeline.
+delegating work to a coding agent stays a human action in the UI — the
+copilot can surface and triage feedback, but only the human clicks Send.
 
-## 2. Out-of-the-box tool set (v1, eight tools)
+## 2. Out-of-the-box tool set (v1, seven tools)
 
 All tools call the existing web API client — the same code path the UI
 uses, so server-side validation and authorization are identical. Names
@@ -50,11 +50,6 @@ remaining open/sent counts, so no follow-up read is ever needed.
 | --- | --- |
 | `open` | `{artifactId, versionId?}` — drives the UI there and returns the new view's full `get_view` payload. |
 
-**The ramp**
-| Tool | Contract |
-| --- | --- |
-| `send_to_agent` | `{threadIds, agentId?, note?}` — dispatches through the real pipeline (single connected agent needs no `agentId`, mirroring the one-click send rule). Returns the created dispatch and the target agent's presence. |
-
 ## 3. Excluded from v1, deliberately
 
 - Publishing and uploads (staged-upload ceremony, near-zero copilot value).
@@ -63,6 +58,11 @@ remaining open/sent counts, so no follow-up read is ever needed.
 - Git history, linked-artifact, and tag operations.
 - Any autonomous behavior: tools are inert until a human's agent calls
   them; nothing monitors, nothing wakes.
+- `send_to_agent` (owner decision, August 26): dispatching work to a
+  coding agent stays a human action — the copilot triages, the human
+  clicks Send. `get_view` still reports connected agents and in-flight
+  dispatches so the copilot can *recommend* a hand-off; it just cannot
+  perform one. Revisit if real usage shows the extra click is friction.
 
 ## 4. Stances
 
@@ -90,12 +90,12 @@ remaining open/sent counts, so no follow-up read is ever needed.
 
 | ID | Behavior |
 | --- | --- |
-| WMC-001 | With a `modelContext` present (fake in the browser suite), the eight tools register with provenance-prefixed names; a `get_view`→`reply`→`resolve`→`send_to_agent` sequence produces the same server state and UI updates as the equivalent human actions, with each mutation result carrying the updated thread and counts (no read-back); with no `modelContext`, the app behaves identically and logs nothing. |
+| WMC-001 | With a `modelContext` present (fake in the browser suite), the seven tools register with provenance-prefixed names; a `get_view`→`reply`→`resolve` sequence produces the same server state and UI updates as the equivalent human actions, with each mutation result carrying the updated thread and counts (no read-back); with no `modelContext`, the app behaves identically and logs nothing. |
 | WMC-002 | Tools never widen authority: every call is rejected or allowed exactly as the same operation from the UI for that session; tools are absent on content origins; tool descriptions stay within the spec's size guidance and quote no untrusted content. |
 
 ## 6. Cost and gate
 
-~1–2 days: the adapter module, eight thin tool bindings over the existing
+~1–2 days: the adapter module, seven thin tool bindings over the existing
 client, the settings toggle, two browser conformance tests with a faked
 `modelContext`. Gate to build: owner call — the OpenAI consumption
 announcement satisfied the demand trigger; remaining risk is API churn,
