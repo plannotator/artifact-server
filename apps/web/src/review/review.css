@@ -2034,6 +2034,24 @@ select:focus-visible {
   font-size: 0.66rem;
 }
 
+.as-comments__send-all {
+  border-bottom: 1px solid var(--as-border);
+  padding: 0.65rem 0.75rem;
+}
+
+.as-comments__filters {
+  border-bottom: 1px solid var(--as-border);
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  padding: 0.5rem 0.75rem;
+}
+
+.as-comments__filters .as-button[aria-pressed="true"] {
+  background: var(--as-iris-soft);
+  color: var(--as-iris);
+}
+
 .as-comments__agents > div:last-child {
   display: flex;
   gap: 0.35rem;
@@ -2102,11 +2120,17 @@ select:focus-visible {
 }
 
 .as-comment-card > header strong {
+  flex: 1 1 auto;
   font-size: 0.78rem;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.as-comment-card > header input[type="checkbox"] {
+  accent-color: var(--as-iris);
+  flex: 0 0 auto;
 }
 
 .as-comment-card > header span {

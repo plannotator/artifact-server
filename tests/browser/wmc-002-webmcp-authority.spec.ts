@@ -104,7 +104,10 @@ test.describe("WMC-002 WebMCP authority", () => {
       await expect(
         page.getByText("Comments are read-only for this account or archived project."),
       ).toBeVisible();
-      await expect(page.getByRole("button", {name: "Resolve"})).toHaveCount(0);
+      // Exact matching keeps the read-only assertion separate from the
+      // always-available "Resolved" list filter.
+      await expect(page.getByRole("button", {exact: true, name: "Resolve"}))
+        .toHaveCount(0);
       // The same mutation the session's own client sends: cookie session
       // plus the CSRF token the client reads from its cookie.
       const directArchived = await page.evaluate(async (target) => {

@@ -1,6 +1,6 @@
 # Artifact comments
 
-**Status:** Accepted; implemented — CMT-001 through CMT-015 are behavior-verified on the local deployment. CMT-014 (review-viewer containment) and CMT-015 (artifact-first viewer shell) use the durable Playwright report at `project/evidence/browser.json`; broader deployment release gates remain separate (August 23, 2026)
+**Status:** Accepted; implemented — CMT-001 through CMT-015 are behavior-verified on the local deployment. CMT-014 (review-viewer containment) has focused hostile-artifact proof in `tests/browser/review-sandbox.spec.ts`; CMT-015 (artifact-first viewer shell) is proved in `tests/browser/frontend-mvp.spec.ts`. Both use the durable Playwright report at `project/evidence/browser.json`; broader deployment release gates remain separate (August 26, 2026)
 **Date:** August 17, 2026
 **Owner:** Artifact Server product engineering
 **Companion documents:** [Product specification](./artifact-server-product-spec.md), [Plannotator and Artifact Server integration](./plannotator-artifact-server-integration-spec.md), [Conformance ledger](./conformance.yml)
@@ -394,7 +394,7 @@ Module `artifact-comments` (new entry in `allowed_modules`). Deployments `*all`.
 
 `SCP-003` is edited to keep notifications and workspace collaboration excluded. `PLN-003` moves comments and replies to Artifact Server's column and its acceptance tests are rewritten. `AUD-001` gains the six comment action kinds in its behavior test.
 
-Tests are named by requirement ID as the ledger requires (`tests/conformance/cmt-001-exact-version-thread.test.ts` and so on), run against the SQLite repository directly and through the HTTP app; the Postgres and D1 repositories run the same repository suite through the existing external-storage and Cloudflare test harnesses. New requirements enter the ledger as `specified` with empty evidence; statuses move only on real recorded runs (the validator rejects hand-written evidence). `CMT-014`'s hostile-artifact proof lives in the Playwright browser suite, which cannot carry ledger IDs, so `CMT-014` stays `specified` until the evidence tooling covers browser runs.
+Tests are named by requirement ID as the ledger requires (`tests/conformance/cmt-001-exact-version-thread.test.ts` and so on), run against the SQLite repository directly and through the HTTP app; the Postgres and D1 repositories run the same repository suite through the existing external-storage and Cloudflare test harnesses. New requirements enter the ledger as `specified` with empty evidence; statuses move only on real recorded runs (the validator rejects hand-written evidence). Browser requirements use the same IDs in Playwright test titles, and the browser evidence writer records those passing runs in `project/evidence/browser.json`.
 
 ## 12. Acceptance walk-through (what "done" looks like for the API and MCP)
 

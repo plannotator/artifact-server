@@ -28,7 +28,11 @@ const fixtureHtml =
  */
 async function connectFakeAgent(
   fixture: BrowserFixture,
-  input: {readonly connectionKey: string; readonly name: string},
+  input: {
+    readonly capabilities?: object;
+    readonly connectionKey: string;
+    readonly name: string;
+  },
 ): Promise<{readonly agentId: string; readonly client: ApiClient}> {
   const cookies = await signInAdministrator(fixture.server, fixture.installation);
   const token = await issueApiKey(
@@ -38,12 +42,15 @@ async function connectFakeAgent(
     `${input.name} bridge key`,
   );
   const client = new ApiClient(fixture.server, token);
-  const agent = await client.registerAgent({
+  const registration = {
     agentSessionId: `session-${input.name}`,
     connectionKey: input.connectionKey,
     displayName: input.name,
     workingDirectory: `/work/${input.name}`,
-  });
+  };
+  const agent = await client.registerAgent(input.capabilities === undefined
+    ? registration
+    : {...registration, capabilities: input.capabilities});
   return {agentId: agent.id, client};
 }
 
@@ -90,12 +97,12 @@ test.describe("PRS-004 one-click send and undo", () => {
       const cards = page.getByRole("article");
       await expect(cards).toHaveCount(2);
 
-      // One click, no dialog: the button names its destination and sends.
-      const firstCard = cards.filter({hasText: bodies.first});
-      await firstCard.getByRole("button", {name: "Send to solo"}).click();
-      await expect(page.getByText("Sent 1 thread to solo")).toBeVisible();
+      // One click, no dialog: the primary button names its destination and
+      // sends every open comment on the exact version.
+      await page.getByRole("button", {name: "Send all open (2) to solo"}).click();
+      await expect(page.getByText("Sent 2 threads to solo")).toBeVisible();
       await expect(page.getByRole("dialog")).toHaveCount(0);
-      await expect(cards).toHaveCount(1);
+      await expect(cards).toHaveCount(0);
 
       // The server holds exactly one dispatch for it, still queued.
       const owner = new ApiClient(fixture.server, fixture.installation.apiToken);
@@ -121,9 +128,13 @@ test.describe("PRS-004 one-click send and undo", () => {
       // Nothing is left in the mailbox for the agent to take.
       expect((await agent.client.claim(agent.agentId, 1)).status).toBe(204);
 
-      // A send the agent already delivered refuses the undo, and says so.
+      // Selecting comments is the secondary path. A send the agent already
+      // delivered refuses the undo, and says so.
       await cards.filter({hasText: bodies.second})
-        .getByRole("button", {name: "Send to solo"}).click();
+        .getByRole("checkbox", {name: `Select comment: ${bodies.second}`})
+        .check();
+      await page.getByLabel("Selected annotations")
+        .getByRole("button", {name: "Send 1 to solo"}).click();
       await expect(page.getByText("Sent 1 thread to solo")).toBeVisible();
       const claimed = await agent.client.claim(agent.agentId, 2);
       expect(claimed.status).toBe(200);
@@ -142,9 +153,12 @@ test.describe("PRS-004 one-click send and undo", () => {
       expect(conflicted.canceledAt).toBeNull();
 
       // The note stays reachable behind the split-button caret, as a dialog.
-      await page.getByRole("button", {name: "Send with a note"}).click();
+      await page.getByRole("button", {
+        name: "Choose agent or send with a note",
+      }).first().click();
+      await page.getByRole("button", {name: "Send with a note…"}).click();
       const noteDialog = page.getByRole("dialog");
-      await expect(noteDialog.getByRole("heading", {name: "Send to agent"}))
+      await expect(noteDialog.getByRole("heading", {name: "Send with a note"}))
         .toBeVisible();
       await expect(noteDialog.getByText("/work/solo")).toBeVisible();
       await expect(noteDialog.getByText("Connected", {exact: true}))
@@ -153,23 +167,24 @@ test.describe("PRS-004 one-click send and undo", () => {
       await noteDialog.getByRole("button", {name: "Cancel"}).click();
       await expect(noteDialog).toHaveCount(0);
 
-      // A second connected agent restores the picker: choice needs a dialog.
+      // A second connected agent appears in the inline destination menu.
       await connectFakeAgent(fixture, {
         connectionKey: "prs-004-second-connection-key",
         name: "duo",
       });
-      const openCard = cards.filter({hasText: bodies.first});
-      await openCard.getByRole("button", {name: "Send to agent"}).click();
-      const picker = page.getByRole("dialog");
-      await expect(picker.getByRole("heading", {name: "Send to agent"}))
+      await expect(page.getByRole("button", {name: "Send all open (1) to solo"}))
         .toBeVisible();
-      await expect(picker.getByText("solo", {exact: true})).toBeVisible();
-      await expect(picker.getByText("duo", {exact: true})).toBeVisible();
-      await picker.getByRole("button", {name: "Cancel"}).click();
+      await page.getByRole("button", {
+        name: "Choose agent or send with a note",
+      }).first().click();
+      await expect(page.getByRole("button", {name: "duo /work/duo"})).toBeVisible();
 
       expect(await browserStorage(page)).toEqual({
         indexedDatabaseNames: [],
-        localStorageKeys: ["artifact-review-theme"],
+        localStorageKeys: [
+          expect.stringMatching(/^dispatch-default:/u),
+          "artifact-review-theme",
+        ],
         sessionStorageKeys: ["artifact-review-return-url"],
       });
     } finally {

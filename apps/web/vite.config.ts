@@ -76,10 +76,10 @@ function documentRoutes(): Plugin {
 
 function legacyReviewRoute(pathname: string, query: string): string | null {
   if (pathname === "/") return `/review${query}`;
-  if (pathname === "/projects") return "/review/settings/projects";
-  if (pathname === "/administration/members") return "/review/settings/members";
-  if (pathname === "/administration/api-keys") return "/review/settings/api-keys";
-  if (pathname === "/administration/public-links") return "/review/settings/public-links";
+  if (pathname === "/projects") return `/review/settings/projects${query}`;
+  if (pathname === "/administration/members") return `/review/settings/members${query}`;
+  if (pathname === "/administration/api-keys") return `/review/settings/api-keys${query}`;
+  if (pathname === "/administration/public-links") return `/review/settings/public-links${query}`;
   const match = /^\/projects\/([^/]+)\/artifacts(?:\/([^/]+)(?:\/versions\/([^/]+)\/review)?)?$/u.exec(pathname);
   if (match === null) return null;
   const parameters = new URLSearchParams(query);

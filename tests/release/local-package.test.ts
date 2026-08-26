@@ -55,7 +55,7 @@ afterEach(async () => {
 });
 
 describe("direct local release package", () => {
-  test("DEP-019-B DEP-019-F: installs without development tools and preserves published bytes across replacement and restore", async () => {
+  test("DEP-019-B DEP-019-F ADM-001-B ADM-001-F: installs one canonical application and preserves published bytes across replacement and restore", async () => {
     const workspace = await mkdtemp(path.join(tmpdir(), "artifact-server-release-test-"));
     const outputDirectory = path.join(workspace, "release");
     const firstInstallation = path.join(workspace, "installed-a");
@@ -133,6 +133,7 @@ describe("direct local release package", () => {
 
       await expectMissing(path.join(firstInstallation, "artifactserver/src"));
       await expectMissing(path.join(firstInstallation, "artifactserver/tests"));
+      await expectMissing(path.join(firstInstallation, "artifactserver/dist/web/index.html"));
       await expectMissing(path.join(firstInstallation, "artifactserver/node_modules/typescript"));
       await expectMissing(path.join(firstInstallation, "artifactserver/node_modules/tsx"));
       await expectMissing(path.join(firstInstallation, "artifactserver/node_modules/vitest"));
@@ -216,6 +217,25 @@ describe("direct local release package", () => {
       const port = await availablePort();
       server = startPackagedServer(executableA, dataDirectory, port, workspace);
       const startupOutput = await waitForReady(server, port);
+      const redirects = [
+        ["/?source=legacy", "/review?source=legacy"],
+        ["/workbench?project=prj_default&view=focus", "/review?project=prj_default&view=focus"],
+        ["/projects?source=legacy", "/review/settings/projects?source=legacy"],
+        ["/administration/members?source=legacy", "/review/settings/members?source=legacy"],
+        ["/administration/api-keys?source=legacy", "/review/settings/api-keys?source=legacy"],
+        ["/administration/public-links?source=legacy", "/review/settings/public-links?source=legacy"],
+        ["/projects/prj_one/artifacts?tag=design", "/review?tag=design&project=prj_one"],
+        ["/projects/prj_one/artifacts/art_one?path=cover.png", "/review?path=cover.png&artifact=art_one&project=prj_one"],
+        [
+          "/projects/prj_one/artifacts/art_one/versions/ver_one/review?path=index.html",
+          "/review?path=index.html&artifact=art_one&project=prj_one&version=ver_one&view=focus",
+        ],
+      ] as const;
+      await Promise.all(redirects.map(async ([legacyPath, canonicalLocation]) => {
+        const response = await fetchPackagedManagement(port, legacyPath);
+        expect(response.status).toBe(308);
+        expect(response.headers.get("location")).toBe(canonicalLocation);
+      }));
       const management = await fetchPackagedManagement(
         port,
         "/review?project=prj_default",

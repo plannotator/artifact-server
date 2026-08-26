@@ -752,37 +752,37 @@ export function createHttpApp(
     return context.redirect(`/review${requestUrl.search}`, 308);
   });
 
-  app.on(["GET", "HEAD"], "/", (context) => context.redirect("/review", 308));
+  app.on(["GET", "HEAD"], "/", (context) => {
+    const requestUrl = new URL(context.req.url);
+    return context.redirect(`/review${requestUrl.search}`, 308);
+  });
   app.on(["GET", "HEAD"], "/projects", (context) =>
-    context.redirect("/review/settings/projects", 308));
+    redirectWithRequestQuery(context, "/review/settings/projects"));
   app.on(["GET", "HEAD"], "/administration/members", (context) =>
-    context.redirect("/review/settings/members", 308));
+    redirectWithRequestQuery(context, "/review/settings/members"));
   app.on(["GET", "HEAD"], "/administration/api-keys", (context) =>
-    context.redirect("/review/settings/api-keys", 308));
+    redirectWithRequestQuery(context, "/review/settings/api-keys"));
   app.on(["GET", "HEAD"], "/administration/public-links", (context) =>
-    context.redirect("/review/settings/public-links", 308));
+    redirectWithRequestQuery(context, "/review/settings/public-links"));
   app.on(["GET", "HEAD"], "/projects/:projectId/artifacts", (context) => {
-    const query = new URLSearchParams({project: context.req.param("projectId")});
-    return context.redirect(`/review?${query}`, 308);
+    return redirectToReview(context, {project: context.req.param("projectId")});
   });
   app.on(["GET", "HEAD"], "/projects/:projectId/artifacts/:artifactId", (context) => {
-    const query = new URLSearchParams({
+    return redirectToReview(context, {
       artifact: context.req.param("artifactId"),
       project: context.req.param("projectId"),
     });
-    return context.redirect(`/review?${query}`, 308);
   });
   app.on(
     ["GET", "HEAD"],
     "/projects/:projectId/artifacts/:artifactId/versions/:versionId/review",
     (context) => {
-      const query = new URLSearchParams({
+      return redirectToReview(context, {
         artifact: context.req.param("artifactId"),
         project: context.req.param("projectId"),
         version: context.req.param("versionId"),
         view: "focus",
       });
-      return context.redirect(`/review?${query}`, 308);
     },
   );
 
@@ -3999,4 +3999,23 @@ function copyAssetHeader(
 ): void {
   const value = source.get(name);
   if (value !== null) destination.set(name, value);
+}
+
+function redirectWithRequestQuery(
+  context: Context<HttpEnvironment>,
+  pathname: string,
+): Response {
+  const requestUrl = new URL(context.req.url);
+  return context.redirect(`${pathname}${requestUrl.search}`, 308);
+}
+
+function redirectToReview(
+  context: Context<HttpEnvironment>,
+  identity: Readonly<Record<string, string>>,
+): Response {
+  const requestUrl = new URL(context.req.url);
+  for (const [name, value] of Object.entries(identity)) {
+    requestUrl.searchParams.set(name, value);
+  }
+  return context.redirect(`/review?${requestUrl.searchParams.toString()}`, 308);
 }

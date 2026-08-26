@@ -106,19 +106,21 @@ test.describe("PRS-006 presence avatar", () => {
       const cards = page.getByRole("article");
       await expect(cards).toHaveCount(2);
 
-      // Idle: the send button carries the agent's avatar — the Pi brand mark
-      // in a circle whose solid ring is the state, not a bare dot.
-      const firstCard = cards.filter({hasText: bodies.first});
-      const sendButton = firstCard.getByRole("button", {name: "Send to pres"});
+      // Idle: the primary send-all control carries the agent's avatar — the
+      // Pi brand mark in a circle whose solid ring is the state, not a bare
+      // dot. Individual comments are now a secondary selection path.
+      const sendButton = page.getByRole("button", {
+        name: "Send all open (2) to pres",
+      });
       await expect(sendButton).toBeVisible();
       const idleRing = sendButton.locator("[data-presence-ring=\"idle\"]");
       await expect(idleRing).toHaveCount(1);
       await expect(idleRing.locator("img")).toHaveCount(1);
 
-      // Send the annotation and let the agent claim it: the dispatch alone
-      // derives "working" — the agent never wrote an activity state.
+      // Send all open annotations and let the agent claim them: the dispatch
+      // alone derives "working" — the agent never wrote an activity state.
       await sendButton.click();
-      await expect(page.getByText("Sent 1 thread to pres")).toBeVisible();
+      await expect(page.getByText("Sent 2 threads to pres")).toBeVisible();
       expect((await agent.client.claim(agent.agentId, 2)).status).toBe(200);
 
       // The Review agent strip follows live presence independently of the
@@ -183,10 +185,18 @@ test.describe("PRS-006 presence avatar", () => {
       await expect(page.getByRole("button", {name: "pres — Disconnected"}))
         .toBeVisible({timeout: 30_000});
 
-      // With no connected agent left, send is disabled with the reason.
-      const dimmedSend = page.getByRole("button", {name: "Send to agent"});
-      await expect(dimmedSend).toBeVisible();
-      await expect(dimmedSend).toHaveAttribute("title", "Connect an agent");
+      // Add another open comment so the disconnected default and replacement
+      // destination remain observable on the primary control.
+      await createThreadOverApi(fixture, {
+        artifactId,
+        body: "The third claim needs a source.",
+        idempotencyKey: "prs-006-seed-third",
+        path: "index.html",
+        versionId: published.version.id,
+      });
+      await page.getByRole("button", {name: "Reload"}).click();
+      await expect(page.getByText("pres disconnected — pick another"))
+        .toBeVisible();
 
       // A second agent connects; the disconnected one keeps its hollow ring
       // and its row refuses selection, stating when it was last seen.
@@ -194,7 +204,10 @@ test.describe("PRS-006 presence avatar", () => {
         connectionKey: "prs-006-backup-connection-key",
         name: "backup",
       });
-      await page.getByRole("button", {name: "Send with a note"}).click();
+      await page.getByRole("button", {
+        name: "Choose agent or send with a note",
+      }).click();
+      await page.getByRole("button", {name: "Send with a note…"}).click();
       const dialog = page.getByRole("dialog");
       const presRow = dialog.locator("label").filter({hasText: "pres"});
       await expect(presRow.locator("[data-presence-ring=\"disconnected\"]"))
@@ -218,7 +231,10 @@ test.describe("PRS-006 presence avatar", () => {
 
       expect(await browserStorage(page)).toEqual({
         indexedDatabaseNames: [],
-        localStorageKeys: ["artifact-review-theme"],
+        localStorageKeys: [
+          expect.stringMatching(/^dispatch-default:/u),
+          "artifact-review-theme",
+        ],
         sessionStorageKeys: ["artifact-review-return-url"],
       });
     } finally {

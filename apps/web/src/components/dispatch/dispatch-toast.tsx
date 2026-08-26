@@ -12,7 +12,9 @@ import { errorMessage } from "@/lib/presentation";
 /** One send that just left, with everything the undo toast needs to name it. */
 export interface SentDispatch {
   readonly agent: AgentPresence;
-  readonly dispatch: AgentDispatch;
+  readonly dispatches: readonly AgentDispatch[];
+  /** Threads left unsent when a later server-bounded batch failed. */
+  readonly incompleteCount?: number;
 }
 
 /** How a send control reports its outcome to the surface's toast. */
@@ -80,29 +82,39 @@ export function useDispatchUndo(
 
   const undo = async (sent: SentDispatch) => {
     setUndoPending(true);
-    try {
-      await api.cancelAgentDispatch(projectId, sent.dispatch.id);
+    const results = await Promise.allSettled(
+      sent.dispatches.map((dispatch) =>
+        api.cancelAgentDispatch(projectId, dispatch.id)
+      ),
+    );
+    const failures = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : []
+    );
+    if (failures.length === 0) {
       show(
         { kind: "notice", text: "Send canceled — the annotations are back." },
         noticeToastMilliseconds,
       );
-    } catch (caught) {
-      const conflict = caught instanceof ApiError
-        && caught.code === "DISPATCH_STATE_CONFLICT";
+    } else {
+      const conflict = failures.some((failure) =>
+        failure instanceof ApiError && failure.code === "DISPATCH_STATE_CONFLICT"
+      );
+      const firstFailure = failures[0];
       show(
         {
           kind: "notice",
           text: conflict
             ? `Too late to undo — ${sent.agent.displayName} already carried this send past the point of cancelling.`
             : errorMessage(
-              caught instanceof Error ? caught : new Error("Undo failed."),
+              firstFailure instanceof Error
+                ? firstFailure
+                : new Error("Undo failed."),
             ),
         },
         noticeToastMilliseconds,
       );
-    } finally {
-      setUndoPending(false);
     }
+    setUndoPending(false);
     await onUndone();
   };
 
@@ -117,7 +129,21 @@ export function useDispatchUndo(
           ? (
             <>
               <p className="min-w-0 leading-5">
-                {`Sent ${threadsWord(toast.sent.dispatch.threadIds.length)} to ${toast.sent.agent.displayName}`}
+                {toast.sent.incompleteCount === undefined
+                  ? toast.sent.agent.capabilities?.evidence === "mailbox"
+                    ? `Queued for ${toast.sent.agent.displayName} — it picks this up when it next checks in.`
+                    : `Sent ${threadsWord(
+                      toast.sent.dispatches.reduce(
+                        (count, dispatch) => count + dispatch.threadIds.length,
+                        0,
+                      ),
+                    )} to ${toast.sent.agent.displayName}`
+                  : `Sent ${threadsWord(
+                    toast.sent.dispatches.reduce(
+                      (count, dispatch) => count + dispatch.threadIds.length,
+                      0,
+                    ),
+                  )} to ${toast.sent.agent.displayName}; ${threadsWord(toast.sent.incompleteCount)} could not be sent.`}
               </p>
               <Button
                 className="shrink-0"

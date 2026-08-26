@@ -1,13 +1,9 @@
 import type { CommentThread } from "@/api/client";
-import { maximumDispatchBundleSize } from "@/components/dispatch/dispatch-limits";
-
 /** The annotations one send control resolved, ready to become one bundle. */
 export interface DispatchBundle {
-  /** How many open annotations the control found before the bundle bound. */
+  /** Exact number of open annotations the control found. */
   readonly openCount: number;
-  /** The count is a floor: more annotations exist than the control walked. */
-  readonly openCountIsLowerBound: boolean;
-  /** Ordered oldest first and already capped at the bundle bound. */
+  /** Ordered oldest first. The send control batches server-bounded dispatches. */
   readonly threadIds: readonly string[];
 }
 
@@ -20,12 +16,11 @@ function oldestFirst(threads: readonly CommentThread[]): readonly string[] {
     .map((thread) => thread.id);
 }
 
-/** One already-known set of annotations, oldest first, capped for one send. */
+/** One already-known set of annotations, oldest first. */
 export function bundleOf(threadIds: readonly string[]): DispatchBundle {
   return {
     openCount: threadIds.length,
-    openCountIsLowerBound: false,
-    threadIds: threadIds.slice(0, maximumDispatchBundleSize),
+    threadIds,
   };
 }
 

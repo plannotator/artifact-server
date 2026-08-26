@@ -1,6 +1,6 @@
 # Single application administration
 
-Status: accepted scope for implementation
+Status: implemented
 
 ## Decision
 

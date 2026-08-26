@@ -2388,7 +2388,7 @@ requirements:
         tests: [CMT-014-B, CMT-014-F]
         result: pass
         run: project/evidence/browser.json
-        recorded_at: "2026-08-23T23:50:31.798Z"
+        recorded_at: "2026-08-26T17:41:12.496Z"
 
   - id: CMT-015
     kind: behavior
@@ -2499,14 +2499,14 @@ requirements:
       failure: {id: ADM-001-F, description: "The production build and HTTP asset surface contain no legacy React entry or screen; an unknown settings route, malformed identity, or mismatched artifact path shows the normal unavailable state and never serves the old application or substitutes another product object."}
     deployments: *all
     status: behavior_verified
-    proof_gap: Local build and browser evidence proves the two-entry application, canonical settings routes, and compatibility behavior. Equivalent deployed-team evidence remains unrecorded.
+    proof_gap: Local package and browser evidence proves the single React application, isolated Review frame, canonical settings routes, and compatibility behavior. Equivalent deployed-team evidence remains unrecorded.
     depends_on: [AUTH-026, CMT-015, CMT-016]
     evidence:
       - deployment: local
         tests: [ADM-001-B, ADM-001-F]
         result: pass
-        run: project/evidence/browser.json
-        recorded_at: "2026-08-26T03:02:41.357Z"
+        run: project/evidence/local-package.json
+        recorded_at: "2026-08-26T17:44:36.819Z"
 
   - id: ADM-002
     kind: behavior
@@ -2985,6 +2985,42 @@ requirements:
         result: pass
         run: project/evidence/local-foundation.json
         recorded_at: "2026-08-25T21:29:14.000Z"
+
+  - id: SND-001
+    kind: behavior
+    behavior: Review loads every comment page for the exact version, presents one exact open-undispatched count, and makes sending all open comments the primary human action while preserving sent-state inspection and recovery.
+    owner: web-application
+    source: {file: send-all-spec.md, anchor: conformance-ids-reserved-ledger-entries-land-with-the-build}
+    acceptance:
+      behavior: {id: SND-001-B, description: "Load more than one API page of comments, send every open undispatched thread in one human action, and observe the exact count, complete Sent filter, Addressed state after resolution, pin removal, and canceled sends returning their threads to the open list."}
+      failure: {id: SND-001-F, description: "Pagination cannot lower the displayed count or omit a thread from send-all, and a sent thread cannot remain pinned or in the open list while a canceled thread cannot remain hidden."}
+    deployments: [local]
+    status: behavior_verified
+    depends_on: [CMT-012, DSP-004, PRS-004]
+    evidence:
+      - deployment: local
+        tests: [SND-001-B, SND-001-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-26T17:41:12.496Z"
+
+  - id: SND-002
+    kind: behavior
+    behavior: Review derives the send-all destination and copy from connected agent presence, remembers the last destination per principal and project, and never silently substitutes another agent.
+    owner: web-application
+    source: {file: send-all-spec.md, anchor: conformance-ids-reserved-ledger-entries-land-with-the-build}
+    acceptance:
+      behavior: {id: SND-002-B, description: "Send to one connected agent, choose and remember a project default from the multi-agent caret menu, and send to a mailbox-tier agent while the control and toast state the true destination and queue behavior."}
+      failure: {id: SND-002-F, description: "No connected agent, no open thread, and a disconnected remembered default disable the main action with their exact reasons; a disconnected default never falls through to another connected agent."}
+    deployments: [local]
+    status: behavior_verified
+    depends_on: [PRS-001, PRS-004, BRP-002, SND-001]
+    evidence:
+      - deployment: local
+        tests: [SND-002-B, SND-002-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-26T17:41:12.496Z"
 
   - id: BRP-002
     kind: behavior

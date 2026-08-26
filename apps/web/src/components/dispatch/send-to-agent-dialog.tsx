@@ -1,20 +1,18 @@
-import { useId, useRef, useState } from "react";
+import {useEffect, useId, useRef, useState} from "react";
+import {z} from "zod";
 
-import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
+import {ArrowDown01Icon} from "@hugeicons/core-free-icons";
+import {HugeiconsIcon} from "@hugeicons/react";
 
-import { api, type AgentPresence } from "@/api/client";
-import type { DispatchBundle } from "@/components/dispatch/dispatch-bundle";
+import {api, type AgentDispatch, type AgentPresence} from "@/api/client";
+import type {DispatchBundle} from "@/components/dispatch/dispatch-bundle";
 import {
   maximumDispatchBundleSize,
   maximumDispatchNoteCharacters,
 } from "@/components/dispatch/dispatch-limits";
-import type { DispatchFeedback } from "@/components/dispatch/dispatch-toast";
-import {
-  PresenceGlyph,
-  presenceRing,
-} from "@/components/dispatch/presence-avatar";
-import { Button } from "@/components/ui/button";
+import type {DispatchFeedback} from "@/components/dispatch/dispatch-toast";
+import {PresenceGlyph, presenceRing} from "@/components/dispatch/presence-avatar";
+import {Button} from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -23,31 +21,100 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { errorMessage, formatRelativeTime } from "@/lib/presentation";
+import {Label} from "@/components/ui/label";
+import {Popover, PopoverContent, PopoverTrigger} from "@/components/ui/popover";
+import {Textarea} from "@/components/ui/textarea";
+import {errorMessage, formatRelativeTime} from "@/lib/presentation";
 
 function annotationCount(count: number): string {
   return count === 1 ? "1 annotation" : `${count} annotations`;
 }
 
+function defaultAgentStorageKey(principalId: string, projectId: string): string {
+  return `dispatch-default:${principalId}:${projectId}`;
+}
+
+interface RememberedAgent {
+  readonly displayName: string;
+  readonly id: string;
+}
+
+const rememberedAgentSchema = z.object({
+  displayName: z.string().min(1),
+  id: z.string().min(1),
+});
+
+function readRememberedAgent(storageKey: string): RememberedAgent | null {
+  const stored = window.localStorage.getItem(storageKey);
+  if (stored === null) return null;
+  try {
+    const parsed = rememberedAgentSchema.safeParse(JSON.parse(stored));
+    if (parsed.success) return parsed.data;
+  } catch {
+    // Older builds stored the id alone. Preserve the destination lock even
+    // when its display name is not available for the migration.
+  }
+  return {displayName: "Previous agent", id: stored};
+}
+
+function dispatchBatches(threadIds: readonly string[]): readonly (readonly string[])[] {
+  return Array.from(
+    {length: Math.ceil(threadIds.length / maximumDispatchBundleSize)},
+    (_, index) => threadIds.slice(
+      index * maximumDispatchBundleSize,
+      (index + 1) * maximumDispatchBundleSize,
+    ),
+  );
+}
+
+interface DispatchAttemptResult {
+  readonly dispatches: readonly AgentDispatch[];
+  readonly failure: Error | null;
+}
+
+async function createDispatchBatches(
+  projectId: string,
+  agentId: string,
+  note: string | null,
+  batches: readonly (readonly string[])[],
+  idempotencyKeys: readonly string[],
+  index = 0,
+  created: readonly AgentDispatch[] = [],
+): Promise<DispatchAttemptResult> {
+  const threadIds = batches[index];
+  if (threadIds === undefined) return {dispatches: created, failure: null};
+  try {
+    const result = await api.createAgentDispatch(
+      projectId,
+      {agentId, note, threadIds},
+      idempotencyKeys[index] ?? crypto.randomUUID(),
+    );
+    return createDispatchBatches(
+      projectId,
+      agentId,
+      note,
+      batches,
+      idempotencyKeys,
+      index + 1,
+      [...created, result.dispatch],
+    );
+  } catch (caught) {
+    return {
+      dispatches: created,
+      failure: caught instanceof Error ? caught : new Error("Sending failed."),
+    };
+  }
+}
+
 /**
- * Send annotations to one connected agent as a single bundle.
+ * Send one exact annotation set to an agent with an honest tier-aware control.
  *
- * With exactly one connected agent the button itself is the send: one click
- * dispatches immediately, the button names the destination with the agent's
- * presence avatar, and the surface's undo toast replaces confirmation. The
- * dialog remains only where there is a choice to make — no agent connected
- * (how to connect one), two or more agents (the picker), or the split-button
- * caret that opens it to add a bundle note.
- *
- * Confirming creates exactly one dispatch: one idempotency key is minted for
- * the attempt and reused for every retry of it, so a lost response can never
- * send the bundle twice. Choosing a different agent starts a new attempt,
- * because a replayed key would answer with the dispatch the first agent
- * already holds.
+ * The remembered destination is a per-principal, per-project convenience. A
+ * disconnected remembered agent disables the main action instead of silently
+ * choosing another. The caret remains available to pick a connected agent or
+ * add the optional bundle note. Sets above the server's per-dispatch bound are
+ * split into ordered batches while one human click remains the initiating act.
  */
 export function SendToAgentControl({
   agents,
@@ -57,23 +124,28 @@ export function SendToAgentControl({
   label,
   onSent,
   oneAgentLabel,
+  openCount,
+  principalId,
   projectId,
   resolveBundle,
 }: {
-  /** The polled presence list, or null while the surface is still reading it. */
+  /** The polled presence list, or null while the surface is reading it. */
   readonly agents: readonly AgentPresence[] | null;
   readonly buttonSize?: "default" | "sm" | "xs";
   readonly buttonVariant?: "default" | "outline" | "secondary";
-  /** Where a one-click send reports itself, for the undo toast. */
   readonly feedback: DispatchFeedback;
+  /** Label used before the first destination is chosen. */
   readonly label: string;
   readonly onSent: () => Promise<void>;
-  /** Replaces the label when exactly one agent is connected, naming it. */
+  /** Exact number of open, undispatched annotations represented. */
+  readonly openCount: number;
   readonly oneAgentLabel?: (name: string) => string;
+  readonly principalId: string;
   readonly projectId: string;
   readonly resolveBundle: () => Promise<DispatchBundle>;
 }) {
-  const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(false);
   const [quickPending, setQuickPending] = useState(false);
@@ -83,22 +155,123 @@ export function SendToAgentControl({
   const [note, setNote] = useState("");
   const [error, setError] = useState<Error | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const attemptKey = useRef<string | null>(null);
+  const [rememberedDefault, setRememberedDefault] = useState<RememberedAgent | null>(null);
+  const attemptKeys = useRef<readonly string[]>([]);
   const dialogId = useId();
-  const trimmedNote = note.trim();
-  const noteTooLong = trimmedNote.length > maximumDispatchNoteCharacters;
-  const connectedAgents = dialogAgents.filter((agent) => agent.connected);
-  const threadIds = bundle?.threadIds ?? [];
+  const storageKey = defaultAgentStorageKey(principalId, projectId);
+
+  useEffect(() => {
+    setRememberedDefault(readRememberedAgent(storageKey));
+  }, [storageKey]);
 
   const knownConnected = agents?.filter((agent) => agent.connected) ?? null;
-  const onlyAgent = knownConnected !== null && knownConnected.length === 1
-    ? knownConnected[0] ?? null
-    : null;
+  const rememberedAgent = agents?.find((agent) => agent.id === rememberedDefault?.id) ?? null;
+  const mainAgent = rememberedAgent?.connected === true
+    ? rememberedAgent
+    : rememberedDefault === null && knownConnected?.length === 1
+      ? knownConnected[0] ?? null
+      : null;
+  const disconnectedDefaultName = rememberedAgent !== null && !rememberedAgent.connected
+    ? rememberedAgent.displayName
+    : rememberedDefault !== null && agents !== null && rememberedAgent === null
+      ? rememberedDefault.displayName
+      : null;
+  const noAgents = knownConnected !== null && knownConnected.length === 0;
+  const nothingToSend = openCount === 0;
+  const mainReason = nothingToSend
+    ? "Nothing open to send."
+    : disconnectedDefaultName !== null
+      ? `${disconnectedDefaultName} disconnected — pick another`
+      : noAgents
+        ? "No agent connected — connect one to send."
+        : null;
+  const mainLabel = mainAgent === null
+    ? disconnectedDefaultName === null || oneAgentLabel === undefined
+      ? label
+      : oneAgentLabel(disconnectedDefaultName)
+    : oneAgentLabel === undefined
+      ? label
+      : oneAgentLabel(mainAgent.displayName);
+  const trimmedNote = note.trim();
+  const noteTooLong = trimmedNote.length > maximumDispatchNoteCharacters;
+  const connectedDialogAgents = dialogAgents.filter((agent) => agent.connected);
+  const threadIds = bundle?.threadIds ?? [];
 
-  const prepare = async () => {
+  const rememberAgent = (agent: AgentPresence): void => {
+    const next = {displayName: agent.displayName, id: agent.id};
+    window.localStorage.setItem(storageKey, JSON.stringify(next));
+    setRememberedDefault(next);
+  };
+
+  const reportAttempt = async (
+    agent: AgentPresence,
+    resolved: DispatchBundle,
+    result: DispatchAttemptResult,
+  ): Promise<void> => {
+    if (result.dispatches.length > 0) {
+      rememberAgent(agent);
+      const sentCount = result.dispatches.reduce(
+        (count, dispatch) => count + dispatch.threadIds.length,
+        0,
+      );
+      if (result.failure === null) {
+        feedback.sent({agent, dispatches: result.dispatches});
+      } else {
+        feedback.sent({
+          agent,
+          dispatches: result.dispatches,
+          incompleteCount: resolved.threadIds.length - sentCount,
+        });
+      }
+      await onSent();
+      return;
+    }
+    feedback.sendFailed(result.failure ?? new Error("Sending failed."));
+  };
+
+  const dispatchTo = async (
+    agent: AgentPresence,
+    resolved: DispatchBundle,
+    dispatchNote: string | null,
+    keys: readonly string[],
+  ): Promise<void> => {
+    const result = await createDispatchBatches(
+      projectId,
+      agent.id,
+      dispatchNote,
+      dispatchBatches(resolved.threadIds),
+      keys,
+    );
+    await reportAttempt(agent, resolved, result);
+  };
+
+  const quickSend = async (agent: AgentPresence): Promise<void> => {
+    setQuickPending(true);
+    try {
+      const resolved = await resolveBundle();
+      if (resolved.threadIds.length === 0) {
+        feedback.sendFailed(new Error("Nothing open to send."));
+        return;
+      }
+      await dispatchTo(
+        agent,
+        resolved,
+        null,
+        dispatchBatches(resolved.threadIds).map(() => crypto.randomUUID()),
+      );
+    } catch (caught) {
+      feedback.sendFailed(
+        caught instanceof Error ? caught : new Error("Sending failed."),
+      );
+    } finally {
+      setQuickPending(false);
+    }
+  };
+
+  const prepareNote = async (): Promise<void> => {
     setLoading(true);
     setError(null);
-    attemptKey.current = null;
+    attemptKeys.current = [];
     try {
       const [listedAgents, resolved] = await Promise.all([
         api.agentPresence(),
@@ -106,7 +279,10 @@ export function SendToAgentControl({
       ]);
       setDialogAgents(listedAgents);
       setBundle(resolved);
-      setAgentId(listedAgents.find((agent) => agent.connected)?.id ?? null);
+      const preferred = listedAgents.find((agent) =>
+        agent.id === rememberedDefault?.id && agent.connected
+      ) ?? listedAgents.find((agent) => agent.connected) ?? null;
+      setAgentId(preferred?.id ?? null);
       setNow(Date.now());
     } catch (caught) {
       setError(
@@ -117,295 +293,237 @@ export function SendToAgentControl({
     }
   };
 
-  const changeOpen = (nextOpen: boolean) => {
-    setOpen(nextOpen);
-    if (!nextOpen) {
-      setDialogAgents([]);
-      setBundle(null);
-      setAgentId(null);
-      setNote("");
-      setError(null);
-      attemptKey.current = null;
+  const changeNoteOpen = (nextOpen: boolean): void => {
+    setNoteOpen(nextOpen);
+    if (nextOpen) {
+      void prepareNote();
       return;
     }
-    void prepare();
+    setDialogAgents([]);
+    setBundle(null);
+    setAgentId(null);
+    setNote("");
+    setError(null);
+    attemptKeys.current = [];
   };
 
-  const selectAgent = (nextAgentId: string) => {
-    setAgentId(nextAgentId);
-    attemptKey.current = null;
-  };
-
-  const send = async () => {
-    if (agentId === null || threadIds.length === 0 || noteTooLong) return;
-    attemptKey.current ??= crypto.randomUUID();
+  const sendWithNote = async (): Promise<void> => {
+    const chosen = dialogAgents.find((agent) =>
+      agent.id === agentId && agent.connected
+    ) ?? null;
+    if (chosen === null || bundle === null || threadIds.length === 0 || noteTooLong) return;
+    const batches = dispatchBatches(threadIds);
+    if (attemptKeys.current.length !== batches.length) {
+      attemptKeys.current = batches.map(() => crypto.randomUUID());
+    }
     setPending(true);
     setError(null);
     try {
-      const chosen = dialogAgents.find((agent) => agent.id === agentId) ?? null;
-      const created = await api.createAgentDispatch(
-        projectId,
-        {
-          agentId,
-          note: trimmedNote === "" ? null : trimmedNote,
-          threadIds,
-        },
-        attemptKey.current,
+      await dispatchTo(
+        chosen,
+        bundle,
+        trimmedNote === "" ? null : trimmedNote,
+        attemptKeys.current,
       );
-      attemptKey.current = null;
-      changeOpen(false);
-      if (chosen !== null) {
-        feedback.sent({ agent: chosen, dispatch: created.dispatch });
-      }
-      await onSent();
+      changeNoteOpen(false);
     } catch (caught) {
-      setError(
-        caught instanceof Error ? caught : new Error("Sending failed."),
-      );
+      setError(caught instanceof Error ? caught : new Error("Sending failed."));
     } finally {
       setPending(false);
     }
   };
 
-  /**
-   * The one-click path: resolve the bundle and dispatch it in one motion.
-   * Success and failure both report through the surface's toast — including
-   * an agent whose heartbeat went stale between paint and click.
-   */
-  const quickSend = async (agent: AgentPresence) => {
-    setQuickPending(true);
-    try {
-      const resolved = await resolveBundle();
-      if (resolved.threadIds.length === 0) {
-        feedback.sendFailed(
-          new Error("Nothing to send: no open annotations remain."),
-        );
-        return;
-      }
-      const created = await api.createAgentDispatch(
-        projectId,
-        {
-          agentId: agent.id,
-          note: null,
-          threadIds: resolved.threadIds,
-        },
-        crypto.randomUUID(),
-      );
-      feedback.sent({ agent, dispatch: created.dispatch });
-      await onSent();
-    } catch (caught) {
-      feedback.sendFailed(
-        caught instanceof Error ? caught : new Error("Sending failed."),
-      );
-    } finally {
-      setQuickPending(false);
-    }
-  };
+  const menuAgents = knownConnected?.filter((agent) =>
+    mainAgent === null || agent.id !== mainAgent.id
+  ) ?? [];
+  const caretDisabled = agents === null || noAgents || nothingToSend || quickPending;
 
   return (
-    <Dialog onOpenChange={changeOpen} open={open}>
-      {onlyAgent === null
-        ? (
-          <DialogTrigger
+    <div className="inline-flex flex-wrap items-center gap-2">
+      <span className="inline-flex">
+        <Button
+          aria-busy={quickPending || agents === null}
+          disabled={mainAgent === null || mainReason !== null || quickPending}
+          onClick={() => {
+            if (mainAgent !== null) void quickSend(mainAgent);
+          }}
+          size={buttonSize}
+          type="button"
+          variant={buttonVariant}
+        >
+          {agents === null ? (
+            <span
+              aria-hidden
+              className="size-3 animate-spin rounded-full border border-current border-t-transparent motion-reduce:animate-none"
+            />
+          ) : mainAgent === null ? null : (
+            <PresenceGlyph
+              className="-my-1"
+              kind={mainAgent.kind}
+              ring={presenceRing(mainAgent)}
+            />
+          )}
+          {quickPending ? "Sending…" : mainLabel}
+        </Button>
+        <Popover onOpenChange={setMenuOpen} open={menuOpen}>
+          <PopoverTrigger
             render={(
               <Button
-                aria-busy={agents === null}
-                className={knownConnected !== null && knownConnected.length === 0
-                  ? "opacity-60"
-                  : undefined}
+                aria-label="Choose agent or send with a note"
+                className="-ml-px px-1.5"
+                disabled={caretDisabled}
                 size={buttonSize}
-                title={knownConnected !== null && knownConnected.length === 0
-                  ? "Connect an agent"
-                  : undefined}
                 type="button"
                 variant={buttonVariant}
               />
             )}
           >
-            {agents === null
-              ? (
-                <span
-                  aria-hidden
-                  className="size-3 animate-spin rounded-full border border-current border-t-transparent motion-reduce:animate-none"
-                />
-              )
-              : null}
-            {label}
-          </DialogTrigger>
-        )
-        : (
-          <span className="inline-flex">
-            <Button
-              disabled={quickPending}
-              onClick={() => void quickSend(onlyAgent)}
-              size={buttonSize}
+            <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={1.8} />
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-80 gap-2 p-2">
+            {menuAgents.length === 0 ? null : (
+              <div className="grid gap-1">
+                {menuAgents.map((agent) => (
+                  <button
+                    className="flex items-center gap-3 p-2 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
+                    key={agent.id}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void quickSend(agent);
+                    }}
+                    type="button"
+                  >
+                    <PresenceGlyph kind={agent.kind} ring={presenceRing(agent)} />
+                    <span className="min-w-0">
+                      <strong className="block truncate text-sm">{agent.displayName}</strong>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {agent.workingDirectory}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              className="border-t p-2 text-left text-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
+              onClick={() => {
+                setMenuOpen(false);
+                changeNoteOpen(true);
+              }}
               type="button"
-              variant={buttonVariant}
             >
-              <PresenceGlyph
-                className="-my-1"
-                kind={onlyAgent.kind}
-                ring={presenceRing(onlyAgent)}
-              />
-              {quickPending
-                ? "Sending…"
-                : oneAgentLabel === undefined
-                  ? label
-                  : oneAgentLabel(onlyAgent.displayName)}
-            </Button>
-            <DialogTrigger
-              render={(
-                <Button
-                  aria-label="Send with a note"
-                  className="-ml-px px-1.5"
-                  size={buttonSize}
-                  type="button"
-                  variant={buttonVariant}
-                />
-              )}
-            >
-              <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={1.8} />
-            </DialogTrigger>
-          </span>
-        )}
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Send to agent</DialogTitle>
-          <DialogDescription>
-            The agent receives the selected annotations as one message when it
-            finishes its current work. They leave this artifact as soon as the
-            send succeeds and come back only if it fails or is canceled.
-          </DialogDescription>
-        </DialogHeader>
+              Send with a note…
+            </button>
+          </PopoverContent>
+        </Popover>
+      </span>
+      {mainReason === null ? null : (
+        <span className="text-xs text-muted-foreground" role="status">
+          {mainReason}
+        </span>
+      )}
 
-        {error === null
-          ? null
-          : (
-            <p className="text-sm leading-6 text-destructive">
-              {errorMessage(error)}
-            </p>
+      <Dialog onOpenChange={changeNoteOpen} open={noteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send with a note</DialogTitle>
+            <DialogDescription>
+              The selected annotations leave the open list when the send succeeds.
+              Undo can call them back while the agent has not completed the send.
+            </DialogDescription>
+          </DialogHeader>
+
+          {error === null ? null : (
+            <p className="text-sm leading-6 text-destructive">{errorMessage(error)}</p>
           )}
 
-        {loading
-          ? <p className="text-sm text-muted-foreground">Reading connected agents…</p>
-          : connectedAgents.length === 0
-            ? (
-              <div>
-                <p className="font-heading text-sm font-semibold">
-                  No agents connected
-                </p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Install the Pi extension with
-                  {" "}
-                  <code className="font-mono">
-                    pi install npm:@artifact-server/pi-extension
-                  </code>
-                  {" "}
-                  and start Pi in the working directory you want to send to.
-                </p>
-              </div>
-            )
-            : (
-              <>
-                <fieldset className="grid gap-2">
-                  <legend className="mb-2 text-xs font-semibold tracking-wide uppercase">
-                    Connected agents
-                  </legend>
-                  {dialogAgents.map((agent) => (
-                    <label
-                      className="flex items-start gap-3 border p-3"
-                      key={agent.id}
-                    >
-                      <input
-                        checked={agentId === agent.id}
-                        className="mt-1 size-4 accent-primary"
-                        disabled={!agent.connected || pending}
-                        name={`${dialogId}-agent`}
-                        onChange={() => selectAgent(agent.id)}
-                        type="radio"
-                        value={agent.id}
-                      />
-                      <PresenceGlyph
-                        className="mt-0.5"
-                        kind={agent.kind}
-                        ring={presenceRing(agent)}
-                      />
-                      <span className="min-w-0">
-                        <span className="block font-heading text-sm font-semibold">
-                          {agent.displayName}
-                        </span>
-                        <span className="block font-mono text-xs break-all text-muted-foreground">
-                          {agent.workingDirectory}
-                        </span>
-                        <span className="block text-xs text-muted-foreground">
-                          {agent.connected
-                            ? "Connected"
-                            : `Not connected, last seen ${
-                              formatRelativeTime(agent.lastSeenAt, now)
-                            }`}
-                        </span>
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Reading connected agents…</p>
+          ) : connectedDialogAgents.length === 0 ? (
+            <p className="text-sm leading-6 text-muted-foreground">
+              No agent connected — connect one to send.
+            </p>
+          ) : (
+            <>
+              <fieldset className="grid gap-2">
+                <legend className="mb-2 text-xs font-semibold tracking-wide uppercase">
+                  Connected agents
+                </legend>
+                {dialogAgents.map((agent) => (
+                  <label className="flex items-start gap-3 border p-3" key={agent.id}>
+                    <input
+                      checked={agentId === agent.id}
+                      className="mt-1 size-4 accent-primary"
+                      disabled={!agent.connected || pending}
+                      name={`${dialogId}-agent`}
+                      onChange={() => {
+                        setAgentId(agent.id);
+                        attemptKeys.current = [];
+                      }}
+                      type="radio"
+                      value={agent.id}
+                    />
+                    <PresenceGlyph
+                      className="mt-0.5"
+                      kind={agent.kind}
+                      ring={presenceRing(agent)}
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-heading text-sm font-semibold">
+                        {agent.displayName}
                       </span>
-                    </label>
-                  ))}
-                </fieldset>
+                      <span className="block font-mono text-xs break-all text-muted-foreground">
+                        {agent.workingDirectory}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        {agent.connected
+                          ? "Connected"
+                          : `Not connected, last seen ${formatRelativeTime(agent.lastSeenAt, now)}`}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
 
-                {bundle !== null && bundle.openCount > threadIds.length
-                  ? (
-                    <p className="text-sm leading-6 text-muted-foreground">
-                      {`One bundle carries at most ${maximumDispatchBundleSize} annotations. The oldest ${threadIds.length} of ${bundle.openCount}${
-                        bundle.openCountIsLowerBound ? " or more" : ""
-                      } are sent; send the rest afterwards.`}
-                    </p>
-                  )
-                  : null}
+              <div className="grid gap-2">
+                <Label htmlFor={`${dialogId}-note`}>Note for the agent</Label>
+                <Textarea
+                  aria-describedby={noteTooLong ? `${dialogId}-note-limit` : undefined}
+                  aria-invalid={noteTooLong}
+                  disabled={pending}
+                  id={`${dialogId}-note`}
+                  onChange={(event) => setNote(event.currentTarget.value)}
+                  placeholder="Optional context for the whole bundle."
+                  value={note}
+                />
+                {noteTooLong ? (
+                  <p className="text-xs text-destructive" id={`${dialogId}-note-limit`}>
+                    {`A note holds at most ${maximumDispatchNoteCharacters} characters. Remove ${
+                      trimmedNote.length - maximumDispatchNoteCharacters
+                    }.`}
+                  </p>
+                ) : null}
+              </div>
+            </>
+          )}
 
-                <div className="grid gap-2">
-                  <Label htmlFor={`${dialogId}-note`}>Note for the agent</Label>
-                  <Textarea
-                    aria-describedby={noteTooLong
-                      ? `${dialogId}-note-limit`
-                      : undefined}
-                    aria-invalid={noteTooLong}
-                    disabled={pending}
-                    id={`${dialogId}-note`}
-                    onChange={(event) => setNote(event.currentTarget.value)}
-                    placeholder="Optional context for the whole bundle."
-                    value={note}
-                  />
-                  {noteTooLong
-                    ? (
-                      <p
-                        className="text-xs text-destructive"
-                        id={`${dialogId}-note-limit`}
-                      >
-                        {`A note holds at most ${maximumDispatchNoteCharacters} characters. Remove ${
-                          trimmedNote.length - maximumDispatchNoteCharacters
-                        }.`}
-                      </p>
-                    )
-                    : null}
-                </div>
-              </>
-            )}
-
-        <DialogFooter>
-          <DialogClose render={<Button type="button" variant="ghost" />}>
-            Cancel
-          </DialogClose>
-          {connectedAgents.length === 0
-            ? null
-            : (
+          <DialogFooter>
+            <DialogClose render={<Button type="button" variant="ghost" />}>
+              Cancel
+            </DialogClose>
+            {connectedDialogAgents.length === 0 ? null : (
               <Button
                 disabled={pending || loading || agentId === null
                   || threadIds.length === 0 || noteTooLong}
-                onClick={() => void send()}
+                onClick={() => void sendWithNote()}
                 type="button"
               >
                 {pending ? "Sending…" : `Send ${annotationCount(threadIds.length)}`}
               </Button>
             )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
