@@ -3,7 +3,7 @@ import {HugeiconsIcon} from "@hugeicons/react";
 
 import {api, type Project, type Session} from "@/api/client";
 import {StatePanel} from "@/components/product";
-import {Button} from "@/components/ui/button";
+import {Button, ButtonLink} from "@/components/ui/button";
 import {ArtifactMark} from "./artifact-mark.tsx";
 import {parseSettingsRoute, type SettingsRoute} from "./review-routes.ts";
 import {ApiKeysScreen} from "./settings-api-keys.tsx";
@@ -56,10 +56,10 @@ export function ReviewSettings({
             >
               <HugeiconsIcon icon={theme === "moon" ? Sun03Icon : Moon02Icon} strokeWidth={1.8} />
             </button>
-            <Button render={<a href={reviewHref} />} size="sm" variant="outline">
+            <ButtonLink href={reviewHref} size="sm" variant="outline">
               <HugeiconsIcon data-icon="inline-start" icon={ArrowLeft01Icon} strokeWidth={1.8} />
               Back to Review
-            </Button>
+            </ButtonLink>
             <Button
               onClick={() => void api.logout().finally(() => window.location.assign("/review"))}
               size="sm"
@@ -120,7 +120,11 @@ function SettingsContent({
   if (route.kind === "notFound") {
     return (
       <StatePanel
-        action={<Button render={<a href="/review/settings/projects" />} variant="outline">View settings</Button>}
+        action={(
+          <ButtonLink href="/review/settings/projects" variant="outline">
+            View settings
+          </ButtonLink>
+        )}
         description="This Artifact Server settings route does not exist."
         title="Page not found"
       />

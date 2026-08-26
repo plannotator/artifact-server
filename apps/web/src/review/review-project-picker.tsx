@@ -9,7 +9,7 @@ import {type FormEvent, useMemo, useState} from "react";
 
 import {type Project} from "@/api/client";
 import {Alert, AlertDescription} from "@/components/ui/alert";
-import {Button} from "@/components/ui/button";
+import {Button, ButtonLink} from "@/components/ui/button";
 import {
   Field,
   FieldError,
@@ -142,24 +142,24 @@ export function ReviewProjectPicker({
                   <Separator />
                   <div className="as-project-actions">
                     {selectedProject === null ? null : (
-                      <Button
+                      <ButtonLink
+                        href={projectSettingsHref(selectedProject.id)}
                         onClick={() => setPickerOpen(false)}
-                        render={<a href={projectSettingsHref(selectedProject.id)} />}
                         size="sm"
                         variant="ghost"
                       >
                         <HugeiconsIcon data-icon="inline-start" icon={Settings02Icon} strokeWidth={2} />
                         Project settings
-                      </Button>
+                      </ButtonLink>
                     )}
-                    <Button
+                    <ButtonLink
+                      href="/review/settings/projects"
                       onClick={() => setPickerOpen(false)}
-                      render={<a href="/review/settings/projects" />}
                       size="sm"
                       variant="ghost"
                     >
                       Manage projects
-                    </Button>
+                    </ButtonLink>
                     <Button onClick={showCreateForm} size="sm" type="button" variant="ghost">
                       <HugeiconsIcon data-icon="inline-start" icon={Add01Icon} strokeWidth={2} />
                       New project
