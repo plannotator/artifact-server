@@ -9,8 +9,8 @@
     "node": ">=24.12.0"
   },
   "schemaVersion": 1,
-  "sha256": "31fbee555c205ab963955b966025fd038e1ab0c5e08e07c24065c1b81fb83a07",
-  "sizeBytes": 36074347,
+  "sha256": "6395febf0c2ab51ba673ace17862733799efb3fa7e3f15bbbe9022750b81b9be",
+  "sizeBytes": 36045701,
   "verification": {
     "node": "v24.15.0",
     "platform": "darwin",

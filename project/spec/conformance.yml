@@ -3005,6 +3005,120 @@ requirements:
         run: project/evidence/local-foundation.json
         recorded_at: "2026-08-25T22:23:33.625Z"
 
+  - id: NDG-001
+    kind: behavior
+    behavior: A principal whose mailbox agent has queued dispatches sees exactly one derived, priority-ordered nudge appended to unrelated MCP tool results, naming the real count, stepping down to the unfinished-claim and settling states as work progresses, and disappearing once nothing is pending.
+    owner: agent-bridge
+    source: {file: tool-result-nudges-spec.md, anchor: design}
+    acceptance:
+      behavior: {id: NDG-001-B, description: "With queued mailbox dispatches, an unrelated tool result carries exactly one queued-work nudge naming the real count; claiming steps it down to the unfinished-claim nudge and resolving the bundle to the settling echo; an empty queue yields no nudge."}
+      failure: {id: NDG-001-F, description: "With work queued, an error result and a dispatch_inbox result each carry no nudge."}
+    deployments: [local]
+    status: behavior_verified
+    proof_gap: Queue scanning is capped at the first ten projects; a queue in an unscanned project is claimable but uncounted, and no test exercises a principal in more than ten projects.
+    depends_on: [BRP-002]
+    evidence:
+      - deployment: local
+        tests: [NDG-001-B, NDG-001-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-26T16:23:33.278Z"
+
+  - id: NDG-002
+    kind: behavior
+    behavior: Nudges never alter the underlying tool result and never cross principals. Structured content and existing content items are byte-identical with and without a pending nudge, the nudge is one bounded sanitized trailing item, and a second principal sees none of the first principal's counts.
+    owner: agent-bridge
+    source: {file: tool-result-nudges-spec.md, anchor: rules}
+    acceptance:
+      behavior: {id: NDG-002-B, description: "structuredContent and the pre-existing content items are byte-identical with and without a pending nudge, and the nudge is one bounded trailing text item passed through the shared sanitization."}
+      failure: {id: NDG-002-F, description: "A second principal calling the same tools sees none of the first principal's counts, with or without a mailbox agent of its own."}
+    deployments: [local]
+    status: behavior_verified
+    proof_gap: Nudges quote only counts and server-minted ids in v1, so the sanitization path is proven by a focused unit test on the composer rather than by hostile text reaching a live nudge.
+    depends_on: [NDG-001]
+    evidence:
+      - deployment: local
+        tests: [NDG-002-B, NDG-002-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-26T16:23:33.278Z"
+
+  - id: DRF-001
+    kind: behavior
+    behavior: Comment draft text survives in-app navigation and a page reload, restores into the same composer with a draft marker, and is gone after the comment posts and after explicit discard.
+    owner: web-application
+    source: {file: comment-drafts-spec.md, anchor: design-two-layers}
+    acceptance:
+      behavior: {id: DRF-001-B, description: "Draft text survives a version switch, artifact navigation, and a page reload, restoring into the same composer with the draft marker."}
+      failure: {id: DRF-001-F, description: "After the comment posts, and after explicit discard, no draft remains in memory or in browser storage."}
+    deployments: [local]
+    status: behavior_verified
+    proof_gap: Frontend-only by owner decision; drafts are proven in one browser profile against the local deployment and do not exist across devices.
+    depends_on: [CMT-001]
+    evidence:
+      - deployment: local
+        tests: [DRF-001-B, DRF-001-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-26T16:24:08.705Z"
+
+  - id: DRF-002
+    kind: behavior
+    behavior: Drafts are principal-scoped and bounded. Another principal's draft never restores, logout clears only the departing principal's drafts, a reply draft never restores into the new-thread composer, and closing over a non-empty draft prompts.
+    owner: web-application
+    source: {file: comment-drafts-spec.md, anchor: design-two-layers}
+    acceptance:
+      behavior: {id: DRF-002-B, description: "A foreign principal's mirrored draft never restores and survives the signed-in principal's logout, and a reply draft never restores into the new-thread composer."}
+      failure: {id: DRF-002-F, description: "Logout through the real session client clears the departing principal's drafts, and closing the tab over a non-empty draft triggers the leave prompt."}
+    deployments: [local]
+    status: behavior_verified
+    proof_gap: Local mode has one browser principal, so the second principal is represented by a principal-keyed mirror entry rather than a second interactive sign-in.
+    depends_on: [DRF-001]
+    evidence:
+      - deployment: local
+        tests: [DRF-002-B, DRF-002-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-26T16:24:08.705Z"
+
+  - id: WMC-001
+    kind: behavior
+    behavior: When a model context is present the review application registers seven provenance-prefixed WebMCP tools; one get_view orients, and mutations through the tools update the server and the UI with each result carrying the post-mutation thread and counts. Without a model context the application behaves identically and logs nothing.
+    owner: web-application
+    source: {file: webmcp-review-tools-spec.md, anchor: out-of-the-box-tool-set-v1-seven-tools}
+    acceptance:
+      behavior: {id: WMC-001-B, description: "The seven tools register with provenance names; get_view orients; reply then resolve through the tools update the server and the UI, each result carrying the updated thread and post-mutation counts with no read-back."}
+      failure: {id: WMC-001-F, description: "Without a model context the application behaves identically and logs nothing, and the per-user toggle unregisters and re-registers the tools live."}
+    deployments: [local]
+    status: behavior_verified
+    proof_gap: document.modelContext is faked in the browser suite to the adapter's reading of the WebMCP draft (commit bd99438, August 2026); fidelity to the real browser API is untested until a WebMCP-capable browser drives it.
+    depends_on: [CMT-012]
+    evidence:
+      - deployment: local
+        tests: [WMC-001-B, WMC-001-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-26T16:24:08.705Z"
+
+  - id: WMC-002
+    kind: behavior
+    behavior: WebMCP tools never widen authority. Every call is refused or allowed exactly as the same session's UI operation, tools never register on content frames, and descriptions stay bounded and quote no untrusted text.
+    owner: web-application
+    source: {file: webmcp-review-tools-spec.md, anchor: stances}
+    acceptance:
+      behavior: {id: WMC-002-B, description: "A missing thread and an archived project refuse a tool call with the identical failure code the same session receives through the UI path."}
+      failure: {id: WMC-002-F, description: "No non-main frame holds a registration, and every description is at or under 300 characters, carries provenance, and never contains seeded hostile text."}
+    deployments: [local]
+    status: behavior_verified
+    proof_gap: Descriptions are static literals, so the no-untrusted-text assertion guards future changes rather than a live path; resolve and reopen read before writing, so an archived-project refusal is proven at the read.
+    depends_on: [WMC-001]
+    evidence:
+      - deployment: local
+        tests: [WMC-002-B, WMC-002-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-08-26T16:24:08.705Z"
+
   - id: PLN-001
     kind: behavior
     behavior: One Artifact Server installation connects to one Plannotator organization through browser approval in the first integration release.
