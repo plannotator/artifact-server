@@ -12,13 +12,13 @@ From the repository root:
 pnpm dev:site
 ```
 
-The site runs at `http://127.0.0.1:4321`. In development, its **Open app** links
-target `http://127.0.0.1:5173/review`. Production builds default to
-`https://app.artifactserver.com/review`. Override that explicit seam for a
-different installation:
+The site runs at `http://127.0.0.1:4321`. The header's call to action is the
+GitHub repository; the public site has no application behind it. A team that
+hosts these docs beside its own installation can add an **Open app** link by
+setting the explicit seam:
 
 ```sh
-PUBLIC_ARTIFACT_SERVER_APP_URL=https://app.example.com pnpm dev:site
+PUBLIC_ARTIFACT_SERVER_APP_URL=https://artifacts.example.com/review pnpm dev:site
 ```
 
 ## Verify

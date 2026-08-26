@@ -7,7 +7,7 @@ import { SearchTrigger } from "./ui/search";
 import { config } from "virtual:nimbus/config";
 import { getSidebarSections } from "@cloudflare/nimbus-docs";
 import ArtifactMark from "./ArtifactMark.astro";
-import { artifactServerAppUrl } from "../lib/public-config";
+import { artifactServerAppUrl, repositoryUrl } from "../lib/public-config";
 
 interface Props {
   /** Astro collection id for the current page, forwarded from DocsLayout. */
@@ -74,8 +74,15 @@ const isDocs = currentSlug === "/docs" || currentSlug.startsWith("/docs/");
     <div class="flex items-center gap-2">
       {config.search !== false && <SearchTrigger />}
       <ThemeToggle />
-      <LinkButton href={artifactServerAppUrl} variant="primary" size="sm" class="site-header__app-link hidden sm:inline-flex">
-        Open app
+      {artifactServerAppUrl && (
+        <LinkButton href={artifactServerAppUrl} variant="ghost" size="sm" class="hidden sm:inline-flex">
+          Open app
+          <Icon name="ph:arrow-up-right" class="w-4 h-4" />
+        </LinkButton>
+      )}
+      <LinkButton href={repositoryUrl} variant="primary" size="sm" class="site-header__app-link hidden sm:inline-flex">
+        <Icon name="ph:star" class="w-4 h-4" />
+        Star on GitHub
         <Icon name="ph:arrow-up-right" class="w-4 h-4" />
       </LinkButton>
       {!showSidebar && (
@@ -85,8 +92,10 @@ const isDocs = currentSlug === "/docs" || currentSlug.startsWith("/docs/");
             <a href="/#how-it-works">How it works</a>
             <a href="/docs/">Docs</a>
             <a href="/docs/agents/">Agents</a>
-            <a href="https://github.com/plannotator/artifact-server">GitHub</a>
-            <a href={artifactServerAppUrl}>Open app <Icon name="ph:arrow-up-right" /></a>
+            <a href={repositoryUrl}>Star on GitHub <Icon name="ph:arrow-up-right" /></a>
+            {artifactServerAppUrl && (
+              <a href={artifactServerAppUrl}>Open app <Icon name="ph:arrow-up-right" /></a>
+            )}
           </nav>
         </details>
       )}

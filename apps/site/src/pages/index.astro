@@ -5,7 +5,7 @@ import Header from "../components/Header.astro";
 import LandingShapes from "../components/LandingShapes.astro";
 import SiteFooter from "../components/SiteFooter.astro";
 import BaseLayout from "../layouts/BaseLayout.astro";
-import { artifactServerAppUrl } from "../lib/public-config";
+import { repositoryUrl } from "../lib/public-config";
 import claudeLogo from "../../../web/src/review/assets/agents/claude.svg";
 import codexDark from "../../../web/src/review/assets/agents/codex-dark.svg";
 import codexLight from "../../../web/src/review/assets/agents/codex-light.svg";
@@ -305,7 +305,7 @@ const agents = [
         <h2 id="close-title">Give them a home.</h2>
         <div class="landing-actions">
           <a class="landing-button landing-button--primary" href="/docs/get-started/">Get started locally <Icon name="ph:arrow-right" /></a>
-          <a class="landing-button" href={artifactServerAppUrl}>Open Artifact Server <Icon name="ph:arrow-up-right" /></a>
+          <a class="landing-button" href={repositoryUrl}><Icon name="ph:star" /> Star on GitHub <Icon name="ph:arrow-up-right" /></a>
         </div>
         <div class="landing-badges">
           <a href="https://github.com/backnotprop/plannotator"><img src={plannotatorBadge.src} alt="Artifact Server is created with Plannotator" width="395" height="60" /></a>
