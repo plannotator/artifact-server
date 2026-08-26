@@ -5,7 +5,7 @@
  * for bundle messages, but the server cannot import that client package:
  * the compiled server build is rooted at `src/`, and the package's own
  * conformance gate (BRP-001-F) forbids its module graph from reaching out
- * of `integrations/bridge-core/`. So the mailbox tier carries this exact
+ * of the published `@plannotator/agent-bridge` package. So the mailbox tier carries this exact
  * mirror, and BRP-002-B pins the two renders byte-for-byte against the
  * same bundle — any drift between the copies fails that test.
  */

@@ -3,7 +3,6 @@ packages:
   - apps/*
   - deploy/cloudflare
   - deploy/pulumi/*
-  - integrations/bridge-core
   - integrations/claude-channel
   - integrations/opencode
   - integrations/pi

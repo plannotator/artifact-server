@@ -3,7 +3,7 @@ import {describe, expect, test} from "vitest";
 import {
   renderBundleMessage,
   sanitizeBundleText,
-} from "../../integrations/bridge-core/index.js";
+} from "@plannotator/agent-bridge";
 
 /** U+202A-202E and U+2066-2069: embedding, override, and isolate controls. */
 const bidirectionalControls = [

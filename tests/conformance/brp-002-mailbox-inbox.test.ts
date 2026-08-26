@@ -17,7 +17,7 @@ import {
 import {afterEach, beforeEach, describe, expect, test} from "vitest";
 import {z} from "zod";
 
-import {renderBundleMessage} from "../../integrations/bridge-core/index.js";
+import {renderBundleMessage} from "@plannotator/agent-bridge";
 import {principalCapabilities} from "../../src/core/identity.js";
 import {
   agentListSchema,

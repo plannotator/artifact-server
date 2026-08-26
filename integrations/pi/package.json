@@ -8,7 +8,9 @@
     "artifact-server"
   ],
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "files": [
     "index.ts",
@@ -19,7 +21,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@plannotator/agent-bridge": "workspace:*"
+    "@plannotator/agent-bridge": "^0.1.0"
   },
   "peerDependencies": {
     "typebox": "*"

@@ -31,7 +31,7 @@ import {
   type HostPort,
   startBridge,
   ThreadLocationCache,
-} from "../../integrations/bridge-core/index.js";
+} from "@plannotator/agent-bridge";
 
 /** A quiet fake host recording every notice and injected message. */
 class RecordingHost implements HostPort {

@@ -25,7 +25,7 @@ import {
   type HostPort,
   startBridge,
   type StartBridgeOptions,
-} from "../../integrations/bridge-core/index.js";
+} from "@plannotator/agent-bridge";
 
 /** A scripted Pi that records notices and messages, and can turn hostile. */
 class RecordingHostPort implements HostPort {

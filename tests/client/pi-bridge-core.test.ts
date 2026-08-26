@@ -10,7 +10,7 @@ import {
   maximumQuotedSelectionCharacters,
   renderBundleMessage,
   resolveBridgeCredentials,
-} from "../../integrations/bridge-core/index.js";
+} from "@plannotator/agent-bridge";
 
 const emptyEnvironment = {
   agentDisplayName: undefined,

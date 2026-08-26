@@ -5,7 +5,8 @@
  * free of any Pi import.
  */
 
-import {readFileSync} from "node:fs";
+import {readFileSync, realpathSync} from "node:fs";
+import {createRequire} from "node:module";
 import path from "node:path";
 
 import {afterEach, beforeEach, describe, expect, test} from "vitest";
@@ -27,7 +28,7 @@ import {
   type HostPort,
   startBridge,
   ThreadLocationCache,
-} from "../../integrations/bridge-core/index.js";
+} from "@plannotator/agent-bridge";
 
 /**
  * A fake host: not Pi, no Pi types, just the narrow HostPort contract. It
@@ -227,10 +228,10 @@ describe("extracted bridge core", () => {
 
   test("BRP-001-F: the bridge core module graph reaches no Pi module and only host-neutral dependencies", () => {
     expect.hasAssertions();
-    const packageDirectory = path.resolve(
-      import.meta.dirname,
-      "../../integrations/bridge-core",
+    const packageEntry = realpathSync(
+      createRequire(import.meta.url).resolve("@plannotator/agent-bridge"),
     );
+    const packageDirectory = path.dirname(packageEntry);
     const specifierPattern =
       /(?:import|export)\s[^;]*?from\s*["']([^"']+)["']|import\s*["']([^"']+)["']/gu;
     const allowedBarePackages = new Set(["zod"]);

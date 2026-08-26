@@ -21,7 +21,7 @@ import {
   type HostPort,
   renderBundleMessage,
   startBridge,
-} from "../../integrations/bridge-core/index.js";
+} from "@plannotator/agent-bridge";
 
 /** A scripted host that records exactly what the bridge hands it. */
 class RecordingHostPort implements HostPort {

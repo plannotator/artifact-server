@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
-    "@plannotator/agent-bridge": "workspace:*",
+    "@plannotator/agent-bridge": "^0.1.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
