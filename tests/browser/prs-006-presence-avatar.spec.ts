@@ -172,12 +172,19 @@ test.describe("PRS-006 presence avatar", () => {
       expect(ringAnimationNames.every((name) => name === "none")).toBe(true);
       // ...and the live state stays distinguishable without motion: the
       // replying ring is two-tone where an idle ring is one solid colour.
-      const replyingTone = await replyingRing.locator(".presence-ring")
-        .evaluate((ring) => {
+      // Polled like the `toHaveCSS` checks above: the media flip settles the
+      // computed border colours a frame or two after `animation-name`, and a
+      // one-shot read can catch both sides mid-recalc as transparent.
+      await expect.poll(
+        () => replyingRing.locator(".presence-ring").evaluate((ring) => {
           const style = getComputedStyle(ring);
-          return {side: style.borderLeftColor, top: style.borderTopColor};
-        });
-      expect(replyingTone.top).not.toBe(replyingTone.side);
+          const transparent = new Set(["rgba(0, 0, 0, 0)", "oklab(0 0 0 / 0)"]);
+          return style.borderTopColor !== style.borderLeftColor
+            && !transparent.has(style.borderLeftColor)
+            && !transparent.has(style.borderTopColor);
+        }),
+        {message: "the replying ring is two-tone under reduced motion"},
+      ).toBe(true);
 
       // Age the heartbeat past the 90-second window: the server now derives
       // disconnected.
