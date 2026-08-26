@@ -9,7 +9,8 @@
   ],
   "files": [
     "index.ts",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -21,5 +22,6 @@
   },
   "devDependencies": {
     "typescript": "7.0.2"
-  }
+  },
+  "license": "MIT"
 }

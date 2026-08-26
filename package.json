@@ -123,5 +123,6 @@
     "tsx": "4.23.12",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
-  }
+  },
+  "license": "FSL-1.1-Apache-2.0"
 }
