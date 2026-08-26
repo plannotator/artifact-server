@@ -2,7 +2,7 @@ export const prerender = true;
 
 const markdown = `# Artifact Server
 
-The self-hostable, fair-source alternative to Claude Code artifacts.
+The open-source, self-hostable alternative to Claude Code artifacts.
 
 Artifact Server gives people and agents one place to publish, review, comment on, version, and share the artifacts they create while building products. Its built-in MCP server gives agents direct access to the same work. Every publication creates an immutable version; review comments stay attached to the exact version and target. Run it on a laptop for one developer, or deploy it for a private team on Cloudflare, one server, Kubernetes, AWS, or Google Cloud.
 
@@ -24,7 +24,7 @@ Artifact Server gives people and agents one place to publish, review, comment on
 
 ## License
 
-Fair Source under the Functional Source License (FSL-1.1-Apache-2.0): use, self-host, modify, and deploy freely; do not offer it as a competing product or service. Each release becomes Apache 2.0 two years after it ships. The agent-bridge client and the agent extensions are MIT.
+Open source under the GNU Affero General Public License v3.0 (AGPL-3.0-only): use, self-host, and modify freely; if you modify it and offer it over a network, publish your modified source under the same license. The agent-bridge client and the agent extensions are MIT.
 
 ## Start
 

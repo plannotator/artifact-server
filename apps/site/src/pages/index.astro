@@ -21,7 +21,7 @@ import plannotatorBadge from "../../../../docs/images/star-plannotator.svg";
 import workspacesBadge from "../../../../docs/images/plannotator-workspaces.svg";
 import "../styles/landing.css";
 
-const description = "The self-hostable, fair-source alternative to Claude Code artifacts. One place for people and agents to publish, review, comment on, version, and share the artifacts they create while building products.";
+const description = "The open-source, self-hostable alternative to Claude Code artifacts. One place for people and agents to publish, review, comment on, version, and share the artifacts they create while building products.";
 
 // Each agent carries a light- and dark-theme mark; CSS shows the one that
 // matches `[data-mode]` so single-color marks stay visible on both grounds.
@@ -35,7 +35,7 @@ const agents = [
 ];
 ---
 
-<BaseLayout title="Artifact Server — self-hostable Claude Code artifacts" description={description} markdownUrl="/index.md">
+<BaseLayout title="Artifact Server — open-source Claude Code artifacts" description={description} markdownUrl="/index.md">
   <div class="landing-shell">
     <LandingShapes />
     <Header showSidebar={false} />
@@ -44,11 +44,11 @@ const agents = [
         <div class="landing-hero__copy">
           <p class="landing-eyebrow">
             <span></span>
-            Self-hostable · fair source
+            Open source · AGPL-3.0 · self-hostable
           </p>
-          <h1 id="landing-title">Self-hostable Claude&nbsp;Code artifacts.</h1>
+          <h1 id="landing-title">Open-source Claude&nbsp;Code artifacts.</h1>
           <p class="landing-lede">
-            The fair-source alternative to Claude Code artifacts. Artifact Server gives
+            The self-hostable alternative to Claude Code artifacts. Artifact Server gives
             people and agents one place to publish, review, comment on, version, and
             share the artifacts they create while building products. Its built-in MCP
             server gives agents direct access to the same work.

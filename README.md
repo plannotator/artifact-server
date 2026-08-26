@@ -2,7 +2,7 @@
 
 # Artifact Server
 
-**The self-hostable, fair-source alternative to Claude Code artifacts.**
+**The open-source, self-hostable alternative to Claude Code artifacts.**
 
 Artifact Server gives people and agents one place to publish, review, comment on, version, and share the artifacts they create while building products. Its built-in MCP server gives agents direct access to the same work.
 
@@ -169,11 +169,11 @@ Public guides live in the [documentation index](./docs/README.md).
 
 ## License
 
-Artifact Server is [Fair Source](https://fair.io) under the
-[Functional Source License](./LICENSE.md) (FSL-1.1-Apache-2.0): use it,
-self-host it, modify it, and deploy it inside your team freely — the one
-restriction is offering it as a competing product or service. Each release
-becomes Apache 2.0 two years after it ships.
+Artifact Server is open source under the
+[GNU Affero General Public License v3.0](./LICENSE.md) (AGPL-3.0-only),
+© 2026 backnotprop. Use it, self-host it, and modify it freely. If you
+modify it and offer it to others over a network, the AGPL requires you to
+publish your modified source under the same license.
 
 The pieces meant for maximum adoption are MIT: the
 [@plannotator/agent-bridge](https://github.com/plannotator/agent-bridge)

@@ -49,7 +49,7 @@ export async function GET() {
     "## Optional",
     "",
     `- [Complete documentation corpus](${new URL("/llms-full.txt", config.site).href}) — Every documentation page combined into one file; use only when the full corpus is necessary.`,
-    "- [Artifact Server source](https://github.com/plannotator/artifact-server) — Fair-source implementation (FSL-1.1-Apache-2.0), specifications, and deployment packages.",
+    "- [Artifact Server source](https://github.com/plannotator/artifact-server) — Open-source implementation (AGPL-3.0), specifications, and deployment packages.",
     "- [@plannotator/agent-bridge](https://github.com/plannotator/agent-bridge) — MIT protocol client that coding-agent extensions use to receive review bundles and close comment threads.",
     "",
   );
