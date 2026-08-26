@@ -20,21 +20,25 @@ loop: there is no site-to-agent push, the human is the push channel, and
 delegated work still flows through `send_to_agent` into the real
 pipeline.
 
-## 2. Out-of-the-box tool set (v1, ten tools)
+## 2. Out-of-the-box tool set (v1, eight tools)
 
 All tools call the existing web API client — the same code path the UI
 uses, so server-side validation and authorization are identical. Names
 are prefixed `artifact_server_` on the wire for provenance.
 
+Design rule (owner direction, August 26): **minimize hops — every tool
+result carries enough state to continue without a read-back.** One
+orientation call answers "where am I, what needs attention, who can
+help"; every mutation echoes the updated state it changed.
+
 **Orient**
 | Tool | Contract |
 | --- | --- |
-| `get_view` | The agent's "where am I": current project, artifact, version, open/sent/resolved thread counts, whether a dispatch is in flight. No arguments. |
-| `list_artifacts` | Current project's artifacts (id, name, latest version, open thread count). |
-| `list_comments` | Threads for the current artifact/version with states, dispatch status, and reply summaries. |
-| `list_agents` | Connected agents with kind, tier, and activity — so the copilot knows Pi is present and working before advising a hand-off. |
+| `get_view` | The one situational call: current project, artifact, version, and dispatch in flight; the view's threads (open-first, bodies included, bounded — `state?` filter, `limit?` default 20, `cursor?` for more); and connected agents with kind, tier, and activity. |
+| `list_artifacts` | Project scope (not view scope): artifacts with id, name, latest version, open thread count — for "open the pricing page one" flows. |
 
-**Comment loop**
+**Comment loop** — each returns the updated thread plus the view's
+remaining open/sent counts, so no follow-up read is ever needed.
 | Tool | Contract |
 | --- | --- |
 | `comment` | New thread on the current version `{body, path?}`. |
@@ -44,12 +48,12 @@ are prefixed `artifact_server_` on the wire for provenance.
 **Navigate**
 | Tool | Contract |
 | --- | --- |
-| `open` | `{artifactId, versionId?}` — drives the UI to that view, so "compare against v3" is an action. |
+| `open` | `{artifactId, versionId?}` — drives the UI there and returns the new view's full `get_view` payload. |
 
 **The ramp**
 | Tool | Contract |
 | --- | --- |
-| `send_to_agent` | `{threadIds, agentId?, note?}` — dispatches through the real pipeline (single connected agent needs no `agentId`, mirroring the one-click send rule). The copilot triages with the human; the bridge executes. |
+| `send_to_agent` | `{threadIds, agentId?, note?}` — dispatches through the real pipeline (single connected agent needs no `agentId`, mirroring the one-click send rule). Returns the created dispatch and the target agent's presence. |
 
 ## 3. Excluded from v1, deliberately
 
@@ -86,12 +90,12 @@ are prefixed `artifact_server_` on the wire for provenance.
 
 | ID | Behavior |
 | --- | --- |
-| WMC-001 | With a `modelContext` present (fake in the browser suite), the ten tools register with provenance-prefixed names; a `comment`→`reply`→`resolve`→`send_to_agent` sequence through tool calls produces the same server state and UI updates as the equivalent human actions; with no `modelContext`, the app behaves identically and logs nothing. |
+| WMC-001 | With a `modelContext` present (fake in the browser suite), the eight tools register with provenance-prefixed names; a `get_view`→`reply`→`resolve`→`send_to_agent` sequence produces the same server state and UI updates as the equivalent human actions, with each mutation result carrying the updated thread and counts (no read-back); with no `modelContext`, the app behaves identically and logs nothing. |
 | WMC-002 | Tools never widen authority: every call is rejected or allowed exactly as the same operation from the UI for that session; tools are absent on content origins; tool descriptions stay within the spec's size guidance and quote no untrusted content. |
 
 ## 6. Cost and gate
 
-~1–2 days: the adapter module, ten thin tool bindings over the existing
+~1–2 days: the adapter module, eight thin tool bindings over the existing
 client, the settings toggle, two browser conformance tests with a faked
 `modelContext`. Gate to build: owner call — the OpenAI consumption
 announcement satisfied the demand trigger; remaining risk is API churn,
