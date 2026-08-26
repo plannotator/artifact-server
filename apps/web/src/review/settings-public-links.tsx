@@ -13,7 +13,7 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@/components/ui/alert";
-import {Button} from "@/components/ui/button";
+import {Button, ButtonLink} from "@/components/ui/button";
 import {Checkbox} from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -459,13 +459,15 @@ export function PublicLinksScreen() {
                         </td>
                         <td className="px-4 py-4 align-top">
                           <div className="flex justify-end gap-2">
-                            <Button
-                              render={<a href={item.links.public} rel="noreferrer" target="_blank" />}
+                            <ButtonLink
+                              href={item.links.public}
+                              rel="noreferrer"
                               size="xs"
+                              target="_blank"
                               variant="outline"
                             >
                               Open
-                            </Button>
+                            </ButtonLink>
                             <Button
                               disabled={pending}
                               onClick={() => setConfirmation([item])}

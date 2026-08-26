@@ -8,7 +8,7 @@ import {
   type ProjectGitHistorySetting,
 } from "@/api/client";
 import {ErrorPanel, PageHeader, StatePanel, StatusBadge} from "@/components/product";
-import {Button} from "@/components/ui/button";
+import {Button, ButtonLink} from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -149,16 +149,16 @@ export function SettingsProjects({
                   </td>
                   <td className="px-4 py-4">
                     <div className="flex justify-end gap-2">
-                      <Button
-                        render={<a href={`/review?project=${encodeURIComponent(project.id)}`} />}
+                      <ButtonLink
+                        href={`/review?project=${encodeURIComponent(project.id)}`}
                         size="sm"
                         variant="outline"
                       >
                         Open artifacts
-                      </Button>
-                      <Button render={<a href={projectSettingsHref(project.id)} />} size="sm">
+                      </ButtonLink>
+                      <ButtonLink href={projectSettingsHref(project.id)} size="sm">
                         Settings
-                      </Button>
+                      </ButtonLink>
                     </div>
                   </td>
                 </tr>
@@ -217,7 +217,11 @@ export function SettingsProject({
   if (project === null) {
     return (
       <StatePanel
-        action={<Button render={<a href="/review/settings/projects" />} variant="outline">View projects</Button>}
+        action={(
+          <ButtonLink href="/review/settings/projects" variant="outline">
+            View projects
+          </ButtonLink>
+        )}
         description="The project named by this settings URL is unavailable."
         title="Project not found"
       />
@@ -282,9 +286,12 @@ export function SettingsProject({
     <div className="flex flex-col gap-8">
       <PageHeader
         actions={(
-          <Button render={<a href={`/review?project=${encodeURIComponent(project.id)}`} />} variant="outline">
+          <ButtonLink
+            href={`/review?project=${encodeURIComponent(project.id)}`}
+            variant="outline"
+          >
             Open artifacts
-          </Button>
+          </ButtonLink>
         )}
         description={project.archivedAt === null
           ? "Manage this project's name, lifecycle, and optional history."
