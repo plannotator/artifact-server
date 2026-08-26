@@ -64,6 +64,16 @@ flag. From a project directory:
 The `channelsEnabled` organization policy still applies; the flag bypasses
 only the allowlist.
 
+If the session starts but bundles never arrive, check in order:
+
+1. Team/Enterprise org policy: `channelsEnabled` must be true — Claude Code
+   drops channel events silently when it is off.
+2. `MCP_PROTOCOL_NEGOTIATION=auto` in your environment: Claude Code refuses
+   to register a channel server that negotiates MCP revision 2026-07-28
+   (this package's SDK can). Unset it for the channel session.
+3. The startup notice: Claude Code prints one line naming exactly why a
+   channel did not register.
+
 ## Tested
 
 `tests/client/claude-channel.test.ts` drives this process over real stdio
