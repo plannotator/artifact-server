@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 /**
  * Artifact Server bridge as a Claude Code channel.
  *
@@ -37,6 +39,7 @@ import {
 } from "@plannotator/agent-bridge";
 
 const channelName = "artifact-server";
+const channelVersion = "0.1.0";
 
 function environmentConfiguration(): EnvironmentConfiguration {
   return {
@@ -117,7 +120,7 @@ async function runArtifactComments(
 
 async function main(): Promise<void> {
   const mcp = new Server(
-    {name: channelName, version: "0.0.0"},
+    {name: channelName, version: channelVersion},
     {
       capabilities: {
         experimental: {"claude/channel": {}},

@@ -3,8 +3,8 @@ nameOverride: ""
 fullnameOverride: ""
 
 image:
-  repository: ghcr.io/artifactserver/artifact-server
-  tag: "0.0.0"
+  repository: ghcr.io/plannotator/artifact-server
+  tag: "0.1.0"
   digest: ""
   allowMutableTag: false
   pullPolicy: IfNotPresent

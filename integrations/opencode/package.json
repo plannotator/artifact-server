@@ -1,6 +1,6 @@
 {
-  "name": "@artifact-server/opencode-extension",
-  "version": "0.0.0",
+  "name": "@plannotator/artifact-server-opencode",
+  "version": "0.1.0",
   "description": "OpenCode plugin bridge for Artifact Server: receives annotation bundles as follow-up prompts and closes them through the comment API.",
   "type": "module",
   "keywords": [
@@ -26,5 +26,13 @@
   "devDependencies": {
     "typescript": "7.0.2"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "directory": "integrations/opencode",
+    "type": "git",
+    "url": "git+https://github.com/plannotator/artifact-server.git"
+  }
 }

@@ -1,4 +1,4 @@
-# @artifact-server/claude-channel
+# @plannotator/artifact-server-claude-channel
 
 The Artifact Server bridge for [Claude Code
 channels](https://code.claude.com/docs/en/channels-reference). Claude Code
@@ -41,7 +41,7 @@ flag. From a project directory:
      "mcpServers": {
        "artifact-server": {
          "command": "npx",
-         "args": ["tsx", "/path/to/artifact-server/integrations/claude-channel/index.ts"]
+         "args": ["-y", "@plannotator/artifact-server-claude-channel@0.1.0"]
        }
      }
    }
@@ -61,6 +61,10 @@ flag. From a project directory:
    presence. The bundle lands in the Claude session as a
    `<channel source="artifact-server">` event; Claude replies and resolves
    through `artifact_comments`, and the threads update in the web UI.
+
+For development from this repository, replace the command and arguments with
+`"node"` and
+`["/path/to/artifact-server/integrations/claude-channel/bin/claude-channel.js"]`.
 
 The `channelsEnabled` organization policy still applies; the flag bypasses
 only the allowlist.

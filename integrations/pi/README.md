@@ -1,4 +1,4 @@
-# @artifact-server/pi-extension
+# @plannotator/artifact-server-pi
 
 The Artifact Server bridge for the [Pi coding agent](https://pi.dev). It
 connects a live Pi session to an Artifact Server installation so that
@@ -28,14 +28,14 @@ and Pi replies to and resolves each comment thread through the
 ## Install
 
 ```bash
-pi install npm:@artifact-server/pi-extension
+pi install npm:@plannotator/artifact-server-pi
 ```
 
 or in `settings.json`:
 
 ```json
 {
-  "packages": ["npm:@artifact-server/pi-extension"]
+  "packages": ["npm:@plannotator/artifact-server-pi"]
 }
 ```
 

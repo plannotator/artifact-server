@@ -1,13 +1,17 @@
 {
-  "name": "@artifact-server/claude-channel",
-  "version": "0.0.0",
+  "name": "@plannotator/artifact-server-claude-channel",
+  "version": "0.1.0",
   "description": "Claude Code channel bridge for Artifact Server: pushes annotation bundles into an opted-in Claude Code session and closes them through the comment API.",
   "type": "module",
   "keywords": [
     "claude-channel",
     "artifact-server"
   ],
+  "bin": {
+    "artifact-server-claude-channel": "./bin/claude-channel.js"
+  },
   "files": [
+    "bin",
     "index.ts",
     "README.md",
     "LICENSE"
@@ -18,10 +22,19 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
     "@plannotator/agent-bridge": "^0.1.1",
+    "tsx": "4.23.12",
     "zod": "4.4.3"
   },
   "devDependencies": {
     "typescript": "7.0.2"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "directory": "integrations/claude-channel",
+    "type": "git",
+    "url": "git+https://github.com/plannotator/artifact-server.git"
+  }
 }

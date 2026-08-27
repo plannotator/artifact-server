@@ -44,14 +44,14 @@ Pick the agent you use. The choice is remembered across pages.
     <Steps>
       <Step title="Install the extension">
         ```sh
-        pi install npm:@artifact-server/pi-extension
+        pi install npm:@plannotator/artifact-server-pi
         ```
 
         Or add it to Pi's `settings.json`:
 
         ```json
         {
-          "packages": ["npm:@artifact-server/pi-extension"]
+          "packages": ["npm:@plannotator/artifact-server-pi"]
         }
         ```
       </Step>
@@ -83,7 +83,7 @@ Pick the agent you use. The choice is remembered across pages.
         ```json
         {
           "$schema": "https://opencode.ai/config.json",
-          "plugin": ["@artifact-server/opencode-extension"]
+          "plugin": ["@plannotator/artifact-server-opencode"]
         }
         ```
       </Step>
@@ -112,7 +112,7 @@ Pick the agent you use. The choice is remembered across pages.
           "mcpServers": {
             "artifact-server": {
               "command": "npx",
-              "args": ["tsx", "/path/to/artifact-server/integrations/claude-channel/index.ts"]
+              "args": ["-y", "@plannotator/artifact-server-claude-channel@0.1.0"]
             }
           }
         }
