@@ -1,0 +1,441 @@
+name: Tagged Release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/ci.yml
+      - .github/workflows/release.yml
+      - scripts/assemble-release-assets.mjs
+      - scripts/build-oci-image.sh
+      - scripts/check-release-ref.mjs
+      - scripts/check-release-version.mjs
+      - scripts/extract-oci-sboms.mjs
+      - scripts/generate-release-sboms.sh
+      - scripts/install-release-syft.sh
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and verify without publishing
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify release reference
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      publish: ${{ steps.metadata.outputs.publish }}
+      revision: ${{ steps.metadata.outputs.revision }}
+      series: ${{ steps.metadata.outputs.series }}
+      tag: ${{ steps.metadata.outputs.tag }}
+      version: ${{ steps.metadata.outputs.version }}
+    steps:
+      - name: Checkout complete repository history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.3
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          package-manager-cache: false
+      - name: Install dependencies without a cache
+        run: pnpm install --frozen-lockfile
+      - name: Verify release metadata and ref
+        id: metadata
+        env:
+          ARTIFACTSERVER_EVENT_NAME: ${{ github.event_name }}
+          ARTIFACTSERVER_REF_NAME: ${{ github.ref_name }}
+          ARTIFACTSERVER_REF_TYPE: ${{ github.ref_type }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version")
+          revision=$(git rev-parse HEAD)
+          series=${version%.*}
+          tag="v$version"
+          publish=false
+          if [[ "$ARTIFACTSERVER_EVENT_NAME" == push && "$ARTIFACTSERVER_REF_TYPE" == tag ]]; then
+            tag="$ARTIFACTSERVER_REF_NAME"
+            publish=true
+            git fetch --force --no-tags origin main:refs/remotes/origin/main
+            node scripts/check-release-version.mjs --tag "$tag"
+            node scripts/check-release-ref.mjs --tag "$tag" --main-ref origin/main
+          else
+            node scripts/check-release-version.mjs
+            node scripts/check-release-ref.mjs --dry-run
+          fi
+          {
+            printf 'publish=%s\n' "$publish"
+            printf 'revision=%s\n' "$revision"
+            printf 'series=%s\n' "$series"
+            printf 'tag=%s\n' "$tag"
+            printf 'version=%s\n' "$version"
+          } >> "$GITHUB_OUTPUT"
+
+  gate:
+    name: Canonical release gate
+    needs: verify
+    uses: ./.github/workflows/ci.yml
+    with:
+      tier: release
+
+  packages:
+    name: Build Node and adapter packages
+    needs: [verify, gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.3
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          package-manager-cache: false
+      - name: Install dependencies without a cache
+        run: pnpm install --frozen-lockfile
+      - name: Build portable local package
+        env:
+          ARTIFACTSERVER_OUTPUT: ${{ github.workspace }}/release/package-bundle
+        run: pnpm package:local "$ARTIFACTSERVER_OUTPUT"
+      - name: Pack public adapters
+        env:
+          ARTIFACTSERVER_OUTPUT: ${{ github.workspace }}/release/package-bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --dir integrations/pi pack --pack-destination "$ARTIFACTSERVER_OUTPUT"
+          pnpm --dir integrations/opencode pack --pack-destination "$ARTIFACTSERVER_OUTPUT"
+          pnpm --dir integrations/claude-channel pack --pack-destination "$ARTIFACTSERVER_OUTPUT"
+      - name: Install verified Syft
+        run: scripts/install-release-syft.sh "$RUNNER_TEMP/syft"
+      - name: Generate package SPDX SBOMs
+        env:
+          ARTIFACTSERVER_VERSION: ${{ needs.verify.outputs.version }}
+        run: >-
+          scripts/generate-release-sboms.sh
+          "$RUNNER_TEMP/syft/syft"
+          release/package-bundle
+          release/package-bundle
+          "$ARTIFACTSERVER_VERSION"
+          packages
+      - name: Upload package release inputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-packages-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release/package-bundle/
+          if-no-files-found: error
+          retention-days: 7
+
+  image:
+    name: Build and optionally publish OCI image
+    needs: [verify, gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.3
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          package-manager-cache: false
+      - name: Install dependencies without a cache
+        run: pnpm install --frozen-lockfile
+      - name: Prepare attestation-capable BuildKit
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx create \
+            --driver docker-container \
+            --driver-opt image=moby/buildkit@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8 \
+            --name artifact-server-release \
+            --use
+          docker buildx inspect --bootstrap
+      - name: Sign in to GHCR for a tagged release
+        if: needs.verify.outputs.publish == 'true'
+        env:
+          ARTIFACTSERVER_GITHUB_ACTOR: ${{ github.actor }}
+          ARTIFACTSERVER_GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          docker login ghcr.io
+          --username "$ARTIFACTSERVER_GITHUB_ACTOR"
+          --password-stdin
+          <<< "$ARTIFACTSERVER_GITHUB_TOKEN"
+      - name: Build release image
+        env:
+          ARTIFACTSERVER_IMAGE_PUSH: ${{ needs.verify.outputs.publish }}
+          ARTIFACTSERVER_IMAGE_TAGS: ghcr.io/plannotator/artifact-server:${{ needs.verify.outputs.tag }},ghcr.io/plannotator/artifact-server:${{ needs.verify.outputs.series }}
+        run: pnpm package:oci release/image-work
+      - name: Extract verified image SPDX SBOMs
+        env:
+          ARTIFACTSERVER_VERSION: ${{ needs.verify.outputs.version }}
+        run: >-
+          scripts/generate-release-sboms.sh
+          unused
+          release/image-work
+          release/image-bundle
+          "$ARTIFACTSERVER_VERSION"
+          image
+      - name: Record immutable image reference
+        env:
+          ARTIFACTSERVER_VERSION: ${{ needs.verify.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="release/image-work/artifact-server-$ARTIFACTSERVER_VERSION.oci.tar.manifest.json"
+          digest=$(jq --exit-status --raw-output '.imageIndexDigest' "$manifest")
+          mkdir -p release/image-bundle
+          cp -- "$manifest" \
+            "release/image-bundle/artifact-server-$ARTIFACTSERVER_VERSION-oci.manifest.json"
+          printf '%s\n' "ghcr.io/plannotator/artifact-server@$digest" \
+            > release/image-bundle/image-reference.txt
+      - name: Verify published image tags resolve to the built digest
+        if: needs.verify.outputs.publish == 'true'
+        env:
+          ARTIFACTSERVER_TAG: ${{ needs.verify.outputs.tag }}
+          ARTIFACTSERVER_SERIES: ${{ needs.verify.outputs.series }}
+          ARTIFACTSERVER_VERSION: ${{ needs.verify.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=$(jq --exit-status --raw-output \
+            '.imageIndexDigest' \
+            "release/image-bundle/artifact-server-$ARTIFACTSERVER_VERSION-oci.manifest.json")
+          for tag in "$ARTIFACTSERVER_TAG" "$ARTIFACTSERVER_SERIES"; do
+            actual="sha256:$(docker buildx imagetools inspect --raw \
+              "ghcr.io/plannotator/artifact-server:$tag" | sha256sum | cut -d ' ' -f 1)"
+            if [[ "$actual" != "$expected" ]]; then
+              printf 'Published tag %s resolved to %s, expected %s.\n' \
+                "$tag" "$actual" "$expected" >&2
+              exit 1
+            fi
+          done
+      - name: Upload image release inputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            release/image-work/artifact-server-${{ needs.verify.outputs.version }}.oci.tar
+            release/image-bundle/
+          if-no-files-found: error
+          retention-days: 7
+
+  assemble:
+    name: Assemble downloadable release assets
+    needs: [verify, packages, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Checkout release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download package release inputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-packages-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release/incoming/packages
+      - name: Download image release inputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release/incoming/image
+      - name: Assemble assets and checksums
+        env:
+          ARTIFACTSERVER_VERSION: ${{ needs.verify.outputs.version }}
+        run: >-
+          node scripts/assemble-release-assets.mjs
+          release/incoming
+          release/public
+          "$ARTIFACTSERVER_VERSION"
+      - name: Verify every downloadable asset checksum
+        working-directory: release/public
+        run: sha256sum --check --strict SHA256SUMS
+      - name: Upload downloadable release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-public-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release/public/
+          if-no-files-found: error
+          retention-days: 14
+
+  attest:
+    name: Attest release assets
+    if: needs.verify.outputs.publish == 'true'
+    needs: [verify, assemble]
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    steps:
+      - name: Download downloadable release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-public-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release/public
+      - name: Read immutable image subject
+        id: image
+        env:
+          ARTIFACTSERVER_VERSION: ${{ needs.verify.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          reference=$(cat release/public/image-reference.txt)
+          digest=${reference##*@}
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+          printf 'name=%s\n' "${reference%@*}" >> "$GITHUB_OUTPUT"
+      - name: Attest downloadable asset provenance
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3.0.0
+        with:
+          subject-path: release/public/*
+      - name: Attest local package SBOM
+        uses: actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f # v3.0.0
+        with:
+          subject-path: release/public/artifact-server-${{ needs.verify.outputs.version }}-node.tar.gz
+          sbom-path: release/public/artifact-server-${{ needs.verify.outputs.version }}-node.spdx.json
+      - name: Attest Pi adapter SBOM
+        uses: actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f # v3.0.0
+        with:
+          subject-path: release/public/plannotator-artifact-server-pi-${{ needs.verify.outputs.version }}.tgz
+          sbom-path: release/public/plannotator-artifact-server-pi-${{ needs.verify.outputs.version }}.spdx.json
+      - name: Attest OpenCode adapter SBOM
+        uses: actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f # v3.0.0
+        with:
+          subject-path: release/public/plannotator-artifact-server-opencode-${{ needs.verify.outputs.version }}.tgz
+          sbom-path: release/public/plannotator-artifact-server-opencode-${{ needs.verify.outputs.version }}.spdx.json
+      - name: Attest Claude channel SBOM
+        uses: actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f # v3.0.0
+        with:
+          subject-path: release/public/plannotator-artifact-server-claude-channel-${{ needs.verify.outputs.version }}.tgz
+          sbom-path: release/public/plannotator-artifact-server-claude-channel-${{ needs.verify.outputs.version }}.spdx.json
+      - name: Attest image provenance in GHCR
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3.0.0
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+      - name: Attest image SBOM in GHCR
+        uses: actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f # v3.0.0
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          sbom-path: release/public/artifact-server-${{ needs.verify.outputs.version }}-oci-linux-amd64.spdx.json
+          push-to-registry: true
+      - name: Attest arm64 image SBOM in GHCR
+        uses: actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f # v3.0.0
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          sbom-path: release/public/artifact-server-${{ needs.verify.outputs.version }}-oci-linux-arm64.spdx.json
+          push-to-registry: true
+
+  publish-npm:
+    name: Publish public npm adapters
+    if: needs.verify.outputs.publish == 'true'
+    needs: [verify, assemble, attest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Install Node.js for npm provenance
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Download downloadable release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-public-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release/public
+      - name: Publish adapters
+        env:
+          ARTIFACTSERVER_REPOSITORY_VISIBILITY: ${{ github.event.repository.visibility }}
+          ARTIFACTSERVER_VERSION: ${{ needs.verify.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          provenance_args=()
+          if [[ "$ARTIFACTSERVER_REPOSITORY_VISIBILITY" == public ]]; then
+            provenance_args+=(--provenance)
+          else
+            printf '%s\n' \
+              '::notice::npm provenance is deferred until the source repository is public.'
+          fi
+          npm publish \
+            "release/public/plannotator-artifact-server-pi-$ARTIFACTSERVER_VERSION.tgz" \
+            "${provenance_args[@]}" --access public
+          npm publish \
+            "release/public/plannotator-artifact-server-opencode-$ARTIFACTSERVER_VERSION.tgz" \
+            "${provenance_args[@]}" --access public
+          npm publish \
+            "release/public/plannotator-artifact-server-claude-channel-$ARTIFACTSERVER_VERSION.tgz" \
+            "${provenance_args[@]}" --access public
+
+  release:
+    name: Create GitHub prerelease
+    if: needs.verify.outputs.publish == 'true'
+    needs: [verify, assemble, attest, publish-npm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - name: Download downloadable release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-public-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release/public
+      - name: Create verified GitHub prerelease
+        env:
+          ARTIFACTSERVER_TAG: ${{ needs.verify.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$ARTIFACTSERVER_TAG"
+          release/public/*
+          --repo "$GITHUB_REPOSITORY"
+          --verify-tag
+          --prerelease
+          --generate-notes
+          --title "Artifact Server $ARTIFACTSERVER_TAG"
