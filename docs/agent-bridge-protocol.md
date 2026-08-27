@@ -169,6 +169,11 @@ When each item is done: use the artifact_comments tool to reply to its thread
 with what you did, then resolve it. Do not wait for confirmation.
 ```
 
+That native/channel profile is the default. A mailbox renderer replaces only
+the closing instruction: it names `comment_reply` for the reply and
+`comment_resolve` for resolution. The message structure and sanitization are
+otherwise identical.
+
 Rules:
 
 - One bundle renders to exactly one message. Never split a bundle across messages and never merge two bundles into one.
@@ -176,7 +181,7 @@ Rules:
 - Items keep the order the human selected.
 - Every item carries its thread ID, because the reply and resolve calls need it.
 - A quoted selection has its whitespace collapsed and is bounded to 300 characters with an ellipsis. Bodies are already capped server-side at 8 KiB each.
-- The closing instruction names the reply-and-resolve surface the host actually has. Substitute your host's tool name; keep the instruction.
+- The closing instruction names the reply-and-resolve surface the host actually has. Native and channel adapters use `artifact_comments`; MCP mailboxes use `comment_reply` and `comment_resolve`.
 
 ### Unicode sanitization
 
@@ -220,7 +225,7 @@ A bridge shares a session with a human and an agent doing their own work. These 
 
 1. **Follow-up delivery only.** Deliver a bundle the way the host queues ordinary user input, so it lands when the host reaches a work boundary. Never steer, interrupt, or preempt. The host's own one-at-a-time drain is what makes bundle B wait for bundle A's work to finish, and that FIFO is the product promise.
 2. **Hold while the host compacts.** Hosts reject input during context compaction. Track the host's compaction boundaries and hold delivery until it finishes. Bound the hold well inside the five-minute claim lease; a hold that outlives the lease lets the server requeue the bundle underneath you and deliver the same annotations twice. If the hold reaches its bound, report `failed` rather than injecting late.
-3. **Report `delivered` only after host acceptance.** Not after rendering, not after claiming. If handing the message to the host throws or the handle is gone, do not report delivered. Lease expiry will redeliver, which is the correct outcome.
+3. **Report `delivered` only after host acceptance.** Not after rendering, not after claiming. Await an asynchronous host handoff. If it rejects, report `failed`, return the annotations to the human, and continue the claim loop. A synchronous throw is reserved for an invalid host handle; stop the loop and let lease expiry requeue that uncertain delivery. Do not retry a refused handoff automatically.
 4. **Native work fails open; remote control fails closed.** A bridge failure must never degrade the host's own work: with no credential, no server, or no supported host API, go dormant with one notice and let the session continue normally. Anything driven from the far side of the connection refuses rather than guesses: an uncertain delivery is not reported delivered, an unclaimable dispatch is not injected, and an ambiguous host state is a hold, not an attempt.
 5. **Bounded backoff.** On any error, back off from 1 second, doubling to a 30-second ceiling, with jitter. Reset on the first successful poll. No error path may sleep longer than the ceiling, and none may spin.
 6. **Never throw into the host.** Contain every exception at the bridge boundary. Treat an invalidated host handle as the loop's shutdown signal, and let the host's next session start register again.

@@ -91,8 +91,8 @@ importers:
         specifier: 1.78.0
         version: 1.78.0
       '@plannotator/agent-bridge':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: ^0.1.1
+        version: 0.1.1
       '@playwright/test':
         specifier: 1.62.1
         version: 1.62.1
@@ -336,8 +336,8 @@ importers:
         specifier: 1.30.0
         version: 1.30.0(zod@4.4.3)
       '@plannotator/agent-bridge':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: ^0.1.1
+        version: 0.1.1
       zod:
         specifier: 4.4.3
         version: 4.4.3
@@ -349,8 +349,8 @@ importers:
   integrations/opencode:
     dependencies:
       '@plannotator/agent-bridge':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: ^0.1.1
+        version: 0.1.1
       zod:
         specifier: 4.4.3
         version: 4.4.3
@@ -362,8 +362,8 @@ importers:
   integrations/pi:
     dependencies:
       '@plannotator/agent-bridge':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: ^0.1.1
+        version: 0.1.1
     devDependencies:
       typebox:
         specifier: 1.3.7
@@ -2882,8 +2882,8 @@ packages:
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
     engines: {node: '>=14'}
 
-  '@plannotator/agent-bridge@0.1.0':
-    resolution: {integrity: sha512-iFoi0pyYus2cnKV3jFlYiinmySmXNMSISgKp7nlEiNqRdxu2C7Ru+uV5BjYDg/w7y/tmoJafr4az1ueG2wvm1w==}
+  '@plannotator/agent-bridge@0.1.1':
+    resolution: {integrity: sha512-3H6sWFH/mwnnGAwwxxCZs8ErtIPCgcwbTJz9FTq70IspFnwNmEiM7BENC1zdQHI/InirH/QuRiFoMd1XGgmipw==}
 
   '@plannotator/atomic-editor@0.8.0':
     resolution: {integrity: sha512-s4IaRrlFjluYvMVRS/XJjAaHVR5I/4yAxAFWlUHk74RE7W9BQO8lazWgYgNyRSYQtdlEZsJiPgzaDeOuocErWg==}
@@ -11115,7 +11115,7 @@ snapshots:
   '@pkgjs/parseargs@0.11.0':
     optional: true
 
-  '@plannotator/agent-bridge@0.1.0':
+  '@plannotator/agent-bridge@0.1.1':
     dependencies:
       zod: 4.4.3
 

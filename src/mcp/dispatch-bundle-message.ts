@@ -27,6 +27,10 @@ export function sanitizeBundleText(text: string): string {
   return text.replace(invisibleDirectivePattern, "");
 }
 
+// ---------------------------------------------------------------------------
+// Bundle rendering
+// ---------------------------------------------------------------------------
+
 /** Longest quoted selection the rendered message reproduces. */
 export const maximumQuotedSelectionCharacters = 300;
 
@@ -47,6 +51,23 @@ export interface RenderableBundle {
   readonly senderDisplayName: string;
 }
 
+/** The comment-tool surface named in one rendered bundle. */
+export type BundleRenderProfile = "mailbox" | "native";
+
+const completionInstructions = {
+  mailbox: [
+    "When each item is done: use comment_reply to reply to its thread with what you did,",
+    "then use comment_resolve to resolve it. Do not wait for confirmation.",
+  ],
+  native: [
+    "When each item is done: use the artifact_comments tool to reply to its thread",
+    "with what you did, then resolve it. Do not wait for confirmation.",
+  ],
+} as const satisfies Record<
+  BundleRenderProfile,
+  readonly [string, string]
+>;
+
 function quotedSelectionFragment(selection: string): string {
   const collapsed = sanitizeBundleText(selection).replace(/\s+/gu, " ").trim();
   const bounded = collapsed.length <= maximumQuotedSelectionCharacters
@@ -61,8 +82,15 @@ function quotedSelectionFragment(selection: string): string {
  * message can ever begin with a slash and be intercepted as a host command,
  * and every untrusted field is stripped of bidirectional and invisible
  * Unicode before composition.
+ *
+ * @param bundle - The fetched, ordered bundle to render.
+ * @param profile - The comment-tool surface available to the receiving agent.
+ * @returns One sanitized message for the receiving agent.
  */
-export function renderBundleMessage(bundle: RenderableBundle): string {
+export function renderBundleMessage(
+  bundle: RenderableBundle,
+  profile: BundleRenderProfile = "native",
+): string {
   const lines: string[] = [];
   lines.push(
     `Artifact Server: ${bundle.senderDisplayName} sent ` +
@@ -85,11 +113,6 @@ export function renderBundleMessage(bundle: RenderableBundle): string {
     lines.push(`   (thread ${item.threadId})`);
   });
   lines.push("");
-  lines.push(
-    "When each item is done: use the artifact_comments tool to reply to its thread",
-  );
-  lines.push(
-    "with what you did, then resolve it. Do not wait for confirmation.",
-  );
+  lines.push(...completionInstructions[profile]);
   return lines.join("\n");
 }

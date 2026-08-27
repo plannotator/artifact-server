@@ -47,9 +47,14 @@ interface RecordedToast {
   readonly variant: string;
 }
 
+type PromptHandler = OpencodePluginInput["client"]["session"]["promptAsync"];
+
+const acceptPrompt: PromptHandler = () => Promise.resolve({});
+
 interface FakePluginContext {
   readonly input: OpencodePluginInput;
   readonly prompts: RecordedPrompt[];
+  readonly setPromptHandler: (handler: PromptHandler) => void;
   readonly toasts: RecordedToast[];
 }
 
@@ -57,13 +62,14 @@ interface FakePluginContext {
 function fakePluginContext(directory: string): FakePluginContext {
   const prompts: RecordedPrompt[] = [];
   const toasts: RecordedToast[] = [];
+  let promptHandler = acceptPrompt;
   return {
     input: {
       client: {
         session: {
           promptAsync: (options) => {
             prompts.push(options);
-            return Promise.resolve({});
+            return promptHandler(options);
           },
         },
         tui: {
@@ -79,6 +85,9 @@ function fakePluginContext(directory: string): FakePluginContext {
       directory,
     },
     prompts,
+    setPromptHandler: (handler) => {
+      promptHandler = handler;
+    },
     toasts,
   };
 }
@@ -330,5 +339,93 @@ describe("opencode bridge adapter", () => {
     expect(response.status).toBe(200);
     expect(agentListSchema.parse(await response.json()).items)
       .toHaveLength(0);
+  });
+
+  test("DSP-013-F: a session deleted during injection fails that dispatch, releases its comment, and the same bridge delivers the next dispatch", async () => {
+    expect.hasAssertions();
+    const thread = await client.openThread(
+      published,
+      "Move the release note above the fold.",
+      "opencode-rejected-delivery-thread",
+    );
+    const context = fakePluginContext("/work/opencode-rejection-test");
+    const promptStarted = Promise.withResolvers<void>();
+    const promptResult = Promise.withResolvers<{
+      readonly error?: {readonly message?: string};
+    }>();
+    context.setPromptHandler(() => {
+      promptStarted.resolve();
+      return promptResult.promise;
+    });
+    const hooks = await ArtifactServerBridge(context.input);
+    hooksToDispose.push(hooks);
+
+    const agent = await eventually(async () => {
+      const response = await client.listAgents();
+      return agentListSchema.parse(await response.json()).items
+        .find((item) => item.displayName === "opencode-under-test") ?? null;
+    });
+    await hooks["chat.message"]({sessionID: "ses_deleted_during_injection"});
+    const rejected = await client.sendDispatch({
+      agentId: agent.id,
+      idempotencyKey: "opencode-rejected-delivery-dispatch",
+      projectId,
+      threadIds: [thread.id],
+    });
+    const rejectedDispatchId = dispatchCreationSchema.parse(
+      await rejected.json(),
+    ).dispatch.id;
+
+    await promptStarted.promise;
+    const stillClaimed = await client.getDispatch(rejectedDispatchId, projectId);
+    expect(
+      dispatchEnvelopeSchema.parse(await stillClaimed.json()).dispatch.state,
+    ).toBe("claimed");
+    await hooks.event({
+      event: {
+        properties: {info: {id: "ses_deleted_during_injection"}},
+        type: "session.deleted",
+      },
+    });
+    promptResult.resolve({error: {message: "The session no longer exists."}});
+
+    await eventually(async () => {
+      const response = await client.getDispatch(rejectedDispatchId, projectId);
+      return dispatchEnvelopeSchema.parse(await response.json()).dispatch
+        .state === "failed" ? true : null;
+    });
+    expect(await client.listThreadIds(published)).toEqual([thread.id]);
+    expect(
+      context.toasts.some((toast) =>
+        toast.variant === "warning" &&
+        toast.message.includes("OpenCode session failed")
+      ),
+    ).toBe(true);
+
+    context.setPromptHandler(() => Promise.resolve({}));
+    await hooks["chat.message"]({sessionID: "ses_replacement"});
+    const accepted = await client.sendDispatch({
+      agentId: agent.id,
+      idempotencyKey: "opencode-accepted-after-rejection-dispatch",
+      projectId,
+      threadIds: [thread.id],
+    });
+    const acceptedDispatchId = dispatchCreationSchema.parse(
+      await accepted.json(),
+    ).dispatch.id;
+    await eventually(async () => {
+      const response = await client.getDispatch(acceptedDispatchId, projectId);
+      return dispatchEnvelopeSchema.parse(await response.json()).dispatch
+        .state === "delivered" ? true : null;
+    });
+
+    expect(context.prompts.map((prompt) => prompt.path.id)).toEqual([
+      "ses_deleted_during_injection",
+      "ses_replacement",
+    ]);
+    const listed = agentListSchema.parse(
+      await (await client.listAgents()).json(),
+    ).items.find((item) => item.id === agent.id);
+    expect(listed?.connected).toBe(true);
   });
 });

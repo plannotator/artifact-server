@@ -203,6 +203,10 @@ fail open (dormant + one notice, exponential 1–30 s backoff), report
   message (the same class of control the Live Session Bridge security model
   requires for tool summaries). This applies server-independent, inside the
   shared render function.
+- **Name the tools the recipient has.** Bundle rendering defaults to the
+  native/channel profile, which names `artifact_comments`. The MCP mailbox
+  requests the mailbox profile, which names `comment_reply` and
+  `comment_resolve`. Both profiles share the same structure and sanitization.
 - **Non-goals.** No webhook push transport (long-poll stays the only claim
   path in v1); no bridge-side plugin marketplace; no per-kind server
   behavior.

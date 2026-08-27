@@ -113,7 +113,7 @@
     "@axe-core/playwright": "4.13.0",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@oxlint/plugins": "1.78.0",
-    "@plannotator/agent-bridge": "^0.1.0",
+    "@plannotator/agent-bridge": "^0.1.1",
     "@playwright/test": "1.62.1",
     "@types/node": "24.13.3",
     "@vitest/coverage-v8": "4.1.10",

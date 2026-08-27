@@ -28,6 +28,7 @@ import {
   agentDispatchStates,
   artifactActionKinds,
   commentThreadStates,
+  dispatchHoldsCommentThread,
   dispatchedThreadFilters,
   fileDispositions,
   parseStoredAgentCapabilities,
@@ -2429,8 +2430,29 @@ export class PostgresArtifactRepository implements
           command.projectId,
           command.artifactId,
           command.threadId,
+          true,
         );
         if (row === null) return yield* missingComment();
+        const dispatchRows = yield* sql.unsafe<object>(
+          `SELECT dispatch.state AS "state"
+           FROM comment_threads thread
+           LEFT JOIN agent_dispatches dispatch
+             ON dispatch.id = thread.dispatch_id
+           WHERE thread.installation_id = $1 AND thread.id = $2
+             AND thread.project_id = $3 AND thread.artifact_id = $4`,
+          [
+            installationId,
+            command.threadId,
+            command.projectId,
+            command.artifactId,
+          ],
+        );
+        const dispatchState = z.object({
+          state: agentDispatchStateSchema.nullable(),
+        }).parse(dispatchRows[0]).state;
+        if (dispatchHoldsCommentThread(dispatchState)) {
+          return yield* dispatchedCommentDeletionConflict();
+        }
         const removedReplies = yield* sql`DELETE FROM comment_replies
           WHERE installation_id = ${installationId}
             AND thread_id = ${command.threadId}
@@ -2478,7 +2500,8 @@ export class PostgresArtifactRepository implements
              AND thread.artifact_id = $3
              AND ($4::text IS NULL OR thread.version_id = $4)
              AND ($5::text = 'all' OR thread.state = 'resolved')
-           ORDER BY thread.created_at ASC, thread.id ASC`,
+           ORDER BY thread.created_at ASC, thread.id ASC
+           FOR UPDATE OF thread`,
           [
             installationId,
             command.projectId,
@@ -2491,11 +2514,9 @@ export class PostgresArtifactRepository implements
         let skippedDispatched = 0;
         for (const row of z.array(clearableThreadRowSchema).parse(rows)) {
           // Clearing never yanks work out from under an agent: a thread held
-          // by an active dispatch stays, and the caller learns how many did.
-          if (
-            row.dispatchState === agentDispatchStates.queued ||
-            row.dispatchState === agentDispatchStates.claimed
-          ) {
+          // by a queued, claimed, or delivered dispatch stays, and the caller
+          // learns how many did.
+          if (dispatchHoldsCommentThread(row.dispatchState)) {
             skippedDispatched += 1;
             continue;
           }
@@ -4069,6 +4090,7 @@ export class PostgresArtifactRepository implements
     projectId: string,
     artifactId: string,
     threadId: string,
+    lock = false,
   ): Effect.Effect<
     z.infer<typeof commentThreadRowSchema> | null,
     unknown,
@@ -4080,7 +4102,8 @@ export class PostgresArtifactRepository implements
       const rows = yield* sql.unsafe<object>(
         `${commentThreadColumns}
          WHERE thread.installation_id = $1 AND thread.id = $2
-           AND thread.project_id = $3 AND thread.artifact_id = $4`,
+           AND thread.project_id = $3 AND thread.artifact_id = $4
+         ${lock ? "FOR UPDATE OF thread" : ""}`,
         [installationId, threadId, projectId, artifactId],
       );
       return commentThreadRowSchema.nullable().parse(rows[0] ?? null);
@@ -4733,6 +4756,13 @@ function agentDispatchFromRow(
 
 function missingDispatch(): AgentDispatchNotFound {
   return new AgentDispatchNotFound({message: "The dispatch does not exist."});
+}
+
+function dispatchedCommentDeletionConflict(): DispatchStateConflict {
+  return new DispatchStateConflict({
+    message:
+      "This comment has been sent to an agent and cannot be deleted until the dispatch is complete.",
+  });
 }
 
 function foreignClaimReport(): DispatchStateConflict {

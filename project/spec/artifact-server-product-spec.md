@@ -197,7 +197,7 @@ The mutation policy is separate from the two read settings:
 | Change account required/public link | Yes | Only with management capability |
 | Delete the artifact | Yes | Only with management capability |
 
-An interactive agent acts as the signed-in person. An API key belongs to one named user or service principal, one installation, an expiry and revoke state, and explicit capabilities. A key with artifact access can use any project in that installation; projects do not add a second access-control list. Every mutation records the effective principal and, when present, the human who authorized the agent connection.
+An interactive agent acts as the signed-in person. An API key belongs to one named user or service principal, one installation, an expiry and revoke state, and explicit capabilities. Rotating a key replaces its credential record and secret without changing that principal or the administrator who authorized it. A key with artifact access can use any project in that installation; projects do not add a second access-control list. Every mutation records the effective principal and, when present, the human who authorized the agent connection.
 
 ## Versions, comparisons, and optional Git handoff
 

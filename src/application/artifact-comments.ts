@@ -20,6 +20,7 @@ import {
   AuthorizationDenied,
   CommentNotFound,
   type CommentResolved,
+  type DispatchStateConflict,
   type IdempotencyConflict,
   InvalidComment,
   type InvalidIdempotencyKey,
@@ -73,6 +74,7 @@ export type CommentRepositoryFailure =
   | ArtifactRepositoryFailure
   | CommentNotFound
   | CommentResolved
+  | DispatchStateConflict
   | IdempotencyConflict
   | InvalidComment
   | VersionNotFound;
@@ -223,6 +225,7 @@ export type ArtifactCommentFailure =
   | AuthorizationDenied
   | CommentNotFound
   | CommentResolved
+  | DispatchStateConflict
   | IdempotencyConflict
   | InvalidComment
   | InvalidIdempotencyKey

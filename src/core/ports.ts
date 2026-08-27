@@ -299,7 +299,7 @@ export interface UpdateCommentReply {
  * Values used to clear one artifact's matching comment threads in bulk.
  * Deletion semantics per thread match {@link DeleteCommentThread}: replies
  * cascade and one `comment_delete` action lands in the ledger. Threads held
- * by an active (queued or claimed) dispatch are skipped and counted.
+ * by a queued, claimed, or delivered dispatch are skipped and counted.
  */
 export interface ClearCommentThreads {
   readonly artifactId: string;

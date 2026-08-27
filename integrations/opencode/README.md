@@ -83,7 +83,9 @@ Verified by reading the pinned source:
   204 once the prompt is accepted; while the session is busy the appended
   user message is picked up at the running loop's boundary — real
   follow-up semantics. Interrupt would be `session.abort`; this bridge
-  never uses it, and steering is not claimed.
+  never uses it, and steering is not claimed. The bridge awaits that answer
+  before it reports `delivered`; a refusal reports the dispatch `failed` and
+  leaves the plugin available for later bundles.
 - Plugins register model-callable tools through the `tool` hook (zod
   argument shapes converted to JSON Schema by OpenCode's tool registry),
   so `artifact_comments` is a native tool — no MCP fallback needed.
@@ -91,16 +93,18 @@ Verified by reading the pinned source:
 - Compaction is observable via the `experimental.session.compacting` hook
   and the `session.compacted` event.
 
+Verified by the fake plugin context against a real spawned Artifact Server:
+
+- Deleting the target session while `promptAsync` is pending makes that
+  dispatch fail and releases its comments. Selecting another session lets the
+  same bridge deliver the next dispatch without restarting OpenCode.
+
 Assumed (recorded honestly, not proven against a live OpenCode):
 
 - Cross-instance zod interop: this package ships zod `4.4.3` argument
   schemas; OpenCode composes them with its own zod (`4.1.8` at the pinned
   commit) through the `_zod` protocol. This is the standard path for every
   npm plugin, but it is not executed by this repository's tests.
-- `delivered` is reported once the injection request has been handed to
-  `promptAsync`; the port's injection contract is synchronous, so a
-  rejected injection can only surface a warning toast afterward. The
-  at-least-once lease posture bounds the cost of that gap.
 - The `experimental.*` hook names are marked experimental by OpenCode and
   may change in later versions; the bridge degrades to "no compaction
   hold" if they stop firing.

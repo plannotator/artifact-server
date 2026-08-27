@@ -761,9 +761,16 @@ test.describe("Artifact Server frontend MVP", () => {
       const headerShare = headerActions.getByRole("button", {exact: true, name: "Share"});
       const fullScreen = headerActions.getByRole("button", {name: "Full screen"});
       await expect(headerShare).toBeVisible();
-      expect((await headerShare.boundingBox())?.x).toBeLessThan(
-        (await fullScreen.boundingBox())?.x ?? 0,
-      );
+      // The header re-renders while the preview settles, so a one-shot pair
+      // of boundingBox reads can straddle a detach; poll until both boxes
+      // exist in the same frame and Share sits left of Full screen.
+      await expect.poll(async () => {
+        const [share, full] = await Promise.all([
+          headerShare.boundingBox(),
+          fullScreen.boundingBox(),
+        ]);
+        return share !== null && full !== null && share.x < full.x;
+      }, {message: "Share is laid out left of Full screen"}).toBe(true);
 
       await headerShare.click();
       const share = fixture.page.locator(".as-share-popover[data-open]");

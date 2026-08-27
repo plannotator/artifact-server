@@ -35,6 +35,7 @@ import {
   agentDispatchStates,
   artifactActionKinds,
   commentThreadStates,
+  dispatchHoldsCommentThread,
   dispatchedThreadFilters,
   fileDispositions,
   parseStoredAgentCapabilities,
@@ -3351,6 +3352,19 @@ export class SqliteArtifactRepository implements
           command.threadId,
         );
         if (row === null) throw missingComment();
+        const dispatchState = z.object({
+          state: agentDispatchStateSchema.nullable(),
+        }).parse(
+          this.#database.prepare(
+            `SELECT d.state AS state
+             FROM comment_threads t
+             LEFT JOIN agent_dispatches d ON d.id = t.dispatch_id
+             WHERE t.id = ? AND t.project_id = ? AND t.artifact_id = ?`,
+          ).get(command.threadId, command.projectId, command.artifactId),
+        ).state;
+        if (dispatchHoldsCommentThread(dispatchState)) {
+          throw dispatchedCommentDeletionConflict();
+        }
         const removedReplies = this.#database
           .prepare("DELETE FROM comment_replies WHERE thread_id = ?")
           .run(command.threadId);
@@ -3407,11 +3421,9 @@ export class SqliteArtifactRepository implements
         let skippedDispatched = 0;
         for (const row of rows) {
           // Clearing never yanks work out from under an agent: a thread held
-          // by an active dispatch stays, and the caller learns how many did.
-          if (
-            row.dispatchState === agentDispatchStates.queued ||
-            row.dispatchState === agentDispatchStates.claimed
-          ) {
+          // by a queued, claimed, or delivered dispatch stays, and the caller
+          // learns how many did.
+          if (dispatchHoldsCommentThread(row.dispatchState)) {
             skippedDispatched += 1;
             continue;
           }
@@ -5832,6 +5844,13 @@ function missingSourceBinding(): ArtifactNotFound {
 
 function missingDispatch(): AgentDispatchNotFound {
   return new AgentDispatchNotFound({message: "The dispatch does not exist."});
+}
+
+function dispatchedCommentDeletionConflict(): DispatchStateConflict {
+  return new DispatchStateConflict({
+    message:
+      "This comment has been sent to an agent and cannot be deleted until the dispatch is complete.",
+  });
 }
 
 function agentDispatchFromRow(

@@ -14,7 +14,8 @@ This bridge registers with `capabilities: {beacon: true, evidence:
 "channel"}`. `delivered` means the notification was written to the
 transport — admission to the session, not model processing. Claude Code
 queues channel events while the session is busy, which matches the bridge's
-follow-up-only delivery rule.
+follow-up-only delivery rule. A rejected notification fails that dispatch and
+leaves the channel process available for later bundles.
 
 ## Configuration
 

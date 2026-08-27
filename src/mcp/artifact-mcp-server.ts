@@ -1812,7 +1812,7 @@ export function createArtifactMcpServer(
     {
       title: "Delete a comment",
       description:
-        "Delete one comment thread with every reply it carries, or delete one reply when replyId is given. The author, a human administrator, or a principal with artifact:manage:any may delete.",
+        "Delete one comment thread with every reply it carries, or delete one reply when replyId is given. The author, a human administrator, or a principal with artifact:manage:any may delete. A thread already held by a queued, claimed, or delivered dispatch cannot be deleted until that dispatch completes.",
       inputSchema: z.object({
         artifactId: artifactIdSchema,
         projectId: optionalProjectIdSchema,
@@ -1846,7 +1846,7 @@ export function createArtifactMcpServer(
     {
       title: "Clear comment threads in bulk",
       description:
-        "Delete every matching comment thread on one artifact — resolved threads, or all — together with their replies, recording one ledger action per thread. Threads inside an active dispatch are skipped and counted; cancel the dispatch first to clear them.",
+        "Delete every matching comment thread on one artifact — resolved threads, or all — together with their replies, recording one ledger action per thread. Threads held by queued, claimed, or delivered dispatches are skipped and counted; cancel queued or claimed work, or resolve delivered work, before clearing them.",
       inputSchema: z.object({
         artifactId: artifactIdSchema,
         projectId: optionalProjectIdSchema,
@@ -2176,7 +2176,7 @@ export function createArtifactMcpServer(
             agent: mailboxAgentProjection(agent),
             claimed: {
               dispatchId: dispatch.id,
-              message: renderBundleMessage(assembled.bundle),
+              message: renderBundleMessage(assembled.bundle, "mailbox"),
               note: dispatch.note,
               projectId: dispatch.projectId,
               threadIds: [...dispatch.threadIds],
@@ -2317,7 +2317,7 @@ function agentInstructions(mode: "local" | "remote"): string {
     "After publishing, always give the user links.review first so they can see the exact version full screen and comment. Mention links.version second when the raw artifact is useful. Do not put content bootstrap URLs or credentials in chat.",
     "When publishing a new version, first call artifact_get and pass its current version ID as expectedCurrentVersionId. On conflict, inspect the new current version before retrying.",
     "Use a stable application idempotency key when retrying the same mutation. Use a new key only for an intentional new operation.",
-    "Reviewers leave comment threads on an artifact version. Use comment_list and comment_get to read them, comment_create, comment_reply, and comment_update to write, comment_resolve to close or reopen a thread, and comment_delete to remove one you own; deleting a thread also deletes its replies. comment_clear removes every resolved thread — or all threads — on one artifact at once, skipping threads an active dispatch still holds.",
+    "Reviewers leave comment threads on an artifact version. Use comment_list and comment_get to read them, comment_create, comment_reply, and comment_update to write, comment_resolve to close or reopen a thread, and comment_delete to remove one you own; deleting a thread also deletes its replies. Sent comments cannot be deleted while their dispatch is queued, claimed, or delivered. comment_clear removes every resolved thread — or all threads — on one artifact at once and reports how many sent comments it skipped.",
     "comment_list hides threads an agent dispatch currently holds unless you pass dispatched: \"include\" or \"only\"; comment_get still reads a dispatched thread directly by id.",
     "dispatch_inbox is this caller's mailbox for annotation bundles a reviewer dispatched to it: list registers the caller as a mailbox-tier agent and shows its queued dispatches, claim takes the oldest one as a rendered message, and delivered or failed reports the outcome. Address a delivered bundle's threads with comment_reply, then comment_resolve.",
     "artifact_get returns the current complete manifest and browser link in one call. artifact_open returns a client-openable URL; a remote server never opens a browser on the server machine.",

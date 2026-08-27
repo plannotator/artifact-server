@@ -1,6 +1,6 @@
 version: 1
 product: Artifact Server
-updated: "2026-08-25"
+updated: "2026-08-26"
 evidence_root: "../.."
 
 source:
@@ -1381,12 +1381,17 @@ requirements:
     owner: authorization
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
-      behavior: {id: AUTH-009-B, description: "Issue, constrain, rotate, expire, and revoke human and service API keys and observe the documented principal."}
-      failure: {id: AUTH-009-F, description: "Cross-installation, over-scoped, expired, revoked, malformed, and JWT-like API keys are rejected without parser confusion."}
+      behavior: {id: AUTH-009-B, description: "Issue, constrain, rotate, expire, and revoke human and service API keys; rotation preserves the effective principal and original authorizer while replacing only the credential."}
+      failure: {id: AUTH-009-F, description: "Cross-installation, over-scoped, expired, revoked, replaced, malformed, and JWT-like API keys are rejected without parser confusion."}
     deployments: *external_storage
-    status: specified
+    status: behavior_verified
     depends_on: [AUTH-008]
-    evidence: []
+    evidence:
+      - deployment: single_server
+        tests: [AUTH-009-B, AUTH-009-F]
+        result: pass
+        run: project/evidence/external-storage-runtime.json
+        recorded_at: "2026-08-27T05:26:19.095Z"
 
   - id: AUTH-010
     kind: security
@@ -2489,6 +2494,25 @@ requirements:
         run: project/evidence/browser.json
         recorded_at: "2026-08-25T19:16:53.330Z"
 
+  - id: CMT-020
+    kind: constraint
+    behavior: A comment thread referenced by a queued, claimed, or delivered dispatch cannot be deleted singly or by bulk clear; addressed, failed, and canceled dispatches release their threads, and every backend decides dispatch membership and deletion atomically without rewriting the dispatch package.
+    owner: artifact-comments
+    source: {file: artifact-comments-spec.md, anchor: dispatch-bound-comment-deletion}
+    acceptance:
+      behavior: {id: CMT-020-B, description: "Single deletion returns DISPATCH_STATE_CONFLICT for queued, claimed, and delivered dispatches; bulk clear skips and counts those threads; addressed, failed, and canceled dispatches permit deletion without changing the dispatch record."}
+      failure: {id: CMT-020-F, description: "A concurrent dispatch creation and comment deletion on SQLite or Postgres commits exactly one complete outcome: either the dispatch keeps an existing thread or deletion succeeds and dispatch creation is rejected."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: SQLite conformance evidence plus Postgres integration and D1 runtime qualification prove the deletion guard and atomic race behavior. Equivalent recorded evidence for every deployed-team target remains unrecorded.
+    depends_on: [CMT-008, CMT-011, DSP-003, DSP-007, PRS-005]
+    evidence:
+      - deployment: local
+        tests: [CMT-020-B, CMT-020-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-27T00:19:45.636Z"
+
   - id: ADM-001
     kind: behavior
     behavior: Artifact Server ships one canonical React application for Review and settings, plus the isolated Review frame; every former application route redirects to the equivalent canonical destination without serving or loading a legacy application bundle.
@@ -2838,6 +2862,25 @@ requirements:
         run: project/evidence/local-foundation.json
         recorded_at: "2026-08-18T20:30:21.763Z"
 
+  - id: DSP-013
+    kind: behavior
+    behavior: The bridge reports delivered only after its host admits the message. An asynchronous refusal fails that dispatch and leaves the bridge available for later work, while a synchronous invalidated host handle still ends the loop.
+    owner: agent-dispatch
+    source: {file: agent-dispatch-spec.md, anchor: conformance-and-testing}
+    acceptance:
+      behavior: {id: DSP-013-B, description: "Hold a claimed dispatch while host admission is pending, resolve that handoff, and observe delivery; after a separate refused handoff, observe the same bridge deliver the next bundle."}
+      failure: {id: DSP-013-F, description: "Delete an OpenCode target while its asynchronous handoff is pending and observe a failed dispatch with its comments returned to the open list, then select another session and deliver later work without restarting the bridge."}
+    deployments: [local]
+    status: behavior_verified
+    proof_gap: The shared bridge and OpenCode adapter are exercised through injected host ports against a real local server; live OpenCode and Claude transport acceptance remain adapter qualification checks.
+    depends_on: [DSP-009, DSP-012]
+    evidence:
+      - deployment: local
+        tests: [DSP-013-B, DSP-013-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-27T01:14:27.292Z"
+
   - id: BRP-001
     kind: behavior
     behavior: The extracted bridge core is host-agnostic. It drives a fake host through register, claim, deliver, reply, and resolve against a real server, and its module graph reaches no Pi code.
@@ -3026,11 +3069,11 @@ requirements:
 
   - id: BRP-002
     kind: behavior
-    behavior: Any MCP-capable agent joins the dispatch loop at the mailbox tier through one inbox tool with implicit registration, a rendered sanitized bundle on claim, honest delivery reports, and strict per-principal isolation.
+    behavior: Any MCP-capable agent joins the dispatch loop at the mailbox tier through one inbox tool with implicit registration, a rendered sanitized bundle that names its actual MCP comment tools on claim, honest delivery reports, and strict per-principal isolation.
     owner: agent-bridge
     source: {file: agent-presence-and-bridge-spec.md, anchor: prior-art-the-live-session-bridge-research}
     acceptance:
-      behavior: {id: BRP-002-B, description: "An MCP principal lists its inbox with implicit mailbox registration, claims the oldest dispatch as a rendered sanitized bundle byte-identical to the shared render contract, reports delivered, and the agent listing shows the mailbox tier; comment reply and resolve over MCP drive the dispatch to addressed."}
+      behavior: {id: BRP-002-B, description: "An MCP principal lists its inbox with implicit mailbox registration, claims the oldest dispatch as a rendered sanitized mailbox-profile bundle byte-identical to the shared render contract and naming comment_reply plus comment_resolve, reports delivered, and the agent listing shows the mailbox tier; those MCP tools drive the dispatch to addressed."}
       failure: {id: BRP-002-F, description: "A second principal never sees the first principal's dispatches, a claim with an empty inbox answers cleanly, and a delivered report for a dispatch the caller does not hold is refused without state change."}
     deployments: [local]
     status: behavior_verified
@@ -3041,7 +3084,7 @@ requirements:
         tests: [BRP-002-B, BRP-002-F]
         result: pass
         run: project/evidence/local-foundation.json
-        recorded_at: "2026-08-25T22:23:33.625Z"
+        recorded_at: "2026-08-27T01:30:08.040Z"
 
   - id: NDG-001
     kind: behavior

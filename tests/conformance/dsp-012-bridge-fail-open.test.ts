@@ -30,6 +30,7 @@ import {
 /** A scripted Pi that records notices and messages, and can turn hostile. */
 class RecordingHostPort implements HostPort {
   compacting = false;
+  sendResult: Promise<void> | null = null;
   sendThrows: Error | null = null;
   readonly messages: {text: string; delivery: FollowUpDelivery}[] = [];
   readonly notices: string[] = [];
@@ -42,9 +43,15 @@ class RecordingHostPort implements HostPort {
     this.notices.push(message);
   }
 
-  sendUserMessage(text: string, delivery: FollowUpDelivery): void {
+  sendUserMessage(
+    text: string,
+    delivery: FollowUpDelivery,
+  ): void | Promise<void> {
     if (this.sendThrows !== null) throw this.sendThrows;
     this.messages.push({delivery, text});
+    const result = this.sendResult;
+    this.sendResult = null;
+    return result ?? undefined;
   }
 }
 
@@ -220,6 +227,74 @@ describe("bridge fail-open discipline", () => {
     const settledCount = traffic.count();
     await pause(1_500);
     expect(traffic.count()).toBe(settledCount);
+  });
+
+  test("DSP-013-B: delivery waits for host admission, an asynchronous refusal fails only that dispatch, and the loop accepts the next bundle", async () => {
+    expect.hasAssertions();
+    const port = new RecordingHostPort();
+    const firstHandoff = Promise.withResolvers<void>();
+    port.sendResult = firstHandoff.promise;
+    startTracked(bridgeOptions(port, fetch, "truthful-delivery"));
+    const agentId = await eventually(async () => {
+      const response = await client.listAgents();
+      const listed = agentListSchema.parse(await response.json()).items
+        .find((item) => item.displayName === "truthful-delivery");
+      return listed === undefined ? null : listed.id;
+    });
+    const firstThread = await client.openThread(
+      published,
+      "Reject this handoff.",
+      "bridge-truthful-delivery-thread-rejected",
+    );
+    const firstSent = await client.sendDispatch({
+      agentId,
+      idempotencyKey: "bridge-truthful-delivery-dispatch-rejected",
+      projectId,
+      threadIds: [firstThread.id],
+    });
+    const firstDispatchId = dispatchCreationSchema.parse(await firstSent.json())
+      .dispatch.id;
+
+    await eventually(() =>
+      Promise.resolve(port.messages.length === 1 ? true : null)
+    );
+    const awaitingAdmission = await client.getDispatch(
+      firstDispatchId,
+      projectId,
+    );
+    expect(
+      dispatchEnvelopeSchema.parse(await awaitingAdmission.json()).dispatch
+        .state,
+    ).toBe("claimed");
+    firstHandoff.reject(new Error("The host refused the message."));
+    await eventually(async () => {
+      const response = await client.getDispatch(firstDispatchId, projectId);
+      return dispatchEnvelopeSchema.parse(await response.json()).dispatch
+        .state === "failed" ? true : null;
+    });
+    expect(await client.listThreadIds(published)).toEqual([firstThread.id]);
+
+    const secondThread = await client.openThread(
+      published,
+      "Accept this handoff.",
+      "bridge-truthful-delivery-thread-accepted",
+    );
+    const secondSent = await client.sendDispatch({
+      agentId,
+      idempotencyKey: "bridge-truthful-delivery-dispatch-accepted",
+      projectId,
+      threadIds: [secondThread.id],
+    });
+    const secondDispatchId = dispatchCreationSchema.parse(
+      await secondSent.json(),
+    ).dispatch.id;
+    await eventually(async () => {
+      const response = await client.getDispatch(secondDispatchId, projectId);
+      return dispatchEnvelopeSchema.parse(await response.json()).dispatch
+        .state === "delivered" ? true : null;
+    });
+    expect(port.messages).toHaveLength(2);
+    expect(port.messages[1]?.text).toContain(secondThread.id);
   });
 
   test("DSP-012-F: an unreachable backend backs off within bounds and a stale host handle ends the loop, with no error reaching the host", async () => {
