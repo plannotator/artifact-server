@@ -56,12 +56,20 @@ The fresh recovery drill copied the staging D1 database and all 12 R2 objects in
 
 The isolated recovery resources were deleted after the comparison. The original staging D1 database and R2 bucket were not replaced or mutated by the drill. See [`cloudflare-staging-recovery-2026-08-27.json`](../evidence/cloudflare-staging-recovery-2026-08-27.json).
 
+### Cloudflare Artifacts Git history
+
+A bounded follow-on run used the dedicated, initially empty `artifact-server-test-qualification` namespace. Both the REST adapter and remote Workers binding passed repository creation, deterministic commits, exact-version reads, short-lived repository credentials, smart HTTP, and deletion.
+
+The complete Node product path then reported the provider available, estimated one saved version, enabled Git history for the default project, backfilled version 1, mirrored a newly published version 2, and produced a fresh read-only clone with two commits, two exact-version tags, and byte-identical files. Disabling the project removed clone access without deleting history. Deleting the artifact removed its derived repository. The namespace contained zero repositories after cleanup.
+
+This run copied 530 fixture bytes and did not perform load or quota-pressure testing. See [`cloudflare-artifacts-live-qualification.json`](../evidence/cloudflare-artifacts-live-qualification.json).
+
 ## What remains unqualified
 
 This pass does not prove every release claim. The following work remains separate:
 
 - WorkOS refresh, revocation, and named-client lifecycle behavior.
-- Live optional Cloudflare Artifacts Git history and hosted quota behavior.
+- Cloudflare Artifacts load, quota-pressure, sustained-outage, retention, and regional behavior. The bounded normal integration is qualified; this run deliberately did not approach account limits.
 - The exact OpenCode race where its target session is deleted between claim and host admission. The live attempt delivered before deletion; the automated hostile-path proof remains green.
 - Image and video preview behavior in this run.
 - Manual checklist rows that were not exercised and are still blank in the product-description repository.

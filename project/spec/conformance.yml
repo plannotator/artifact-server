@@ -1135,7 +1135,7 @@ requirements:
       failure: {id: GIT-006-F, description: "A deployment cannot advertise optional Git until its provider passes persistence, retry, upgrade, backup, and isolation tests."}
     deployments: *all
     status: implementing
-    proof_gap: Cloudflare Artifacts is the only accepted provider, and both the Node REST and remote Workers-binding paths passed isolated live creation, deterministic commit, token, smart-HTTP, read, and cleanup qualification. Upgrade, backup, and the complete common provider suite remain unproved.
+    proof_gap: Cloudflare Artifacts is the only accepted provider. The Node REST product path passed live availability, estimate, project enablement, backfill, two-version mirroring, read-only clone, disablement, artifact deletion, and cleanup; the remote Workers-binding path passed isolated live creation, deterministic commit, token, smart-HTTP, read, and cleanup qualification. Upgrade, backup, and the complete common provider suite remain unproved.
     depends_on: [GIT-003]
     evidence: []
 
@@ -1149,7 +1149,7 @@ requirements:
       failure: {id: GIT-007-F, description: "Every deployment remains complete and supported with Cloudflare Artifacts disabled or unavailable."}
     deployments: *all
     status: implementing
-    proof_gap: The provider remains explicit, private, off by default, and non-authoritative; checked-in evidence records successful isolated REST and Workers-binding qualification. Pricing, retention, regional behavior, sustained outage recovery, and Cloudflare production-support posture remain operator considerations rather than fully proved release evidence.
+    proof_gap: The provider remains explicit, private, off by default, and non-authoritative; checked-in evidence records successful isolated REST, Workers-binding, and bounded product-lifecycle qualification. Pricing, quota pressure, retention, regional behavior, sustained outage recovery, and Cloudflare production-support posture remain operator considerations rather than fully proved release evidence.
     depends_on: [GIT-006]
     evidence: []
 
