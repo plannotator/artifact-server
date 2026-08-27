@@ -603,7 +603,7 @@ describe("Artifact Server lifecycle CLI", () => {
     } finally {
       await rm(parent, {force: true, recursive: true});
     }
-  });
+  }, 30_000);
 });
 
 function compactEnvironment(

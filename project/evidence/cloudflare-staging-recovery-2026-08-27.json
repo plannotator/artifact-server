@@ -1,0 +1,184 @@
+{
+  "accountId": "ee6997c7d9bdfb52ef0ceeaff6f2fa5f",
+  "backup": {
+    "d1ExportBytes": 48158,
+    "d1ExportSha256": "eec176d81b87fb473c8d170b1e6f931a4eb113bc6f8ec379de9b529c764ba78d",
+    "providerOperation": "wrangler d1 export/import --remote"
+  },
+  "checks": {
+    "exactBytes": true,
+    "healthStatus": 200,
+    "normalIntegrity": "healthy",
+    "readinessStatus": 200,
+    "sourceStayedQuiesced": true,
+    "stableIdentifiers": true
+  },
+  "destruction": {
+    "confirmed": false
+  },
+  "finishedAt": "2026-08-27T17:07:20.954Z",
+  "installationId": "artifact-server-staging:staging",
+  "qualification": "Cloudflare coordinated D1 and R2 recovery",
+  "resources": {
+    "recoveryWorkerName": "artifact-server-qual-release-20260827-recovery-helper",
+    "restore": {
+      "bucketName": "artifact-server-qual-release-20260827-final-r2",
+      "databaseId": "055c738c-ecc8-45d7-b139-7b466fbf10ec",
+      "databaseName": "artifact-server-qual-release-20260827-final-db",
+      "workerName": "artifact-server-qual-release-20260827-restored-worker"
+    },
+    "source": {
+      "bucketName": "artifact-server-artifact-server-staging-staging-staging-objects",
+      "databaseId": "113c890a-6ca1-47fe-b92b-ff3c14f7d290",
+      "databaseName": "artifact-server-artifact-server-staging-staging-staging-records",
+      "writerWorkerName": "artifact-server-artifact-server-staging-staging-staging-worker"
+    }
+  },
+  "result": "pass",
+  "r2Copy": {
+    "byteExact": 12,
+    "copied": 12,
+    "customMetadataExact": 12,
+    "httpMetadataExact": 12
+  },
+  "schemaVersion": 1,
+  "restored": {
+    "foreignKeyViolations": 0,
+    "identitySha256": "91e361cde86182e1451430355cd6091d7aae37a3e7bbc2b1fb0620bdfd64bcfa",
+    "integrity": {
+      "artifactsChecked": 2,
+      "blobsChecked": 4,
+      "bytesChecked": 1362,
+      "manifestsChecked": 2,
+      "problemCount": 0,
+      "status": "healthy",
+      "versionsChecked": 2
+    },
+    "objectCount": 12,
+    "objectInventorySha256": "97c4176694813b708f8e55eda4b73f954bc7c521ee737c0d294b5d3671f99111",
+    "schemaVersion": 9,
+    "stateSha256": "2a4161ff1f89a6c2fcb04fb7f628d75cfd4fca2c284e0084799d5e10b7686de4",
+    "tableRows": {
+      "artifact_server_schema": 1,
+      "projects": 1,
+      "artifacts": 2,
+      "versions": 2,
+      "manifest_entries": 8,
+      "artifact_tags": 4,
+      "idempotency_records": 2,
+      "actions": 14,
+      "staged_uploads": 2,
+      "staged_upload_files": 8,
+      "content_bootstraps": 0,
+      "content_sessions": 3,
+      "installation_members": 1,
+      "external_identities": 1,
+      "application_sessions": 1,
+      "git_history_provider_identity": 0,
+      "git_history_project_settings": 0,
+      "git_history_repositories": 0,
+      "git_history_jobs": 0,
+      "git_history_mappings": 0,
+      "git_history_budget_reservations": 0,
+      "managed_api_keys": 3,
+      "login_attempts": 2,
+      "mutation_checks": 0,
+      "registered_agents": 1,
+      "agent_dispatches": 5,
+      "comment_threads": 4,
+      "comment_replies": 4
+    }
+  },
+  "source": {
+    "foreignKeyViolations": 0,
+    "identitySha256": "91e361cde86182e1451430355cd6091d7aae37a3e7bbc2b1fb0620bdfd64bcfa",
+    "integrity": {
+      "artifactsChecked": 2,
+      "blobsChecked": 4,
+      "bytesChecked": 1362,
+      "manifestsChecked": 2,
+      "problemCount": 0,
+      "status": "healthy",
+      "versionsChecked": 2
+    },
+    "objectCount": 12,
+    "objectInventorySha256": "97c4176694813b708f8e55eda4b73f954bc7c521ee737c0d294b5d3671f99111",
+    "schemaVersion": 9,
+    "stateSha256": "2a4161ff1f89a6c2fcb04fb7f628d75cfd4fca2c284e0084799d5e10b7686de4",
+    "tableRows": {
+      "artifact_server_schema": 1,
+      "projects": 1,
+      "artifacts": 2,
+      "versions": 2,
+      "manifest_entries": 8,
+      "artifact_tags": 4,
+      "idempotency_records": 2,
+      "actions": 14,
+      "staged_uploads": 2,
+      "staged_upload_files": 8,
+      "content_bootstraps": 0,
+      "content_sessions": 3,
+      "installation_members": 1,
+      "external_identities": 1,
+      "application_sessions": 1,
+      "git_history_provider_identity": 0,
+      "git_history_project_settings": 0,
+      "git_history_repositories": 0,
+      "git_history_jobs": 0,
+      "git_history_mappings": 0,
+      "git_history_budget_reservations": 0,
+      "managed_api_keys": 3,
+      "login_attempts": 2,
+      "mutation_checks": 0,
+      "registered_agents": 1,
+      "agent_dispatches": 5,
+      "comment_threads": 4,
+      "comment_replies": 4
+    }
+  },
+  "startedAt": "2026-08-27T17:06:34.813Z",
+  "steps": [
+    {
+      "operation": "deploy-recovery-source",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "7d854a647c8d7425a4745111c34147c8a16630810dd54d4a996d0986b5d1d99c"
+    },
+    {
+      "operation": "export-source-d1",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "26de3d4e7b1df8c2323b1cb044dc6b9e277617bfa73b091e24b4de25ee148930"
+    },
+    {
+      "operation": "deploy-recovery-copy",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "c6d9e0d6536180b30f6e610af6ece110d8491b283b72eb17ab50487dc0ffc5c9"
+    },
+    {
+      "operation": "import-restore-d1",
+      "exitCode": 0,
+      "stderrSha256": "7b737f937184be037c98d29bac67c02b4aabe0bc172b778c23d4dbf1026eeded",
+      "stdoutSha256": "35749df9fb2cedaef07a6a3a89b59f18bf026574c5a8b3c4b76e0d03ee5e9fe4"
+    },
+    {
+      "operation": "deploy-recovery-source",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "380c7dac893e8e5d42201a0bdf7e1a8b73006b5324693f49b8514c622a709d44"
+    },
+    {
+      "operation": "deploy-recovery-restore",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "432b09ee9708a5ddd46fd9579d229f943edeef0658225f968dcc1aaa46802489"
+    },
+    {
+      "operation": "deploy-restored-application",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "4b764ef3f3d535aeb1732fe667ae5e930fb913367b1736e0f1085c47e677ec12"
+    }
+  ]
+}

@@ -123,10 +123,10 @@ ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_LIVE=1 pnpm qualify:cloudflare-artifacts
 ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_LIVE=1 pnpm qualify:cloudflare-artifacts:binding
 ```
 
-Every repository receives a generated `artifact-server-test-<run>-` prefix. Cleanup uses only the run manifest or exact run prefix; it never deletes a namespace or sweeps an account. The checked-in [qualification evidence](../project/evidence/cloudflare-artifacts-live-qualification.json) records successful REST, Workers binding, deterministic commit, exact-tag, scoped-token, smart-HTTP, and cleanup checks from August 25, 2026.
+Every repository receives a generated `artifact-server-test-<run>-` prefix. Cleanup uses only the run manifest or exact run prefix; it never deletes a namespace or sweeps an account. The checked-in [qualification evidence](../project/evidence/cloudflare-artifacts-live-qualification.json) records successful REST and Workers-binding checks. It also records a bounded August 27, 2026 product run through availability, estimate, project enablement, backfill, a second mirrored version, read-only clone, disablement, artifact deletion, and exact cleanup.
 
 ## Costs and limits
 
-Cloudflare prices aggregate operations and stored bytes, not repository count. One repository per artifact therefore matches Artifact Server's authorization and deletion boundary without adding a per-repository fee. Review Cloudflare's current [pricing](https://developers.cloudflare.com/artifacts/platform/pricing/) and [limits](https://developers.cloudflare.com/artifacts/platform/limits/) before enabling large projects.
+Cloudflare prices aggregate operations and stored bytes, not repository count. One repository per artifact therefore matches Artifact Server's authorization and deletion boundary without adding a per-repository fee. The live qualification is intentionally small and does not try to approach account quotas. Review Cloudflare's current [pricing](https://developers.cloudflare.com/artifacts/platform/pricing/) and [limits](https://developers.cloudflare.com/artifacts/platform/limits/) before enabling large projects.
 
 For the complete product contract, read the [Git history specification](../project/spec/git-history-spec.md) and [ADR 0026](../project/spec/decisions/0026-cloudflare-artifacts-configurable-git-handoff.md).

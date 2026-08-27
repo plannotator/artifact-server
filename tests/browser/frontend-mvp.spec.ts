@@ -1123,6 +1123,9 @@ test.describe("Artifact Server frontend MVP", () => {
       await fixture.page
         .getByRole("checkbox", {name: /Read artifacts/u})
         .click();
+      await fixture.page
+        .getByRole("checkbox", {name: /Manage comments/u})
+        .click();
       await fixture.page.getByRole("button", {name: "Issue API key", exact: true}).last().click();
       const secret = fixture.page.locator("code").filter({hasText: "as_key_"});
       await expect(secret).toBeVisible();
@@ -1137,6 +1140,7 @@ test.describe("Artifact Server frontend MVP", () => {
       });
 
       const keyCard = fixture.page.getByRole("article").filter({hasText: "Browser workflow key"});
+      await expect(keyCard.getByText("comment:write", {exact: true})).toBeVisible();
       await keyCard.getByRole("button", {name: "Rotate"}).click();
       await expect(fixture.page.locator("code").filter({hasText: "as_key_"})).toBeVisible();
       await fixture.page.getByRole("button", {name: "I stored it"}).click();

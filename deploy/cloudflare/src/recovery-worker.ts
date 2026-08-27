@@ -73,9 +73,17 @@ const stateQueries: readonly NamedQuery[] = [
   {name: "application_sessions", sql: "SELECT * FROM application_sessions ORDER BY id"},
   {name: "git_history_provider_identity", sql: "SELECT * FROM git_history_provider_identity ORDER BY installation_id"},
   {name: "git_history_project_settings", sql: "SELECT * FROM git_history_project_settings ORDER BY project_id"},
+  {name: "git_history_repositories", sql: "SELECT * FROM git_history_repositories ORDER BY artifact_id"},
+  {name: "git_history_jobs", sql: "SELECT * FROM git_history_jobs ORDER BY id"},
+  {name: "git_history_mappings", sql: "SELECT * FROM git_history_mappings ORDER BY installation_id, project_id, artifact_id, version_id"},
+  {name: "git_history_budget_reservations", sql: "SELECT * FROM git_history_budget_reservations ORDER BY job_id"},
   {name: "managed_api_keys", sql: "SELECT * FROM managed_api_keys ORDER BY id"},
   {name: "login_attempts", sql: "SELECT * FROM login_attempts ORDER BY state_digest"},
   {name: "mutation_checks", sql: "SELECT * FROM mutation_checks ORDER BY id"},
+  {name: "registered_agents", sql: "SELECT * FROM registered_agents ORDER BY id"},
+  {name: "agent_dispatches", sql: "SELECT * FROM agent_dispatches ORDER BY id"},
+  {name: "comment_threads", sql: "SELECT * FROM comment_threads ORDER BY id"},
+  {name: "comment_replies", sql: "SELECT * FROM comment_replies ORDER BY id"},
 ];
 
 export default {

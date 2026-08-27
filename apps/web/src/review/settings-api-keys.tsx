@@ -36,6 +36,7 @@ const capabilities: readonly {
   { description: "Open account-required artifact content.", label: "Issue content sessions", value: "content-session:issue" },
   { description: "Create, rename, archive, and unarchive projects.", label: "Manage projects", value: "project:manage" },
   { description: "Register a coding agent and claim dispatched annotations.", label: "Connect agents", value: "agent:connect" },
+  { description: "Read, reply to, and resolve review comments.", label: "Manage comments", value: "comment:write" },
 ];
 
 /** Format one instant as the browser's local wall-clock minute value. */
