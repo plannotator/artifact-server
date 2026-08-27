@@ -121,7 +121,13 @@ const sessionResponseSchema = z.object({
 });
 
 const issuedKeySchema = z.object({
-  apiKey: z.object({id: z.string()}),
+  apiKey: z.object({
+    authorizedByPrincipalId: z.string(),
+    id: z.string(),
+    principalId: z.string(),
+    principalKind: z.enum(["human", "service"]),
+    rotatedFromId: z.string().nullable(),
+  }),
   token: z.string().startsWith("as_key_"),
 });
 
@@ -1020,7 +1026,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     }
   });
 
-  test("external-storage foundation: browser sessions, managed keys, and staged uploads cross process boundaries", async () => {
+  test("external-storage foundation: sessions, managed keys, and staged uploads cross process boundaries", async () => {
     expect.hasAssertions();
     const externalStorageIdentity = {
       apiToken: managedTestKey("identity-runtime"),
@@ -1104,6 +1110,12 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     );
     expect(rotateResponse.status).toBe(201);
     const rotated = issuedKeySchema.parse(await rotateResponse.json());
+    expect(rotated.apiKey).toMatchObject({
+      authorizedByPrincipalId: issued.apiKey.authorizedByPrincipalId,
+      principalId: issued.apiKey.principalId,
+      principalKind: issued.apiKey.principalKind,
+      rotatedFromId: issued.apiKey.id,
+    });
     expect(await bearerStatus(second.baseUrl, issued.token)).toBe(401);
     expect(await bearerStatus(second.baseUrl, rotated.token)).toBe(200);
 

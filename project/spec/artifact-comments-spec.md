@@ -188,7 +188,7 @@ Reuses `AuthorizationService` (`src/application/authorization.ts`) with three ad
 
 Owner's rule (August 17, 2026): you can edit only what you wrote; an administrator can delete anyone's comment but cannot rewrite it. Nobody except the author can change the words attributed to that author. This is stricter than Workspaces (edit-gated, no author gate) on purpose: Artifact Server has per-person accounts, an audit ledger, and agents posting under service principals, so an agent or coworker must not be able to alter a person's note. Deleting a thread by an administrator also deletes its replies (section 3, invariant 4) and records `comment_delete` with the administrator as principal.
 
-Author identity for a service principal is the key's `principalId` (`service:key_…`), so a rotated key is a different author; that is acceptable and matches how the action ledger already attributes keys.
+Author identity for a service principal is the key's `principalId` (`service:key_…`). Rotation replaces the credential without changing that principal, so comments and action records remain attributed to the same author.
 
 ## 6. Application service
 

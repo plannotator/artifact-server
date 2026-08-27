@@ -1381,8 +1381,8 @@ requirements:
     owner: authorization
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
-      behavior: {id: AUTH-009-B, description: "Issue, constrain, rotate, expire, and revoke human and service API keys and observe the documented principal."}
-      failure: {id: AUTH-009-F, description: "Cross-installation, over-scoped, expired, revoked, malformed, and JWT-like API keys are rejected without parser confusion."}
+      behavior: {id: AUTH-009-B, description: "Issue, constrain, rotate, expire, and revoke human and service API keys; rotation preserves the effective principal and original authorizer while replacing only the credential."}
+      failure: {id: AUTH-009-F, description: "Cross-installation, over-scoped, expired, revoked, replaced, malformed, and JWT-like API keys are rejected without parser confusion."}
     deployments: *external_storage
     status: specified
     depends_on: [AUTH-008]

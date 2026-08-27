@@ -735,7 +735,6 @@ function makeInstallationAccessService(
       createdAt: now.toISOString(),
       id: replacementId,
       prefix: token.slice(0, Math.min(token.length, 32)),
-      principalId: `service:${replacementId}`,
       revokedAt: null,
       rotatedFromId: previous.id,
       secretDigest: dependencies.secrets.digest(token),
