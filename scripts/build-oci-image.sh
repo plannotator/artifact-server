@@ -9,7 +9,7 @@ artifactserver_version=$(node -p \
 artifactserver_revision=$(git -C "$artifactserver_repository" rev-parse HEAD)
 artifactserver_created=$(git -C "$artifactserver_repository" show -s --format=%cI HEAD)
 artifactserver_source=${ARTIFACT_SERVER_IMAGE_SOURCE:-}
-artifactserver_image_tag=${ARTIFACT_SERVER_IMAGE_TAG:-"artifactserver.com/artifact-server:$artifactserver_version"}
+artifactserver_image_tag=${ARTIFACT_SERVER_IMAGE_TAG:-"ghcr.io/plannotator/artifact-server:$artifactserver_version"}
 artifactserver_sbom_scanner="docker.io/docker/buildkit-syft-scanner:stable-1@sha256:79e7b013cbec16bbb436f312819a49a4a57752b2270c1a9332ae1a10fcc82a68"
 artifactserver_source_tree_clean=true
 if [[ -n "$(git -C "$artifactserver_repository" status --porcelain --untracked-files=normal)" ]]; then

@@ -1,4 +1,4 @@
-# @artifact-server/opencode-extension
+# @plannotator/artifact-server-opencode
 
 The Artifact Server bridge for [OpenCode](https://opencode.ai). It connects
 an OpenCode instance to an Artifact Server installation so that annotation
@@ -40,7 +40,7 @@ Add the package to your OpenCode config:
 ```json title="opencode.json"
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@artifact-server/opencode-extension"]
+  "plugin": ["@plannotator/artifact-server-opencode"]
 }
 ```
 

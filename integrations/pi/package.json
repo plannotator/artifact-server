@@ -1,6 +1,6 @@
 {
-  "name": "@artifact-server/pi-extension",
-  "version": "0.0.0",
+  "name": "@plannotator/artifact-server-pi",
+  "version": "0.1.0",
   "description": "Pi coding-agent bridge for Artifact Server: receives annotation bundles as follow-up work and closes them through the comment API.",
   "type": "module",
   "keywords": [
@@ -24,11 +24,19 @@
     "@plannotator/agent-bridge": "^0.1.1"
   },
   "peerDependencies": {
-    "typebox": "*"
+    "typebox": "^1.3.7"
   },
   "devDependencies": {
     "typebox": "1.3.7",
     "typescript": "7.0.2"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "directory": "integrations/pi",
+    "type": "git",
+    "url": "git+https://github.com/plannotator/artifact-server.git"
+  }
 }
