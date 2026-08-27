@@ -72,9 +72,14 @@ test.describe("DRF-002 draft isolation", () => {
       // departing principal's drafts and nobody else's.
       await page.getByRole("link", {name: "Open settings"}).click();
       await page.getByRole("button", {name: "Sign out"}).click();
+      // Sign-out purges the drafts and then navigates to /review. Reading
+      // storage while that navigation is in flight destroys the evaluate's
+      // execution context, so wait for the landing page first and treat a
+      // mid-navigation read as "not yet" rather than a failure.
+      await page.waitForURL(/\/review(?:[?#]|$)/u);
       await expect.poll(() => page.evaluate(
         () => Object.keys(localStorage).filter((key) => key.startsWith("draft:")),
-      )).toEqual([foreignKey]);
+      ).catch(() => null)).toEqual([foreignKey]);
       await localLogin(fixture);
       await page.goto(reviewUrl);
       await page.getByRole("tab", {name: "Comments"}).click();
