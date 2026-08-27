@@ -38,6 +38,7 @@ import {
   agentDispatchStates,
   artifactActionKinds,
   commentThreadStates,
+  dispatchHoldsCommentThread,
   dispatchedThreadFilters,
   fileDispositions,
   parseStoredAgentCapabilities,
@@ -1152,6 +1153,19 @@ export function createD1ArtifactRepository(
       );
     }
     return row;
+  };
+  const readThreadDispatchState = async (
+    projectId: string,
+    artifactId: string,
+    threadId: string,
+  ): Promise<AgentDispatchState | null> => {
+    const row = await database.prepare(`
+      SELECT d.state AS state
+      FROM comment_threads t
+      LEFT JOIN agent_dispatches d ON d.id = t.dispatch_id
+      WHERE t.id = ? AND t.project_id = ? AND t.artifact_id = ?
+    `).bind(threadId, projectId, artifactId).first<{state: string | null}>();
+    return agentDispatchStateSchema.nullable().parse(row?.state ?? null);
   };
   const readIdempotentThreadRowOrNull = async (
     projectId: string,
@@ -3161,6 +3175,14 @@ export function createD1ArtifactRepository(
       const commentAction = commentActionIdentity(command.threadId);
       try {
         const results = await database.batch([
+          ...mutationGuardStatements(
+            `comment-delete-dispatch:${command.projectId}:${command.threadId}`,
+            `SELECT 1 FROM comment_threads t
+             LEFT JOIN agent_dispatches d ON d.id = t.dispatch_id
+             WHERE t.id = ? AND t.project_id = ? AND t.artifact_id = ?
+               AND (d.state IS NULL OR d.state NOT IN ('queued', 'claimed', 'delivered'))`,
+            [command.threadId, command.projectId, command.artifactId],
+          ),
           commentActionStatement(
             {
               action: artifactActionKinds.commentDelete,
@@ -3193,7 +3215,7 @@ export function createD1ArtifactRepository(
           ),
         ]);
         return {
-          deletedReplyCount: results[1]?.meta.changes ?? 0,
+          deletedReplyCount: results[3]?.meta.changes ?? 0,
           thread: commentThreadFromRow(row),
         };
       } catch (cause) {
@@ -3203,6 +3225,14 @@ export function createD1ArtifactRepository(
           command.threadId,
         );
         if (existing === null) throw missingComment();
+        const dispatchState = await readThreadDispatchState(
+          command.projectId,
+          command.artifactId,
+          command.threadId,
+        );
+        if (dispatchHoldsCommentThread(dispatchState)) {
+          throw dispatchedCommentDeletionConflict();
+        }
         throw cause;
       }
     },
@@ -3228,12 +3258,10 @@ export function createD1ArtifactRepository(
       let skippedDispatched = 0;
       const deletable: z.infer<typeof clearableThreadRowSchema>[] = [];
       for (const row of rows) {
-        // Clearing never yanks work out from under an agent: a thread held
-        // by an active dispatch stays, and the caller learns how many did.
-        if (
-          row.dispatchState === agentDispatchStates.queued ||
-          row.dispatchState === agentDispatchStates.claimed
-        ) {
+        // Clearing never yanks work out from under an agent: a thread held by
+        // a queued, claimed, or delivered dispatch stays, and the caller
+        // learns how many did.
+        if (dispatchHoldsCommentThread(row.dispatchState)) {
           skippedDispatched += 1;
           continue;
         }
@@ -4076,6 +4104,13 @@ function replayedReply(
 
 function missingDispatch(): AgentDispatchNotFound {
   return new AgentDispatchNotFound({message: "The dispatch does not exist."});
+}
+
+function dispatchedCommentDeletionConflict(): DispatchStateConflict {
+  return new DispatchStateConflict({
+    message:
+      "This comment has been sent to an agent and cannot be deleted until the dispatch is complete.",
+  });
 }
 
 function requireClaimHolder(

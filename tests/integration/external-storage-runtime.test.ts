@@ -109,6 +109,8 @@ const projectGitHistoryResponseSchema = z.object({
   }).strict(),
 }).strict();
 
+const taggedFailureSchema = z.object({_tag: z.string()}).loose();
+
 const sessionResponseSchema = z.object({
   authenticationMethod: z.literal("session"),
   principal: z.object({
@@ -2294,6 +2296,198 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       await database.close();
     }
     await server.stop();
+  });
+
+  test("external-storage foundation: Postgres protects dispatched comments atomically through every dispatch state", async () => {
+    expect.hasAssertions();
+    const identity = {
+      apiToken: managedTestKey("postgres-dispatch-deletion"),
+      installationId: `postgres-dispatch-deletion-${randomUUID()}`,
+    };
+    const server = await startInProcessExternalStorageServer(environment, identity);
+    const published = await publishNew(server.baseUrl, identity.apiToken, {
+      content: "<p>dispatch deletion target</p>",
+      idempotencyKey: `dispatch-deletion-publish-${randomUUID()}`,
+      name: "Dispatch deletion target",
+    });
+    const artifactId = published.body.artifact.id;
+    const versionId = published.body.version.id;
+    const sender = managedTestPrincipal(identity.apiToken);
+    const baseInstant = Date.now();
+    let clockOffset = 0;
+    const now = (): string =>
+      new Date(baseInstant + ++clockOffset * 1_000).toISOString();
+    const database = await PostgresDatabase.open({
+      maxConnections: 2,
+      url: Redacted.make(environment.databaseUrl),
+    }, "validate");
+    try {
+      const repository = await PostgresArtifactRepository.open(
+        database,
+        identity.installationId,
+      );
+      const agent = await repository.registerAgent({
+        agentSessionId: "pi-session-dispatch-deletion",
+        capabilities: {beacon: false, evidence: "native"},
+        connectionKey: `dispatch-deletion-${randomUUID()}`,
+        displayName: "deletion worker",
+        id: `agt_${randomUUID()}`,
+        installationId: identity.installationId,
+        kind: "pi",
+        principalId: sender.principalId,
+        registeredAt: now(),
+        workingDirectory: "/work/deletion-worker",
+      });
+      const annotate = async (body: string): Promise<string> => {
+        const created = await createCommentThread(
+          server.baseUrl,
+          identity.apiToken,
+          {artifactId, versionId},
+          `dispatch-deletion-thread-${randomUUID()}`,
+          {body, path: "index.html"},
+        );
+        expect(created.response.status).toBe(201);
+        return commentCreationSchema.parse(created.body).thread.id;
+      };
+      const remove = (threadId: string) => repository.deleteThread({
+        artifactId,
+        authorizedByPrincipalId: sender.authorizedByPrincipalId,
+        deletedAt: now(),
+        principalId: sender.principalId,
+        projectId: defaultProjectId,
+        threadId,
+      });
+      const send = (threadId: string) => repository.createDispatch({
+        agentDisplayName: agent.displayName,
+        agentId: agent.id,
+        createdAt: now(),
+        id: `dsp_${randomUUID()}`,
+        idempotencyKey: `dispatch-deletion-send-${randomUUID()}`,
+        installationId: identity.installationId,
+        note: null,
+        projectId: defaultProjectId,
+        sender,
+        threadIds: [threadId],
+      });
+
+      const canceledThread = await annotate("Cancel this work.");
+      const canceledDispatch = await send(canceledThread);
+      await expect(remove(canceledThread)).rejects.toMatchObject({
+        _tag: "DispatchStateConflict",
+      });
+      await repository.cancelDispatch({
+        canceledAt: now(),
+        dispatchId: canceledDispatch.dispatch.id,
+        installationId: identity.installationId,
+        projectId: defaultProjectId,
+      });
+      await expect(remove(canceledThread)).resolves.toMatchObject({
+        thread: {id: canceledThread},
+      });
+
+      const failedThread = await annotate("Fail this work.");
+      const failedDispatch = await send(failedThread);
+      expect(await repository.claimNextDispatch(agent.id, now(), true))
+        .toMatchObject({id: failedDispatch.dispatch.id, state: "claimed"});
+      await expect(remove(failedThread)).rejects.toMatchObject({
+        _tag: "DispatchStateConflict",
+      });
+      await repository.markFailed({
+        agentId: agent.id,
+        dispatchId: failedDispatch.dispatch.id,
+        failedAt: now(),
+        installationId: identity.installationId,
+        reason: "Test delivery failure",
+      });
+      await expect(remove(failedThread)).resolves.toMatchObject({
+        thread: {id: failedThread},
+      });
+
+      const addressedThread = await annotate("Address this work.");
+      const addressedDispatch = await send(addressedThread);
+      expect(await repository.claimNextDispatch(agent.id, now(), true))
+        .toMatchObject({id: addressedDispatch.dispatch.id, state: "claimed"});
+      await repository.markDelivered({
+        agentId: agent.id,
+        deliveredAt: now(),
+        dispatchId: addressedDispatch.dispatch.id,
+        installationId: identity.installationId,
+      });
+      await expect(remove(addressedThread)).rejects.toMatchObject({
+        _tag: "DispatchStateConflict",
+      });
+      await expect(repository.clearThreads({
+        artifactId,
+        authorizedByPrincipalId: sender.authorizedByPrincipalId,
+        clearedAt: now(),
+        principalId: sender.principalId,
+        projectId: defaultProjectId,
+        scope: "all",
+        versionId: null,
+      })).resolves.toEqual({deleted: 0, skippedDispatched: 1});
+      expect((await patchCommentThread(
+        server.baseUrl,
+        identity.apiToken,
+        artifactId,
+        addressedThread,
+        {state: "resolved"},
+      )).status).toBe(200);
+      expect(await repository.observeAddressed(
+        addressedDispatch.dispatch.id,
+        now(),
+      )).toMatchObject({state: "addressed"});
+      await expect(repository.clearThreads({
+        artifactId,
+        authorizedByPrincipalId: sender.authorizedByPrincipalId,
+        clearedAt: now(),
+        principalId: sender.principalId,
+        projectId: defaultProjectId,
+        scope: "all",
+        versionId: null,
+      })).resolves.toEqual({deleted: 1, skippedDispatched: 0});
+
+      const racedThread = await annotate("Race this work.");
+      const [sent, deleted] = await Promise.allSettled([
+        send(racedThread),
+        remove(racedThread),
+      ]);
+      expect([sent.status, deleted.status].filter((status) =>
+        status === "fulfilled"
+      )).toHaveLength(1);
+      const raceOutcome = sent.status === "fulfilled"
+        ? {
+          deletedTag: deleted.status === "rejected"
+            ? taggedFailureSchema.parse(deleted.reason)._tag
+            : "committed",
+          dispatchedThreadIds: (await repository.findDispatch(
+            identity.installationId,
+            sent.value.dispatch.id,
+            now(),
+          ))?.threadIds,
+          sentTag: "committed",
+        }
+        : {
+          deletedTag: deleted.status === "fulfilled"
+            ? "committed"
+            : taggedFailureSchema.parse(deleted.reason)._tag,
+          dispatchedThreadIds: [],
+          sentTag: taggedFailureSchema.parse(sent.reason)._tag,
+        };
+      expect(raceOutcome).toEqual(sent.status === "fulfilled"
+        ? {
+          deletedTag: "DispatchStateConflict",
+          dispatchedThreadIds: [racedThread],
+          sentTag: "committed",
+        }
+        : {
+          deletedTag: "committed",
+          dispatchedThreadIds: [],
+          sentTag: "InvalidDispatch",
+        });
+    } finally {
+      await database.close();
+      await server.stop();
+    }
   });
 });
 

@@ -1419,6 +1419,7 @@ function classifyCommentFailure(
     cause instanceof ArtifactNotFound ||
     cause instanceof CommentNotFound ||
     cause instanceof CommentResolved ||
+    cause instanceof DispatchStateConflict ||
     cause instanceof IdempotencyConflict ||
     cause instanceof InvalidComment ||
     cause instanceof VersionNotFound

@@ -51,6 +51,10 @@ const threadPageSchema = z.object({
   items: z.array(z.object({id: z.string()}).loose()),
   nextCursor: z.string().nullable(),
 }).loose();
+const clearingSchema = z.object({
+  deleted: z.number().int().nonnegative(),
+  skippedDispatched: z.number().int().nonnegative(),
+}).strict();
 const agentSchema = z.object({
   agentSessionId: z.string().nullable(),
   capabilities: z.object({
@@ -187,6 +191,7 @@ describe("Cloudflare D1 agent dispatch", () => {
     expect(sent.dispatch.threadIds).toEqual([first, second]);
     expect(sent.dispatch.agentDisplayName).toBe("site");
     const dispatchId = sent.dispatch.id;
+    await expectDeleteBlocked(worker, published, first);
 
     const replay = await sendDispatch(worker, {
       agentId: agent.id,
@@ -237,6 +242,7 @@ describe("Cloudflare D1 agent dispatch", () => {
     expect(claimedDispatch.state).toBe("claimed");
     expect(claimedDispatch.claimedAt).not.toBeNull();
     expect(leaseMinutes(claimedDispatch)).toBe(5);
+    await expectDeleteBlocked(worker, published, first);
     // One-active-claim: the next poll answers empty while a claim is held.
     expect((await claimDispatch(worker, agent.id)).status).toBe(204);
 
@@ -259,10 +265,13 @@ describe("Cloudflare D1 agent dispatch", () => {
       (await readBody(delivered, dispatchEnvelopeSchema)).dispatch;
     expect(deliveredDispatch.state).toBe("delivered");
     expect(deliveredDispatch.deliveredAt).not.toBeNull();
+    await expectDeleteBlocked(worker, published, first);
 
     // Addressed is inferred from thread resolution on the read path, and only
     // once every bundle thread is resolved.
     await resolveThread(worker, published, first);
+    const clearedWhileDelivered = await clearThreads(worker, published, "resolved");
+    expect(clearedWhileDelivered).toEqual({deleted: 0, skippedDispatched: 1});
     expect((await getDispatch(worker, dispatchId, projectId)).state)
       .toBe("delivered");
     await resolveThread(worker, published, second);
@@ -728,6 +737,40 @@ function resolveThread(
   threadId: string,
 ): Promise<void> {
   return setThreadState(target, published, threadId, "resolved");
+}
+
+async function expectDeleteBlocked(
+  target: Unstable_DevWorker,
+  published: z.infer<typeof publicationSchema>,
+  threadId: string,
+): Promise<void> {
+  const response = await request(
+    target,
+    `/api/v1/artifacts/${published.artifact.id}/comments/${threadId}` +
+      `?projectId=${published.artifact.projectId}`,
+    {method: "DELETE"},
+  );
+  expect(response.status).toBe(409);
+  expect(failureSchema.parse(JSON.parse(await response.text())).error)
+    .toEqual({
+      code: "DISPATCH_STATE_CONFLICT",
+      message:
+        "This comment has been sent to an agent and cannot be deleted until the dispatch is complete.",
+    });
+}
+
+async function clearThreads(
+  target: Unstable_DevWorker,
+  published: z.infer<typeof publicationSchema>,
+  state: "all" | "resolved",
+): Promise<z.infer<typeof clearingSchema>> {
+  const response = await request(
+    target,
+    `/api/v1/projects/${published.artifact.projectId}` +
+      `/artifacts/${published.artifact.id}/comments/clear`,
+    {body: JSON.stringify({state}), method: "POST"},
+  );
+  return readBody(response, clearingSchema);
 }
 
 async function findD1DatabaseFile(directory: string): Promise<string> {

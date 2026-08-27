@@ -333,6 +333,21 @@ management rules. Reload and incremental polling refresh both thread summaries
 and reply bodies, so Review never shows a reply count without the corresponding
 conversation.
 
+### Dispatch-bound comment deletion
+
+A dispatch package is an immutable delivery and audit record. A comment thread
+that belongs to a `queued`, `claimed`, or `delivered` dispatch cannot be deleted
+individually or by bulk clear. Single deletion returns
+`409 DISPATCH_STATE_CONFLICT`; bulk clear leaves the thread in place and includes
+it in `skippedDispatched`. Deletion becomes available after the dispatch is
+`addressed`, `failed`, or `canceled`.
+
+Every persistence backend decides dispatch membership and deletion in one
+atomic write transaction. A concurrent send and delete therefore commits one
+complete outcome: either the immutable dispatch retains an existing thread, or
+the deletion wins and dispatch creation is rejected. The server never rewrites
+an existing dispatch package to remove a deleted thread.
+
 `apps/web/src/api/client.ts` gains the eight comment calls plus the file read, with zod schemas mirroring section 7.
 
 ## 9a. Review viewer architecture

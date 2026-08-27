@@ -2489,6 +2489,25 @@ requirements:
         run: project/evidence/browser.json
         recorded_at: "2026-08-25T19:16:53.330Z"
 
+  - id: CMT-020
+    kind: constraint
+    behavior: A comment thread referenced by a queued, claimed, or delivered dispatch cannot be deleted singly or by bulk clear; addressed, failed, and canceled dispatches release their threads, and every backend decides dispatch membership and deletion atomically without rewriting the dispatch package.
+    owner: artifact-comments
+    source: {file: artifact-comments-spec.md, anchor: dispatch-bound-comment-deletion}
+    acceptance:
+      behavior: {id: CMT-020-B, description: "Single deletion returns DISPATCH_STATE_CONFLICT for queued, claimed, and delivered dispatches; bulk clear skips and counts those threads; addressed, failed, and canceled dispatches permit deletion without changing the dispatch record."}
+      failure: {id: CMT-020-F, description: "A concurrent dispatch creation and comment deletion on SQLite or Postgres commits exactly one complete outcome: either the dispatch keeps an existing thread or deletion succeeds and dispatch creation is rejected."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: SQLite conformance evidence plus Postgres integration and D1 runtime qualification prove the deletion guard and atomic race behavior. Equivalent recorded evidence for every deployed-team target remains unrecorded.
+    depends_on: [CMT-008, CMT-011, DSP-003, DSP-007, PRS-005]
+    evidence:
+      - deployment: local
+        tests: [CMT-020-B, CMT-020-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-27T00:19:45.636Z"
+
   - id: ADM-001
     kind: behavior
     behavior: Artifact Server ships one canonical React application for Review and settings, plus the isolated Review frame; every former application route redirects to the equivalent canonical destination without serving or loading a legacy application bundle.

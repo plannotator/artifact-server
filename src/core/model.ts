@@ -529,6 +529,15 @@ export const agentDispatchStates = {
 export type AgentDispatchState =
   (typeof agentDispatchStates)[keyof typeof agentDispatchStates];
 
+/** Whether a dispatch still owns the immutable membership of its threads. */
+export function dispatchHoldsCommentThread(
+  state: AgentDispatchState | null,
+): boolean {
+  return state === agentDispatchStates.queued ||
+    state === agentDispatchStates.claimed ||
+    state === agentDispatchStates.delivered;
+}
+
 /** One bundle of comment threads sent to one registered agent. */
 export interface AgentDispatchRecord {
   readonly addressedAt: string | null;
