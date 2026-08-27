@@ -7,7 +7,18 @@ on:
     types: [checks_requested]
   push:
     branches: [main]
+  schedule:
+    - cron: "17 9 * * *"
   workflow_dispatch:
+    inputs:
+      tier:
+        description: Gate tier to run on the selected branch
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - pr
 
 permissions:
   contents: read
@@ -17,48 +28,204 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  portable:
-    name: macOS
-    runs-on: macos-14
-    timeout-minutes: 20
+  build:
+    name: PR / Build and static policy
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.tier == 'pr')
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
       - name: Install pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 10.34.3
-
       - name: Install Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.15.0
           cache: pnpm
-
       - name: Install Ruby
         uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
         with:
           ruby-version: "3.3"
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Verify CI full-gate definition
+        run: pnpm check:ci
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Build application
+        run: pnpm build
+      - name: Verify public site
+        run: pnpm verify:site
+      - name: Validate conformance ledger
+        run: pnpm conformance:validate
+      - name: Validate conformance test IDs
+        run: pnpm conformance:tests
+      - name: Verify AWS Pulumi project
+        run: pnpm test:aws-pulumi
+      - name: Verify GCP Pulumi project
+        run: pnpm test:gcp-pulumi
+      - name: Upload compiled application
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pr-compiled-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 2
 
-      - name: Verify portable code paths
-        run: pnpm check
-
-  gates:
-    name: Linux gates
+  unit:
+    name: PR / Unit and conformance behavior
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.tier == 'pr')
+    needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 12
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.3
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Download compiled application
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: pr-compiled-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist
+      - name: Verify compiled application
+        run: test -f dist/cli/main.js && test -f dist/web/review.html
+      - name: Run root behavior and conformance tests
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: pnpm test
 
+  browser:
+    name: PR / Browser behavior
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.tier == 'pr')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.3
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Download compiled application
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: pr-compiled-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist
+      - name: Verify compiled web application
+        run: test -f dist/web/review.html
+      - name: Run browser tests
+        run: pnpm test:web:prebuilt
+      - name: Upload browser diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pr-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/browser/
+          if-no-files-found: warn
+          retention-days: 7
+
+  cloudflare:
+    name: PR / Cloudflare deployment
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.tier == 'pr')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.3
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Download compiled application
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: pr-compiled-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist
+      - name: Verify compiled web application
+        run: test -f dist/web/review.html
+      - name: Run Cloudflare checks
+        run: pnpm check:cloudflare:prebuilt
+
+  portable:
+    name: macOS portability
+    runs-on: macos-14
+    timeout-minutes: 12
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.3
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          cache: pnpm
+      - name: Install Ruby
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: "3.3"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify portable code paths
+        run: pnpm check
+
+  full:
+    name: Full / Linux iteration gate
+    if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.tier == 'full')
+    runs-on: ubuntu-latest
+    timeout-minutes: 47
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Reclaim unused runner disk
         run: |
           df -h /
@@ -68,29 +235,23 @@ jobs:
             /usr/local/share/boost \
             /usr/share/dotnet
           df -h /
-
       - name: Install pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 10.34.3
-
       - name: Install Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.15.0
           cache: pnpm
-
       - name: Install Ruby
         uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
         with:
           ruby-version: "3.3"
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
-
       - name: Enable the containerd image store
         run: |
           artifactserver_daemon_config=$(mktemp)
@@ -111,7 +272,6 @@ jobs:
           sudo systemctl restart docker
           docker info --format '{{json .DriverStatus}}' \
             | grep -F 'io.containerd.snapshotter.v1'
-
       - name: Prepare attestation-capable BuildKit
         run: |
           docker buildx create \
@@ -120,8 +280,61 @@ jobs:
             --name artifact-server-ci \
             --use
           docker buildx inspect --bootstrap
+      - name: Verify CI full-gate definition
+        run: pnpm check:ci
 
-      - name: Run the iteration gate
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
-        run: pnpm verify:iteration
+      # full-gate-command: pnpm check
+      - name: Check correctness and static contracts
+        run: pnpm check
+      # full-gate-command: pnpm test:web
+      - name: Test browser behavior
+        run: pnpm test:web
+      # full-gate-command: pnpm test:aws-pulumi
+      - name: Test AWS Pulumi project
+        run: pnpm test:aws-pulumi
+      # full-gate-command: pnpm test:gcp-pulumi
+      - name: Test GCP Pulumi project
+        run: pnpm test:gcp-pulumi
+      # full-gate-command: pnpm verify:object-storage
+      - name: Verify object storage
+        run: pnpm verify:object-storage
+      # full-gate-command: pnpm test:external-storage-runtime
+      - name: Test external-storage runtime
+        run: pnpm test:external-storage-runtime
+      # full-gate-command: pnpm test:coverage
+      - name: Report coverage
+        run: pnpm test:coverage
+      # full-gate-command: pnpm test:local-package
+      - name: Test local package
+        run: pnpm test:local-package
+      # full-gate-command: pnpm perf:baseline
+      - name: Record local performance baseline
+        run: pnpm perf:baseline
+      # full-gate-command: pnpm perf:capacity
+      - name: Record server capacity baseline
+        run: pnpm perf:capacity
+      # full-gate-command: pnpm test:compact-compose
+      - name: Test compact Compose
+        run: pnpm test:compact-compose
+      # full-gate-command: pnpm test:external-storage-compose
+      - name: Test external-storage Compose
+        run: pnpm test:external-storage-compose
+      # full-gate-command: pnpm verify:helm
+      - name: Verify Helm release
+        run: pnpm verify:helm
+      # full-gate-command: pnpm test:oidc
+      - name: Test generic OIDC
+        run: pnpm test:oidc
+
+      - name: Upload full-gate evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: full-gate-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            project/evidence/*.json
+            coverage/
+            test-results/
+            release/*.manifest.json
+            release/*.tgz
+          if-no-files-found: error
+          retention-days: 14
