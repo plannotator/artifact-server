@@ -1,0 +1,332 @@
+name: Verify Published Installation
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to verify
+        required: true
+        default: v0.1.0
+        type: string
+      source_run_id:
+        description: Tagged Release dry-run ID; leave empty to verify a published release
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: install-verify-${{ inputs.release_tag || github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  node-package:
+    name: Node package / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    permissions:
+      actions: read
+      attestations: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    steps:
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          package-manager-cache: false
+      - name: Download, verify, and exercise the Node package
+        env:
+          ARTIFACTSERVER_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          ARTIFACTSERVER_TAG: ${{ inputs.release_tag || github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/artifact-server-install"
+          assets="$work/assets"
+          install="$work/install"
+          data="$work/data"
+          mkdir -p "$assets" "$install"
+
+          if [[ -n "$ARTIFACTSERVER_SOURCE_RUN_ID" ]]; then
+            gh run download "$ARTIFACTSERVER_SOURCE_RUN_ID" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern 'release-public-*' \
+              --dir "$assets"
+          else
+            gh release download "$ARTIFACTSERVER_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --dir "$assets"
+          fi
+
+          checksums=$(find "$assets" -type f -name SHA256SUMS -print -quit)
+          if [[ -z "$checksums" ]]; then
+            printf 'SHA256SUMS is missing from the downloaded release assets.\n' >&2
+            exit 1
+          fi
+          release_directory=$(dirname "$checksums")
+          if command -v sha256sum >/dev/null 2>&1; then
+            (cd "$release_directory" && sha256sum --check --strict SHA256SUMS)
+          else
+            (cd "$release_directory" && shasum -a 256 --check SHA256SUMS)
+          fi
+
+          version=${ARTIFACTSERVER_TAG#v}
+          archive="$release_directory/artifact-server-$version-node.tar.gz"
+          if [[ ! -f "$archive" ]]; then
+            printf 'The Node package for %s is missing.\n' "$ARTIFACTSERVER_TAG" >&2
+            exit 1
+          fi
+          if [[ -z "$ARTIFACTSERVER_SOURCE_RUN_ID" ]]; then
+            gh attestation verify "$archive" \
+              --repo "$GITHUB_REPOSITORY" \
+              --deny-self-hosted-runners
+          else
+            printf '%s\n' \
+              '::notice::Dry-run assets are checksum-verified; attestations exist only for tagged releases.'
+          fi
+
+          tar -xzf "$archive" -C "$install"
+          artifactserver="$install/artifactserver/bin/artifactserver"
+          test -x "$artifactserver"
+          test "$("$artifactserver" --version)" = "$version"
+
+          fixture="$work/install-proof.html"
+          printf '%s\n' '<!doctype html><title>Clean install proof</title>' > "$fixture"
+          "$artifactserver" start --data "$data" --port 8787 > "$work/server.log" 2>&1 &
+          server_pid=$!
+          cleanup() {
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+            if [[ -f "$data/local-service.json" ]]; then
+              managed_pid=$(node -p \
+                "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8')).pid" \
+                "$data/local-service.json")
+              kill "$managed_pid" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+          for attempt in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:8787/ready >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" == 40 ]]; then
+              cat "$work/server.log" >&2
+              exit 1
+            fi
+            sleep 0.25
+          done
+
+          publication=$("$artifactserver" publish "$fixture" \
+            --data "$data" \
+            --server http://127.0.0.1:8787 \
+            --token-file "$data/local-api-token" \
+            --public)
+          ARTIFACTSERVER_PUBLICATION="$publication" node --input-type=module <<'NODE'
+          import {request} from "node:http";
+          const publication = JSON.parse(process.env.ARTIFACTSERVER_PUBLICATION);
+          const published = new URL(publication.links.version);
+          const content = await new Promise((resolve, reject) => {
+            const incoming = request({
+              headers: {host: published.host},
+              hostname: "127.0.0.1",
+              path: `${published.pathname}${published.search}`,
+              port: 8787,
+            }, (response) => {
+              let body = "";
+              response.setEncoding("utf8");
+              response.on("data", (chunk) => { body += chunk; });
+              response.on("end", () => {
+                if (response.statusCode !== 200) {
+                  reject(new Error(`Published content returned ${response.statusCode}.`));
+                  return;
+                }
+                resolve(body);
+              });
+            });
+            incoming.on("error", reject);
+            incoming.end();
+          });
+          if (!content.includes("Clean install proof")) {
+            throw new Error("Published content did not match the clean-install fixture.");
+          }
+          NODE
+
+          kill "$server_pid"
+          wait "$server_pid" || true
+          browser_command="$work/browser-command"
+          printf '%s\n' '#!/bin/sh' 'exit 0' > "$browser_command"
+          chmod 0700 "$browser_command"
+          open_output=$(ARTIFACT_SERVER_BROWSER_COMMAND="$browser_command" \
+            "$artifactserver" open --data "$data")
+          printf '%s\n' "$open_output" | grep -Eq 'https?://[^[:space:]]+'
+
+  image:
+    name: Immutable GHCR image / compact profile
+    if: github.event_name == 'release' || inputs.source_run_id == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      attestations: read
+      contents: read
+      packages: read
+    steps:
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          package-manager-cache: false
+      - name: Run the immutable image through the compact profile
+        env:
+          ARTIFACTSERVER_TAG: ${{ inputs.release_tag || github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/artifact-server-image-install"
+          mkdir -p "$work"
+          gh release download "$ARTIFACTSERVER_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern image-reference.txt \
+            --dir "$work"
+          image_reference=$(cat "$work/image-reference.txt")
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io \
+            --username "$GITHUB_ACTOR" \
+            --password-stdin
+          gh attestation verify "oci://$image_reference" \
+            --repo "$GITHUB_REPOSITORY" \
+            --bundle-from-oci \
+            --deny-self-hosted-runners
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/contents/packaging/compose/compose.yaml?ref=$ARTIFACTSERVER_TAG" \
+            --jq .content | base64 --decode > "$work/compose.yaml"
+          export ARTIFACT_SERVER_CONTENT_DOMAIN=content.example.net
+          export ARTIFACT_SERVER_IMAGE="$image_reference"
+          export ARTIFACT_SERVER_ORIGIN=https://artifacts.example.com
+          export ARTIFACT_SERVER_PORT=8787
+          export ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS=0
+          export ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE=0
+          export COMPOSE_PROJECT_NAME=artifact-server-install-verify
+          cleanup() {
+            docker compose --file "$work/compose.yaml" down --volumes \
+              --remove-orphans >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker compose --file "$work/compose.yaml" run --rm --no-deps \
+            artifact-server init \
+            --admin-email admin@example.test \
+            --data /var/lib/artifact-server/data
+          docker compose --file "$work/compose.yaml" up --detach
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8787/ready >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" == 60 ]]; then
+              docker compose --file "$work/compose.yaml" logs >&2
+              exit 1
+            fi
+            sleep 0.5
+          done
+
+          docker compose --file "$work/compose.yaml" exec -T artifact-server \
+            sh -c "printf '%s\\n' '<!doctype html><title>OCI install proof</title>' > /tmp/install-proof.html"
+          publication=$(docker compose --file "$work/compose.yaml" exec -T \
+            artifact-server node dist/cli/main.js publish /tmp/install-proof.html \
+            --server http://127.0.0.1:8787 \
+            --token-file /var/lib/artifact-server/data/secrets/api-token \
+            --public)
+          ARTIFACTSERVER_PUBLICATION="$publication" node --input-type=module <<'NODE'
+          import {request} from "node:http";
+          const publication = JSON.parse(process.env.ARTIFACTSERVER_PUBLICATION);
+          const published = new URL(publication.links.version);
+          const body = await new Promise((resolve, reject) => {
+            const incoming = request({
+              headers: {host: published.host},
+              hostname: "127.0.0.1",
+              path: `${published.pathname}${published.search}`,
+              port: 8787,
+            }, (response) => {
+              let content = "";
+              response.setEncoding("utf8");
+              response.on("data", (chunk) => { content += chunk; });
+              response.on("end", () => {
+                if (response.statusCode !== 200) {
+                  reject(new Error(`Published content returned ${response.statusCode}.`));
+                  return;
+                }
+                resolve(content);
+              });
+            });
+            incoming.on("error", reject);
+            incoming.end();
+          });
+          if (!body.includes("OCI install proof")) {
+            throw new Error("Published content did not match the OCI fixture.");
+          }
+          NODE
+
+  adapter:
+    name: Public npm adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Install and load the OpenCode adapter
+        env:
+          ARTIFACTSERVER_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          ARTIFACTSERVER_TAG: ${{ inputs.release_tag || github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: | # zizmor: ignore[adhoc-packages] This job proves the published package installs without the source lockfile.
+          set -euo pipefail
+          work="$RUNNER_TEMP/artifact-server-adapter-install"
+          prefix="$work/prefix"
+          mkdir -p "$prefix"
+          version=${ARTIFACTSERVER_TAG#v}
+          if [[ -n "$ARTIFACTSERVER_SOURCE_RUN_ID" ]]; then
+            assets="$work/assets"
+            mkdir -p "$assets"
+            gh run download "$ARTIFACTSERVER_SOURCE_RUN_ID" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern 'release-public-*' \
+              --dir "$assets"
+            package_spec=$(find "$assets" -type f \
+              -name "plannotator-artifact-server-opencode-$version.tgz" \
+              -print -quit)
+            if [[ -z "$package_spec" ]]; then
+              printf 'The OpenCode adapter tarball is missing.\n' >&2
+              exit 1
+            fi
+          else
+            package_spec="@plannotator/artifact-server-opencode@$version"
+          fi
+          npm install --global --prefix "$prefix" "$package_spec" tsx@4.23.12
+          adapter_entry="$prefix/lib/node_modules/@plannotator/artifact-server-opencode/index.ts"
+          test -f "$adapter_entry"
+          ARTIFACTSERVER_ADAPTER_ENTRY="$adapter_entry" node \
+            --import "$prefix/lib/node_modules/tsx/dist/loader.mjs" \
+            --input-type=module <<'NODE'
+          import {pathToFileURL} from "node:url";
+          const loaded = await import(pathToFileURL(process.env.ARTIFACTSERVER_ADAPTER_ENTRY));
+          if (typeof loaded.ArtifactServerBridge !== "function") {
+            throw new Error("The installed OpenCode adapter did not expose its plugin entry.");
+          }
+          NODE

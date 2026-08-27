@@ -403,15 +403,34 @@ jobs:
             printf '%s\n' \
               '::notice::npm provenance is deferred until the source repository is public.'
           fi
-          npm publish \
-            "release/public/plannotator-artifact-server-pi-$ARTIFACTSERVER_VERSION.tgz" \
-            "${provenance_args[@]}" --access public
-          npm publish \
-            "release/public/plannotator-artifact-server-opencode-$ARTIFACTSERVER_VERSION.tgz" \
-            "${provenance_args[@]}" --access public
-          npm publish \
-            "release/public/plannotator-artifact-server-claude-channel-$ARTIFACTSERVER_VERSION.tgz" \
-            "${provenance_args[@]}" --access public
+          publish_adapter() {
+            package_name=$1
+            archive=$2
+            local_integrity=$(node --input-type=module -e \
+              'import {createHash} from "node:crypto"; import {readFileSync} from "node:fs"; const bytes = readFileSync(process.argv[1]); process.stdout.write(`sha512-${createHash("sha512").update(bytes).digest("base64")}`);' \
+              "$archive")
+            if remote_integrity=$(npm view \
+              "$package_name@$ARTIFACTSERVER_VERSION" dist.integrity 2>/dev/null); then
+              if [[ "$remote_integrity" != "$local_integrity" ]]; then
+                printf 'npm already contains different bytes for %s@%s.\n' \
+                  "$package_name" "$ARTIFACTSERVER_VERSION" >&2
+                exit 1
+              fi
+              printf '::notice::%s@%s already contains the verified release bytes.\n' \
+                "$package_name" "$ARTIFACTSERVER_VERSION"
+              return
+            fi
+            npm publish "$archive" "${provenance_args[@]}" --access public
+          }
+          publish_adapter \
+            @plannotator/artifact-server-pi \
+            "release/public/plannotator-artifact-server-pi-$ARTIFACTSERVER_VERSION.tgz"
+          publish_adapter \
+            @plannotator/artifact-server-opencode \
+            "release/public/plannotator-artifact-server-opencode-$ARTIFACTSERVER_VERSION.tgz"
+          publish_adapter \
+            @plannotator/artifact-server-claude-channel \
+            "release/public/plannotator-artifact-server-claude-channel-$ARTIFACTSERVER_VERSION.tgz"
 
   release:
     name: Create GitHub prerelease
@@ -420,6 +439,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
+      actions: write
       contents: write
     steps:
       - name: Download downloadable release assets
@@ -439,3 +459,12 @@ jobs:
           --prerelease
           --generate-notes
           --title "Artifact Server $ARTIFACTSERVER_TAG"
+      - name: Dispatch published-install verification
+        env:
+          ARTIFACTSERVER_TAG: ${{ needs.verify.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh workflow run install-verify.yml
+          --repo "$GITHUB_REPOSITORY"
+          --ref main
+          --field release_tag="$ARTIFACTSERVER_TAG"

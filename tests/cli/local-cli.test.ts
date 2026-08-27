@@ -77,7 +77,7 @@ describe("local Artifact Server CLI", () => {
       );
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain(
-        "Opened the local Artifact Server application.",
+        "Opened the local Artifact Server application:",
       );
       const browserCredential = (await readFile(
         path.join(dataDirectory, "local-browser-token"),
@@ -90,6 +90,7 @@ describe("local Artifact Server CLI", () => {
       const serviceRecord = managedServiceRecordSchema.parse(JSON.parse(
         await readFile(path.join(dataDirectory, "local-service.json"), "utf8"),
       ));
+      expect(result.output).toContain(serviceRecord.origin);
       servicePid = serviceRecord.pid;
       expect((await fetch(new URL("/health", serviceRecord.origin))).status).toBe(200);
       expect((await fetch(loginUrl)).status).toBe(200);
