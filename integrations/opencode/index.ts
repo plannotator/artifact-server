@@ -252,29 +252,29 @@ export async function ArtifactServerBridge(
     }
   };
 
-  // `POST /session/:id/prompt_async` answers 204 once the prompt is
-  // accepted; the port's injection contract is synchronous, so a failure
-  // afterward can only be surfaced, not retried.
+  // `POST /session/:id/prompt_async` answers once OpenCode accepts the prompt.
+  // The bridge awaits this promise before it reports the dispatch delivered.
   const injectFollowUp = async (
     sessionId: string,
     text: string,
   ): Promise<void> => {
-    let failed = false;
     try {
       const answer = await input.client.session.promptAsync({
         body: {parts: [{text, type: "text"}]},
         path: {id: sessionId},
       });
-      failed = answer.error !== undefined;
-    } catch {
-      failed = true;
-    }
-    if (failed) {
+      if (answer.error !== undefined) {
+        throw new Error(
+          answer.error.message ?? "OpenCode refused the follow-up prompt.",
+        );
+      }
+    } catch (error) {
       notify(
         "Artifact Server: delivering the annotation bundle to the " +
           "OpenCode session failed.",
         "warning",
       );
+      throw error;
     }
   };
 
@@ -289,16 +289,14 @@ export async function ArtifactServerBridge(
         compaction.sessionId === targetSessionId &&
         Date.now() - compaction.startedAt < compactionFlagLifetimeMilliseconds),
     notify,
-    sendUserMessage: (text) => {
+    sendUserMessage: async (text) => {
       const sessionId = targetSessionId;
       if (sessionId === null) {
-        // isCompacting() held delivery while no session was known; losing
-        // the session between that check and this call means the handle is
-        // gone. Throwing ends the claim loop without reporting `delivered`,
-        // so the lease requeues the bundle instead of dropping it.
+        // Losing a target between the hold check and this asynchronous handoff
+        // refuses this dispatch without invalidating the OpenCode plugin.
         throw new Error("No OpenCode session is available for delivery.");
       }
-      void injectFollowUp(sessionId, text);
+      await injectFollowUp(sessionId, text);
     },
   };
 

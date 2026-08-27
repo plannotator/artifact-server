@@ -2857,6 +2857,25 @@ requirements:
         run: project/evidence/local-foundation.json
         recorded_at: "2026-08-18T20:30:21.763Z"
 
+  - id: DSP-013
+    kind: behavior
+    behavior: The bridge reports delivered only after its host admits the message. An asynchronous refusal fails that dispatch and leaves the bridge available for later work, while a synchronous invalidated host handle still ends the loop.
+    owner: agent-dispatch
+    source: {file: agent-dispatch-spec.md, anchor: conformance-and-testing}
+    acceptance:
+      behavior: {id: DSP-013-B, description: "Hold a claimed dispatch while host admission is pending, resolve that handoff, and observe delivery; after a separate refused handoff, observe the same bridge deliver the next bundle."}
+      failure: {id: DSP-013-F, description: "Delete an OpenCode target while its asynchronous handoff is pending and observe a failed dispatch with its comments returned to the open list, then select another session and deliver later work without restarting the bridge."}
+    deployments: [local]
+    status: behavior_verified
+    proof_gap: The shared bridge and OpenCode adapter are exercised through injected host ports against a real local server; live OpenCode and Claude transport acceptance remain adapter qualification checks.
+    depends_on: [DSP-009, DSP-012]
+    evidence:
+      - deployment: local
+        tests: [DSP-013-B, DSP-013-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-27T01:14:27.292Z"
+
   - id: BRP-001
     kind: behavior
     behavior: The extracted bridge core is host-agnostic. It drives a fake host through register, claim, deliver, reply, and resolve against a real server, and its module graph reaches no Pi code.

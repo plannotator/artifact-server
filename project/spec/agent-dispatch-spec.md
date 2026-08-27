@@ -1,6 +1,6 @@
 # Agent dispatch and the Pi bridge
 
-**Status:** Accepted (ADR 0021); implemented — DSP-001 through DSP-012 behavior-verified on the local deployment; the live-Pi proofs stay outside the ledger as the owner-run `integrations/pi/VERIFY.md` pass and the `test:pi-live` suite, which is not part of `verify:iteration` (August 18, 2026)
+**Status:** Accepted (ADR 0021); implemented — DSP-001 through DSP-013 behavior-verified on the local deployment; the live-host proofs stay outside the ledger as owner-run adapter verification and live suites that are not part of `verify:iteration` (August 26, 2026)
 **Date:** August 18, 2026
 **Owner:** Artifact Server product engineering
 **Companion documents:** [Artifact comments](./artifact-comments-spec.md), [Conformance ledger](./conformance.yml), research synthesis (`project/research/alignment-study.md`), consultant packet (`project/research/`)
@@ -193,6 +193,7 @@ Ships as a **distributable npm package and standard Pi extension**: workspace pa
 - Stale handle (`/reload`, `/new`, `/resume`, `/fork` invalidate captured `pi` handles, which then throw): the loop treats a stale-handle throw as its shutdown signal; the replacement instance's `session_start` re-registers and resumes. A dispatch injected but not yet reported `delivered` at that moment is redelivered after lease expiry — at-least-once, matching the comment system's documented posture.
 - `session_shutdown`: abort the in-flight poll and fire a best-effort `POST /agents/:id/disconnect` — a crash that skips it costs nothing; the row just goes stale and is reaped.
 - Delivery truthfulness: `pi.sendUserMessage` is fire-and-forget (the extension wrapper discards the promise and routes rejections to Pi's error channel), so `delivered` means "accepted into Pi's queue by a live handle" — the strongest signal available without transcript inspection. Residual risk documented, mitigated by the compaction hold and lease redelivery.
+- Asynchronous host admission: the shared `HostPort.sendUserMessage` contract accepts `void | Promise<void>`. OpenCode awaits `promptAsync`; Claude awaits its channel notification. The bridge reports `delivered` only after that handoff resolves. An asynchronous rejection reports the dispatch `failed`, releases its comments, and leaves the loop running for later work. A synchronous throw remains the signal for an invalidated host handle and ends that loop. The bridge does not retry a rejected handoff because the host has no idempotency contract that can distinguish rejection from ambiguous admission.
 
 **Bundle rendering** — one message, never starting with `/` (Pi intercepts slash-prefixed input as commands):
 
@@ -223,7 +224,7 @@ Consumptive send, per the owner:
 
 ## 10. Conformance and testing
 
-New module `agent-dispatch` in `allowed_modules`; requirements `DSP-001…DSP-012`, entering as `specified` with empty evidence.
+New module `agent-dispatch` in `allowed_modules`; requirements `DSP-001…DSP-013`, entering as `specified` with empty evidence.
 
 | ID | Kind | Behavior (short) | Failure test |
 | --- | --- | --- | --- |
@@ -239,8 +240,9 @@ New module `agent-dispatch` in `allowed_modules`; requirements `DSP-001…DSP-01
 | DSP-010 | security | Sending and canceling require a direct human member or `artifact:manage:any`; the agent token cannot send; cross-project ids fail without disclosure. | An `agent:connect`-only key cannot create or cancel a dispatch. |
 | DSP-011 | behavior | The bridge core renders a bundle to the specified template (no leading slash, ordered items, tool instruction) and always injects with `followUp`. | A rendered message never begins with `/`; no code path passes `steer` or omits `deliverAs`. |
 | DSP-012 | behavior | The bridge core claim loop is fail-open: dormant without configuration, bounded backoff on errors, never propagates an exception into the host. | Backend-down and stale-handle scenarios end the loop or back off without a throw reaching the host contract. |
+| DSP-013 | behavior | Delivery waits for host admission. An asynchronous refusal fails only that dispatch and the loop remains available for later work. | A pending handoff remains claimed; rejection returns its comments to the open list; a later dispatch succeeds without restarting the bridge. A synchronous invalidated handle still ends the loop. |
 
-**Testing seam, per repo rules (no module mocks):** DSP-001..010 are conformance tests over the real HTTP app with a plain fetch "fake agent" client — the same real-boundary style as the CMT suite. DSP-011/012 test `bridge-core.ts`, which takes its dependencies as an explicit parameter contract — `{pi: PiPort, fetch, clock, log}` where `PiPort` is the narrow surface the bridge uses (`sendUserMessage`, `on`, `registerTool`, `ui.notify`) — constructor injection through a port, the repository's own architecture, not module interception; tests pass a recording implementation and drive the loop against the real HTTP server. What only a live Pi proves gets two layers:
+**Testing seam, per repo rules (no module mocks):** DSP-001..010 are conformance tests over the real HTTP app with a plain fetch "fake agent" client — the same real-boundary style as the CMT suite. DSP-011..013 test the published bridge package through an injected `HostPort` against the real HTTP server. OpenCode also runs through a structurally accurate fake plugin context against that server, including a target session deleted while `promptAsync` is pending. These are constructor-injected ports, not module interception. What only a live host proves stays in its adapter verification layer:
 
 1. **`integrations/pi/VERIFY.md`** — the scripted manual pass, kept because the owner runs it personally; recorded as manual evidence, never claimed by the ledger.
 2. **`test:pi-live`** — an automated end-to-end suite (separate script like `test:oidc`, NOT part of `verify:iteration` until proven stable) built on the owner's `@plannotator/webtui` (github.com/plannotator/webtui): it runs a real coding agent in a PTY via node-pty with programmatic session control (`createAgentTerminalSession`, `session.sendAgentMessage`, WebSocket-readable output). The suite boots a real Artifact Server on a temp data dir, spawns a REAL `pi` process with the bridge loaded (`pi -e integrations/pi/artifact-server.ts`), and asserts the live-only behaviors: (a) the full round trip — publish, comment, send a bundle while Pi is mid-task, Pi receives it only after its current work finishes, the `artifact_comments` tool replies and resolves, the dispatch reads `addressed`; (b) one-bundle-per-work-boundary drain order across three queued bundles; (c) the compaction hold; (d) `/resume` re-registration reclaiming the same agent id. Honest caveats: webtui is early-stage (a young repo, ~17 commits) and may need a Pi agent-config contribution before it can drive `pi`; PTY-driven agents are timing-sensitive, which is exactly why this suite stays out of the required gate until it has a flake-free track record.

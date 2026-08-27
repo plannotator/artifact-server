@@ -182,21 +182,22 @@ async function main(): Promise<void> {
         // channel log without entering the protocol stream on stdout.
         process.stderr.write(`${message}\n`);
       },
-      sendUserMessage: (text) => {
-        // Written to the transport fire-and-forget: resolution proves
-        // admission, not processing, which is this tier's evidence bound. A
-        // synchronous throw (transport gone) ends the claim loop fail-open.
-        void mcp
-          .notification({
+      sendUserMessage: async (text) => {
+        // Resolution proves transport admission, not model processing, which
+        // is this tier's evidence bound. A rejection fails this dispatch while
+        // leaving the channel available for later work.
+        try {
+          await mcp.notification({
             method: "notifications/claude/channel",
             params: {
               content: text,
               meta: {channel_kind: "artifact_server_dispatch"},
             },
-          })
-          .catch(() => {
-            process.stderr.write("Channel notification failed.\n");
           });
+        } catch (error) {
+          process.stderr.write("Channel notification failed.\n");
+          throw error;
+        }
       },
     },
     hostname: hostname(),
