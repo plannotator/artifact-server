@@ -27,6 +27,8 @@ export function configureOpenManagementCommand(
         currentCliInvocation(),
       )).origin;
       await openSystemBrowser(new URL(origin), process.env);
-      process.stdout.write("Opened the local Artifact Server application.\n");
+      process.stdout.write(
+        `Opened the local Artifact Server application: ${origin}\n`,
+      );
     });
 }
