@@ -2883,7 +2883,7 @@ packages:
     engines: {node: '>=14'}
 
   '@plannotator/agent-bridge@0.1.1':
-    resolution: {integrity: sha512-JLoj+HYP8PMscz1SNmVQA4X0Kf8a1KsiwmD0p5UU0nTACMqRXgqEiW0nOlTCD+0iLxL3fdmT/xB5MJMtA+qyVg==}
+    resolution: {integrity: sha512-3H6sWFH/mwnnGAwwxxCZs8ErtIPCgcwbTJz9FTq70IspFnwNmEiM7BENC1zdQHI/InirH/QuRiFoMd1XGgmipw==}
 
   '@plannotator/atomic-editor@0.8.0':
     resolution: {integrity: sha512-s4IaRrlFjluYvMVRS/XJjAaHVR5I/4yAxAFWlUHk74RE7W9BQO8lazWgYgNyRSYQtdlEZsJiPgzaDeOuocErWg==}
