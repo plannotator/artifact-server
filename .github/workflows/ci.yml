@@ -1,6 +1,13 @@
 name: CI
 
 on:
+  workflow_call:
+    inputs:
+      tier:
+        description: Gate tier to run from a calling workflow
+        required: false
+        default: release
+        type: string
   pull_request:
     branches: [main]
   merge_group:
@@ -24,13 +31,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ inputs.tier }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:
     name: PR / Build and static policy
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.tier == 'pr')
+    if: inputs.tier != 'release' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.tier == 'pr'))
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -189,6 +196,7 @@ jobs:
 
   portable:
     name: macOS portability
+    if: inputs.tier != 'release'
     runs-on: macos-14
     timeout-minutes: 12
     steps:
@@ -216,7 +224,7 @@ jobs:
 
   full:
     name: Full / Linux iteration gate
-    if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.tier == 'full')
+    if: inputs.tier == 'release' || (github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.tier == 'full'))
     runs-on: ubuntu-latest
     timeout-minutes: 47
     env:
@@ -239,7 +247,14 @@ jobs:
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 10.34.3
-      - name: Install Node.js
+      - name: Install Node.js without a release cache
+        if: inputs.tier == 'release'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          package-manager-cache: false
+      - name: Install Node.js with the pnpm cache
+        if: inputs.tier != 'release'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.15.0
