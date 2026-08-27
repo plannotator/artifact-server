@@ -228,28 +228,31 @@ describe("mailbox-tier dispatch inbox over MCP", () => {
         threadId: secondThread,
       },
     ]);
-    const expectedMessage = renderBundleMessage({
-      items: [
-        {
-          artifactName: "Mailbox report",
-          body: hostileFirstBody,
-          path: "index.html",
-          quotedSelection: hostileQuotedSelection,
-          threadId: firstThread,
-          versionNumber: 1,
-        },
-        {
-          artifactName: "Mailbox report",
-          body: secondBody,
-          path: "index.html",
-          quotedSelection: null,
-          threadId: secondThread,
-          versionNumber: 1,
-        },
-      ],
-      note: olderDispatch.note,
-      senderDisplayName: olderDispatch.sender.displayName,
-    });
+    const expectedMessage = renderBundleMessage(
+      {
+        items: [
+          {
+            artifactName: "Mailbox report",
+            body: hostileFirstBody,
+            path: "index.html",
+            quotedSelection: hostileQuotedSelection,
+            threadId: firstThread,
+            versionNumber: 1,
+          },
+          {
+            artifactName: "Mailbox report",
+            body: secondBody,
+            path: "index.html",
+            quotedSelection: null,
+            threadId: secondThread,
+            versionNumber: 1,
+          },
+        ],
+        note: olderDispatch.note,
+        senderDisplayName: olderDispatch.sender.displayName,
+      },
+      "mailbox",
+    );
     expect(claimed.message).toBe(expectedMessage);
     expect(claimed.message).toMatch(/^Artifact Server: /u);
     // The hostile directives are gone while the visible words survive.
@@ -259,6 +262,9 @@ describe("mailbox-tier dispatch inbox over MCP", () => {
     expect(claimed.message).toContain("Fix the header first.");
     expect(claimed.message).toContain("Please handle all of these today.");
     expect(claimed.message).toContain('"The quoted heading text"');
+    expect(claimed.message).toContain("use comment_reply");
+    expect(claimed.message).toContain("use comment_resolve");
+    expect(claimed.message).not.toContain("artifact_comments");
 
     // The agent listing tells the mailbox tier truthfully: registered
     // capabilities, connected through its inbox polls, and working the

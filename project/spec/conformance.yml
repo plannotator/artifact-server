@@ -3064,11 +3064,11 @@ requirements:
 
   - id: BRP-002
     kind: behavior
-    behavior: Any MCP-capable agent joins the dispatch loop at the mailbox tier through one inbox tool with implicit registration, a rendered sanitized bundle on claim, honest delivery reports, and strict per-principal isolation.
+    behavior: Any MCP-capable agent joins the dispatch loop at the mailbox tier through one inbox tool with implicit registration, a rendered sanitized bundle that names its actual MCP comment tools on claim, honest delivery reports, and strict per-principal isolation.
     owner: agent-bridge
     source: {file: agent-presence-and-bridge-spec.md, anchor: prior-art-the-live-session-bridge-research}
     acceptance:
-      behavior: {id: BRP-002-B, description: "An MCP principal lists its inbox with implicit mailbox registration, claims the oldest dispatch as a rendered sanitized bundle byte-identical to the shared render contract, reports delivered, and the agent listing shows the mailbox tier; comment reply and resolve over MCP drive the dispatch to addressed."}
+      behavior: {id: BRP-002-B, description: "An MCP principal lists its inbox with implicit mailbox registration, claims the oldest dispatch as a rendered sanitized mailbox-profile bundle byte-identical to the shared render contract and naming comment_reply plus comment_resolve, reports delivered, and the agent listing shows the mailbox tier; those MCP tools drive the dispatch to addressed."}
       failure: {id: BRP-002-F, description: "A second principal never sees the first principal's dispatches, a claim with an empty inbox answers cleanly, and a delivered report for a dispatch the caller does not hold is refused without state change."}
     deployments: [local]
     status: behavior_verified
@@ -3079,7 +3079,7 @@ requirements:
         tests: [BRP-002-B, BRP-002-F]
         result: pass
         run: project/evidence/local-foundation.json
-        recorded_at: "2026-08-25T22:23:33.625Z"
+        recorded_at: "2026-08-27T01:30:08.040Z"
 
   - id: NDG-001
     kind: behavior

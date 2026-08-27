@@ -2176,7 +2176,7 @@ export function createArtifactMcpServer(
             agent: mailboxAgentProjection(agent),
             claimed: {
               dispatchId: dispatch.id,
-              message: renderBundleMessage(assembled.bundle),
+              message: renderBundleMessage(assembled.bundle, "mailbox"),
               note: dispatch.note,
               projectId: dispatch.projectId,
               threadIds: [...dispatch.threadIds],

@@ -169,6 +169,11 @@ When each item is done: use the artifact_comments tool to reply to its thread
 with what you did, then resolve it. Do not wait for confirmation.
 ```
 
+That native/channel profile is the default. A mailbox renderer replaces only
+the closing instruction: it names `comment_reply` for the reply and
+`comment_resolve` for resolution. The message structure and sanitization are
+otherwise identical.
+
 Rules:
 
 - One bundle renders to exactly one message. Never split a bundle across messages and never merge two bundles into one.
@@ -176,7 +181,7 @@ Rules:
 - Items keep the order the human selected.
 - Every item carries its thread ID, because the reply and resolve calls need it.
 - A quoted selection has its whitespace collapsed and is bounded to 300 characters with an ellipsis. Bodies are already capped server-side at 8 KiB each.
-- The closing instruction names the reply-and-resolve surface the host actually has. Substitute your host's tool name; keep the instruction.
+- The closing instruction names the reply-and-resolve surface the host actually has. Native and channel adapters use `artifact_comments`; MCP mailboxes use `comment_reply` and `comment_resolve`.
 
 ### Unicode sanitization
 
