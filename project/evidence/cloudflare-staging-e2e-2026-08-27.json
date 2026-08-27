@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "qualification": "Artifact Server local and Cloudflare staging release E2E",
+  "sourceCommit": "c210384",
+  "result": "pass_with_remaining_manual_scope",
+  "environments": {
+    "local": {
+      "accessMode": "local_owner",
+      "records": "sqlite",
+      "objects": "local_disk"
+    },
+    "staging": {
+      "applicationUrl": "https://staging.artifactserver.com",
+      "contentDomain": "agentartifacts.org",
+      "accessMode": "private_team",
+      "identityProvider": "workos",
+      "records": "d1",
+      "objects": "r2",
+      "worker": "artifact-server-artifact-server-staging-staging-staging-worker",
+      "databaseId": "113c890a-6ca1-47fe-b92b-ff3c14f7d290",
+      "bucket": "artifact-server-artifact-server-staging-staging-staging-objects"
+    }
+  },
+  "runtime": {
+    "pi": "0.84.2",
+    "opencode": "1.18.23",
+    "claudeCode": "2.1.247",
+    "mcpToolCount": 33,
+    "webmcpToolCount": 7
+  },
+  "checks": {
+    "localOwnerSession": "pass",
+    "privateTeamWorkosLogin": "pass",
+    "publishDirectory": "pass",
+    "exactReviewLink": "pass",
+    "privateRawRequiresAuthorization": "pass",
+    "relativeCssJavascriptAndSvg": "pass",
+    "focusMode": "pass",
+    "annotationAndInteractModes": "pass",
+    "exactVersionShareLinkIsPrimary": "pass",
+    "piDispatchReplyResolve": "pass",
+    "opencodeDispatchReplyResolve": "pass",
+    "claudeChannelDispatchReplyResolve": "pass",
+    "mcpMailboxClaimReplyResolve": "pass",
+    "mailboxUsesMailboxToolNames": "pass",
+    "d1DispatchedThreadDeleteConflict": "pass",
+    "coordinatedD1R2Recovery": "pass",
+    "secondDeployNoop": "pass_before_deliberate_drift",
+    "stagingRestoredHealthy": "pass"
+  },
+  "stagingArtifact": {
+    "projectId": "prj_default",
+    "artifactId": "art_119d5d2e-693c-4a33-ac78-32b4f47b1156",
+    "versionId": "ver_143c8182-25ec-4eca-81c9-04a459e9ebeb",
+    "reviewUrl": "https://staging.artifactserver.com/review?artifact=art_119d5d2e-693c-4a33-ac78-32b4f47b1156&project=prj_default&version=ver_143c8182-25ec-4eca-81c9-04a459e9ebeb&view=focus",
+    "fileCount": 4
+  },
+  "recoveryEvidence": "project/evidence/cloudflare-staging-recovery-2026-08-27.json",
+  "findings": [
+    {
+      "id": "STG-001",
+      "status": "fixed",
+      "summary": "The Review API-key form omitted comment:write even though the server supports it."
+    },
+    {
+      "id": "STG-002",
+      "status": "fixed",
+      "summary": "The Cloudflare recovery harness expected schema version 2 and omitted tables added through live schema version 9."
+    },
+    {
+      "id": "STG-003",
+      "status": "fixed",
+      "summary": "The restored application lacked the private-team OIDC variables required to start after recovery."
+    },
+    {
+      "id": "STG-004",
+      "status": "documented",
+      "summary": "After deliberate Worker deletion, an ordinary Alchemy deploy reported no change and did not recreate the Worker or custom domain; a forced deploy restored them."
+    }
+  ],
+  "notQualifiedInThisRun": [
+    "WorkOS refresh, revocation, and named-client lifecycle",
+    "optional Cloudflare Artifacts Git history and hosted quotas",
+    "the exact OpenCode delete-session timing race in a live host",
+    "image and video preview behavior",
+    "all remaining manual checklist rows in the product-description repository"
+  ],
+  "secretsIncluded": false
+}
