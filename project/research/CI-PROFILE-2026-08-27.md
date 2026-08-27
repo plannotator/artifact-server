@@ -214,3 +214,33 @@ layer reuse), duplicate coverage (4–6.5m), storage/runtime Docker checks
 (roughly 4–5m), and bounded performance (under 1m). Moving those to a full
 GitHub gate on `main`, schedule, dispatch, and optionally `merge_group` preserves
 the release evidence while taking them off the PR critical path.
+
+## Post-change trial measurements
+
+All three qualifying PR-tier trials ran the same commit, `f372e1f`, by manual
+dispatch with `tier=pr`. They were consecutive after correcting the trial
+workflow's artifact extraction path; no code or workflow changed between these
+three runs.
+
+| Run | Workflow wall-clock | Build/static | Unit/conformance | Browser | Cloudflare | macOS | Rounded job-minutes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| [33090070630](https://github.com/plannotator/artifact-server/actions/runs/33090070630) | 9m 21s | 2m 16s | 6m 54s | 4m 02s | 2m 19s | 5m 37s | 24 |
+| [33090950570](https://github.com/plannotator/artifact-server/actions/runs/33090950570) | 9m 41s | 2m 27s | 7m 05s | 4m 02s | 2m 40s | 4m 20s | 24 |
+| [33091836813](https://github.com/plannotator/artifact-server/actions/runs/33091836813) | 9m 16s | 1m 58s | 7m 07s | 3m 55s | 2m 41s | 5m 19s | 23 |
+
+The median PR wall-clock is 9m 21s, 76.9% below the old PR sample's
+40m 32s and 23.5% under the 12-minute target. The critical path is consistently
+the build dependency followed by root unit/conformance behavior. Rounded job
+minutes average 23.7 versus 44.0 for the four successful baseline samples, a
+46.2% reduction despite duplicated setup across four Linux jobs. The comparison
+counts ordinary job minutes; actual organization charges remain unavailable to
+the current token.
+
+The full-tier qualification,
+[33092666073](https://github.com/plannotator/artifact-server/actions/runs/33092666073),
+was green on the same commit. Workflow wall-clock was 40m 32s, the Linux gate
+was 40m 24s, macOS was 5m 06s, and the two jobs account for 47 rounded
+job-minutes. All 14 direct commands matched `verify:iteration`, and the final
+evidence upload succeeded. That result sits inside the old full-gate range and
+confirms this iteration moved work without weakening or accelerating the full
+release proof.
