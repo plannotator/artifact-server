@@ -1,6 +1,6 @@
 version: 1
 product: Artifact Server
-updated: "2026-08-25"
+updated: "2026-08-26"
 evidence_root: "../.."
 
 source:
@@ -1384,9 +1384,14 @@ requirements:
       behavior: {id: AUTH-009-B, description: "Issue, constrain, rotate, expire, and revoke human and service API keys; rotation preserves the effective principal and original authorizer while replacing only the credential."}
       failure: {id: AUTH-009-F, description: "Cross-installation, over-scoped, expired, revoked, replaced, malformed, and JWT-like API keys are rejected without parser confusion."}
     deployments: *external_storage
-    status: specified
+    status: behavior_verified
     depends_on: [AUTH-008]
-    evidence: []
+    evidence:
+      - deployment: single_server
+        tests: [AUTH-009-B, AUTH-009-F]
+        result: pass
+        run: project/evidence/external-storage-runtime.json
+        recorded_at: "2026-08-27T05:26:19.095Z"
 
   - id: AUTH-010
     kind: security

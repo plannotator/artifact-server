@@ -46,7 +46,7 @@ describe("managed API-key rotation", () => {
     await removeTestInstallation(installation);
   });
 
-  test("AUTH-009-B AUTH-009-F: rotation preserves human and service attribution while replacing each credential", async () => {
+  test("rotation preserves human and service attribution while replacing each credential", async () => {
     const cookies = await signInAdministrator(server, installation);
     const administratorId = await readSessionPrincipalId(server, cookies.header);
     const memberId = await admitMember(server, cookies, {

@@ -1026,7 +1026,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     }
   });
 
-  test("external-storage foundation: sessions, managed keys, and staged uploads cross process boundaries", async () => {
+  test("AUTH-009-B AUTH-009-F: sessions, managed keys, and staged uploads cross process boundaries", async () => {
     expect.hasAssertions();
     const externalStorageIdentity = {
       apiToken: managedTestKey("identity-runtime"),
