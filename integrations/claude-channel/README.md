@@ -41,7 +41,7 @@ flag. From a project directory:
      "mcpServers": {
        "artifact-server": {
          "command": "npx",
-         "args": ["-y", "@plannotator/artifact-server-claude-channel@0.1.0"]
+         "args": ["-y", "@plannotator/artifact-server-claude-channel@<release-version>"]
        }
      }
    }
@@ -62,7 +62,8 @@ flag. From a project directory:
    `<channel source="artifact-server">` event; Claude replies and resolves
    through `artifact_comments`, and the threads update in the web UI.
 
-For development from this repository, replace the command and arguments with
+The package version above is a release-day placeholder. For development from
+this repository, replace the command and arguments with
 `"node"` and
 `["/path/to/artifact-server/integrations/claude-channel/bin/claude-channel.js"]`.
 
