@@ -116,16 +116,17 @@ Azure teams deploy through the Helm chart on AKS; there is no separate Azure ins
 
 ## Run it locally
 
-Local mode stores metadata in SQLite and files on disk. It grants owner access only from the same loopback origin. It requires Node.js 24.12+ and pnpm 10.34.3.
+Local mode stores metadata in SQLite and files on disk. It grants owner access only from the same loopback origin and requires Node.js 24.12 or newer.
 
 ```sh
-git clone https://github.com/plannotator/artifact-server.git
-cd artifact-server
-pnpm install
-pnpm dev
+curl -LO https://github.com/plannotator/artifact-server/releases/download/v0.1.0/artifact-server-0.1.0-node.tar.gz
+curl -LO https://github.com/plannotator/artifact-server/releases/download/v0.1.0/SHA256SUMS
+grep ' artifact-server-0.1.0-node.tar.gz$' SHA256SUMS | shasum -a 256 --check
+tar -xzf artifact-server-0.1.0-node.tar.gz
+./artifactserver/bin/artifactserver open
 ```
 
-Open the printed URL. Packaged installs use `artifactserver open` instead.
+Open the printed URL. See [Get started locally](https://artifactserver.com/docs/get-started/) to add `artifactserver` to your `PATH`, or [run from source](#development-and-project-records) when contributing.
 
 ## Usage
 

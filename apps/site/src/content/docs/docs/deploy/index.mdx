@@ -18,8 +18,8 @@ Artifact Server runs on a laptop for one developer and deploys for a private tea
 
 Cloudflare is the main hosted target, and [Cloudflare Artifacts](/docs/deploy/cloudflare/) can add private Git-backed history for selected projects. Azure teams deploy through the Helm chart on AKS; there is no separate Azure installer, and Azure Blob Storage is a preview adapter that has not passed live qualification.
 
-<Aside type="note" title="Release status">
-No deployment has completed the repository's entire conformance release gate yet. Each guide names its current boundary; do not treat a target as generally available until its gate has passing evidence.
+<Aside type="note" title="Artifact Server 0.1.0">
+The prerelease passes the complete packaging and conformance gate. Pin deployments to the immutable 0.1.0 image reference below. Each provider guide separately names the live infrastructure work that has been qualified.
 </Aside>
 
 ## The boundaries every remote deployment shares

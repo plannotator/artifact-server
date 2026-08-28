@@ -88,11 +88,33 @@ A matching checksum proves that the archive matches its manifest. Until the mani
 
 ## Public release verification
 
-Artifact Server does not yet publish tagged GitHub Releases or GitHub/Sigstore attestations. There is therefore no honest `gh attestation verify` command for a public Artifact Server release today.
+Artifact Server 0.1.0 publishes a checksum file, SPDX SBOMs, and GitHub build attestations with its prerelease assets. Download and verify the portable Node package:
 
-The current OCI packages contain BuildKit SLSA provenance and SPDX SBOM attestations, and the repository verifies them while building. The first public release must additionally publish checksums, SBOMs, and identity-bound provenance through GitHub before this page can document public release verification.
+```sh
+gh release download v0.1.0 \
+  --repo plannotator/artifact-server \
+  --pattern artifact-server-0.1.0-node.tar.gz \
+  --pattern SHA256SUMS
+grep ' artifact-server-0.1.0-node.tar.gz$' SHA256SUMS | sha256sum --check
+gh attestation verify artifact-server-0.1.0-node.tar.gz \
+  --owner plannotator \
+  --deny-self-hosted-runners
+```
 
-This distinction matters: a green workflow proves that the source revision passed its checks, while a public attestation must connect a downloadable asset to the repository and workflow that produced it.
+The release also records the immutable container reference in `image-reference.txt`. Verify its provenance directly from GHCR:
+
+```sh
+gh release download v0.1.0 \
+  --repo plannotator/artifact-server \
+  --pattern image-reference.txt
+image_reference=$(cat image-reference.txt)
+gh attestation verify "oci://$image_reference" \
+  --owner plannotator \
+  --bundle-from-oci \
+  --deny-self-hosted-runners
+```
+
+The release workflow builds from the annotated tag, runs the complete release gate without a dependency cache, publishes the image by digest, checks every downloadable asset, and creates the prerelease only after the required jobs pass. The clean-install workflow then exercises the package on Linux and macOS and runs the immutable image through the compact Compose profile.
 
 ## Reporting and product boundaries
 

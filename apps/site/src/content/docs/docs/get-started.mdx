@@ -3,30 +3,33 @@ title: Get started locally
 description: Run Artifact Server on a laptop and publish a first immutable artifact version.
 ---
 
-The local target runs directly on the host with SQLite, local blob storage, loopback-only content origins, and frictionless local-owner browser access. Node.js 24.12 or newer and pnpm are required when running from source.
+The local target runs directly on the host with SQLite, local blob storage, loopback-only content origins, and frictionless local-owner browser access. It requires Node.js 24.12 or newer.
 
-## Run from this repository
+## Install the release
 
 <Steps>
-  <Step title="Install dependencies">
+  <Step title="Download and verify Artifact Server 0.1.0">
     ```sh
-    pnpm install
+    curl -LO https://github.com/plannotator/artifact-server/releases/download/v0.1.0/artifact-server-0.1.0-node.tar.gz
+    curl -LO https://github.com/plannotator/artifact-server/releases/download/v0.1.0/SHA256SUMS
+    grep ' artifact-server-0.1.0-node.tar.gz$' SHA256SUMS | shasum -a 256 --check
+    tar -xzf artifact-server-0.1.0-node.tar.gz
     ```
+
+    The checksum command must report `OK`. You can also [verify the GitHub attestation](/docs/security/) before extracting the archive.
   </Step>
-  <Step title="Start the application and backend">
+  <Step title="Open Artifact Server">
     ```sh
-    pnpm dev
+    ./artifactserver/bin/artifactserver open
     ```
 
-    Open the URL printed by the command. The web application normally starts at `http://127.0.0.1:5173/review`, and the development API listens at `http://127.0.0.1:8787`.
-
-    This is the source-development path. Do not run `artifactserver open` as another setup step. Contributors can run CLI commands from the checkout with `pnpm artifactserver <command>`. An installed release uses `artifactserver open` to start or find its managed local service and open Artifact Server.
+    Open the printed URL. To use `artifactserver` from any directory, keep the extracted directory in a stable location and add its `bin` directory to your `PATH`. The [CLI guide](https://github.com/plannotator/artifact-server/blob/v0.1.0/docs/cli.md) shows the exact setup.
   </Step>
   <Step title="Publish from an agent">
-    Connect the agent to the running development installation:
+    Connect the agent to the running installation:
 
     ```sh
-    pnpm artifactserver connect --data .artifact-server
+    ./artifactserver/bin/artifactserver connect
     ```
 
     Then install the Artifact Server skill:
@@ -44,6 +47,19 @@ The local target runs directly on the host with SQLite, local blob storage, loop
     The agent returns the full-screen review link first.
   </Step>
 </Steps>
+
+## Run from source
+
+Use this path when contributing to Artifact Server. It also requires pnpm 10.34.3.
+
+```sh
+git clone https://github.com/plannotator/artifact-server.git
+cd artifact-server
+pnpm install
+pnpm dev
+```
+
+Open the printed URL. `pnpm dev` starts both the web application and API. Do not run `artifactserver open` as a second setup step. Run CLI commands from the checkout with `pnpm artifactserver <command>`.
 
 ## Local access behavior
 
