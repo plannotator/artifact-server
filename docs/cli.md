@@ -2,7 +2,7 @@
 
 Agents normally publish through the [Artifact Server Skill](../skills/artifact-server/SKILL.md) or [MCP](./mcp.md). Use the CLI when you want to publish directly or run operator commands from a terminal.
 
-An installed release provides the `artifactserver` command. From a source checkout, replace it with `pnpm artifactserver`.
+A packaged release will provide the `artifactserver` command. Its download, verification, and `PATH` setup commands will be added on release day. Until then, run the examples from a source checkout by replacing `artifactserver` with `pnpm artifactserver`.
 
 ## Publish an artifact
 

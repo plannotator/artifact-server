@@ -88,11 +88,9 @@ A matching checksum proves that the archive matches its manifest. Until the mani
 
 ## Public release verification
 
-Artifact Server does not yet publish tagged GitHub Releases or GitHub/Sigstore attestations. There is therefore no honest `gh attestation verify` command for a public Artifact Server release today.
+Artifact Server has not shipped a tagged public release. The release workflow is qualified privately, but there is no public archive or image for an external user to verify today.
 
-The current OCI packages contain BuildKit SLSA provenance and SPDX SBOM attestations, and the repository verifies them while building. The first public release must additionally publish checksums, SBOMs, and identity-bound provenance through GitHub before this page can document public release verification.
-
-This distinction matters: a green workflow proves that the source revision passed its checks, while a public attestation must connect a downloadable asset to the repository and workflow that produced it.
+The release-day commands for downloading checksums, verifying GitHub attestations, and verifying the immutable GHCR image will be added here only after those public assets exist. Until then, the source-build evidence above is the honest verification boundary.
 
 ## Reporting and product boundaries
 
