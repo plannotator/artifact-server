@@ -76,7 +76,6 @@ jobs:
           if [[ "$ARTIFACTSERVER_EVENT_NAME" == push && "$ARTIFACTSERVER_REF_TYPE" == tag ]]; then
             tag="$ARTIFACTSERVER_REF_NAME"
             publish=true
-            git fetch --force --no-tags origin main:refs/remotes/origin/main
             node scripts/check-release-version.mjs --tag "$tag"
             node scripts/check-release-ref.mjs --tag "$tag" --main-ref origin/main
           else
