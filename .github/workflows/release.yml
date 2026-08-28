@@ -197,8 +197,8 @@ jobs:
           <<< "$ARTIFACTSERVER_GITHUB_TOKEN"
       - name: Build release image
         env:
-          ARTIFACTSERVER_IMAGE_PUSH: ${{ needs.verify.outputs.publish }}
-          ARTIFACTSERVER_IMAGE_TAGS: ghcr.io/plannotator/artifact-server:${{ needs.verify.outputs.tag }},ghcr.io/plannotator/artifact-server:${{ needs.verify.outputs.series }}
+          ARTIFACT_SERVER_IMAGE_PUSH: ${{ needs.verify.outputs.publish }}
+          ARTIFACT_SERVER_IMAGE_TAGS: ghcr.io/plannotator/artifact-server:${{ needs.verify.outputs.tag }},ghcr.io/plannotator/artifact-server:${{ needs.verify.outputs.series }}
         run: pnpm package:oci release/image-work
       - name: Extract verified image SPDX SBOMs
         env:
