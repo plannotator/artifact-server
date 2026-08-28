@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "qualification": "Cloudflare staging image and video Review previews",
+  "recordedAt": "2026-08-28T17:05:21Z",
+  "result": "pass",
+  "stagingBaselineEvidence": "project/evidence/cloudflare-staging-e2e-2026-08-27.json",
+  "environment": {
+    "applicationUrl": "https://staging.artifactserver.com",
+    "contentDomain": "agentartifacts.org",
+    "accessMode": "private_team",
+    "identityProvider": "workos",
+    "records": "d1",
+    "objects": "r2",
+    "browser": "Chromium through the Codex in-app browser"
+  },
+  "fixture": {
+    "projectId": "prj_default",
+    "artifactId": "art_7c65fdcc-babf-4891-a8f2-230fdc624b14",
+    "versionId": "ver_a821b5f9-8812-4a45-84d6-762c5833603a",
+    "accessSetting": "account_required",
+    "entryPath": "preview-image.png",
+    "tags": [
+      "manual-check",
+      "media-preview"
+    ],
+    "files": [
+      {
+        "path": "preview-image.png",
+        "mediaType": "image/png",
+        "bytes": 65156
+      },
+      {
+        "path": "preview-video.webm",
+        "mediaType": "video/webm",
+        "bytes": 64232
+      }
+    ]
+  },
+  "checks": {
+    "exactReviewTarget": "pass",
+    "selectedFilePathPreservedInUrl": "pass",
+    "imageNativePreview": {
+      "result": "pass",
+      "accessibleName": "Media Preview Manual Check 2026-08-28 — preview-image.png",
+      "complete": true,
+      "naturalWidth": 1440,
+      "naturalHeight": 900,
+      "consoleErrors": 0
+    },
+    "videoNativePreview": {
+      "result": "pass",
+      "accessibleName": "Media Preview Manual Check 2026-08-28 — preview-video.webm",
+      "controls": true,
+      "autoplay": false,
+      "pausedInitially": true,
+      "readyState": 4,
+      "durationSeconds": 2,
+      "videoWidth": 640,
+      "videoHeight": 360,
+      "playbackAdvancedToSeconds": 0.714472,
+      "consoleErrors": 0
+    }
+  },
+  "notes": [
+    "The private fixture remains in the staging default project so the check can be repeated.",
+    "No product defect was observed and no deployment configuration changed."
+  ],
+  "secretsIncluded": false
+}

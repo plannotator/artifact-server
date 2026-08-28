@@ -64,6 +64,10 @@ The complete Node product path then reported the provider available, estimated o
 
 This run copied 530 fixture bytes and did not perform load or quota-pressure testing. See [`cloudflare-artifacts-live-qualification.json`](../evidence/cloudflare-artifacts-live-qualification.json).
 
+### Image and video previews follow-on
+
+On August 28, a private two-file fixture qualified the native media viewers on the same Cloudflare staging installation. Review decoded a 1440×900 PNG at its exact selected path. It also decoded a two-second 640×360 WebM, exposed native controls, started paused, and advanced during playback. Both checks completed without console errors. See [`cloudflare-staging-media-preview-2026-08-28.json`](../evidence/cloudflare-staging-media-preview-2026-08-28.json).
+
 ## What remains unqualified
 
 This pass does not prove every release claim. The following work remains separate:
@@ -71,7 +75,7 @@ This pass does not prove every release claim. The following work remains separat
 - WorkOS refresh, revocation, and named-client lifecycle behavior.
 - Cloudflare Artifacts load, quota-pressure, sustained-outage, retention, and regional behavior. The bounded normal integration is qualified; this run deliberately did not approach account limits.
 - The exact OpenCode race where its target session is deleted between claim and host admission. The live attempt delivered before deletion; the automated hostile-path proof remains green.
-- Image and video preview behavior in this run.
+- Image and video preview behavior in the August 27 run. A focused follow-on passed on August 28.
 - Manual checklist rows that were not exercised and are still blank in the product-description repository.
 
 ## Evidence posture
