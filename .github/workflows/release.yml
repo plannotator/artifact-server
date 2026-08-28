@@ -19,9 +19,14 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Build and verify without publishing
+        description: Build and verify without publishing npm packages or a GitHub release
         required: true
         default: true
+        type: boolean
+      private_registry_test:
+        description: Push and attest a private CI image without publishing npm or a GitHub release
+        required: true
+        default: false
         type: boolean
 
 permissions:
@@ -37,7 +42,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
+      image_primary_tag: ${{ steps.metadata.outputs.image_primary_tag }}
+      image_secondary_tag: ${{ steps.metadata.outputs.image_secondary_tag }}
       publish: ${{ steps.metadata.outputs.publish }}
+      publish_image: ${{ steps.metadata.outputs.publish_image }}
       revision: ${{ steps.metadata.outputs.revision }}
       series: ${{ steps.metadata.outputs.series }}
       tag: ${{ steps.metadata.outputs.tag }}
@@ -63,8 +71,11 @@ jobs:
         id: metadata
         env:
           ARTIFACTSERVER_EVENT_NAME: ${{ github.event_name }}
+          ARTIFACTSERVER_PRIVATE_REGISTRY_TEST: ${{ inputs.private_registry_test || false }}
           ARTIFACTSERVER_REF_NAME: ${{ github.ref_name }}
           ARTIFACTSERVER_REF_TYPE: ${{ github.ref_type }}
+          ARTIFACTSERVER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          ARTIFACTSERVER_RUN_ID: ${{ github.run_id }}
         shell: bash
         run: |
           set -euo pipefail
@@ -73,17 +84,31 @@ jobs:
           series=${version%.*}
           tag="v$version"
           publish=false
+          publish_image=false
+          image_primary_tag="$tag"
+          image_secondary_tag="$series"
           if [[ "$ARTIFACTSERVER_EVENT_NAME" == push && "$ARTIFACTSERVER_REF_TYPE" == tag ]]; then
             tag="$ARTIFACTSERVER_REF_NAME"
             publish=true
+            publish_image=true
+            image_primary_tag="$tag"
+            image_secondary_tag="$series"
             node scripts/check-release-version.mjs --tag "$tag"
             node scripts/check-release-ref.mjs --tag "$tag" --main-ref origin/main
           else
             node scripts/check-release-version.mjs
             node scripts/check-release-ref.mjs --dry-run
+            if [[ "$ARTIFACTSERVER_PRIVATE_REGISTRY_TEST" == true ]]; then
+              publish_image=true
+              image_primary_tag="ci-$ARTIFACTSERVER_RUN_ID-$ARTIFACTSERVER_RUN_ATTEMPT"
+              image_secondary_tag="ci-${revision:0:12}"
+            fi
           fi
           {
+            printf 'image_primary_tag=%s\n' "$image_primary_tag"
+            printf 'image_secondary_tag=%s\n' "$image_secondary_tag"
             printf 'publish=%s\n' "$publish"
+            printf 'publish_image=%s\n' "$publish_image"
             printf 'revision=%s\n' "$revision"
             printf 'series=%s\n' "$series"
             printf 'tag=%s\n' "$tag"
@@ -185,8 +210,8 @@ jobs:
             --name artifact-server-release \
             --use
           docker buildx inspect --bootstrap
-      - name: Sign in to GHCR for a tagged release
-        if: needs.verify.outputs.publish == 'true'
+      - name: Sign in to private GHCR for image publication
+        if: needs.verify.outputs.publish_image == 'true'
         env:
           ARTIFACTSERVER_GITHUB_ACTOR: ${{ github.actor }}
           ARTIFACTSERVER_GITHUB_TOKEN: ${{ github.token }}
@@ -197,8 +222,8 @@ jobs:
           <<< "$ARTIFACTSERVER_GITHUB_TOKEN"
       - name: Build release image
         env:
-          ARTIFACT_SERVER_IMAGE_PUSH: ${{ needs.verify.outputs.publish }}
-          ARTIFACT_SERVER_IMAGE_TAGS: ghcr.io/plannotator/artifact-server:${{ needs.verify.outputs.tag }},ghcr.io/plannotator/artifact-server:${{ needs.verify.outputs.series }}
+          ARTIFACT_SERVER_IMAGE_PUSH: ${{ needs.verify.outputs.publish_image }}
+          ARTIFACT_SERVER_IMAGE_TAGS: ghcr.io/plannotator/artifact-server:${{ needs.verify.outputs.image_primary_tag }},ghcr.io/plannotator/artifact-server:${{ needs.verify.outputs.image_secondary_tag }}
         run: pnpm package:oci release/image-work
       - name: Extract verified image SPDX SBOMs
         env:
@@ -224,10 +249,10 @@ jobs:
           printf '%s\n' "ghcr.io/plannotator/artifact-server@$digest" \
             > release/image-bundle/image-reference.txt
       - name: Verify published image tags resolve to the built digest
-        if: needs.verify.outputs.publish == 'true'
+        if: needs.verify.outputs.publish_image == 'true'
         env:
-          ARTIFACTSERVER_TAG: ${{ needs.verify.outputs.tag }}
-          ARTIFACTSERVER_SERIES: ${{ needs.verify.outputs.series }}
+          ARTIFACTSERVER_TAG: ${{ needs.verify.outputs.image_primary_tag }}
+          ARTIFACTSERVER_SERIES: ${{ needs.verify.outputs.image_secondary_tag }}
           ARTIFACTSERVER_VERSION: ${{ needs.verify.outputs.version }}
         shell: bash
         run: |
@@ -295,7 +320,7 @@ jobs:
 
   attest:
     name: Attest release assets
-    if: needs.verify.outputs.publish == 'true'
+    if: needs.verify.outputs.publish_image == 'true'
     needs: [verify, assemble]
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -321,6 +346,15 @@ jobs:
           digest=${reference##*@}
           printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
           printf 'name=%s\n' "${reference%@*}" >> "$GITHUB_OUTPUT"
+      - name: Sign in to private GHCR for image attestations
+        env:
+          ARTIFACTSERVER_GITHUB_ACTOR: ${{ github.actor }}
+          ARTIFACTSERVER_GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          docker login ghcr.io
+          --username "$ARTIFACTSERVER_GITHUB_ACTOR"
+          --password-stdin
+          <<< "$ARTIFACTSERVER_GITHUB_TOKEN"
       - name: Attest downloadable asset provenance
         uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3.0.0
         with:
