@@ -2,7 +2,7 @@
 
 Date: August 27, 2026
 
-Source: `c210384`
+Source: `c210384` for the August 27 run. The WorkOS MCP lifecycle evidence below was recorded on August 16 against its named isolated deployment.
 
 Result: Passed the executed scope, with remaining manual scope listed below.
 
@@ -41,6 +41,14 @@ The run also exposed an operational caveat: after the staging Worker was deliber
 - Confirmed deleting a D1 comment held by a live dispatch returns `409 DISPATCH_STATE_CONFLICT`.
 - Confirmed the MCP endpoint exposes 33 tools and Review exposes seven WebMCP tools.
 
+### WorkOS hosted MCP lifecycle
+
+An earlier live qualification used the dedicated Artifact Server WorkOS staging environment and an isolated Cloudflare Worker. Codex connected through dynamic client registration; Claude Code connected through a client ID metadata document. Both completed browser approval, called `artifact_capabilities`, and refreshed their five-minute access tokens.
+
+Provider-side revocation was also exercised. Deleting the exact Authorized Application invalidated Codex's refresh token, and a new browser approval restored access. Claude Code lost its tools after its current access token expired. WorkOS did not advertise a standard OAuth revocation endpoint, so this evidence proves provider-side Authorized Application revocation rather than RFC token revocation.
+
+Cursor completed browser approval and tool discovery, but no model tool call was run. Visual Studio Code and claude.ai were not exercised. See [`workos-mcp-live-qualification.json`](../evidence/workos-mcp-live-qualification.json).
+
 ### Coordinated recovery
 
 The fresh recovery drill copied the staging D1 database and all 12 R2 objects into isolated recovery resources, started the restored application, and compared the source and restored state.
@@ -72,10 +80,9 @@ On August 28, a private two-file fixture qualified the native media viewers on t
 
 This pass does not prove every release claim. The following work remains separate:
 
-- WorkOS refresh, revocation, and named-client lifecycle behavior.
+- A release-named WorkOS client lifecycle and the remaining Visual Studio Code and claude.ai client passes. Refresh rotation and provider-side Authorized Application revocation are already qualified on the isolated hosted MCP deployment.
 - Cloudflare Artifacts load, quota-pressure, sustained-outage, retention, and regional behavior. The bounded normal integration is qualified; this run deliberately did not approach account limits.
 - The exact OpenCode race where its target session is deleted between claim and host admission. The live attempt delivered before deletion; the automated hostile-path proof remains green.
-- Image and video preview behavior in the August 27 run. A focused follow-on passed on August 28.
 - Manual checklist rows that were not exercised and are still blank in the product-description repository.
 
 ## Evidence posture
