@@ -113,6 +113,12 @@ test.describe("PRS-006 presence avatar", () => {
         name: "Send all open (2) to pres",
       });
       await expect(sendButton).toBeVisible();
+      await expect(sendButton).toHaveCSS("text-transform", "none");
+      expect(await sendButton.evaluate((element) => element.getBoundingClientRect().height))
+        .toBeLessThanOrEqual(32);
+      expect(await page.getByRole("button", {exact: true, name: "All"}).evaluate((element) =>
+        element.getBoundingClientRect().height
+      )).toBeLessThanOrEqual(32);
       const idleRing = sendButton.locator("[data-presence-ring=\"idle\"]");
       await expect(idleRing).toHaveCount(1);
       await expect(idleRing.locator("img")).toHaveCount(1);

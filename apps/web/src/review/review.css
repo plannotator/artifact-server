@@ -2011,8 +2011,20 @@ select:focus-visible {
 }
 
 .as-comments {
+  --as-comments-control-font-size: 0.7rem;
+  --as-comments-control-height: 1.75rem;
+
   display: grid;
   min-width: 0;
+}
+
+.as-comments [data-slot="button"] {
+  font-size: var(--as-comments-control-font-size);
+  height: var(--as-comments-control-height);
+  letter-spacing: 0.02em;
+  min-height: var(--as-comments-control-height);
+  padding-inline: 0.6rem;
+  text-transform: none;
 }
 
 .as-comments__agents {
@@ -2052,18 +2064,19 @@ select:focus-visible {
 
 .as-comments__send-all .as-send-to-agent__buttons {
   display: flex;
-  flex: 1 1 100%;
+  flex: 0 1 auto;
   max-width: 100%;
   min-width: 0;
 }
 
 .as-comments__send-all .as-send-to-agent__primary {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
 }
 
 .as-comments__send-all .as-send-to-agent__menu {
   flex: 0 0 auto;
+  padding-inline: 0.35rem;
 }
 
 .as-comments__filters {
@@ -2075,7 +2088,10 @@ select:focus-visible {
 }
 
 .as-comments__filters .as-button {
+  font-size: 0.72rem;
+  min-height: 1.9rem;
   min-width: 0;
+  padding: 0.2rem 0.4rem;
 }
 
 .as-comments__filters .as-button[aria-pressed="true"] {
@@ -2115,6 +2131,8 @@ select:focus-visible {
 
 .as-comments__intro .as-inspector-section__action {
   flex: 0 0 auto;
+  font-size: 0.68rem;
+  min-height: var(--as-comments-control-height);
 }
 
 .as-comments > .as-inspector-empty,
@@ -2231,9 +2249,9 @@ select:focus-visible {
 }
 
 .as-comment-card .as-button {
-  font-size: 0.68rem;
-  min-height: 1.85rem;
-  padding: 0.25rem 0.5rem;
+  font-size: 0.66rem;
+  min-height: 1.7rem;
+  padding: 0.2rem 0.4rem;
 }
 
 .as-comment-replies {

@@ -655,7 +655,7 @@ export function ReviewCommentsInspector({
         <div className="as-comments__send-all">
           <SendToAgentControl
             agents={agents}
-            buttonSize="sm"
+            buttonSize="xs"
             buttonVariant="default"
             feedback={dispatchUndo.feedback}
             label={`Send all open (${openThreads.length})…`}
