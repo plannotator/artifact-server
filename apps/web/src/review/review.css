@@ -654,14 +654,20 @@ select:focus-visible {
 }
 
 .as-catalog-query-controls select {
-  background: color-mix(in oklab, var(--as-panel) 88%, var(--as-surface));
+  background: var(--as-surface-raised);
   border: 1px solid var(--as-border);
   border-radius: 0;
   color: var(--as-muted);
+  color-scheme: inherit;
   font-family: "Atkinson Hyperlegible Mono", monospace;
   font-size: 0.66rem;
   min-height: 1.85rem;
   padding: 0.28rem 0.45rem;
+}
+
+.as-catalog-query-controls option {
+  background: Canvas;
+  color: CanvasText;
 }
 
 .as-catalog-query-controls select:focus-visible {
