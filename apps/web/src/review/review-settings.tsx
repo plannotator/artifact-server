@@ -58,7 +58,7 @@ export function ReviewSettings({
             </button>
             <ButtonLink href={reviewHref} size="sm" variant="outline">
               <HugeiconsIcon data-icon="inline-start" icon={ArrowLeft01Icon} strokeWidth={1.8} />
-              Back to Review
+              Back to review
             </ButtonLink>
             <Button
               onClick={() => void api.logout().finally(() => window.location.assign("/review"))}

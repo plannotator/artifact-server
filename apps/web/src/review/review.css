@@ -3018,6 +3018,33 @@ body:has(.as-settings),
   font-family: inherit;
 }
 
+body:has(.as-settings) [data-slot="button"],
+body:has(.as-settings) [data-slot="button-link"],
+body:has(.as-settings) [data-slot="dialog-trigger"] {
+  letter-spacing: 0.02em;
+  text-transform: none;
+  transition-duration: 140ms;
+  transition-property: background-color, border-color, color, opacity, transform;
+}
+
+body:has(.as-settings) [data-slot="button"]:active:not(:disabled),
+body:has(.as-settings) [data-slot="button-link"]:active,
+body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
+  transform: scale(0.96);
+  translate: none;
+}
+
+@media (pointer: fine) {
+  body:has(.as-settings) [data-slot="button"],
+  body:has(.as-settings) [data-slot="button-link"],
+  body:has(.as-settings) [data-slot="dialog-trigger"] {
+    font-size: 0.72rem;
+    height: 1.875rem;
+    min-height: 1.875rem;
+    padding-inline: 0.7rem;
+  }
+}
+
 .as-settings__header {
   background: color-mix(in oklab, var(--as-surface) 96%, transparent);
   border-bottom: 1px solid var(--as-border);

@@ -307,7 +307,7 @@ export function SettingsProject({
         </div>
         <div className="grid max-w-xl gap-2">
           <Label htmlFor="settings-rename-project">Project name</Label>
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <Input
               disabled={!canManage || pending}
               id="settings-rename-project"
@@ -381,7 +381,15 @@ export function SettingsProject({
         </div>
         {canManage ? (
           <Dialog onOpenChange={setArchiveOpen} open={archiveOpen}>
-            <DialogTrigger render={<Button type="button" variant={project.archivedAt === null ? "destructive" : "outline"} />}>
+            <DialogTrigger
+              render={(
+                <Button
+                  className="justify-self-start"
+                  type="button"
+                  variant={project.archivedAt === null ? "destructive" : "outline"}
+                />
+              )}
+            >
               {project.archivedAt === null ? "Archive project" : "Unarchive project"}
             </DialogTrigger>
             <DialogContent>

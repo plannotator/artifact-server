@@ -1282,6 +1282,23 @@ test.describe("Artifact Server frontend MVP", () => {
       await defaultProjectRow.getByRole("link", {name: "Settings"}).click();
       await expect(fixture.page.getByRole("heading", {name: "Project identity"})).toBeVisible();
       await expect(fixture.page.getByRole("heading", {name: "Git history"})).toHaveCount(0);
+      const compactSettingsActions = [
+        fixture.page.getByRole("button", {name: "Sign out"}),
+        fixture.page.getByRole("link", {name: "Back to review"}),
+        fixture.page.getByRole("button", {name: "Save name"}),
+        fixture.page.getByRole("button", {name: "Archive project"}),
+      ];
+      const compactSettingsActionMetrics = await Promise.all(compactSettingsActions.map(async (action) => ({
+        box: await action.boundingBox(),
+        textTransform: await action.evaluate((element) => getComputedStyle(element).textTransform),
+      })));
+      for (const {box, textTransform} of compactSettingsActionMetrics) {
+        expect(box?.height).toBeLessThanOrEqual(32);
+        expect(textTransform).toBe("none");
+      }
+      const lifecycleBox = await fixture.page.getByLabel("Project lifecycle").boundingBox();
+      const archiveBox = await fixture.page.getByRole("button", {name: "Archive project"}).boundingBox();
+      expect(archiveBox?.width).toBeLessThan((lifecycleBox?.width ?? 0) / 2);
       await fixture.page.getByLabel("Project name").fill("Default renamed");
       await fixture.page.getByRole("button", {name: "Save name"}).click();
       await expect(fixture.page.getByRole("heading", {name: "Default renamed"})).toBeVisible();
