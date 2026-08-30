@@ -1991,16 +1991,21 @@ requirements:
 
   - id: MCP-015
     kind: behavior
-    behavior: artifact_open returns the canonical browser address for the selected server, artifact, and version; only a local helper opens it on the local computer, while remote servers return the address.
+    behavior: artifact_get returns the current exact full-screen Review address, and artifact_open returns the selected exact full-screen Review address beside the raw immutable content address; agents prefer Review for human handoff and never label raw content as Review. Only a local helper opens an address on the local computer, while remote servers return addresses.
     owner: mcp
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
-      behavior: {id: MCP-015-B, description: "Open local and remote artifacts and confirm that the correct client computer receives the canonical exact or current address."}
-      failure: {id: MCP-015-F, description: "A remote server never attempts to start a browser on the server machine or opens an artifact from a guessed server."}
+      behavior: {id: MCP-015-B, description: "Read and open local and remote artifacts and confirm that the correct client computer receives an exact full-screen Review address and a separately named raw content address for the authoritative current or selected version."}
+      failure: {id: MCP-015-F, description: "Review addresses contain no bootstrap credential, raw content addresses are never described as Review, and a remote server never attempts to start a browser on the server machine or opens an artifact from a guessed server."}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [MCP-006, SKL-004]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [MCP-015-B, MCP-015-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-08-30T17:56:35.366Z"
 
   - id: MCP-016
     kind: release_gate

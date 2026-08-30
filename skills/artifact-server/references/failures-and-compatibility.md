@@ -28,7 +28,7 @@ Stop on uncertainty. Do not turn a failed or partial request into a success repo
 
 ## Client behavior
 
-- A local or desktop client may open the URL returned by `artifact_open` on the user's computer.
+- A local or desktop client may open `artifact_open.reviewUrl` on the user's computer. Use `artifact_open.browserUrl` only for raw immutable content.
 - A remote agent that cannot launch a user browser returns the URL.
 - A remote-only agent cannot read a file that exists only on the user's machine. Ask the user to run the local CLI or move the task to an agent with filesystem and process access.
 

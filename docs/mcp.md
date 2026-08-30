@@ -75,6 +75,11 @@ The server instructions tell the agent to share `links.review` first. This link 
 
 The agent must not place bootstrap URLs, access tokens, or credentials in chat.
 
+Read operations use the same link roles. `artifact_get.current.links.review`
+opens the current exact version in full-screen Review. `artifact_open.reviewUrl`
+opens the selected exact version in Review, while `artifact_open.browserUrl`
+opens its raw immutable content. Agents should hand people the Review URL.
+
 ## Tool groups
 
 | Group | Tools |

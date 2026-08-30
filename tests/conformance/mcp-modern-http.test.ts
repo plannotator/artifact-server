@@ -82,7 +82,11 @@ const linkedPublicationResultSchema = z.object({
   }).loose(),
 });
 const publicationResultSchema = z.object({
-  artifact: z.object({currentVersionId: z.string(), id: z.string()}).loose(),
+  artifact: z.object({
+    currentVersionId: z.string(),
+    id: z.string(),
+    projectId: z.string(),
+  }).loose(),
   replayed: z.boolean(),
   version: z.object({id: z.string()}).loose(),
 });
@@ -151,6 +155,12 @@ describe("modern MCP HTTP", () => {
     expect(discoveryResult.instructions).toContain("artifact_create_upload");
     expect(discoveryResult.instructions).toContain("actual files");
     expect(discoveryResult.instructions).toContain("links.review first");
+    expect(discoveryResult.instructions).toContain(
+      "artifact_open returns reviewUrl for exact full-screen Review",
+    );
+    expect(discoveryResult.instructions).toContain(
+      "never describe browserUrl as a Review link",
+    );
     expect(discoveryResult.instructions).toContain("Do not put content bootstrap URLs");
     expect(discoveryBody.result).not.toHaveProperty("capabilities.subscriptions");
 
@@ -375,7 +385,7 @@ describe("modern MCP HTTP", () => {
     expect(listenBody.error.message).toContain("Subscription limit");
   });
 
-  test("MCP-006-B MCP-006-F MCP-007-B MCP-007-F MCP-008-B MCP-008-F PUB-013-B PUB-013-F: every advertised artifact operation runs over real files and shared policy", async () => {
+  test("MCP-006-B MCP-006-F MCP-007-B MCP-007-F MCP-008-B MCP-008-F MCP-015-B MCP-015-F PUB-013-B PUB-013-F: every advertised artifact operation runs over real files and shared policy", async () => {
     expect.hasAssertions();
     const bytes = new TextEncoder().encode("MCP file publication proof\n");
     const declaredFile = {
@@ -448,6 +458,10 @@ describe("modern MCP HTTP", () => {
         tags: z.array(z.string()),
       }).loose(),
       current: z.object({
+        links: z.object({
+          review: z.url(),
+          version: z.url(),
+        }),
         manifest: z.object({
           entries: z.array(z.object({path: z.string(), sha256: z.string()}).loose()),
           entryPath: z.string(),
@@ -460,6 +474,11 @@ describe("modern MCP HTTP", () => {
     expect(details.current.manifest.entries).toContainEqual(
       expect.objectContaining({path: "proof.txt", sha256: declaredFile.sha256}),
     );
+    expectExactReviewUrl(details.current.links.review, {
+      artifactId: committed.artifact.id,
+      projectId: committed.artifact.projectId,
+      versionId: committed.version.id,
+    });
 
     const listedResult = await callTool(server, installation.apiToken, {
       arguments: {cursor: null, limit: 10, tag: "mcp"},
@@ -480,14 +499,20 @@ describe("modern MCP HTTP", () => {
       artifactId: z.string(),
       browserUrl: z.url(),
       exactVersion: z.boolean(),
+      reviewUrl: z.url(),
       versionId: z.string(),
     }).parse(openedResult.structuredContent);
     expect(opened.artifactId).toBe(committed.artifact.id);
     expect(opened.versionId).toBe(committed.version.id);
     expect(opened.exactVersion).toBe(false);
     expect(opened.browserUrl).toContain("__artifact_bootstrap=");
+    expectExactReviewUrl(opened.reviewUrl, {
+      artifactId: committed.artifact.id,
+      projectId: committed.artifact.projectId,
+      versionId: committed.version.id,
+    });
 
-    const resourceUri = `artifact://projects/${String(committed.artifact["projectId"])}/artifacts/${committed.artifact.id}/versions/${committed.version.id}/manifest`;
+    const resourceUri = `artifact://projects/${committed.artifact.projectId}/artifacts/${committed.artifact.id}/versions/${committed.version.id}/manifest`;
     const resourceResponse = await mcpRequest(
       server,
       installation.apiToken,
@@ -552,6 +577,28 @@ describe("modern MCP HTTP", () => {
       })).structuredContent,
     );
     expect(updated.version.id).not.toBe(committed.version.id);
+
+    const openedHistorical = z.object({
+      artifactId: z.string(),
+      browserUrl: z.url(),
+      exactVersion: z.literal(true),
+      reviewUrl: z.url(),
+      versionId: z.string(),
+    }).parse((await callTool(server, installation.apiToken, {
+      arguments: {
+        artifactId: committed.artifact.id,
+        versionId: committed.version.id,
+      },
+      name: "artifact_open",
+    })).structuredContent);
+    expect(openedHistorical.artifactId).toBe(committed.artifact.id);
+    expect(openedHistorical.versionId).toBe(committed.version.id);
+    expect(openedHistorical.browserUrl).toContain("__artifact_bootstrap=");
+    expectExactReviewUrl(openedHistorical.reviewUrl, {
+      artifactId: committed.artifact.id,
+      projectId: committed.artifact.projectId,
+      versionId: committed.version.id,
+    });
 
     const versions = z.object({
       artifactId: z.string(),
@@ -980,6 +1027,25 @@ type McpParameterValue =
   | null
   | readonly McpParameterValue[]
   | McpParameters;
+
+function expectExactReviewUrl(
+  reviewUrl: string,
+  expected: {
+    readonly artifactId: string;
+    readonly projectId: string;
+    readonly versionId: string;
+  },
+): void {
+  const parsed = new URL(reviewUrl);
+  expect(parsed.pathname).toBe("/review");
+  expect(Object.fromEntries(parsed.searchParams)).toEqual({
+    artifact: expected.artifactId,
+    project: expected.projectId,
+    version: expected.versionId,
+    view: "focus",
+  });
+  expect(reviewUrl).not.toContain("__artifact_bootstrap=");
+}
 
 function declaredMcpFile(
   manifestPath: string,

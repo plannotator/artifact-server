@@ -80,7 +80,7 @@
     {
       "id": 7,
       "prompt": "Open version ver_8 of art_123 for me on my local machine.",
-      "expected_output": "Resolves the server and project, calls artifact_open for the exact version, and opens the returned URL on the client when supported.",
+      "expected_output": "Resolves the server and project, calls artifact_open for the exact version, and opens reviewUrl on the client when supported; it does not mislabel browserUrl as Review.",
       "files": [],
       "expectations": [
         "Asks for the server if context and defaults do not identify one",

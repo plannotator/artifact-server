@@ -348,6 +348,11 @@ Account-required artifact links use normal Artifact Server browser sign-in.
 Public artifact links require no sign-in. MCP credentials never become browser
 cookies.
 
+`artifact_get` returns the exact full-screen Review URL for the current version.
+`artifact_open` returns that Review URL and the raw immutable content URL for the
+selected version. Agents prefer the Review URL for human handoff and never label
+the raw content URL as Review.
+
 These paths are release requirements. Each advertised client must pass clean
 connection, repeat connection, disconnect, stale-state recovery, and hostile
 credential tests. Remote OAuth paths must also pass renewal and revoke tests. A

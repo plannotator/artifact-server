@@ -3057,11 +3057,14 @@ v12-7f3a.content.example.net</code></pre>
                   its secret manager.
                 </p>
                 <p>
-                  The MCP <code>artifact_open</code> tool returns the canonical browser address for
-                  the chosen artifact and version. A local helper may ask the operating system to
-                  open that address directly. A remote server only returns its address; the agent
-                  or client opens it on the user's computer. The remote server never attempts to
-                  start a browser on the server machine.
+                  The MCP <code>artifact_get</code> tool returns the exact full-screen Review address
+                  for the current version. <code>artifact_open</code> returns that Review address and
+                  the raw immutable content address for the chosen artifact and version. Agents use
+                  the Review address for human handoff and never label the raw content address as
+                  Review. A local helper may ask the operating system to open an address directly.
+                  A remote server only returns addresses; the agent or client opens them on the
+                  user's computer. The remote server never attempts to start a browser on the server
+                  machine.
                 </p>
                 <p>
                   A successful publish instead returns a durable <code>links.review</code> address
