@@ -2201,20 +2201,26 @@ select:focus-visible {
 }
 
 .as-comment-list {
+  display: grid;
+  gap: 0.65rem;
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0.65rem 0.75rem 1rem;
 }
 
 .as-comment-card {
-  border-bottom: 1px solid var(--as-border);
-  box-shadow: inset 2px 0 0 transparent;
-  padding: 0.9rem 0.75rem;
+  background: color-mix(in oklab, var(--as-surface-raised) 30%, var(--as-surface));
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--as-border) 82%, transparent);
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
 }
 
 .as-comment-card[data-selected="true"] {
   background: var(--as-iris-soft);
-  box-shadow: inset 2px 0 0 var(--as-iris);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--as-iris) 72%, var(--as-border)),
+    inset 2px 0 0 var(--as-iris);
 }
 
 .as-comment-card > header {
@@ -2222,6 +2228,7 @@ select:focus-visible {
   display: flex;
   gap: 0.5rem;
   justify-content: space-between;
+  padding: 0.7rem 0.75rem 0.25rem;
 }
 
 .as-comment-card > header strong {
@@ -2253,10 +2260,14 @@ select:focus-visible {
   color: var(--as-subtle);
 }
 
-.as-comment-card > p {
+.as-comment-card__body {
+  padding: 0.1rem 0.75rem 0.75rem;
+}
+
+.as-comment-card__body > p {
   font-size: 0.8rem;
   line-height: 1.5;
-  margin: 0.7rem 0;
+  margin: 0.15rem 0 0.75rem;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
@@ -2271,6 +2282,11 @@ select:focus-visible {
     align-items: start;
   }
 
+  .as-comment-list {
+    gap: 0.5rem;
+    padding: 0.5rem;
+  }
+
   .as-comment-replies header {
     align-items: start;
     flex-direction: column;
@@ -2278,53 +2294,91 @@ select:focus-visible {
   }
 }
 
-.as-comment-card > footer {
+.as-comment-card__body > footer {
   color: var(--as-muted);
   display: grid;
   font-size: 0.66rem;
-  gap: 0.5rem;
+  gap: 0.55rem;
 }
 
-.as-comment-card > footer > span {
+.as-comment-card__meta {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+  gap: 0.25rem 0.75rem;
+  line-height: 1.45;
+}
+
+.as-comment-card__meta span {
+  display: inline-flex;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.as-comment-card__meta code {
+  color: var(--as-subtle);
+  font-size: inherit;
   overflow-wrap: anywhere;
 }
 
-.as-comment-card > footer small {
+.as-comment-card__body > footer small {
   color: var(--as-love);
   font-size: inherit;
 }
 
-.as-comment-card > footer > div {
+.as-comment-card__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
 }
 
-.as-comment-card .as-button {
+.as-comment-card .as-button,
+.as-comment-reply-trigger {
+  background: transparent;
+  border: 1px solid color-mix(in oklab, var(--as-border) 76%, transparent);
   font-size: 0.66rem;
   min-height: 1.7rem;
   padding: 0.2rem 0.4rem;
+  text-transform: none;
+}
+
+.as-comment-card .as-button:hover,
+.as-comment-reply-trigger:hover {
+  background: var(--as-surface-raised);
+  border-color: var(--as-border);
+}
+
+.as-comment-card__conversation {
+  background: color-mix(in oklab, var(--as-surface-raised) 58%, var(--as-surface));
+  padding: 0.65rem 0.75rem 0.75rem;
+}
+
+.as-comment-card__conversation-label {
+  color: var(--as-muted);
+  font-size: 0.66rem;
+  font-weight: 600;
+  margin: 0 0 0.55rem;
 }
 
 .as-comment-replies {
-  border-left: 1px solid var(--as-border-strong);
+  display: grid;
+  gap: 0.8rem;
   list-style: none;
-  margin: 0.8rem 0;
-  padding: 0 0 0 0.7rem;
+  margin: 0;
+  padding: 0;
 }
 
 .as-comment-replies > li {
-  border-bottom: 1px solid color-mix(in oklab, var(--as-border) 68%, transparent);
-  padding: 0.65rem 0;
-}
-
-.as-comment-replies > li:last-child {
-  border-bottom: 0;
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
 }
 
 .as-comment-replies header {
   align-items: baseline;
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   justify-content: space-between;
 }
@@ -2341,21 +2395,34 @@ select:focus-visible {
 .as-comment-replies p {
   font-size: 0.76rem;
   line-height: 1.5;
-  margin: 0.45rem 0 0;
+  margin: 0;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
-.as-comment-reply__actions,
-.as-comment-reply-composer [class*="flex"] {
+.as-comment-reply__actions {
   display: flex;
   gap: 0.35rem;
-  margin-top: 0.5rem;
+  margin-top: 0.15rem;
 }
 
 .as-comment-reply-composer {
-  border-top: 1px solid color-mix(in oklab, var(--as-border) 68%, transparent);
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
+  padding: 0 0.75rem 0.75rem;
+}
+
+.as-comment-reply-composer[data-expanded="true"] {
+  background: color-mix(in oklab, var(--as-surface-raised) 42%, var(--as-surface));
+  padding-top: 0.65rem;
+}
+
+.as-comment-reply-composer[data-expanded="false"] {
+  padding-top: 0.1rem;
+}
+
+.as-comment-replies .as-comment-composer {
+  background: color-mix(in oklab, var(--as-surface) 72%, transparent);
+  margin-top: 0.2rem;
+  padding: 0.55rem;
 }
 
 .as-comment-reply-composer label,
@@ -2366,7 +2433,7 @@ select:focus-visible {
 .as-comment-reply-composer textarea,
 .as-comment-replies textarea {
   font-size: 0.75rem;
-  min-height: 4.5rem;
+  min-height: 4.25rem;
 }
 
 @media (any-pointer: coarse) {

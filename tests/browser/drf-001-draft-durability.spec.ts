@@ -60,12 +60,18 @@ test.describe("DRF-001 draft durability", () => {
       await page.goto(reviewUrl);
       await page.getByRole("tab", {name: "Comments"}).click();
 
-      const newThread = page.getByLabel("Comment on this version");
+      const newThread = page.getByLabel("Add a comment");
+      await page.getByRole("button", {exact: true, name: "Reply"}).click();
       const reply = page.getByLabel("Reply", {exact: true});
       const newText = "A careful multi-paragraph thought about the heading.";
       const replyText = "Reply in progress, do not lose me.";
       await newThread.fill(newText);
       await reply.fill(replyText);
+      await page.getByRole("button", {exact: true, name: "Cancel"}).click();
+      await expect(page.getByRole("textbox", {exact: true, name: "Reply"})).toHaveCount(0);
+      await page.getByRole("button", {exact: true, name: "Reply"}).click();
+      await expect(page.getByRole("textbox", {exact: true, name: "Reply"}))
+        .toHaveValue(replyText);
       await page.waitForTimeout(mirrorSettle);
 
       // In-app version switch and back: the drafts never left.
@@ -74,7 +80,7 @@ test.describe("DRF-001 draft durability", () => {
       await page.getByRole("tab", {name: /Versions/u}).click();
       await page.getByRole("button", {name: /Version 2/u}).click();
       await page.getByRole("tab", {name: "Comments"}).click();
-      await expect(page.getByLabel("Comment on this version")).toHaveValue(newText);
+      await expect(page.getByLabel("Add a comment")).toHaveValue(newText);
       await expect(page.getByLabel("Reply", {exact: true})).toHaveValue(replyText);
       await expect(page.locator("[data-draft-marker]")).toHaveCount(2);
 
@@ -84,28 +90,30 @@ test.describe("DRF-001 draft durability", () => {
       await expect(page).not.toHaveURL(new RegExp(`artifact=${artifactId}`, "u"));
       await page.getByRole("button", {name: "Next artifact"}).click();
       await page.getByRole("tab", {name: "Comments"}).click();
-      await expect(page.getByLabel("Comment on this version")).toHaveValue(newText);
+      await expect(page.getByLabel("Add a comment")).toHaveValue(newText);
       await expect(page.getByLabel("Reply", {exact: true})).toHaveValue(replyText);
 
       // A full reload restores both from the mirror, marker included.
       await page.reload();
       await page.getByRole("tab", {name: "Comments"}).click();
-      await expect(page.getByLabel("Comment on this version")).toHaveValue(newText);
+      await expect(page.getByLabel("Add a comment")).toHaveValue(newText);
       await expect(page.getByLabel("Reply", {exact: true})).toHaveValue(replyText);
       await expect(page.locator("[data-draft-marker]")).toHaveCount(2);
 
       // Posting the reply consumes its draft.
       await page.getByRole("button", {name: "Post reply"}).click();
       await expect(page.getByText(replyText)).toBeVisible();
-      await expect(page.getByLabel("Reply", {exact: true})).toHaveValue("");
+      await expect(page.getByLabel("Reply", {exact: true})).toHaveCount(0);
+      await expect(page.getByRole("button", {exact: true, name: "Reply"})).toBeVisible();
 
       // Discarding the new-thread draft empties it; neither survives a reload.
       await page.getByRole("button", {name: "Discard"}).click();
-      await expect(page.getByLabel("Comment on this version")).toHaveValue("");
+      await expect(page.getByLabel("Add a comment")).toHaveValue("");
       await page.reload();
       await page.getByRole("tab", {name: "Comments"}).click();
-      await expect(page.getByLabel("Comment on this version")).toHaveValue("");
-      await expect(page.getByLabel("Reply", {exact: true})).toHaveValue("");
+      await expect(page.getByLabel("Add a comment")).toHaveValue("");
+      await expect(page.getByLabel("Reply", {exact: true})).toHaveCount(0);
+      await expect(page.getByRole("button", {exact: true, name: "Reply"})).toBeVisible();
       await expect(page.locator("[data-draft-marker]")).toHaveCount(0);
     } finally {
       await stopBrowserFixture(fixture);
