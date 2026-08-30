@@ -76,7 +76,9 @@ import {useWebmcp, type WebmcpBindings} from "./webmcp.tsx";
 type ReviewTheme = "dawn" | "moon";
 type InspectorTab = "activity" | "comments" | "compare" | "details" | "files" | "versions";
 type ArtifactListLoadResult = "failed" | "loaded" | "skipped";
+type CatalogCommentFilter = "all" | "with" | "without";
 type CatalogRefreshState = "complete" | "idle" | "loading";
+type CatalogSort = "comments" | "newest";
 const catalogDefaultWidth = 336;
 const catalogMinimumWidth = 240;
 const catalogMaximumWidth = 520;
@@ -284,6 +286,8 @@ function ArtifactReview({
   );
   const [query, setQuery] = useState("");
   const searchQuery = useDeferredValue(query.trim());
+  const [catalogCommentFilter, setCatalogCommentFilter] = useState<CatalogCommentFilter>("all");
+  const [catalogSort, setCatalogSort] = useState<CatalogSort>("newest");
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<Error | null>(null);
   const [catalogRefreshState, setCatalogRefreshState] = useState<CatalogRefreshState>(
@@ -416,6 +420,7 @@ function ArtifactReview({
     if (
       details === null
       || searchQuery !== ""
+      || catalogCommentFilter !== "all"
       || items.some(({artifact}) => artifact.id === details.artifact.id)
     ) return items;
     return [{
@@ -424,7 +429,14 @@ function ArtifactReview({
       links: details.links,
       versionCount: versions.length,
     }, ...items];
-  }, [comments.threads.length, details, items, searchQuery, versions.length]);
+  }, [
+    catalogCommentFilter,
+    comments.threads.length,
+    details,
+    items,
+    searchQuery,
+    versions.length,
+  ]);
   const selectedIndex = catalogItems.findIndex(
     ({artifact}) => artifact.id === selectedArtifactId,
   );
@@ -438,7 +450,10 @@ function ArtifactReview({
     setListLoading(true);
     setListError(null);
     try {
-      const page = await api.artifacts(projectId, cursor, "", searchQuery);
+      const page = await api.artifacts(projectId, cursor, "", searchQuery, {
+        comments: catalogCommentFilter,
+        sort: catalogSort,
+      });
       if (requestGeneration !== catalogRequestGenerationRef.current) return "skipped";
       setItems((current) => replace ? page.artifacts : [...current, ...page.artifacts]);
       setNextCursor(page.nextCursor);
@@ -460,7 +475,7 @@ function ArtifactReview({
         setListLoading(false);
       }
     }
-  }, [projectId, searchQuery]);
+  }, [catalogCommentFilter, catalogSort, projectId, searchQuery]);
 
   const refreshArtifacts = useCallback(async (): Promise<void> => {
     if (listLoading) return;
@@ -1134,6 +1149,39 @@ function ArtifactReview({
                 </button>
               )}
             </label>
+            <div className="as-catalog-query-controls">
+              <label>
+                <span className="as-visually-hidden">Filter artifacts by comments</span>
+                <select
+                  aria-label="Filter artifacts by comments"
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    if (value === "all" || value === "with" || value === "without") {
+                      setCatalogCommentFilter(value);
+                    }
+                  }}
+                  value={catalogCommentFilter}
+                >
+                  <option value="all">All artifacts</option>
+                  <option value="with">With comments</option>
+                  <option value="without">No comments</option>
+                </select>
+              </label>
+              <label>
+                <span className="as-visually-hidden">Sort artifacts</span>
+                <select
+                  aria-label="Sort artifacts"
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    if (value === "comments" || value === "newest") setCatalogSort(value);
+                  }}
+                  value={catalogSort}
+                >
+                  <option value="newest">Newest first</option>
+                  <option value="comments">Most comments</option>
+                </select>
+              </label>
+            </div>
           </div>
         </div>
 

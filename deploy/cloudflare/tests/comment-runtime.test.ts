@@ -277,6 +277,27 @@ describe("Cloudflare D1 comments", () => {
     )).json());
     expect(artifactCatalog.artifacts.find(({artifact}) => artifact.id === artifactId))
       .toMatchObject({commentCount: 2});
+    const commentedCatalog = z.object({
+      artifacts: z.array(z.object({
+        artifact: z.object({id: z.string()}),
+        commentCount: z.number().int().positive(),
+      })),
+    }).parse(await (await authenticatedFetch(
+      worker,
+      `${origin}/api/v1/artifacts?comments=with&sort=comments&limit=1`,
+    )).json());
+    expect(commentedCatalog.artifacts).toEqual([
+      expect.objectContaining({
+        artifact: expect.objectContaining({id: artifactId}),
+        commentCount: 2,
+      }),
+    ]);
+    const uncommentedCatalog = z.object({artifacts: z.array(z.unknown())})
+      .parse(await (await authenticatedFetch(
+        worker,
+        `${origin}/api/v1/artifacts?comments=without`,
+      )).json());
+    expect(uncommentedCatalog.artifacts).toEqual([]);
 
     const openOnly = threadPageSchema.parse(
       await (await authenticatedFetch(worker, `${threadsUrl}?state=open`)).json(),

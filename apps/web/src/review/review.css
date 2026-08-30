@@ -641,6 +641,35 @@ select:focus-visible {
   min-width: 0;
 }
 
+.as-catalog-query-controls {
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.as-catalog-query-controls label,
+.as-catalog-query-controls select {
+  min-width: 0;
+  width: 100%;
+}
+
+.as-catalog-query-controls select {
+  background: color-mix(in oklab, var(--as-panel) 88%, var(--as-surface));
+  border: 1px solid var(--as-border);
+  border-radius: 0;
+  color: var(--as-muted);
+  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-size: 0.66rem;
+  min-height: 1.85rem;
+  padding: 0.28rem 0.45rem;
+}
+
+.as-catalog-query-controls select:focus-visible {
+  border-color: var(--as-iris);
+  outline: 1px solid var(--as-iris);
+  outline-offset: 1px;
+}
+
 .as-search-scope {
   color: var(--as-muted);
   font-size: 0.68rem;

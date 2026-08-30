@@ -277,6 +277,35 @@ test.describe("Artifact Server frontend MVP", () => {
       expect(listedArtifacts.artifacts.find(({artifact}) => artifact.id === first.body.artifact.id))
         .toMatchObject({commentCount: 1});
 
+      const quietArtifact = await publishNew(fixture.server, fixture.installation, {
+        accessSetting: "account_required",
+        content: "<!doctype html><title>Quiet fixture</title><p>No review notes yet.</p>",
+        idempotencyKey: "frontend-review-quiet-fixture",
+        name: "Quiet fixture",
+        tags: ["inspection"],
+      });
+      await catalogRefresh.click();
+      await expect(catalogRefresh).toHaveAttribute("data-state", "complete");
+      const commentFilter = fixture.page.getByRole("combobox", {
+        name: "Filter artifacts by comments",
+      });
+      const catalogSort = fixture.page.getByRole("combobox", {name: "Sort artifacts"});
+      await commentFilter.selectOption("with");
+      await expect(fixture.page.getByRole("button", {name: /Review fixture/u})).toBeVisible();
+      await expect(fixture.page.getByRole("button", {name: /Quiet fixture/u})).toHaveCount(0);
+      await commentFilter.selectOption("without");
+      await expect(fixture.page.getByRole("button", {name: /Quiet fixture/u})).toBeVisible();
+      await expect(fixture.page.getByRole("button", {name: /Review fixture/u})).toHaveCount(0);
+      await expect(preview.getByRole("heading", {name: "Review preview content"})).toBeVisible();
+      await commentFilter.selectOption("all");
+      await catalogSort.selectOption("comments");
+      await expect(fixture.page.locator(".as-artifact-card").first())
+        .toContainText("Review fixture");
+      await catalogSort.selectOption("newest");
+      await expect(fixture.page.locator(".as-artifact-card").first())
+        .toContainText("Quiet fixture");
+      expect(quietArtifact.body.artifact.id).not.toBe(first.body.artifact.id);
+
       await fixture.page.reload();
       await expect(preview.locator("#review-target")).toBeVisible();
       await expect(preview.locator("button[data-plannotator-marker]"))
@@ -413,6 +442,7 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(fixture.page.getByRole("complementary", {name: "Artifact catalog"}))
         .toBeVisible();
       await expect(fixture.page).toHaveURL(/\/review\?project=prj_default/u);
+      await fixture.page.getByRole("button", {name: /Review fixture/u}).click();
       await expect(
         fixture.page.getByRole("heading", {exact: true, name: "Review fixture"}),
       ).toBeVisible();

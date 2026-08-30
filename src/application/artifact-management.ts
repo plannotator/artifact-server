@@ -91,11 +91,13 @@ export interface ChangeArtifactTagsCommand extends ReadArtifactCommand {
 
 /** Input for listing active artifacts visible to one principal. */
 export interface ListArtifactsCommand {
+  readonly comments?: "all" | "with" | "without";
   readonly cursor: PageCursor | null;
   readonly limit: number;
   readonly principal: Principal;
   readonly projectId: string | null;
   readonly search: string | null;
+  readonly sort?: "comments" | "newest";
   readonly tag: string | null;
 }
 
@@ -399,6 +401,13 @@ function makeArtifactManagementService(
   const listArtifacts = Effect.fn("ArtifactManagementService.listArtifacts")(
     function*(command: ListArtifactsCommand) {
       const limit = yield* requirePageSize(command.limit);
+      const comments = command.comments ?? "all";
+      const sort = command.sort ?? "newest";
+      if (sort === "comments" && command.cursor !== null && command.cursor.rank === undefined) {
+        return yield* new InvalidPagination({
+          message: "The artifact page cursor does not match the selected sort.",
+        });
+      }
       yield* authorization.requireArtifactListing(command.principal);
       const tag = command.tag === null
         ? null
@@ -409,10 +418,12 @@ function makeArtifactManagementService(
         command.projectId,
       );
       return yield* dependencies.repository.listArtifacts({
+        comments,
         cursor: command.cursor,
         limit,
         projectId: project.id,
         search,
+        sort,
         tag,
       });
     },

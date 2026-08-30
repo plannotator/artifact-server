@@ -113,6 +113,8 @@ export interface SourceBindingRecord {
 export interface PageCursor {
   readonly createdAt: string;
   readonly id: string;
+  /** Optional aggregate rank used by non-chronological keyset queries. */
+  readonly rank?: number;
 }
 
 /** One immutable attribution record for an artifact mutation. */

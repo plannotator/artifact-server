@@ -951,8 +951,14 @@ export const api = {
     cursor: string | null,
     tag: string,
     search = "",
+    options: {
+      readonly comments?: "all" | "with" | "without";
+      readonly sort?: "comments" | "newest";
+    } = {},
   ) => {
     const query = new URLSearchParams({ limit: "25", projectId });
+    query.set("comments", options.comments ?? "all");
+    query.set("sort", options.sort ?? "newest");
     if (cursor !== null) query.set("cursor", cursor);
     if (tag.trim() !== "") query.set("tag", tag.trim());
     if (search.trim() !== "") query.set("search", search.trim());

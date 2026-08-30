@@ -394,6 +394,20 @@ requirements:
         run: project/evidence/browser.json
         recorded_at: "2026-08-25T19:16:53.330Z"
 
+  - id: ART-011
+    kind: behavior
+    behavior: The Review catalog shows exact comment totals and can filter artifacts by comment presence or order them by newest and most commented before pagination.
+    owner: artifact-core
+    source: {file: artifact-server-product-spec.html, anchor: artifact}
+    acceptance:
+      behavior: {id: ART-011-B, description: "Show exact per-artifact comment totals, filter the complete project catalog to artifacts with or without comments, and page a deterministic most-commented ordering."}
+      failure: {id: ART-011-F, description: "Reject a cursor from another ordering, preserve the selected Review when filtering hides it, and never reduce filtering or sorting to the artifacts already loaded in the browser."}
+    deployments: *all
+    status: implementing
+    proof_gap: Local SQLite and browser behavior plus provider-specific D1 and Postgres query paths must pass before this requirement can be marked verified.
+    depends_on: [ART-002, ART-009, CMT-001]
+    evidence: []
+
   - id: MAN-001
     kind: behavior
     behavior: A canonical manifest contains a sorted list of normalized paths, fingerprints, sizes, media types, disposition, entry file, routing mode, and serving metadata.

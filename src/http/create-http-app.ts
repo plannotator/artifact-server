@@ -360,6 +360,10 @@ const pageQuerySchema = z.object({
   search: z.string().max(200).optional(),
   tag: z.string().max(200).optional(),
 });
+const artifactPageQuerySchema = pageQuerySchema.extend({
+  comments: z.enum(["all", "with", "without"]).default("all"),
+  sort: z.enum(["comments", "newest"]).default("newest"),
+});
 const publicLinksPageQuerySchema = pageQuerySchema.omit({search: true, tag: true});
 const makePublicLinkPrivateItemSchema = z.object({
   artifactId: z.string().min(1).max(200),
@@ -391,6 +395,7 @@ const makePublicLinksPrivateSchema = z.object({
 const pageCursorSchema = z.object({
   createdAt: z.string().min(1).max(100),
   id: z.string().min(1).max(200),
+  rank: z.number().int().nonnegative().optional(),
 }).strict();
 const pageCursorTokenSchema = z.string()
   .min(1)
@@ -1562,17 +1567,19 @@ export function createHttpApp(
   });
 
   app.get("/api/v1/artifacts", async (context) => {
-    const query = pageQuerySchema.parse(context.req.query());
+    const query = artifactPageQuerySchema.parse(context.req.query());
     const page = await runHttpApplicationEffect(
       context,
       dependencies,
       ArtifactManagementService.use((management) =>
         management.listArtifacts({
+          comments: query.comments,
           cursor: decodePageCursor(query.cursor),
           limit: query.limit,
           principal: context.get("principal"),
           projectId: requestedProjectId(context),
           search: query.search ?? null,
+          sort: query.sort,
           tag: query.tag ?? null,
         })
       ),
@@ -3184,7 +3191,10 @@ function decodePageCursor(token: string | undefined): PageCursor | null {
       Buffer.from(parsedToken.data, "base64url").toString("utf8"),
     );
     const cursor = pageCursorSchema.safeParse(decoded);
-    if (cursor.success) return cursor.data;
+    if (cursor.success) {
+      const {createdAt, id, rank} = cursor.data;
+      return rank === undefined ? {createdAt, id} : {createdAt, id, rank};
+    }
   } catch {
     return invalidPageCursor();
   }
