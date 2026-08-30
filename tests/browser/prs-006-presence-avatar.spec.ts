@@ -191,6 +191,8 @@ test.describe("PRS-006 presence avatar", () => {
       fixture.clock.advance(100_000);
       await expect(page.getByRole("button", {name: "pres — Disconnected"}))
         .toBeVisible({timeout: 30_000});
+      await expect(page.getByText("0 connected · 1 offline", {exact: true}))
+        .toBeVisible();
 
       // Add another open comment so the disconnected default and replacement
       // destination remain observable on the primary control.
@@ -235,6 +237,14 @@ test.describe("PRS-006 presence avatar", () => {
         .toBeVisible();
       await dialog.getByRole("button", {name: "Cancel"}).click();
       await expect(dialog).toHaveCount(0);
+
+      // The comments surface responds to its own narrow panel width. Agent
+      // presence and the send control remain fully contained instead of
+      // turning the inspector body into a horizontal scroller.
+      await page.setViewportSize({height: 800, width: 320});
+      await expect.poll(() => page.locator(".as-inspector__body").evaluate((element) =>
+        element.scrollWidth - element.clientWidth
+      )).toBe(0);
 
       expect(await browserStorage(page)).toEqual({
         indexedDatabaseNames: [],

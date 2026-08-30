@@ -363,10 +363,11 @@ export function SendToAgentControl({
   const caretDisabled = agents === null || noAgents || nothingToSend || quickPending;
 
   return (
-    <div className="inline-flex flex-wrap items-center gap-2">
-      <span className="inline-flex">
+    <div className="as-send-to-agent inline-flex flex-wrap items-center gap-2">
+      <span className="as-send-to-agent__buttons inline-flex">
         <Button
           aria-busy={quickPending || agents === null}
+          className="as-send-to-agent__primary"
           disabled={mainAgent === null || mainReason !== null || quickPending}
           onClick={() => {
             if (mainAgent !== null) void quickSend(mainAgent);
@@ -387,14 +388,16 @@ export function SendToAgentControl({
               ring={presenceRing(mainAgent)}
             />
           )}
-          {quickPending ? "Sending…" : mainLabel}
+          <span className="min-w-0 truncate">
+            {quickPending ? "Sending…" : mainLabel}
+          </span>
         </Button>
         <Popover onOpenChange={setMenuOpen} open={menuOpen}>
           <PopoverTrigger
             render={(
               <Button
                 aria-label="Choose agent or send with a note"
-                className="-ml-px px-1.5"
+                className="as-send-to-agent__menu -ml-px px-1.5"
                 disabled={caretDisabled}
                 size={buttonSize}
                 type="button"

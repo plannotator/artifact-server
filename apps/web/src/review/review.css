@@ -1789,6 +1789,7 @@ select:focus-visible {
 }
 
 .as-inspector {
+  container-type: inline-size;
   display: grid;
   flex: 0 0 auto;
   grid-template-rows: auto minmax(0, 1fr);
@@ -1846,6 +1847,8 @@ select:focus-visible {
 
 .as-inspector__body {
   min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   scrollbar-color: var(--as-border) transparent;
   scrollbar-width: thin;
@@ -2009,13 +2012,15 @@ select:focus-visible {
 
 .as-comments {
   display: grid;
+  min-width: 0;
 }
 
 .as-comments__agents {
   align-items: center;
   border-bottom: 1px solid var(--as-border);
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) auto;
   padding: 0.65rem 0.75rem;
 }
 
@@ -2036,15 +2041,41 @@ select:focus-visible {
 
 .as-comments__send-all {
   border-bottom: 1px solid var(--as-border);
+  min-width: 0;
   padding: 0.65rem 0.75rem;
+}
+
+.as-comments__send-all .as-send-to-agent {
+  min-width: 0;
+  width: 100%;
+}
+
+.as-comments__send-all .as-send-to-agent__buttons {
+  display: flex;
+  flex: 1 1 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.as-comments__send-all .as-send-to-agent__primary {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.as-comments__send-all .as-send-to-agent__menu {
+  flex: 0 0 auto;
 }
 
 .as-comments__filters {
   border-bottom: 1px solid var(--as-border);
-  display: flex;
+  display: grid;
   gap: 0.25rem;
-  overflow-x: auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   padding: 0.5rem 0.75rem;
+}
+
+.as-comments__filters .as-button {
+  min-width: 0;
 }
 
 .as-comments__filters .as-button[aria-pressed="true"] {
@@ -2054,7 +2085,11 @@ select:focus-visible {
 
 .as-comments__agents > div:last-child {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
+  justify-content: flex-end;
+  max-width: min(12rem, 55cqi);
+  min-width: 0;
 }
 
 .as-comments__agent-error {
@@ -2152,7 +2187,25 @@ select:focus-visible {
   font-size: 0.8rem;
   line-height: 1.5;
   margin: 0.7rem 0;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+@container (max-width: 20rem) {
+  .as-comments__filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .as-comments__agents,
+  .as-comments__intro {
+    align-items: start;
+  }
+
+  .as-comment-replies header {
+    align-items: start;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
 }
 
 .as-comment-card > footer {

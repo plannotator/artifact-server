@@ -40,6 +40,16 @@ import {
 const threadPageSize = 100;
 const conversationLoadConcurrency = 6;
 
+function agentPresenceSummary(agents: readonly AgentPresence[] | null): string {
+  if (agents === null) return "Checking presence…";
+  const connectedCount = agents.filter((agent) => agent.connected).length;
+  const offlineCount = agents.length - connectedCount;
+  if (offlineCount === 0) {
+    return connectedCount === 0 ? "No agents connected" : `${connectedCount} connected`;
+  }
+  return `${connectedCount} connected · ${offlineCount} offline`;
+}
+
 function threadQuery(
   versionId: string,
   since: string | null,
@@ -630,9 +640,9 @@ export function ReviewCommentsInspector({
       <div className="as-comments__agents">
         <div>
           <strong>Agents</strong>
-          <span>{agents?.filter((agent) => agent.connected).length ?? 0} connected</span>
+          <span>{agentPresenceSummary(agents)}</span>
         </div>
-        <div>
+        <div aria-label="Agent presence">
           {agents?.map((agent) => (
             <PresenceAvatar agent={agent} key={agent.id} now={now} size="md" />
           ))}
