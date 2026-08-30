@@ -3060,24 +3060,33 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
   justify-content: space-between;
   margin: 0 auto;
   max-width: 82rem;
-  min-height: 3.75rem;
-  padding: 0.55rem 1.25rem;
+  min-height: var(--as-header-height);
+  padding: 0.35rem 1.25rem;
 }
 
 .as-settings__brand {
   align-items: center;
   color: inherit;
   display: inline-flex;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 600;
-  gap: 0.65rem;
+  gap: 0.55rem;
   text-decoration: none;
 }
 
+.as-settings__brand-mark {
+  align-items: center;
+  background: var(--as-action);
+  color: var(--as-on-action);
+  display: inline-flex;
+  height: 2rem;
+  justify-content: center;
+  width: 2rem;
+}
+
 .as-settings__mark {
-  color: var(--as-iris);
-  height: 1.75rem;
-  width: 1.75rem;
+  height: 1.15rem;
+  width: 1.15rem;
 }
 
 .as-settings__header-actions {
@@ -3182,7 +3191,7 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
     padding-inline: 0.8rem;
   }
 
-  .as-settings__brand > span {
+  .as-settings__brand-label {
     display: none;
   }
 
