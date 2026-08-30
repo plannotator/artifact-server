@@ -443,14 +443,14 @@ function NewThreadComposer({
     versionId,
   });
   return (
-    <div className="mb-3 grid gap-2" data-new-thread-composer>
+    <div data-new-thread-composer>
       <CommentComposer
         cancelLabel={null}
         draftRestored={draft.restored}
         initialBody={draft.initialBody}
         inputId={`review-new-thread-${versionId}`}
         key={`new-thread-${versionId}-${draft.restored ? "draft" : "empty"}`}
-        label="Comment on this version"
+        label="Add a comment"
         maximumCharacters={maximumCommentBodyCharacters}
         onBodyChange={draft.onBodyChange}
         onCancel={null}

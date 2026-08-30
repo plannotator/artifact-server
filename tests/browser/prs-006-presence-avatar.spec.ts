@@ -106,6 +106,19 @@ test.describe("PRS-006 presence avatar", () => {
       const cards = page.getByRole("article");
       await expect(cards).toHaveCount(2);
 
+      // The primary compose action reads as a real input at rest: its label
+      // names the action plainly and the writing surface stays visibly
+      // bounded before focus instead of disappearing into the inspector.
+      const newCommentInput = page.getByLabel("Add a comment");
+      await expect(newCommentInput).toBeVisible();
+      expect(await newCommentInput.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          borderWidth: style.borderTopWidth,
+          height: element.getBoundingClientRect().height,
+        };
+      })).toEqual({borderWidth: "1px", height: 80});
+
       // Idle: the primary send-all control carries the agent's avatar — the
       // Pi brand mark in a circle whose solid ring is the state, not a bare
       // dot. Individual comments are now a secondary selection path.

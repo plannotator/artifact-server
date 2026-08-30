@@ -2148,6 +2148,58 @@ select:focus-visible {
   line-height: 1.45;
 }
 
+.as-comments [data-new-thread-composer] {
+  background: color-mix(in oklab, var(--as-surface-raised) 28%, transparent);
+  border-bottom: 1px solid var(--as-border);
+  padding: 0.75rem;
+}
+
+.as-comment-composer {
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.as-comment-composer__header {
+  min-width: 0;
+}
+
+.as-comment-composer__label {
+  color: var(--as-text);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.as-comments .as-comment-composer__input {
+  background: color-mix(in oklab, var(--as-surface-raised) 62%, var(--as-surface));
+  border: 1px solid color-mix(in oklab, var(--as-border) 78%, var(--as-text));
+  border-radius: var(--as-radius);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  min-height: 5rem;
+  padding: 0.6rem 0.65rem;
+  resize: vertical;
+  transition: background-color 140ms ease, border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.as-comments .as-comment-composer__input::placeholder {
+  color: var(--as-muted);
+  opacity: 0.82;
+}
+
+.as-comments .as-comment-composer__input:focus-visible {
+  background: var(--as-surface);
+  border-color: var(--as-iris);
+  box-shadow: 0 0 0 2px var(--as-iris-soft);
+}
+
+.as-comment-composer__actions {
+  align-items: center;
+  margin-top: 0.05rem;
+}
+
 .as-comment-list {
   list-style: none;
   margin: 0;
@@ -2313,10 +2365,14 @@ select:focus-visible {
 
 .as-comment-reply-composer textarea,
 .as-comment-replies textarea {
-  border-radius: var(--as-radius);
   font-size: 0.75rem;
   min-height: 4.5rem;
-  resize: vertical;
+}
+
+@media (any-pointer: coarse) {
+  .as-comments .as-comment-composer__input {
+    font-size: 1rem;
+  }
 }
 
 .as-file-list,
