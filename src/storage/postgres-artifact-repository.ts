@@ -232,6 +232,7 @@ const artifactRowSchema = z.object({
   projectId: z.string(),
 });
 const artifactListRowSchema = artifactRowSchema.extend({
+  commentCount: z.coerce.number().int().nonnegative(),
   versionCount: z.coerce.number().int().positive(),
 });
 const artifactTagRowSchema = z.object({artifactId: z.string(), tag: z.string()});
@@ -1647,6 +1648,12 @@ export class PostgresArtifactRepository implements
           access_setting AS "accessSetting",
           current_version_id AS "currentVersionId",
           created_at AS "createdAt", deleted_at AS "deletedAt",
+          (
+            SELECT COUNT(*)::int FROM comment_threads
+            WHERE comment_threads.installation_id = artifacts.installation_id
+              AND comment_threads.project_id = artifacts.project_id
+              AND comment_threads.artifact_id = artifacts.id
+          ) AS "commentCount",
           (
             SELECT COUNT(*)::int FROM versions
             WHERE versions.installation_id = artifacts.installation_id

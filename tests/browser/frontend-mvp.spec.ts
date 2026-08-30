@@ -254,6 +254,9 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(fixture.page.getByRole("article").filter({
         hasText: "Make the release status easier to scan.",
       })).toBeVisible();
+      await expect(fixture.page.getByRole("button", {
+        name: /Review fixture.*1 comment.*2 versions/u,
+      })).toBeVisible();
       await expect(async () => {
         const stored = await listThreadsOverApi(
           fixture,
@@ -263,6 +266,16 @@ test.describe("Artifact Server frontend MVP", () => {
         expect(stored[0]?.body).toBe("Make the release status easier to scan.");
         expect(stored[0]?.path).toBe("index.html");
       }).toPass();
+      const listedArtifacts = z.object({
+        artifacts: z.array(z.object({
+          artifact: z.object({id: z.string()}),
+          commentCount: z.number().int().nonnegative(),
+        })),
+      }).parse(await (await fixture.page.request.get(
+        `${fixture.server.baseUrl}/api/v1/artifacts?projectId=${first.body.artifact.projectId}`,
+      )).json());
+      expect(listedArtifacts.artifacts.find(({artifact}) => artifact.id === first.body.artifact.id))
+        .toMatchObject({commentCount: 1});
 
       await fixture.page.reload();
       await expect(preview.locator("#review-target")).toBeVisible();

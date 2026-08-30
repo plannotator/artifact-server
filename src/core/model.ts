@@ -130,6 +130,7 @@ export interface ArtifactActionRecord {
 
 /** One active artifact with exact aggregate data needed by list surfaces. */
 export interface ArtifactListItem extends ArtifactRecord {
+  readonly commentCount: number;
   readonly versionCount: number;
 }
 

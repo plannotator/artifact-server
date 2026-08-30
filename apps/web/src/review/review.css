@@ -811,9 +811,32 @@ select:focus-visible {
 }
 
 .as-artifact-card__meta time {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.as-artifact-card__counts,
+.as-artifact-card__counts > span {
+  align-items: center;
+  display: inline-flex;
+}
+
+.as-artifact-card__counts {
+  flex: 0 0 auto;
+  gap: 0.65rem;
+}
+
+.as-artifact-card__counts > span {
+  gap: 0.2rem;
+  white-space: nowrap;
+}
+
+.as-artifact-card__counts svg {
+  height: 0.72rem;
+  width: 0.72rem;
 }
 
 .as-mono,
@@ -1070,9 +1093,7 @@ select:focus-visible {
   right: 0;
   top: 0;
   transform: translateX(100%);
-  transition:
-    opacity 180ms ease,
-    transform 270ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: transform 270ms cubic-bezier(0.32, 0.72, 0, 1);
   width: var(--as-focus-comments-width);
   z-index: 20;
 }
@@ -2303,6 +2324,7 @@ select:focus-visible {
 
 .as-comment-card__meta {
   align-items: baseline;
+  color: color-mix(in oklab, var(--as-muted) 72%, var(--as-text));
   display: flex;
   flex-wrap: wrap;
   font-variant-numeric: tabular-nums;
@@ -2317,7 +2339,7 @@ select:focus-visible {
 }
 
 .as-comment-card__meta code {
-  color: var(--as-subtle);
+  color: color-mix(in oklab, var(--as-muted) 72%, var(--as-text));
   font-size: inherit;
   overflow-wrap: anywhere;
 }
@@ -2337,6 +2359,7 @@ select:focus-visible {
 .as-comment-reply-trigger {
   background: transparent;
   border: 1px solid color-mix(in oklab, var(--as-border) 76%, transparent);
+  color: color-mix(in oklab, var(--as-muted) 72%, var(--as-text));
   font-size: 0.66rem;
   min-height: 1.7rem;
   padding: 0.2rem 0.4rem;
@@ -2355,7 +2378,7 @@ select:focus-visible {
 }
 
 .as-comment-card__conversation-label {
-  color: var(--as-muted);
+  color: color-mix(in oklab, var(--as-muted) 72%, var(--as-text));
   font-size: 0.66rem;
   font-weight: 600;
   margin: 0 0 0.55rem;
@@ -2388,7 +2411,7 @@ select:focus-visible {
 }
 
 .as-comment-replies header time {
-  color: var(--as-muted);
+  color: color-mix(in oklab, var(--as-muted) 72%, var(--as-text));
   font-size: 0.62rem;
 }
 

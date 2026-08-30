@@ -258,6 +258,7 @@ const artifactRowSchema = z.object({
   projectId: z.string(),
 });
 const artifactListRowSchema = artifactRowSchema.extend({
+  commentCount: z.number().int().nonnegative(),
   versionCount: z.number().int().positive(),
 });
 const artifactTagRowSchema = z.object({
@@ -1836,6 +1837,11 @@ export class SqliteArtifactRepository implements
             current_version_id AS currentVersionId,
             created_at AS createdAt,
             deleted_at AS deletedAt,
+            (
+              SELECT COUNT(*) FROM comment_threads
+              WHERE comment_threads.project_id = artifacts.project_id
+                AND comment_threads.artifact_id = artifacts.id
+            ) AS commentCount,
             (
               SELECT COUNT(*) FROM versions
               WHERE versions.project_id = artifacts.project_id

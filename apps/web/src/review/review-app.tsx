@@ -420,10 +420,11 @@ function ArtifactReview({
     ) return items;
     return [{
       artifact: details.artifact,
+      commentCount: comments.threads.length,
       links: details.links,
       versionCount: versions.length,
     }, ...items];
-  }, [details, items, searchQuery, versions.length]);
+  }, [comments.threads.length, details, items, searchQuery, versions.length]);
   const selectedIndex = catalogItems.findIndex(
     ({artifact}) => artifact.id === selectedArtifactId,
   );
@@ -1149,28 +1150,39 @@ function ArtifactReview({
               title={query === "" ? "No artifacts yet" : "No matching artifacts"}
             />
           ) : null}
-          {catalogItems.map(({artifact, versionCount}) => (
-            <button
-              aria-current={artifact.id === selectedArtifactId ? "true" : undefined}
-              className="as-artifact-card"
-              data-selected={artifact.id === selectedArtifactId}
-              key={artifact.id}
-              onClick={() => selectArtifact(artifact.id, artifact.currentVersionId)}
-              type="button"
-            >
-              <span className="as-artifact-card__title-row">
-                <strong>{artifact.name}</strong>
-                <AccessPill access={artifact.accessSetting} />
-              </span>
-              <span className="as-artifact-card__tags">
-                {artifact.tags.length === 0 ? "untagged" : artifact.tags.join(" · ")}
-              </span>
-              <span className="as-artifact-card__meta">
-                <time dateTime={artifact.createdAt}>{formatTimestamp(artifact.createdAt)}</time>
-                <span>{versionCount} version{versionCount === 1 ? "" : "s"}</span>
-              </span>
-            </button>
-          ))}
+          {catalogItems.map(({artifact, commentCount, versionCount}) => {
+            const displayedCommentCount = artifact.id === selectedArtifactId && !comments.loading
+              ? comments.threads.length
+              : commentCount;
+            return (
+              <button
+                aria-current={artifact.id === selectedArtifactId ? "true" : undefined}
+                className="as-artifact-card"
+                data-selected={artifact.id === selectedArtifactId}
+                key={artifact.id}
+                onClick={() => selectArtifact(artifact.id, artifact.currentVersionId)}
+                type="button"
+              >
+                <span className="as-artifact-card__title-row">
+                  <strong>{artifact.name}</strong>
+                  <AccessPill access={artifact.accessSetting} />
+                </span>
+                <span className="as-artifact-card__tags">
+                  {artifact.tags.length === 0 ? "untagged" : artifact.tags.join(" · ")}
+                </span>
+                <span className="as-artifact-card__meta">
+                  <time dateTime={artifact.createdAt}>{formatTimestamp(artifact.createdAt)}</time>
+                  <span className="as-artifact-card__counts">
+                    <span>
+                      <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
+                      {displayedCommentCount} comment{displayedCommentCount === 1 ? "" : "s"}
+                    </span>
+                    <span>{versionCount} version{versionCount === 1 ? "" : "s"}</span>
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {nextCursor === null ? null : (

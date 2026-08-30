@@ -671,7 +671,7 @@ export function ReviewCommentsInspector({
           <strong>Agents</strong>
           <span>{agentPresenceSummary(agents)}</span>
         </div>
-        <div aria-label="Agent presence">
+        <div aria-label="Agent presence" role="group">
           {agents?.map((agent) => (
             <PresenceAvatar agent={agent} key={agent.id} now={now} size="md" />
           ))}

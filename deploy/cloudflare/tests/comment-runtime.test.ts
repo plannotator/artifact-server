@@ -266,6 +266,17 @@ describe("Cloudflare D1 comments", () => {
     );
     expect(listed.items.map(({id}) => id).toSorted())
       .toEqual([secondId, threadId].toSorted());
+    const artifactCatalog = z.object({
+      artifacts: z.array(z.object({
+        artifact: z.object({id: z.string()}),
+        commentCount: z.number().int().nonnegative(),
+      })),
+    }).parse(await (await authenticatedFetch(
+      worker,
+      `${origin}/api/v1/artifacts`,
+    )).json());
+    expect(artifactCatalog.artifacts.find(({artifact}) => artifact.id === artifactId))
+      .toMatchObject({commentCount: 2});
 
     const openOnly = threadPageSchema.parse(
       await (await authenticatedFetch(worker, `${threadsUrl}?state=open`)).json(),

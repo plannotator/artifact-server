@@ -2885,8 +2885,9 @@ function artifactPageResponse(
   page: ArtifactPage,
 ) {
   return {
-    artifacts: page.items.map(({versionCount, ...artifact}) => ({
+    artifacts: page.items.map(({commentCount, versionCount, ...artifact}) => ({
       artifact,
+      commentCount,
       links: {
         artifact: artifactBrowserUrl(requestUrl, artifact.id),
         management: new URL(

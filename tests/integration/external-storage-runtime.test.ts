@@ -149,6 +149,7 @@ const artifactListSchema = z.object({
       name: z.string(),
       projectId: z.string(),
     }),
+    commentCount: z.number().int().nonnegative(),
   })),
 });
 
@@ -1912,6 +1913,10 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     expect(secondPage.nextCursor).toBeNull();
     expect([...firstPage.items, ...secondPage.items].map(({id}) => id)
       .toSorted()).toEqual([thread.thread.id, ...laterThreadIds].toSorted());
+    const listedArtifact = await listArtifacts(server.baseUrl, commentIdentity.apiToken);
+    expect(listedArtifact.body.artifacts).toEqual([
+      expect.objectContaining({commentCount: 3}),
+    ]);
 
     const versionFiltered = commentPageSchema.parse(await (await authenticatedFetch(
       server.baseUrl,
