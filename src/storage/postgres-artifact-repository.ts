@@ -1658,12 +1658,15 @@ export class PostgresArtifactRepository implements
       const orderSql = command.sort === "comments"
         ? `"commentCount" DESC, "createdAt" DESC, id DESC`
         : `"createdAt" DESC, id DESC`;
+      const tagFilterJson = command.tags.length === 0
+        ? null
+        : JSON.stringify(command.tags);
       const queryParameters = command.sort === "comments"
         ? [
             installationId,
             command.projectId,
             command.search ?? null,
-            command.tag,
+            tagFilterJson,
             command.cursor?.createdAt ?? null,
             command.cursor?.id ?? null,
             command.cursor?.rank ?? null,
@@ -1673,7 +1676,7 @@ export class PostgresArtifactRepository implements
             installationId,
             command.projectId,
             command.search ?? null,
-            command.tag,
+            tagFilterJson,
             command.cursor?.createdAt ?? null,
             command.cursor?.id ?? null,
             command.limit + 1,
@@ -1708,11 +1711,11 @@ export class PostgresArtifactRepository implements
                   AND searched_tags.artifact_id = artifacts.id
                   AND searched_tags.tag = $3
               ))
-            AND ($4::text IS NULL OR EXISTS (
+            AND ($4::jsonb IS NULL OR EXISTS (
               SELECT 1 FROM artifact_tags
               WHERE artifact_tags.installation_id = artifacts.installation_id
                 AND artifact_tags.artifact_id = artifacts.id
-                AND artifact_tags.tag = $4
+                AND artifact_tags.tag IN (SELECT jsonb_array_elements_text($4::jsonb))
             ))
         ) AS artifact_catalog
         WHERE ${commentFilterSql} AND ${cursorSql}

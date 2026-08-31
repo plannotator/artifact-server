@@ -105,6 +105,22 @@ describe("artifact tags", () => {
     expect(artifactPageSchema.parse(await partialFilter.json()).artifacts)
       .toEqual([]);
 
+    const multipleTagFilter = new URLSearchParams();
+    multipleTagFilter.append("tag", "PROTOTYPE");
+    multipleTagFilter.append("tag", "STAGED");
+    const filteredByAnyTag = await fetch(
+      `${server.baseUrl}/api/v1/artifacts?${multipleTagFilter}`,
+      {headers: readHeaders(installation)},
+    );
+    expect(filteredByAnyTag.status).toBe(200);
+    expect(
+      artifactPageSchema.parse(await filteredByAnyTag.json()).artifacts
+        .map((item) => item.artifact.id),
+    ).toEqual([
+      stagedPublished.body.artifact.id,
+      published.body.artifact.id,
+    ]);
+
     const updateKey = "artifact-tags-replace-first";
     const changed = await replaceTags(
       server,

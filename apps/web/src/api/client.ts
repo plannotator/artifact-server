@@ -949,7 +949,7 @@ export const api = {
   artifacts: (
     projectId: string,
     cursor: string | null,
-    tag: string,
+    tags: readonly string[],
     search = "",
     options: {
       readonly comments?: "all" | "with" | "without";
@@ -960,7 +960,7 @@ export const api = {
     query.set("comments", options.comments ?? "all");
     query.set("sort", options.sort ?? "newest");
     if (cursor !== null) query.set("cursor", cursor);
-    if (tag.trim() !== "") query.set("tag", tag.trim());
+    for (const tag of tags) query.append("tag", tag);
     if (search.trim() !== "") query.set("search", search.trim());
     return request(artifactPageSchema, `/api/v1/artifacts?${query}`);
   },

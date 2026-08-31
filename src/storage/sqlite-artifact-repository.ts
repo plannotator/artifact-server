@@ -1852,6 +1852,9 @@ export class SqliteArtifactRepository implements
       const orderSql = command.sort === "comments"
         ? "commentCount DESC, createdAt DESC, id DESC"
         : "createdAt DESC, id DESC";
+      const tagFilterJson = command.tags.length === 0
+        ? null
+        : JSON.stringify(command.tags);
       const rows = this.#database
         .prepare(
           `SELECT * FROM (
@@ -1890,7 +1893,7 @@ export class SqliteArtifactRepository implements
                 OR EXISTS (
                   SELECT 1 FROM artifact_tags
                   WHERE artifact_tags.artifact_id = artifacts.id
-                    AND artifact_tags.tag = ?
+                    AND artifact_tags.tag IN (SELECT value FROM json_each(?))
                 )
               )
           ) AS artifact_catalog
@@ -1903,8 +1906,8 @@ export class SqliteArtifactRepository implements
           command.search ?? null,
           command.search ?? null,
           command.search ?? null,
-          command.tag,
-          command.tag,
+          tagFilterJson,
+          tagFilterJson,
           ...cursorParameters,
           command.limit + 1,
       );

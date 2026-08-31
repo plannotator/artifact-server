@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {z} from "zod";
 
 import {
@@ -535,20 +544,24 @@ function ReplyComposer({
 
 type CommentView = "all" | "open" | "resolved" | "sent";
 
+export interface ReviewCommentsInspectorHandle {
+  readonly reload: () => Promise<void>;
+}
+
 /** Review-native thread list kept beside, never over, the artifact. */
-export function ReviewCommentsInspector({
-  canDeleteAny,
-  canComment,
-  principalId,
-  session,
-  versionId,
-}: {
+export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle, {
   readonly canDeleteAny: boolean;
   readonly canComment: boolean;
   readonly principalId: string;
   readonly session: ReviewCommentSession;
   readonly versionId: string | null;
-}) {
+}>(function ReviewCommentsInspector({
+  canDeleteAny,
+  canComment,
+  principalId,
+  session,
+  versionId,
+}, ref) {
   const unanchored = new Set(session.unanchoredIds);
   const [agents, setAgents] = useState<readonly AgentPresence[] | null>(null);
   const [agentError, setAgentError] = useState<Error | null>(null);
@@ -610,6 +623,7 @@ export function ReviewCommentsInspector({
   const reloadDispatchSurface = useCallback(async (): Promise<void> => {
     await Promise.all([session.reload(), loadSent(), loadAgents()]);
   }, [loadAgents, loadSent, session.reload]);
+  useImperativeHandle(ref, () => ({reload: reloadDispatchSurface}), [reloadDispatchSurface]);
   const dispatchUndo = useDispatchUndo(session.projectId, reloadDispatchSurface);
 
   useEffect(() => {
@@ -682,21 +696,11 @@ export function ReviewCommentsInspector({
           />
         </div>
       ) : null}
-      <div className="as-comments__intro">
-        <p>
-          {canComment
-            ? "Click any element in the HTML preview to place a comment."
-            : "Comments are read-only for this account or archived project."}
+      {canComment ? null : (
+        <p className="as-comments__read-only">
+          Comments are read-only for this account or archived project.
         </p>
-        <button
-          className="as-inspector-section__action"
-          disabled={session.loading || sentLoading}
-          onClick={() => void reloadDispatchSurface()}
-          type="button"
-        >
-          {session.loading || sentLoading ? "Loading…" : "Reload"}
-        </button>
-      </div>
+      )}
       {session.error === null ? null : (
         <p className="as-comments__error" role="alert">{session.error.message}</p>
       )}
@@ -869,7 +873,7 @@ export function ReviewCommentsInspector({
       </ol>
     </div>
   );
-}
+});
 
 function ReviewReply({
   canDeleteAny,

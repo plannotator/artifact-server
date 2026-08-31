@@ -387,7 +387,7 @@ function reviewTools(ref: BindingsRef): readonly ModelContextToolLike[] {
         const snapshot = await settledSnapshot(ref);
         if (snapshot.projectId === "") throw new Error("No project is open.");
         try {
-          const page = await api.artifacts(snapshot.projectId, null, "", "");
+          const page = await api.artifacts(snapshot.projectId, null, [], "");
           return {
             artifacts: page.artifacts.map(({artifact, versionCount}) => ({
               currentVersionId: artifact.currentVersionId,
@@ -608,7 +608,7 @@ export function useWebmcp(ref: BindingsRef): void {
   }, [enabled, ref]);
 }
 
-/** The per-user "browser agent tools" preference, shown in settings. */
+/** The per-user browser-agent preference shown on the WebMCP settings page. */
 export function WebmcpSettingsCard() {
   const [enabled, setEnabled] = useState(webmcpEnabled);
   return (
@@ -624,9 +624,8 @@ export function WebmcpSettingsCard() {
       <span>
         <strong>Browser agent tools</strong>
         <small>
-          Let a browser-resident AI agent operate Review through WebMCP
-          tools in your session. Dispatching to coding agents stays a
-          human action.
+          Let a browser-resident AI agent operate Review through WebMCP tools in this session.
+          Dispatching to coding agents stays a human action.
         </small>
       </span>
     </label>

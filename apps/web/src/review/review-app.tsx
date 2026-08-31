@@ -18,6 +18,7 @@ import {
   Edit02Icon,
   ExternalLinkIcon,
   File01Icon,
+  FilterIcon,
   FullScreenIcon,
   GithubIcon,
   Home01Icon,
@@ -33,6 +34,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {Dialog} from "@base-ui/react/dialog";
+import {Popover} from "@base-ui/react/popover";
 import {motion} from "motion/react";
 
 import {setDraftPrincipal, writeDraft} from "@/components/comments/comment-drafts";
@@ -62,6 +64,7 @@ import {ArtifactMark} from "./artifact-mark.tsx";
 import {
   useReviewComments,
   ReviewCommentsInspector,
+  type ReviewCommentsInspectorHandle,
 } from "./review-comments.tsx";
 import { ReviewPreview } from "./review-preview.tsx";
 import {ReviewProjectPicker} from "./review-project-picker.tsx";
@@ -99,6 +102,142 @@ interface ReviewLocation {
   readonly projectId: string | null;
   readonly versionId: string | null;
   readonly view: "focus" | null;
+}
+
+function CatalogFilters({
+  commentFilter,
+  knownTags,
+  onCommentFilterChange,
+  onTagFiltersChange,
+  tagFilters,
+}: {
+  readonly commentFilter: CatalogCommentFilter;
+  readonly knownTags: readonly string[];
+  readonly onCommentFilterChange: (filter: CatalogCommentFilter) => void;
+  readonly onTagFiltersChange: (tags: readonly string[]) => void;
+  readonly tagFilters: readonly string[];
+}) {
+  const activeFilterCount = Number(commentFilter !== "all") + tagFilters.length;
+  let triggerLabel = "All artifacts";
+  if (commentFilter === "all" && tagFilters.length === 1) {
+    triggerLabel = tagFilters[0] ?? "1 tag";
+  } else if (commentFilter === "all" && tagFilters.length > 1) {
+    triggerLabel = `${tagFilters.length} tags`;
+  } else if (commentFilter === "with" && tagFilters.length === 0) {
+    triggerLabel = "With comments";
+  } else if (commentFilter === "without" && tagFilters.length === 0) {
+    triggerLabel = "No comments";
+  } else if (activeFilterCount > 0) {
+    triggerLabel = `${activeFilterCount} filters`;
+  }
+  const tags = [...new Set([...knownTags, ...tagFilters])].toSorted();
+  const toggleTag = (tag: string): void => {
+    onTagFiltersChange(
+      tagFilters.includes(tag)
+        ? tagFilters.filter((selected) => selected !== tag)
+        : [...tagFilters, tag].toSorted(),
+    );
+  };
+
+  return (
+    <Popover.Root>
+      <Popover.Trigger
+        render={(
+          <button
+            aria-label={`Filter artifacts. ${activeFilterCount === 0 ? "No filters applied" : `${activeFilterCount} applied`}.`}
+            className="as-catalog-filter-trigger"
+            type="button"
+          />
+        )}
+      >
+        <HugeiconsIcon aria-hidden="true" icon={FilterIcon} strokeWidth={1.8} />
+        <span>{triggerLabel}</span>
+        {activeFilterCount === 0 ? null : (
+          <span aria-hidden="true" className="as-catalog-filter-trigger__count">
+            {activeFilterCount}
+          </span>
+        )}
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner
+          align="start"
+          className="as-catalog-filter-positioner"
+          sideOffset={6}
+        >
+          <Popover.Popup aria-label="Filter artifacts" className="as-catalog-filter-popover">
+            {activeFilterCount === 0 ? null : (
+              <div className="as-catalog-filter-popover__actions">
+                <button
+                  className="as-catalog-filter-popover__clear"
+                  onClick={() => {
+                    onCommentFilterChange("all");
+                    onTagFiltersChange([]);
+                  }}
+                  type="button"
+                >
+                  Clear filters
+                </button>
+              </div>
+            )}
+            <fieldset>
+              <legend>Comments</legend>
+              {([
+                ["all", "All artifacts"],
+                ["with", "With comments"],
+                ["without", "No comments"],
+              ] as const).map(([value, label]) => (
+                <label className="as-catalog-filter-option" data-selected={commentFilter === value} key={value}>
+                  <input
+                    checked={commentFilter === value}
+                    name="catalog-comment-filter"
+                    onChange={() => onCommentFilterChange(value)}
+                    type="radio"
+                    value={value}
+                  />
+                  <span>{label}</span>
+                  {commentFilter === value ? (
+                    <HugeiconsIcon aria-hidden="true" icon={Tick02Icon} strokeWidth={2} />
+                  ) : null}
+                </label>
+              ))}
+            </fieldset>
+            <fieldset>
+              <legend>Tags</legend>
+              <button
+                aria-pressed={tagFilters.length === 0}
+                className="as-catalog-filter-option"
+                data-selected={tagFilters.length === 0}
+                onClick={() => onTagFiltersChange([])}
+                type="button"
+              >
+                <span>Any tag</span>
+                {tagFilters.length === 0 ? (
+                  <HugeiconsIcon aria-hidden="true" icon={Tick02Icon} strokeWidth={2} />
+                ) : null}
+              </button>
+              {tags.length === 0 ? (
+                <p className="as-catalog-filter-popover__empty">No tags in the loaded catalog.</p>
+              ) : tags.map((tag) => (
+                <label className="as-catalog-filter-option" data-selected={tagFilters.includes(tag)} key={tag}>
+                  <input
+                    checked={tagFilters.includes(tag)}
+                    name="catalog-tag-filter"
+                    onChange={() => toggleTag(tag)}
+                    type="checkbox"
+                    value={tag}
+                  />
+                  <span>{tag}</span>
+                  {tagFilters.includes(tag) ? (
+                    <HugeiconsIcon aria-hidden="true" icon={Tick02Icon} strokeWidth={2} />
+                  ) : null}
+                </label>
+              ))}
+            </fieldset>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  );
 }
 
 /** Start the artifact-first Artifact Server review application. */
@@ -287,6 +426,8 @@ function ArtifactReview({
   const [query, setQuery] = useState("");
   const searchQuery = useDeferredValue(query.trim());
   const [catalogCommentFilter, setCatalogCommentFilter] = useState<CatalogCommentFilter>("all");
+  const [catalogTagFilters, setCatalogTagFilters] = useState<readonly string[]>([]);
+  const [catalogKnownTags, setCatalogKnownTags] = useState<readonly string[]>([]);
   const [catalogSort, setCatalogSort] = useState<CatalogSort>("newest");
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<Error | null>(null);
@@ -319,6 +460,7 @@ function ArtifactReview({
   const focusCommentsButtonRef = useRef<HTMLButtonElement>(null);
   const focusControlsRestoreRef = useRef<HTMLButtonElement>(null);
   const previewPanelRef = useRef<HTMLElement>(null);
+  const commentsInspectorRef = useRef<ReviewCommentsInspectorHandle>(null);
   const catalogRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const catalogRequestGenerationRef = useRef(0);
   const catalogWidthApplyRef = useRef<(width: number) => void>(() => undefined);
@@ -366,6 +508,12 @@ function ArtifactReview({
     projectId,
     versionId: selectedVersionId,
   });
+  useEffect(() => {
+    if (details === null || details.artifact.tags.length === 0) return;
+    setCatalogKnownTags((current) => [
+      ...new Set([...current, ...details.artifact.tags]),
+    ].toSorted());
+  }, [details]);
   const openCommentCount = comments.threads.filter(
     (thread) => thread.state === "open",
   ).length;
@@ -424,6 +572,7 @@ function ArtifactReview({
       details === null
       || searchQuery !== ""
       || catalogCommentFilter !== "all"
+      || catalogTagFilters.length > 0
       || items.some(({artifact}) => artifact.id === details.artifact.id)
     ) return items;
     return [{
@@ -434,6 +583,7 @@ function ArtifactReview({
     }, ...items];
   }, [
     catalogCommentFilter,
+    catalogTagFilters.length,
     comments.threads.length,
     details,
     items,
@@ -453,11 +603,18 @@ function ArtifactReview({
     setListLoading(true);
     setListError(null);
     try {
-      const page = await api.artifacts(projectId, cursor, "", searchQuery, {
+      const page = await api.artifacts(projectId, cursor, catalogTagFilters, searchQuery, {
         comments: catalogCommentFilter,
         sort: catalogSort,
       });
       if (requestGeneration !== catalogRequestGenerationRef.current) return "skipped";
+      setCatalogKnownTags((current) => {
+        const next = new Set(current);
+        for (const {artifact} of page.artifacts) {
+          for (const tag of artifact.tags) next.add(tag);
+        }
+        return [...next].toSorted();
+      });
       setItems((current) => replace ? page.artifacts : [...current, ...page.artifacts]);
       setNextCursor(page.nextCursor);
       if (replace) {
@@ -478,7 +635,7 @@ function ArtifactReview({
         setListLoading(false);
       }
     }
-  }, [catalogCommentFilter, catalogSort, projectId, searchQuery]);
+  }, [catalogCommentFilter, catalogSort, catalogTagFilters, projectId, searchQuery]);
 
   const refreshArtifacts = useCallback(async (): Promise<void> => {
     if (listLoading) return;
@@ -643,7 +800,11 @@ function ArtifactReview({
   useEffect(() => {
     const restoreLocation = (): void => {
       const restored = readReviewLocation();
-      if (restored.projectId !== null) setProjectId(restored.projectId);
+      if (restored.projectId !== null) {
+        setCatalogKnownTags([]);
+        setCatalogTagFilters([]);
+        setProjectId(restored.projectId);
+      }
       setSelectedArtifactId(restored.artifactId);
       setSelectedVersionId(restored.versionId);
       setSelectedPath(restored.path);
@@ -713,6 +874,8 @@ function ArtifactReview({
   };
   const selectProject = (nextProjectId: string): void => {
     if (nextProjectId !== projectId) {
+      setCatalogKnownTags([]);
+      setCatalogTagFilters([]);
       setSelectedArtifactId(null);
       setSelectedVersionId(null);
       setSelectedPath(null);
@@ -741,6 +904,7 @@ function ArtifactReview({
     updateArtifact(changed.artifact);
   };
   const updateArtifact = (artifact: ArtifactDetails["artifact"]): void => {
+    setCatalogKnownTags((current) => [...new Set([...current, ...artifact.tags])].toSorted());
     setDetails((current) => current?.artifact.id === artifact.id
       ? {...current, artifact}
       : current);
@@ -1112,30 +1276,6 @@ function ArtifactReview({
         </header>
 
         <div className="as-catalog__tools">
-          <button
-            aria-busy={catalogRefreshState === "loading"}
-            aria-label="Refresh artifacts published by agents, the CLI, or other sessions"
-            className="as-icon-button as-catalog-refresh"
-            data-state={catalogRefreshState}
-            disabled={listLoading}
-            onClick={() => void refreshArtifacts()}
-            title="Refresh artifacts published by agents, the CLI, or other sessions"
-            type="button"
-          >
-            <HugeiconsIcon
-              aria-hidden="true"
-              className="as-catalog-refresh__icon"
-              icon={catalogRefreshState === "complete" ? Tick02Icon : RefreshIcon}
-              strokeWidth={1.8}
-            />
-          </button>
-          <span aria-live="polite" className="as-visually-hidden">
-            {catalogRefreshState === "loading"
-              ? "Refreshing artifact catalog."
-              : catalogRefreshState === "complete"
-                ? "Artifact catalog refreshed."
-                : ""}
-          </span>
           <div className="as-search-group">
             <label className="as-search">
               <span className="as-visually-hidden">Search artifacts</span>
@@ -1153,23 +1293,13 @@ function ArtifactReview({
               )}
             </label>
             <div className="as-catalog-query-controls">
-              <label>
-                <span className="as-visually-hidden">Filter artifacts by comments</span>
-                <select
-                  aria-label="Filter artifacts by comments"
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    if (value === "all" || value === "with" || value === "without") {
-                      setCatalogCommentFilter(value);
-                    }
-                  }}
-                  value={catalogCommentFilter}
-                >
-                  <option value="all">All artifacts</option>
-                  <option value="with">With comments</option>
-                  <option value="without">No comments</option>
-                </select>
-              </label>
+              <CatalogFilters
+                commentFilter={catalogCommentFilter}
+                knownTags={catalogKnownTags}
+                onCommentFilterChange={setCatalogCommentFilter}
+                onTagFiltersChange={setCatalogTagFilters}
+                tagFilters={catalogTagFilters}
+              />
               <label>
                 <span className="as-visually-hidden">Sort artifacts</span>
                 <select
@@ -1197,8 +1327,16 @@ function ArtifactReview({
           ) : null}
           {!listLoading && listError === null && catalogItems.length === 0 ? (
             <InlineState
-              description={query === "" ? "Publish from the CLI to populate this project." : "Try a name or tag with a wider match."}
-              title={query === "" ? "No artifacts yet" : "No matching artifacts"}
+              description={
+                query !== "" || catalogCommentFilter !== "all" || catalogTagFilters.length > 0
+                  ? "Try clearing a filter or using a wider search."
+                  : "Publish from the CLI to populate this project."
+              }
+              title={
+                query !== "" || catalogCommentFilter !== "all" || catalogTagFilters.length > 0
+                  ? "No matching artifacts"
+                  : "No artifacts yet"
+              }
             />
           ) : null}
           {catalogItems.map(({artifact, commentCount, versionCount}) => {
@@ -1218,17 +1356,17 @@ function ArtifactReview({
                   <strong>{artifact.name}</strong>
                   <AccessPill access={artifact.accessSetting} />
                 </span>
-                <span className="as-artifact-card__tags">
-                  {artifact.tags.length === 0 ? "untagged" : artifact.tags.join(" · ")}
-                </span>
                 <span className="as-artifact-card__meta">
-                  <time dateTime={artifact.createdAt}>{formatTimestamp(artifact.createdAt)}</time>
+                  <span className="as-artifact-card__history">
+                    <time dateTime={artifact.createdAt}>{formatTimestamp(artifact.createdAt)}</time>
+                    <span aria-hidden="true">·</span>
+                    <span>{versionCount} version{versionCount === 1 ? "" : "s"}</span>
+                  </span>
                   <span className="as-artifact-card__counts">
                     <span>
                       <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
                       {displayedCommentCount} comment{displayedCommentCount === 1 ? "" : "s"}
                     </span>
-                    <span>{versionCount} version{versionCount === 1 ? "" : "s"}</span>
                   </span>
                 </span>
               </button>
@@ -1236,13 +1374,44 @@ function ArtifactReview({
           })}
         </div>
 
-        {nextCursor === null ? null : (
-          <footer className="as-app-footer as-catalog__footer">
+        <footer className="as-app-footer as-catalog__footer">
+          <button
+            aria-busy={catalogRefreshState === "loading"}
+            aria-label="Refresh artifacts published by agents, the CLI, or other sessions"
+            className="as-catalog-refresh"
+            data-state={catalogRefreshState}
+            disabled={listLoading}
+            onClick={() => void refreshArtifacts()}
+            title="Refresh artifacts published by agents, the CLI, or other sessions"
+            type="button"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="as-catalog-refresh__icon"
+              icon={catalogRefreshState === "complete" ? Tick02Icon : RefreshIcon}
+              strokeWidth={1.8}
+            />
+            <span>
+              {catalogRefreshState === "loading"
+                ? "Refreshing…"
+                : catalogRefreshState === "complete"
+                  ? "Refreshed"
+                  : "Refresh"}
+            </span>
+          </button>
+          <span aria-live="polite" className="as-visually-hidden">
+            {catalogRefreshState === "loading"
+              ? "Refreshing artifact catalog."
+              : catalogRefreshState === "complete"
+                ? "Artifact catalog refreshed."
+                : ""}
+          </span>
+          {nextCursor === null ? null : (
             <button disabled={listLoading} onClick={() => void loadArtifacts(nextCursor, false)} type="button">
               {listLoading ? "Loading…" : "Load more"}
             </button>
-          </footer>
-        )}
+          )}
+        </footer>
             </motion.aside>
           </motion.div>
           {catalogOpen ? (
@@ -1372,6 +1541,7 @@ function ArtifactReview({
                     canComment={canComment}
                     canDeleteAny={canDeleteAnyComment}
                     principalId={session.principal.id}
+                    ref={commentsInspectorRef}
                     session={comments}
                     versionId={selectedVersionId}
                   />
@@ -1530,11 +1700,24 @@ function ArtifactReview({
                 <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={1.8} />
               </IconButton>
             </div>
-            <span className="as-preview-footer__status">
-              {selectedVersion === null
-                ? "No version selected"
-                : `${selectedVersion.manifest.entries.length} file${selectedVersion.manifest.entries.length === 1 ? "" : "s"} · ${selectedVersion.version.routingMode.toUpperCase()}`}
-            </span>
+            <div className="as-preview-footer__status">
+              <span className="as-preview-footer__metadata">
+                {selectedVersion === null
+                  ? "No version selected"
+                  : `${selectedVersion.manifest.entries.length} file${selectedVersion.manifest.entries.length === 1 ? "" : "s"} · ${selectedVersion.version.routingMode.toUpperCase()}`}
+              </span>
+              <button
+                className="as-button as-preview-footer__reload"
+                disabled={comments.loading || selectedVersion === null}
+                onClick={() => void (
+                  commentsInspectorRef.current?.reload() ?? comments.reload()
+                )}
+                type="button"
+              >
+                <HugeiconsIcon aria-hidden="true" icon={RefreshIcon} strokeWidth={1.8} />
+                {comments.loading ? "Loading…" : "Reload"}
+              </button>
+            </div>
           </footer>
         </section>
 
@@ -1597,6 +1780,7 @@ function ArtifactReview({
                 canComment={canComment}
                 canDeleteAny={canDeleteAnyComment}
                 principalId={session.principal.id}
+                ref={commentsInspectorRef}
                 session={comments}
                 versionId={selectedVersionId}
               />

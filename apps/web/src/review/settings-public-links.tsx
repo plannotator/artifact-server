@@ -378,29 +378,33 @@ export function PublicLinksScreen() {
               )}
             </section>
 
-            <div className="overflow-x-auto border">
-              <table className="w-full min-w-5xl border-collapse text-left text-sm">
+            <div className="as-public-links-inventory">
+              <table aria-label="Public links inventory" className="as-public-links-table">
+                <colgroup>
+                  <col className="as-public-links-table__select-column" />
+                  <col className="as-public-links-table__artifact-column" />
+                  <col className="as-public-links-table__link-column" />
+                  <col className="as-public-links-table__actions-column" />
+                </colgroup>
                 <thead className="border-b bg-muted/50 text-xs tracking-widest text-muted-foreground uppercase">
                   <tr>
-                    <th className="w-12 px-4 py-3 font-semibold">
+                    <th className="as-public-links-table__select-cell font-semibold">
                       <Checkbox
                         aria-label="Select all visible public links"
                         checked={allVisibleSelected}
                         onCheckedChange={(checked) => selectItems(visibleItems, checked)}
                       />
                     </th>
-                    <th className="px-4 py-3 font-semibold">Project</th>
-                    <th className="px-4 py-3 font-semibold">Artifact</th>
-                    <th className="px-4 py-3 font-semibold">Current version</th>
-                    <th className="px-4 py-3 font-semibold">Public URL</th>
-                    <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                    <th className="font-semibold">Artifact</th>
+                    <th className="font-semibold">Public link</th>
+                    <th className="text-right font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visibleItems.length === 0
                     ? (
-                      <tr>
-                        <td className="px-4 py-8 text-center text-muted-foreground" colSpan={6}>
+                      <tr className="as-public-links-table__empty-row">
+                        <td className="text-center text-muted-foreground" colSpan={4}>
                           {currentPage?.nextCursor === null
                             ? "Every public link on this page is now private. Return to a previous page to inspect the remaining loaded links."
                             : "Every public link on this loaded page is now private. Continue to the next page to inspect older public links."}
@@ -410,55 +414,49 @@ export function PublicLinksScreen() {
                     : visibleItems.map((item) => {
                     const selected = selectedKeys.has(selectionKey(item));
                     return (
-                      <tr className="border-b last:border-b-0" key={selectionKey(item)}>
-                        <td className="px-4 py-4 align-top">
+                      <tr className="as-public-links-table__row" key={selectionKey(item)}>
+                        <td className="as-public-links-table__select-cell">
                           <Checkbox
                             aria-label={`Select ${item.artifact.name}`}
                             checked={selected}
                             onCheckedChange={(checked) => selectItems([item], checked)}
                           />
                         </td>
-                        <td className="px-4 py-4 align-top">
-                          <p className="font-medium">{item.project.name}</p>
-                          {item.project.archivedAt === null
-                            ? null
-                            : <StatusBadge>Archived</StatusBadge>}
+                        <td className="as-public-links-table__artifact-cell">
+                          <div className="as-public-links-table__artifact-heading">
+                            <a
+                              className="as-public-links-table__artifact-link"
+                              href={`/review?${new URLSearchParams({
+                                artifact: item.artifact.id,
+                                project: item.project.id,
+                              })}`}
+                            >
+                              {item.artifact.name}
+                            </a>
+                            {item.project.archivedAt === null
+                              ? null
+                              : <StatusBadge>Archived</StatusBadge>}
+                          </div>
+                          <p className="as-public-links-table__meta">{item.project.name}</p>
                         </td>
-                        <td className="max-w-xs px-4 py-4 align-top">
+                        <td className="as-public-links-table__link-cell">
                           <a
-                            className="font-heading font-semibold hover:underline"
-                            href={`/review?${new URLSearchParams({
-                              artifact: item.artifact.id,
-                              project: item.project.id,
-                            })}`}
-                          >
-                            {item.artifact.name}
-                          </a>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Created {formatTimestamp(item.artifact.createdAt)}
-                          </p>
-                        </td>
-                        <td className="px-4 py-4 align-top">
-                          <p className="font-medium">Version {item.currentVersion.number}</p>
-                          <p className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
-                            Saved {formatTimestamp(item.currentVersion.createdAt)}
-                          </p>
-                          <code className="mt-1 block max-w-48 truncate font-mono text-xs text-muted-foreground">
-                            {item.currentVersion.id}
-                          </code>
-                        </td>
-                        <td className="max-w-sm px-4 py-4 align-top">
-                          <a
-                            className="block truncate font-mono text-xs text-primary hover:underline"
+                            className="as-public-links-table__url"
                             href={item.links.public}
                             rel="noreferrer"
                             target="_blank"
+                            title={item.links.public}
                           >
                             {item.links.public}
                           </a>
+                          <p className="as-public-links-table__meta">
+                            <span>Version {item.currentVersion.number}</span>
+                            <span aria-hidden="true"> · </span>
+                            <span>Saved {formatTimestamp(item.currentVersion.createdAt)}</span>
+                          </p>
                         </td>
-                        <td className="px-4 py-4 align-top">
-                          <div className="flex justify-end gap-2">
+                        <td className="as-public-links-table__actions-cell">
+                          <div className="as-public-links-table__actions">
                             <ButtonLink
                               href={item.links.public}
                               rel="noreferrer"

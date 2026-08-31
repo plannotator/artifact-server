@@ -321,8 +321,8 @@ Start with a small, explicit tool surface:
 | --- | --- |
 | `artifact_capabilities` | Report the upload workflow, deployment mode, sharing settings, and current limits. |
 | `artifact_list` | Find artifacts the current principal may access. |
-| `artifact_get` | Read artifact metadata, the current immutable version, and its complete manifest. |
-| `artifact_open` | Return the canonical browser link for the selected artifact and exact version when requested. The client opens it on the user's computer. |
+| `artifact_get` | Read artifact metadata, the current immutable version, its complete manifest, and its exact full-screen Review link. |
+| `artifact_open` | Return the exact full-screen Review link and raw content link for the selected artifact and exact version when requested. The client opens them on the user's computer and prefers Review for human handoff. |
 | `artifact_create_upload` | Create an expiring upload handle and direct-upload plan. |
 | `artifact_commit_upload` | Verify the manifest and publish an immutable version. Return the exact-version review URL as the primary human handoff, plus stable and raw links. |
 | `artifact_set_visibility` | Change between account-required and public-link access when permitted. A public link opens only the current version. Warn that public copies cannot be recalled and perform the configured CDN purge when returning to account-required. |

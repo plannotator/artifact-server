@@ -193,7 +193,8 @@ export interface ListArtifacts {
   /** Normalized name-substring or exact-tag search, when supplied. */
   readonly search?: string | null;
   readonly sort: "comments" | "newest";
-  readonly tag: string | null;
+  /** Exact normalized tag filters. An artifact matches when it has any selected tag. */
+  readonly tags: readonly string[];
 }
 
 /** Values used to read one bounded page of artifact actions. */

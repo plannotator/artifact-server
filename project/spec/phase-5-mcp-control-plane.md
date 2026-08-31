@@ -21,15 +21,18 @@ second artifact, permission, upload, version, or comparison implementation.
   workflow, file-count and upload-plan limits, comparison bound, and sharing
   modes.
 - `artifact_get` returns the current artifact, complete canonical manifest,
-  current immutable version, and browser links in one call.
+  current immutable version, exact full-screen Review link, and stable artifact
+  link in one call.
 - MCP never accepts inline HTML, source strings, base64 data, or a client
   filesystem path.
 - `artifact_create_upload` returns one plan for actual file bytes.
 - The client uploads those bytes to the returned HTTP URLs and calls
   `artifact_commit_upload` with a stable idempotency key.
 - Updating an artifact requires the exact current version the agent read.
-- `artifact_open` returns the correct current or exact-version browser URL. The
-  MCP server never tries to open a browser on a remote server machine.
+- `artifact_open` returns the correct current or exact-version full-screen
+  Review URL and raw content URL. Agents prefer the Review URL for human
+  handoff and never describe the raw content URL as Review. The MCP server
+  never tries to open a browser on a remote server machine.
 
 ## Implemented tools
 

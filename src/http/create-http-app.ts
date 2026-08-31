@@ -358,13 +358,13 @@ const pageQuerySchema = z.object({
   cursor: z.string().max(1_024).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   search: z.string().max(200).optional(),
-  tag: z.string().max(200).optional(),
 });
 const artifactPageQuerySchema = pageQuerySchema.extend({
   comments: z.enum(["all", "with", "without"]).default("all"),
   sort: z.enum(["comments", "newest"]).default("newest"),
+  tags: z.array(z.string().max(200)).max(20).default([]),
 });
-const publicLinksPageQuerySchema = pageQuerySchema.omit({search: true, tag: true});
+const publicLinksPageQuerySchema = pageQuerySchema.omit({search: true});
 const makePublicLinkPrivateItemSchema = z.object({
   artifactId: z.string().min(1).max(200),
   expectedCurrentVersionId: z.string().min(1).max(200),
@@ -1567,7 +1567,10 @@ export function createHttpApp(
   });
 
   app.get("/api/v1/artifacts", async (context) => {
-    const query = artifactPageQuerySchema.parse(context.req.query());
+    const query = artifactPageQuerySchema.parse({
+      ...context.req.query(),
+      tags: context.req.queries("tag") ?? [],
+    });
     const page = await runHttpApplicationEffect(
       context,
       dependencies,
@@ -1580,7 +1583,7 @@ export function createHttpApp(
           projectId: requestedProjectId(context),
           search: query.search ?? null,
           sort: query.sort,
-          tag: query.tag ?? null,
+          tags: query.tags,
         })
       ),
     );

@@ -1,6 +1,7 @@
 import {
   Add01Icon,
   ArrowDown01Icon,
+  FolderManagementIcon,
   Settings02Icon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
@@ -9,7 +10,7 @@ import {type FormEvent, useMemo, useState} from "react";
 
 import {type Project} from "@/api/client";
 import {Alert, AlertDescription} from "@/components/ui/alert";
-import {Button, ButtonLink} from "@/components/ui/button";
+import {Button} from "@/components/ui/button";
 import {
   Field,
   FieldError,
@@ -142,28 +143,31 @@ export function ReviewProjectPicker({
                   <Separator />
                   <div className="as-project-actions">
                     {selectedProject === null ? null : (
-                      <ButtonLink
+                      <a
+                        className="as-project-action"
                         href={projectSettingsHref(selectedProject.id)}
                         onClick={() => setPickerOpen(false)}
-                        size="sm"
-                        variant="ghost"
                       >
-                        <HugeiconsIcon data-icon="inline-start" icon={Settings02Icon} strokeWidth={2} />
-                        Project settings
-                      </ButtonLink>
+                        <HugeiconsIcon aria-hidden="true" icon={Settings02Icon} strokeWidth={2} />
+                        <span>Project settings</span>
+                      </a>
                     )}
-                    <ButtonLink
+                    <a
+                      className="as-project-action"
                       href="/review/settings/projects"
                       onClick={() => setPickerOpen(false)}
-                      size="sm"
-                      variant="ghost"
                     >
-                      Manage projects
-                    </ButtonLink>
-                    <Button onClick={showCreateForm} size="sm" type="button" variant="ghost">
-                      <HugeiconsIcon data-icon="inline-start" icon={Add01Icon} strokeWidth={2} />
-                      New project
-                    </Button>
+                      <HugeiconsIcon aria-hidden="true" icon={FolderManagementIcon} strokeWidth={2} />
+                      <span>Manage projects</span>
+                    </a>
+                    <button
+                      className="as-project-action as-project-action--create"
+                      onClick={showCreateForm}
+                      type="button"
+                    >
+                      <HugeiconsIcon aria-hidden="true" icon={Add01Icon} strokeWidth={2} />
+                      <span>New project</span>
+                    </button>
                   </div>
                 </>
               ) : null}

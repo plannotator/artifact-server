@@ -37,8 +37,8 @@ The CLI owns local file inspection, symlink policy, media types, SHA-256 hashing
 - `artifact_capabilities`: inspect limits, sharing modes, project rules, and deployment mode.
 - `project_list`: resolve a project when more than one exists.
 - `artifact_list`: list artifacts; use `projectId`, exact `tag`, cursor, and bounded limit when relevant.
-- `artifact_get`: obtain current metadata, manifest, current version ID, tags, access, and canonical links in one call.
-- `artifact_open`: obtain a browser-ready URL for the current or an exact saved version.
+- `artifact_get`: obtain current metadata, manifest, current version ID, tags, access, `current.links.review` for exact full-screen Review, and `links.artifact` for moving latest in one call.
+- `artifact_open`: obtain `reviewUrl` for exact full-screen Review and `browserUrl` for raw immutable content for the current or an exact saved version. Prefer `reviewUrl` for human handoff. Never describe `browserUrl` as Review.
 - `artifact_version_list`: list immutable versions newest first.
 - `artifact_diff`: compare two exact version IDs.
 

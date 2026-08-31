@@ -887,7 +887,7 @@ export function createArtifactMcpServer(
             principal: identity.principal,
             projectId,
             search: null,
-            tag,
+            tags: tag === null ? [] : [tag],
           })
         ),
       );
@@ -913,7 +913,7 @@ export function createArtifactMcpServer(
     {
       title: "Get an artifact",
       description:
-        "Get one artifact with its current immutable version, complete canonical manifest, stable browser links, sharing mode, and tags in one call.",
+        "Get one artifact with its current immutable version, complete canonical manifest, exact full-screen Review link, stable artifact link, sharing mode, and tags in one call.",
       inputSchema: z.object({
         artifactId: artifactIdSchema,
         projectId: optionalProjectIdSchema,
@@ -921,7 +921,10 @@ export function createArtifactMcpServer(
       outputSchema: z.object({
         artifact: artifactRecordSchema,
         current: z.object({
-          links: z.object({version: z.url()}).strict(),
+          links: z.object({
+            review: z.url(),
+            version: z.url(),
+          }).strict(),
           manifest: manifestProjectionSchema,
           version: versionRecordSchema,
         }).strict(),
@@ -945,6 +948,7 @@ export function createArtifactMcpServer(
         current: versionProjection(
           applicationUrl,
           dependencies.contentDomain,
+          details.artifact.id,
           details.current,
         ),
         links: {
@@ -959,7 +963,7 @@ export function createArtifactMcpServer(
     {
       title: "Open an artifact",
       description:
-        "Return the exact browser URL for an artifact's current or selected immutable version. The MCP client opens the URL on the user's computer; the server never opens a browser remotely.",
+        "Return the exact full-screen Review URL and raw content URL for an artifact's current or selected immutable version. Prefer reviewUrl for human review and comments. The MCP client opens URLs on the user's computer; the server never opens a browser remotely.",
       inputSchema: z.object({
         artifactId: artifactIdSchema,
         projectId: optionalProjectIdSchema,
@@ -969,6 +973,7 @@ export function createArtifactMcpServer(
         artifactId: z.string(),
         browserUrl: z.url(),
         exactVersion: z.boolean(),
+        reviewUrl: z.url(),
         versionId: z.string(),
       }),
       annotations: readOnlyAnnotations,
@@ -1009,6 +1014,12 @@ export function createArtifactMcpServer(
         artifactId,
         browserUrl,
         exactVersion: versionId !== null,
+        reviewUrl: artifactReviewUrl(
+          applicationUrl,
+          saved.version.projectId,
+          artifactId,
+          saved.version.id,
+        ),
         versionId: saved.version.id,
       };
     }),
@@ -1974,7 +1985,7 @@ export function createArtifactMcpServer(
             principal: identity.principal,
             projectId: dispatch.projectId,
             search: null,
-            tag: null,
+            tags: [],
           })
         ),
       )
@@ -2320,7 +2331,7 @@ function agentInstructions(mode: "local" | "remote"): string {
     "Reviewers leave comment threads on an artifact version. Use comment_list and comment_get to read them, comment_create, comment_reply, and comment_update to write, comment_resolve to close or reopen a thread, and comment_delete to remove one you own; deleting a thread also deletes its replies. Sent comments cannot be deleted while their dispatch is queued, claimed, or delivered. comment_clear removes every resolved thread — or all threads — on one artifact at once and reports how many sent comments it skipped.",
     "comment_list hides threads an agent dispatch currently holds unless you pass dispatched: \"include\" or \"only\"; comment_get still reads a dispatched thread directly by id.",
     "dispatch_inbox is this caller's mailbox for annotation bundles a reviewer dispatched to it: list registers the caller as a mailbox-tier agent and shows its queued dispatches, claim takes the oldest one as a rendered message, and delivered or failed reports the outcome. Address a delivered bundle's threads with comment_reply, then comment_resolve.",
-    "artifact_get returns the current complete manifest and browser link in one call. artifact_open returns a client-openable URL; a remote server never opens a browser on the server machine.",
+    "artifact_get returns the current complete manifest, current.links.review for exact full-screen Review, and links.artifact for the moving latest version. artifact_open returns reviewUrl for exact full-screen Review and browserUrl for raw immutable content. Prefer the Review URL for human handoff, and never describe browserUrl as a Review link. A remote server never opens a browser on the server machine.",
     mode === "local"
       ? "This is a local MCP connection, but the MCP protocol still carries metadata rather than file bytes. Use the bundled Artifact Server skill or CLI to upload a local path."
       : "This is a remote MCP connection. The server cannot read paths on the agent's computer; use the returned upload plan or the bundled Artifact Server skill.",
@@ -2546,10 +2557,17 @@ function derivedIdempotencyKey(parts: readonly string[]): string {
 function versionProjection(
   applicationUrl: URL,
   contentDomain: string,
+  artifactId: string,
   saved: ArtifactVersion,
 ) {
   return {
     links: {
+      review: artifactReviewUrl(
+        applicationUrl,
+        saved.version.projectId,
+        artifactId,
+        saved.version.id,
+      ),
       version: versionBrowserUrl(
         applicationUrl,
         contentDomain,

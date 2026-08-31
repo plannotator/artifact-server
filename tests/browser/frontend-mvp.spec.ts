@@ -87,7 +87,15 @@ test.describe("Artifact Server frontend MVP", () => {
       );
       await catalogRefresh.click();
       await expect(catalogRefresh).toHaveAttribute("data-state", "complete");
-      await expect(fixture.page.locator(".as-catalog__footer")).toHaveCount(0);
+      const catalogFooter = fixture.page.locator(".as-catalog__footer");
+      await expect(catalogFooter).toHaveCount(1);
+      await expect(catalogFooter.getByRole("button", {
+        name: "Refresh artifacts published by agents, the CLI, or other sessions",
+      })).toBeVisible();
+      await expect(fixture.page.locator(".as-catalog__tools").getByRole("button", {
+        name: "Refresh artifacts published by agents, the CLI, or other sessions",
+      })).toHaveCount(0);
+      await expect(catalogFooter.getByRole("button", {name: "Load more"})).toHaveCount(0);
       const accessRow = fixture.page.locator(".as-inspector-row").filter({
         hasText: "access",
       });
@@ -254,8 +262,14 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(fixture.page.getByRole("article").filter({
         hasText: "Make the release status easier to scan.",
       })).toBeVisible();
+      await expect(fixture.page.getByText(
+        "Click any element in the HTML preview to place a comment.",
+      )).toHaveCount(0);
+      await expect(fixture.page.locator(".as-preview-footer").getByRole("button", {
+        name: "Reload",
+      })).toBeVisible();
       await expect(fixture.page.getByRole("button", {
-        name: /Review fixture.*1 comment.*2 versions/u,
+        name: /Review fixture.*2 versions.*1 comment/u,
       })).toBeVisible();
       await expect(async () => {
         const stored = await listThreadsOverApi(
@@ -282,22 +296,32 @@ test.describe("Artifact Server frontend MVP", () => {
         content: "<!doctype html><title>Quiet fixture</title><p>No review notes yet.</p>",
         idempotencyKey: "frontend-review-quiet-fixture",
         name: "Quiet fixture",
-        tags: ["inspection"],
+        tags: ["quiet"],
       });
       await catalogRefresh.click();
       await expect(catalogRefresh).toHaveAttribute("data-state", "complete");
-      const commentFilter = fixture.page.getByRole("combobox", {
-        name: "Filter artifacts by comments",
-      });
+      const catalogFilters = fixture.page.getByRole("button", {name: /Filter artifacts/u});
+      await catalogFilters.click();
+      const filterPopover = fixture.page.locator(".as-catalog-filter-popover[data-open]");
       const catalogSort = fixture.page.getByRole("combobox", {name: "Sort artifacts"});
-      await commentFilter.selectOption("with");
+      await filterPopover.getByRole("radio", {name: "With comments"}).check();
       await expect(fixture.page.getByRole("button", {name: /Review fixture/u})).toBeVisible();
       await expect(fixture.page.getByRole("button", {name: /Quiet fixture/u})).toHaveCount(0);
-      await commentFilter.selectOption("without");
+      await filterPopover.getByRole("radio", {name: "No comments"}).check();
       await expect(fixture.page.getByRole("button", {name: /Quiet fixture/u})).toBeVisible();
       await expect(fixture.page.getByRole("button", {name: /Review fixture/u})).toHaveCount(0);
       await expect(preview.getByRole("heading", {name: "Review preview content"})).toBeVisible();
-      await commentFilter.selectOption("all");
+      await filterPopover.getByRole("radio", {name: "All artifacts"}).check();
+      await filterPopover.getByRole("checkbox", {name: "quiet"}).check();
+      await expect(fixture.page.getByRole("button", {name: /Quiet fixture/u})).toBeVisible();
+      await expect(fixture.page.getByRole("button", {name: /Review fixture/u})).toHaveCount(0);
+      await filterPopover.getByRole("checkbox", {name: "inspection"}).check();
+      await expect(fixture.page.getByRole("button", {name: /Quiet fixture/u})).toBeVisible();
+      await expect(fixture.page.getByRole("button", {name: /Review fixture/u})).toBeVisible();
+      await filterPopover.getByRole("checkbox", {name: "quiet"}).uncheck();
+      await expect(fixture.page.getByRole("button", {name: /Quiet fixture/u})).toHaveCount(0);
+      await expect(fixture.page.getByRole("button", {name: /Review fixture/u})).toBeVisible();
+      await filterPopover.getByRole("button", {name: "Any tag"}).click();
       await catalogSort.selectOption("comments");
       await expect(fixture.page.locator(".as-artifact-card").first())
         .toContainText("Review fixture");
@@ -317,8 +341,13 @@ test.describe("Artifact Server frontend MVP", () => {
         .fill("inspection, polished");
       await fixture.page.getByRole("button", {name: "Save tags"}).click();
       await expect(fixture.page.getByText("polished", {exact: true})).toBeVisible();
+      const updatedCatalogCard = fixture.page.getByRole("button", {name: /Review fixture/u});
+      await expect(updatedCatalogCard).toBeVisible();
+      await expect(updatedCatalogCard).not.toContainText("polished");
+      await catalogFilters.click();
       await expect(
-        fixture.page.getByRole("button", {name: /Review fixture.*polished.*2 versions/u}),
+        fixture.page.locator(".as-catalog-filter-popover[data-open]")
+          .getByRole("checkbox", {name: "polished"}),
       ).toBeVisible();
 
       await fixture.page.getByRole("button", {name: "Full screen"}).click();
@@ -454,6 +483,7 @@ test.describe("Artifact Server frontend MVP", () => {
       expect(accessibility.violations).toEqual([]);
 
       await fixture.page.getByRole("button", {name: "Use light theme"}).click();
+      await expect(fixture.page.locator("html")).toHaveAttribute("data-review-theme", "dawn");
       const lightAccessibility = await new AxeBuilder({page: fixture.page})
         .exclude(".as-artifact-frame")
         .withTags(["wcag2a", "wcag2aa"])
@@ -1242,6 +1272,31 @@ test.describe("Artifact Server frontend MVP", () => {
         .withTags(["wcag2a", "wcag2aa"])
         .analyze();
       expect(accessibility.violations).toEqual([]);
+
+      await fixture.page.setViewportSize({height: 600, width: 1024});
+      const settingsScrollRange = await fixture.page.evaluate(() => ({
+        clientHeight: document.documentElement.clientHeight,
+        scrollHeight: document.documentElement.scrollHeight,
+      }));
+      expect(settingsScrollRange.scrollHeight).toBeGreaterThan(settingsScrollRange.clientHeight);
+      await fixture.page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      expect(await fixture.page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+      await fixture.page.evaluate(() => window.scrollTo(0, 0));
+
+      const inventory = fixture.page.getByRole("table", {name: "Public links inventory"});
+      expect(await inventory.evaluate((element) => element.scrollWidth - element.clientWidth))
+        .toBe(0);
+      const compactRowBox = await firstRow.boundingBox();
+      expect(compactRowBox?.height).toBeLessThan(96);
+
+      await fixture.page.setViewportSize({height: 720, width: 390});
+      expect(await fixture.page.evaluate(() =>
+        document.documentElement.scrollWidth - document.documentElement.clientWidth
+      )).toBe(0);
+      expect(await inventory.evaluate((element) => element.scrollWidth - element.clientWidth))
+        .toBe(0);
+      await expect(firstRow.getByRole("link", {name: "Open"})).toBeVisible();
+      await expect(firstRow.getByRole("button", {name: "Make private"})).toBeVisible();
 
       const otherRow = fixture.page.getByRole("row").filter({
         hasText: "Cross-project public link",
