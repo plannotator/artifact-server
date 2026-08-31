@@ -241,6 +241,12 @@ test.describe("WMC-001 WebMCP review tools", () => {
         await expect(page.getByRole("heading", {name: "Connect agents with MCP"})).toBeVisible();
         await expect(page.getByText(`${fixture.server.baseUrl}/mcp`, {exact: true})).toBeVisible();
         await expect(page.getByText("artifactserver connect", {exact: true})).toBeVisible();
+        await expect(page.getByRole("checkbox", {name: /Browser agent tools/})).toHaveCount(0);
+        await page.getByRole("link", {name: "WebMCP", exact: true}).click();
+        await expect(page).toHaveURL(`${fixture.server.baseUrl}/review/settings/webmcp`);
+        await expect(page.getByRole("heading", {name: "WebMCP", exact: true})).toBeVisible();
+        await expect(page.getByRole("link", {name: "WebMCP", exact: true}))
+          .toHaveAttribute("aria-current", "page");
         const accessibility = await new AxeBuilder({page})
           .withTags(["wcag2a", "wcag2aa"])
           .analyze();

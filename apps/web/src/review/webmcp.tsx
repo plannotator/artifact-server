@@ -608,7 +608,7 @@ export function useWebmcp(ref: BindingsRef): void {
   }, [enabled, ref]);
 }
 
-/** The per-user "browser agent tools" preference, shown on MCP settings. */
+/** The per-user browser-agent preference shown on the WebMCP settings page. */
 export function WebmcpSettingsCard() {
   const [enabled, setEnabled] = useState(webmcpEnabled);
   return (

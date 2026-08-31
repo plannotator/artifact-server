@@ -4,7 +4,6 @@ import {useEffect, useRef, useState} from "react";
 
 import {PageHeader} from "@/components/product";
 import {Button, ButtonLink} from "@/components/ui/button";
-import {WebmcpSettingsCard} from "./webmcp.tsx";
 
 type CopyTarget = "doctor" | "local" | "remote" | "skill";
 
@@ -131,19 +130,6 @@ export function McpScreen({administrator}: {readonly administrator: boolean}) {
           onCopy={() => void copy("npx skills add plannotator/artifact-server", "skill")}
           value="npx skills add plannotator/artifact-server"
         />
-      </section>
-
-      <section className="grid gap-5 border p-5 sm:p-6" aria-labelledby="webmcp-tools">
-        <header className="grid gap-1">
-          <h2 className="font-heading text-lg font-semibold text-balance" id="webmcp-tools">
-            Browser tools
-          </h2>
-          <p className="max-w-3xl text-sm leading-6 text-muted-foreground text-pretty">
-            WebMCP is separate from the external coding-agent connection above. It exposes Review
-            tools only to an AI agent running in this browser session.
-          </p>
-        </header>
-        <WebmcpSettingsCard />
       </section>
     </div>
   );

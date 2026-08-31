@@ -3798,7 +3798,7 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
   }
 }
 
-/* Browser agent tools (WebMCP) preference on the MCP settings page. */
+/* Browser agent tools preference on the WebMCP settings page. */
 .as-settings__webmcp {
   display: flex;
   gap: 0.6rem;
