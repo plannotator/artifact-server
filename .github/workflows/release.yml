@@ -356,44 +356,44 @@ jobs:
           --password-stdin
           <<< "$ARTIFACTSERVER_GITHUB_TOKEN"
       - name: Attest downloadable asset provenance
-        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3.0.0
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
         with:
           subject-path: release/public/*
       - name: Attest local package SBOM
-        uses: actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f # v3.0.0
+        uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # v3.0.0
         with:
           subject-path: release/public/artifact-server-${{ needs.verify.outputs.version }}-node.tar.gz
           sbom-path: release/public/artifact-server-${{ needs.verify.outputs.version }}-node.spdx.json
       - name: Attest Pi adapter SBOM
-        uses: actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f # v3.0.0
+        uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # v3.0.0
         with:
           subject-path: release/public/plannotator-artifact-server-pi-${{ needs.verify.outputs.version }}.tgz
           sbom-path: release/public/plannotator-artifact-server-pi-${{ needs.verify.outputs.version }}.spdx.json
       - name: Attest OpenCode adapter SBOM
-        uses: actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f # v3.0.0
+        uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # v3.0.0
         with:
           subject-path: release/public/plannotator-artifact-server-opencode-${{ needs.verify.outputs.version }}.tgz
           sbom-path: release/public/plannotator-artifact-server-opencode-${{ needs.verify.outputs.version }}.spdx.json
       - name: Attest Claude channel SBOM
-        uses: actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f # v3.0.0
+        uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # v3.0.0
         with:
           subject-path: release/public/plannotator-artifact-server-claude-channel-${{ needs.verify.outputs.version }}.tgz
           sbom-path: release/public/plannotator-artifact-server-claude-channel-${{ needs.verify.outputs.version }}.spdx.json
       - name: Attest image provenance in GHCR
-        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3.0.0
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
         with:
           subject-name: ${{ steps.image.outputs.name }}
           subject-digest: ${{ steps.image.outputs.digest }}
           push-to-registry: true
       - name: Attest image SBOM in GHCR
-        uses: actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f # v3.0.0
+        uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # v3.0.0
         with:
           subject-name: ${{ steps.image.outputs.name }}
           subject-digest: ${{ steps.image.outputs.digest }}
           sbom-path: release/public/artifact-server-${{ needs.verify.outputs.version }}-oci-linux-amd64.spdx.json
           push-to-registry: true
       - name: Attest arm64 image SBOM in GHCR
-        uses: actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f # v3.0.0
+        uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # v3.0.0
         with:
           subject-name: ${{ steps.image.outputs.name }}
           subject-digest: ${{ steps.image.outputs.digest }}
@@ -466,7 +466,7 @@ jobs:
             "release/public/plannotator-artifact-server-claude-channel-$ARTIFACTSERVER_VERSION.tgz"
 
   release:
-    name: Create GitHub prerelease
+    name: Create GitHub release
     if: needs.verify.outputs.publish == 'true'
     needs: [verify, assemble, attest, publish-npm]
     runs-on: ubuntu-latest
@@ -480,7 +480,7 @@ jobs:
         with:
           name: release-public-${{ github.run_id }}-${{ github.run_attempt }}
           path: release/public
-      - name: Create verified GitHub prerelease
+      - name: Create verified GitHub release
         env:
           ARTIFACTSERVER_TAG: ${{ needs.verify.outputs.tag }}
           GH_TOKEN: ${{ github.token }}
@@ -489,7 +489,6 @@ jobs:
           release/public/*
           --repo "$GITHUB_REPOSITORY"
           --verify-tag
-          --prerelease
           --generate-notes
           --title "Artifact Server $ARTIFACTSERVER_TAG"
       - name: Dispatch published-install verification
