@@ -40,6 +40,75 @@
   --as-iris-soft: color-mix(in oklab, var(--sidebar-primary) 14%, transparent);
 }
 
+:root[data-review-accent="purple"] {
+  --primary: #6e51b5;
+  --primary-foreground: #faf7ee;
+  --sidebar-primary: #6e51b5;
+  --sidebar-primary-foreground: #faf7ee;
+}
+
+.dark[data-review-accent="purple"] {
+  --primary: #6e51b5;
+  --sidebar-primary: #8465cc;
+}
+
+:root[data-review-accent="blue"] {
+  --primary: #2560a6;
+  --primary-foreground: #faf7ee;
+  --sidebar-primary: #2560a6;
+  --sidebar-primary-foreground: #faf7ee;
+}
+
+.dark[data-review-accent="blue"] {
+  --primary: #2560a6;
+  --sidebar-primary: #3477c4;
+}
+
+:root[data-review-accent="orange"] {
+  --primary: #ea6a20;
+  --primary-foreground: #161513;
+  --sidebar-primary: #d45412;
+  --sidebar-primary-foreground: #161513;
+}
+
+.dark[data-review-accent="orange"] {
+  --primary: #ea6a20;
+  --primary-foreground: #161513;
+  --sidebar-primary: #ea6a20;
+  --sidebar-primary-foreground: #161513;
+}
+
+:root[data-review-accent="cream"] {
+  --primary: #e2dac3;
+  --primary-foreground: #161513;
+  --sidebar-primary: #e2dac3;
+  --sidebar-primary-foreground: #161513;
+}
+
+.dark[data-review-accent="cream"] {
+  --primary: #f2ecdc;
+  --sidebar-primary: #f2ecdc;
+}
+
+:root[data-review-accent="paper"] {
+  --primary: #eae5d6;
+  --primary-foreground: #161513;
+  --sidebar-primary: #eae5d6;
+  --sidebar-primary-foreground: #161513;
+}
+
+.dark[data-review-accent="paper"] {
+  --primary: #faf7ee;
+  --sidebar-primary: #faf7ee;
+}
+
+:root[data-review-accent="ink"] {
+  --primary: #191919;
+  --primary-foreground: #f2ecdc;
+  --sidebar-primary: #161513;
+  --sidebar-primary-foreground: #f2ecdc;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -55,6 +124,146 @@ body,
 body {
   background: var(--as-canvas);
   color: var(--as-text);
+}
+
+.as-accent-debugger {
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
+  position: fixed;
+  right: max(0.75rem, env(safe-area-inset-right));
+  z-index: 90;
+}
+
+.as-accent-debugger__trigger {
+  align-items: center;
+  background: var(--as-surface);
+  border: 1px solid var(--as-border);
+  border-radius: 999px;
+  box-shadow: 0 0.35rem 1.2rem rgb(0 0 0 / 18%);
+  color: var(--as-text);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  gap: 0.35rem;
+  min-height: 2.15rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.as-accent-debugger__trigger:active,
+.as-accent-debugger__option:active {
+  transform: scale(0.96);
+}
+
+.as-accent-debugger__trigger svg {
+  color: var(--as-iris);
+  height: 0.95rem;
+  width: 0.95rem;
+}
+
+.as-accent-debugger__positioner {
+  z-index: 100;
+}
+
+.as-accent-debugger__popover {
+  background: var(--as-surface);
+  border: 1px solid var(--as-border);
+  border-radius: 0.65rem;
+  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 24%);
+  color: var(--as-text);
+  outline: none;
+  padding: 0.75rem;
+  width: min(18rem, calc(100vw - 1.5rem));
+}
+
+.as-accent-debugger__header {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.65rem;
+}
+
+.as-accent-debugger__header strong {
+  font-size: 0.8rem;
+}
+
+.as-accent-debugger__header span {
+  color: var(--as-subtle);
+  font-size: 0.66rem;
+}
+
+.as-accent-debugger__grid {
+  display: grid;
+  gap: 0.4rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.as-accent-debugger__option {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  color: var(--as-subtle);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  font-size: 0.67rem;
+  gap: 0.25rem;
+  justify-items: center;
+  min-height: 4.25rem;
+  padding: 0.4rem 0.3rem;
+  position: relative;
+}
+
+.as-accent-debugger__option[aria-pressed="true"] {
+  background: var(--as-iris-soft);
+  border-color: color-mix(in oklab, var(--as-iris) 52%, var(--as-border));
+  color: var(--as-text);
+}
+
+.as-accent-debugger__option > svg {
+  color: var(--as-iris);
+  height: 0.75rem;
+  position: absolute;
+  right: 0.3rem;
+  top: 0.3rem;
+  width: 0.75rem;
+}
+
+.as-accent-debugger__swatch {
+  border: 1px solid color-mix(in oklab, var(--as-text) 18%, transparent);
+  border-radius: 999px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  height: 1.35rem;
+  overflow: hidden;
+  width: 2.35rem;
+}
+
+.as-accent-debugger__swatch span:first-child {
+  background: var(--as-debug-swatch-a);
+}
+
+.as-accent-debugger__swatch span:last-child {
+  background: var(--as-debug-swatch-b);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .as-accent-debugger__trigger:hover,
+  .as-accent-debugger__option:hover {
+    border-color: var(--as-iris);
+  }
+}
+
+@media (max-width: 40rem) {
+  .as-accent-debugger__trigger span {
+    display: none;
+  }
+
+  .as-accent-debugger__trigger {
+    min-width: 2.15rem;
+    padding: 0.35rem;
+  }
 }
 
 button,
