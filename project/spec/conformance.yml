@@ -335,11 +335,11 @@ requirements:
 
   - id: ART-008
     kind: behavior
-    behavior: An artifact has zero to 20 normalized, unique tags. Tags belong to the artifact rather than one version, remain through publish, restore, and tombstone operations, and support exact normalized filtering.
+    behavior: An artifact has zero to 20 normalized, unique tags. Tags belong to the artifact rather than one version, remain through publish, restore, and tombstone operations, and support exact normalized filtering by any selected tag.
     owner: artifact-core
     source: {file: artifact-server-product-spec.html, anchor: artifact}
     acceptance:
-      behavior: {id: ART-008-B, description: "Create tags through inline and staged publication, replace them atomically, filter by an exact normalized tag, and confirm they remain through publish, restore, and tombstone operations."}
+      behavior: {id: ART-008-B, description: "Create tags through inline and staged publication, replace them atomically, filter by one or more exact normalized tags with any-tag matching, and confirm they remain through publish, restore, and tombstone operations."}
       failure: {id: ART-008-F, description: "Reject empty, overlong, control-character, and oversized tag sets plus conflicting retries without changing stored tags or action history."}
     deployments: *all
     status: behavior_verified

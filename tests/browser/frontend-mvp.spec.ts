@@ -306,10 +306,16 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(fixture.page.getByRole("button", {name: /Review fixture/u})).toHaveCount(0);
       await expect(preview.getByRole("heading", {name: "Review preview content"})).toBeVisible();
       await filterPopover.getByRole("radio", {name: "All artifacts"}).check();
-      await filterPopover.getByRole("radio", {name: "quiet"}).check();
+      await filterPopover.getByRole("checkbox", {name: "quiet"}).check();
       await expect(fixture.page.getByRole("button", {name: /Quiet fixture/u})).toBeVisible();
       await expect(fixture.page.getByRole("button", {name: /Review fixture/u})).toHaveCount(0);
-      await filterPopover.getByRole("radio", {name: "Any tag"}).check();
+      await filterPopover.getByRole("checkbox", {name: "inspection"}).check();
+      await expect(fixture.page.getByRole("button", {name: /Quiet fixture/u})).toBeVisible();
+      await expect(fixture.page.getByRole("button", {name: /Review fixture/u})).toBeVisible();
+      await filterPopover.getByRole("checkbox", {name: "quiet"}).uncheck();
+      await expect(fixture.page.getByRole("button", {name: /Quiet fixture/u})).toHaveCount(0);
+      await expect(fixture.page.getByRole("button", {name: /Review fixture/u})).toBeVisible();
+      await filterPopover.getByRole("button", {name: "Any tag"}).click();
       await catalogSort.selectOption("comments");
       await expect(fixture.page.locator(".as-artifact-card").first())
         .toContainText("Review fixture");
@@ -335,7 +341,7 @@ test.describe("Artifact Server frontend MVP", () => {
       await catalogFilters.click();
       await expect(
         fixture.page.locator(".as-catalog-filter-popover[data-open]")
-          .getByRole("radio", {name: "polished"}),
+          .getByRole("checkbox", {name: "polished"}),
       ).toBeVisible();
 
       await fixture.page.getByRole("button", {name: "Full screen"}).click();

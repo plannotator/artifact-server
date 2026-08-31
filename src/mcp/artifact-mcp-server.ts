@@ -887,7 +887,7 @@ export function createArtifactMcpServer(
             principal: identity.principal,
             projectId,
             search: null,
-            tag,
+            tags: tag === null ? [] : [tag],
           })
         ),
       );
@@ -1974,7 +1974,7 @@ export function createArtifactMcpServer(
             principal: identity.principal,
             projectId: dispatch.projectId,
             search: null,
-            tag: null,
+            tags: [],
           })
         ),
       )

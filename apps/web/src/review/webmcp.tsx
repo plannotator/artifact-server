@@ -387,7 +387,7 @@ function reviewTools(ref: BindingsRef): readonly ModelContextToolLike[] {
         const snapshot = await settledSnapshot(ref);
         if (snapshot.projectId === "") throw new Error("No project is open.");
         try {
-          const page = await api.artifacts(snapshot.projectId, null, "", "");
+          const page = await api.artifacts(snapshot.projectId, null, [], "");
           return {
             artifacts: page.artifacts.map(({artifact, versionCount}) => ({
               currentVersionId: artifact.currentVersionId,

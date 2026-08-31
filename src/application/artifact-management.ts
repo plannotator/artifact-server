@@ -10,7 +10,6 @@ import {
 import { parseIdempotencyKey } from "./idempotency-key.js";
 import {
   normalizeArtifactTag,
-  parseArtifactTag,
   parseArtifactTags,
 } from "./artifact-tags.js";
 import {
@@ -98,7 +97,7 @@ export interface ListArtifactsCommand {
   readonly projectId: string | null;
   readonly search: string | null;
   readonly sort?: "comments" | "newest";
-  readonly tag: string | null;
+  readonly tags: readonly string[];
 }
 
 /** Input for listing one artifact's attributed mutation history. */
@@ -409,9 +408,7 @@ function makeArtifactManagementService(
         });
       }
       yield* authorization.requireArtifactListing(command.principal);
-      const tag = command.tag === null
-        ? null
-        : yield* parseArtifactTag(command.tag);
+      const tags = yield* parseArtifactTags(command.tags);
       const search = normalizeArtifactSearch(command.search);
       const project = yield* resolveProjectForRead(
         command.principal,
@@ -424,7 +421,7 @@ function makeArtifactManagementService(
         projectId: project.id,
         search,
         sort,
-        tag,
+        tags,
       });
     },
   );

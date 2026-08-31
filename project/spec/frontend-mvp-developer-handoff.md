@@ -397,7 +397,7 @@ The first interface must support these complete workflows.
 ### Artifacts
 
 - List the selected project's active artifacts with cursor pagination.
-- Filter by one exact tag.
+- Filter by one or more exact tags, matching artifacts with any selected tag.
 - Show name, tags, access setting, current version number, and creation time.
 - Open a public or account-required artifact through the correct flow.
 - Show a useful empty state that points to the existing CLI and Agent Skill for

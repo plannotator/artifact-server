@@ -829,6 +829,8 @@ select:focus-visible {
 
 .as-catalog-filter-option {
   align-items: center;
+  background: transparent;
+  border: 0;
   color: var(--as-muted);
   cursor: pointer;
   display: flex;
@@ -837,6 +839,8 @@ select:focus-visible {
   min-height: 2rem;
   padding: 0.35rem 0.45rem;
   position: relative;
+  text-align: start;
+  width: 100%;
 }
 
 .as-catalog-filter-option[data-selected="true"] {

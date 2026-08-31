@@ -107,28 +107,36 @@ function CatalogFilters({
   commentFilter,
   knownTags,
   onCommentFilterChange,
-  onTagFilterChange,
-  tagFilter,
+  onTagFiltersChange,
+  tagFilters,
 }: {
   readonly commentFilter: CatalogCommentFilter;
   readonly knownTags: readonly string[];
   readonly onCommentFilterChange: (filter: CatalogCommentFilter) => void;
-  readonly onTagFilterChange: (tag: string | null) => void;
-  readonly tagFilter: string | null;
+  readonly onTagFiltersChange: (tags: readonly string[]) => void;
+  readonly tagFilters: readonly string[];
 }) {
-  const activeFilterCount = Number(commentFilter !== "all") + Number(tagFilter !== null);
-  const triggerLabel = activeFilterCount === 0
-    ? "All artifacts"
-    : activeFilterCount === 1 && tagFilter !== null
-      ? tagFilter
-      : activeFilterCount === 1 && commentFilter === "with"
-        ? "With comments"
-        : activeFilterCount === 1
-          ? "No comments"
-          : `${activeFilterCount} filters`;
-  const tags = tagFilter === null || knownTags.includes(tagFilter)
-    ? knownTags
-    : [...knownTags, tagFilter].toSorted();
+  const activeFilterCount = Number(commentFilter !== "all") + tagFilters.length;
+  let triggerLabel = "All artifacts";
+  if (commentFilter === "all" && tagFilters.length === 1) {
+    triggerLabel = tagFilters[0] ?? "1 tag";
+  } else if (commentFilter === "all" && tagFilters.length > 1) {
+    triggerLabel = `${tagFilters.length} tags`;
+  } else if (commentFilter === "with" && tagFilters.length === 0) {
+    triggerLabel = "With comments";
+  } else if (commentFilter === "without" && tagFilters.length === 0) {
+    triggerLabel = "No comments";
+  } else if (activeFilterCount > 0) {
+    triggerLabel = `${activeFilterCount} filters`;
+  }
+  const tags = [...new Set([...knownTags, ...tagFilters])].toSorted();
+  const toggleTag = (tag: string): void => {
+    onTagFiltersChange(
+      tagFilters.includes(tag)
+        ? tagFilters.filter((selected) => selected !== tag)
+        : [...tagFilters, tag].toSorted(),
+    );
+  };
 
   return (
     <Popover.Root>
@@ -162,7 +170,7 @@ function CatalogFilters({
                   className="as-catalog-filter-popover__clear"
                   onClick={() => {
                     onCommentFilterChange("all");
-                    onTagFilterChange(null);
+                    onTagFiltersChange([]);
                   }}
                   type="button"
                 >
@@ -193,33 +201,32 @@ function CatalogFilters({
               ))}
             </fieldset>
             <fieldset>
-              <legend>Tag</legend>
-              <label className="as-catalog-filter-option" data-selected={tagFilter === null}>
-                <input
-                  checked={tagFilter === null}
-                  name="catalog-tag-filter"
-                  onChange={() => onTagFilterChange(null)}
-                  type="radio"
-                  value=""
-                />
+              <legend>Tags</legend>
+              <button
+                aria-pressed={tagFilters.length === 0}
+                className="as-catalog-filter-option"
+                data-selected={tagFilters.length === 0}
+                onClick={() => onTagFiltersChange([])}
+                type="button"
+              >
                 <span>Any tag</span>
-                {tagFilter === null ? (
+                {tagFilters.length === 0 ? (
                   <HugeiconsIcon aria-hidden="true" icon={Tick02Icon} strokeWidth={2} />
                 ) : null}
-              </label>
+              </button>
               {tags.length === 0 ? (
                 <p className="as-catalog-filter-popover__empty">No tags in the loaded catalog.</p>
               ) : tags.map((tag) => (
-                <label className="as-catalog-filter-option" data-selected={tagFilter === tag} key={tag}>
+                <label className="as-catalog-filter-option" data-selected={tagFilters.includes(tag)} key={tag}>
                   <input
-                    checked={tagFilter === tag}
+                    checked={tagFilters.includes(tag)}
                     name="catalog-tag-filter"
-                    onChange={() => onTagFilterChange(tag)}
-                    type="radio"
+                    onChange={() => toggleTag(tag)}
+                    type="checkbox"
                     value={tag}
                   />
                   <span>{tag}</span>
-                  {tagFilter === tag ? (
+                  {tagFilters.includes(tag) ? (
                     <HugeiconsIcon aria-hidden="true" icon={Tick02Icon} strokeWidth={2} />
                   ) : null}
                 </label>
@@ -418,7 +425,7 @@ function ArtifactReview({
   const [query, setQuery] = useState("");
   const searchQuery = useDeferredValue(query.trim());
   const [catalogCommentFilter, setCatalogCommentFilter] = useState<CatalogCommentFilter>("all");
-  const [catalogTagFilter, setCatalogTagFilter] = useState<string | null>(null);
+  const [catalogTagFilters, setCatalogTagFilters] = useState<readonly string[]>([]);
   const [catalogKnownTags, setCatalogKnownTags] = useState<readonly string[]>([]);
   const [catalogSort, setCatalogSort] = useState<CatalogSort>("newest");
   const [listLoading, setListLoading] = useState(true);
@@ -563,7 +570,7 @@ function ArtifactReview({
       details === null
       || searchQuery !== ""
       || catalogCommentFilter !== "all"
-      || catalogTagFilter !== null
+      || catalogTagFilters.length > 0
       || items.some(({artifact}) => artifact.id === details.artifact.id)
     ) return items;
     return [{
@@ -574,7 +581,7 @@ function ArtifactReview({
     }, ...items];
   }, [
     catalogCommentFilter,
-    catalogTagFilter,
+    catalogTagFilters.length,
     comments.threads.length,
     details,
     items,
@@ -594,7 +601,7 @@ function ArtifactReview({
     setListLoading(true);
     setListError(null);
     try {
-      const page = await api.artifacts(projectId, cursor, catalogTagFilter ?? "", searchQuery, {
+      const page = await api.artifacts(projectId, cursor, catalogTagFilters, searchQuery, {
         comments: catalogCommentFilter,
         sort: catalogSort,
       });
@@ -626,7 +633,7 @@ function ArtifactReview({
         setListLoading(false);
       }
     }
-  }, [catalogCommentFilter, catalogSort, catalogTagFilter, projectId, searchQuery]);
+  }, [catalogCommentFilter, catalogSort, catalogTagFilters, projectId, searchQuery]);
 
   const refreshArtifacts = useCallback(async (): Promise<void> => {
     if (listLoading) return;
@@ -793,7 +800,7 @@ function ArtifactReview({
       const restored = readReviewLocation();
       if (restored.projectId !== null) {
         setCatalogKnownTags([]);
-        setCatalogTagFilter(null);
+        setCatalogTagFilters([]);
         setProjectId(restored.projectId);
       }
       setSelectedArtifactId(restored.artifactId);
@@ -866,7 +873,7 @@ function ArtifactReview({
   const selectProject = (nextProjectId: string): void => {
     if (nextProjectId !== projectId) {
       setCatalogKnownTags([]);
-      setCatalogTagFilter(null);
+      setCatalogTagFilters([]);
       setSelectedArtifactId(null);
       setSelectedVersionId(null);
       setSelectedPath(null);
@@ -1288,8 +1295,8 @@ function ArtifactReview({
                 commentFilter={catalogCommentFilter}
                 knownTags={catalogKnownTags}
                 onCommentFilterChange={setCatalogCommentFilter}
-                onTagFilterChange={setCatalogTagFilter}
-                tagFilter={catalogTagFilter}
+                onTagFiltersChange={setCatalogTagFilters}
+                tagFilters={catalogTagFilters}
               />
               <label>
                 <span className="as-visually-hidden">Sort artifacts</span>
@@ -1319,12 +1326,12 @@ function ArtifactReview({
           {!listLoading && listError === null && catalogItems.length === 0 ? (
             <InlineState
               description={
-                query !== "" || catalogCommentFilter !== "all" || catalogTagFilter !== null
+                query !== "" || catalogCommentFilter !== "all" || catalogTagFilters.length > 0
                   ? "Try clearing a filter or using a wider search."
                   : "Publish from the CLI to populate this project."
               }
               title={
-                query !== "" || catalogCommentFilter !== "all" || catalogTagFilter !== null
+                query !== "" || catalogCommentFilter !== "all" || catalogTagFilters.length > 0
                   ? "No matching artifacts"
                   : "No artifacts yet"
               }
