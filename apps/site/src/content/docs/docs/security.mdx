@@ -7,7 +7,7 @@ Artifact Server treats workflow, dependency, package, and container integrity as
 
 <CardGrid>
   <Card title="Changes are tested" icon="ph:checks">
-    Pull requests, merge-queue candidates, and changes to `main` run the portable macOS gate and the complete Linux iteration gate.
+    Pull requests run five parallel product jobs and the macOS job. Changes to `main` run the complete Linux iteration gate.
   </Card>
   <Card title="Secrets are scanned" icon="ph:key">
     Gitleaks scans the complete Git history. Its downloaded binary is checksum-verified, and a synthetic token proves the detector before the repository scan starts.
@@ -20,11 +20,21 @@ Artifact Server treats workflow, dependency, package, and container integrity as
   </Card>
 </CardGrid>
 
-## Checks on every change
+## Pull-request verification
 
 The [CI workflow](https://github.com/plannotator/artifact-server/actions/workflows/ci.yml) runs with read-only repository permissions. Third-party actions are pinned to complete commit SHAs, checkout credentials are not persisted, and dependencies install from the committed lockfile.
 
-The macOS job runs the portable code gate. The Linux job runs `pnpm verify:iteration`, which covers linting, type checking, builds, conformance tests, browser tests, package tests, deployment checks, storage integrations, and bounded performance checks.
+The pull-request workflow runs these required jobs:
+
+- Build and static policy.
+- Unit and conformance behavior.
+- Browser behavior.
+- Cloudflare deployment behavior.
+- macOS portability.
+
+The complete Linux gate runs after a change reaches `main`. It also runs each day, during a manual full run, and before a release.
+
+The complete gate uses `pnpm verify:iteration`. It includes package, storage, Compose, Helm, OIDC, coverage, and bounded performance verification.
 
 The separate [security workflow](https://github.com/plannotator/artifact-server/actions/workflows/security.yml) runs on the same change events and every Monday:
 

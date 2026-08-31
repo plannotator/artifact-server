@@ -47,6 +47,9 @@ artifactserver doctor codex
 artifactserver disconnect codex
 ```
 
+Review also provides these commands. Open **Settings → MCP** to copy the local command or the exact team-server address.
+The page links administrators to API-key settings for clients that cannot use browser authentication.
+
 ## Connect to a team server
 
 Add the exact MCP address to the client:
@@ -125,7 +128,9 @@ opens its raw immutable content. Agents should hand people the Review URL.
 | Review dispatch | `dispatch_inbox` — claim review bundles sent to this agent from the review UI |
 | Git history planning | `project_git_history_status`, `project_git_history_estimate` |
 
-Linked-artifact tools appear only when the deployment enables linked artifacts. `project_set_git_history` enables one project only after an authorized caller confirms a fresh estimate; provider configuration alone copies nothing.
+Linked-artifact tools remain in the tool list on every deployment. They return `CAPABILITY_UNAVAILABLE` when the deployment does not enable linked artifacts.
+
+`project_set_git_history` enables one project after an authorized caller confirms a fresh estimate. Provider settings alone copy nothing.
 
 ## Review feedback over MCP
 
@@ -138,6 +143,14 @@ Comments sent to an MCP-connected agent from the review UI wait in that agent's 
 ```
 
 That is the mailbox tier of the agent loop: honest, and better than pasting feedback by hand, but not a push into the running session. Pi, OpenCode, and Claude Code (through a channel) get the bundle delivered live. [Compare the tiers and connect a live agent →](/docs/agents/)
+
+## Browser agents through WebMCP
+
+Review registers seven `artifact_server_` tools when the browser provides `document.modelContext`. These tools read the selected view and manage comments with the signed-in session.
+
+Open **Settings → WebMCP** to enable or disable these tools for the current browser profile. This setting does not change external MCP clients.
+
+The browser test suite verifies registration, comment changes, and tool removal. No real WebMCP browser session completed manual qualification.
 
 ## Further reading
 
