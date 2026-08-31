@@ -3418,6 +3418,191 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
   min-width: 0;
 }
 
+.as-public-links-inventory {
+  container-name: public-links;
+  container-type: inline-size;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--as-border);
+}
+
+.as-public-links-table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  text-align: left;
+  width: 100%;
+}
+
+.as-public-links-table__select-column {
+  width: 2.75rem;
+}
+
+.as-public-links-table__artifact-column {
+  width: 34%;
+}
+
+.as-public-links-table__actions-column {
+  width: 10.5rem;
+}
+
+.as-public-links-table th,
+.as-public-links-table td {
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  vertical-align: top;
+}
+
+.as-public-links-table__row {
+  border-bottom: 1px solid var(--as-border);
+}
+
+.as-public-links-table__row:last-child {
+  border-bottom: 0;
+}
+
+.as-public-links-table td.as-public-links-table__select-cell,
+.as-public-links-table th.as-public-links-table__select-cell {
+  padding-inline-end: 0.25rem;
+  text-align: center;
+}
+
+.as-public-links-table__artifact-heading {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.as-public-links-table__artifact-link {
+  color: var(--as-text);
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.25;
+  min-width: 0;
+  overflow: hidden;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.as-public-links-table__artifact-link:hover,
+.as-public-links-table__url:hover {
+  text-decoration: underline;
+  text-decoration-skip-ink: auto;
+  text-underline-position: from-font;
+}
+
+.as-public-links-table__url {
+  color: var(--as-settings-accent);
+  display: block;
+  font-family: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.as-public-links-table__meta {
+  color: var(--as-subtle);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  margin: 0.2rem 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.as-public-links-table td.as-public-links-table__actions-cell {
+  padding-inline-start: 0.35rem;
+}
+
+.as-public-links-table__actions {
+  display: flex;
+  gap: 0.35rem;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.as-public-links-table__empty-row td {
+  padding: 2rem 1rem;
+}
+
+@container public-links (max-width: 46rem) {
+  .as-public-links-table,
+  .as-public-links-table tbody {
+    display: block;
+  }
+
+  .as-public-links-table colgroup {
+    display: none;
+  }
+
+  .as-public-links-table thead {
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .as-public-links-table__row {
+    display: grid;
+    gap: 0.35rem 0.65rem;
+    grid-template-areas:
+      "select artifact actions"
+      ". link link";
+    grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+    padding: 0.7rem 0.75rem;
+  }
+
+  .as-public-links-table__row td {
+    padding: 0;
+  }
+
+  .as-public-links-table__row td.as-public-links-table__select-cell {
+    grid-area: select;
+    padding-inline-end: 0;
+    text-align: start;
+  }
+
+  .as-public-links-table__artifact-cell {
+    grid-area: artifact;
+  }
+
+  .as-public-links-table__link-cell {
+    grid-area: link;
+    min-width: 0;
+  }
+
+  .as-public-links-table__row td.as-public-links-table__actions-cell {
+    grid-area: actions;
+    padding-inline-start: 0;
+  }
+
+  .as-public-links-table__empty-row {
+    display: block;
+  }
+}
+
+@container public-links (max-width: 30rem) {
+  .as-public-links-table__row {
+    grid-template-areas:
+      "select artifact"
+      ". link"
+      ". actions";
+    grid-template-columns: 1.25rem minmax(0, 1fr);
+  }
+
+  .as-public-links-table__actions {
+    justify-content: flex-start;
+    margin-top: 0.15rem;
+  }
+}
+
 @media (max-width: 1180px) {
   .as-panel-assembly[data-side="right"] {
     bottom: 0;

@@ -1271,6 +1271,21 @@ test.describe("Artifact Server frontend MVP", () => {
       expect(await fixture.page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
       await fixture.page.evaluate(() => window.scrollTo(0, 0));
 
+      const inventory = fixture.page.getByRole("table", {name: "Public links inventory"});
+      expect(await inventory.evaluate((element) => element.scrollWidth - element.clientWidth))
+        .toBe(0);
+      const compactRowBox = await firstRow.boundingBox();
+      expect(compactRowBox?.height).toBeLessThan(96);
+
+      await fixture.page.setViewportSize({height: 720, width: 390});
+      expect(await fixture.page.evaluate(() =>
+        document.documentElement.scrollWidth - document.documentElement.clientWidth
+      )).toBe(0);
+      expect(await inventory.evaluate((element) => element.scrollWidth - element.clientWidth))
+        .toBe(0);
+      await expect(firstRow.getByRole("link", {name: "Open"})).toBeVisible();
+      await expect(firstRow.getByRole("button", {name: "Make private"})).toBeVisible();
+
       const otherRow = fixture.page.getByRole("row").filter({
         hasText: "Cross-project public link",
       });
