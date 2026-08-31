@@ -3280,6 +3280,7 @@ select:focus-visible {
   color: var(--as-settings-accent);
 }
 
+html:has(.as-settings),
 body:has(.as-settings),
 #review-root:has(.as-settings) {
   height: auto;

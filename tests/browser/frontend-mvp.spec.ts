@@ -1261,6 +1261,16 @@ test.describe("Artifact Server frontend MVP", () => {
         .analyze();
       expect(accessibility.violations).toEqual([]);
 
+      await fixture.page.setViewportSize({height: 600, width: 1024});
+      const settingsScrollRange = await fixture.page.evaluate(() => ({
+        clientHeight: document.documentElement.clientHeight,
+        scrollHeight: document.documentElement.scrollHeight,
+      }));
+      expect(settingsScrollRange.scrollHeight).toBeGreaterThan(settingsScrollRange.clientHeight);
+      await fixture.page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      expect(await fixture.page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+      await fixture.page.evaluate(() => window.scrollTo(0, 0));
+
       const otherRow = fixture.page.getByRole("row").filter({
         hasText: "Cross-project public link",
       });
