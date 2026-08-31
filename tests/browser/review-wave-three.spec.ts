@@ -145,8 +145,12 @@ test.describe("Artifact Server Review wave three", () => {
       await expect(conversation.getByText("Agent reply already in this conversation"))
         .toBeVisible();
       await conversation.getByRole("button", {name: "Resolve"}).click();
-      await expect(conversation.getByRole("textbox", {exact: true, name: "Reply"}))
-        .toHaveCount(0);
+      await expect(conversation).toHaveCount(0);
+      await expect(fixture.page.getByRole("button", {name: "Open", exact: true}))
+        .toHaveAttribute("aria-pressed", "true");
+      await fixture.page.getByRole("button", {name: "Resolved", exact: true}).click();
+      await expect(conversation).toBeVisible();
+      await expect(conversation.getByRole("button", {name: "Reopen"})).toBeVisible();
     } finally {
       await stopBrowserFixture(fixture);
     }

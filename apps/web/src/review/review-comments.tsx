@@ -552,7 +552,7 @@ export function ReviewCommentsInspector({
   const unanchored = new Set(session.unanchoredIds);
   const [agents, setAgents] = useState<readonly AgentPresence[] | null>(null);
   const [agentError, setAgentError] = useState<Error | null>(null);
-  const [view, setView] = useState<CommentView>("all");
+  const [view, setView] = useState<CommentView>("open");
   const [sentThreads, setSentThreads] = useState<readonly CommentThread[]>([]);
   const [sentReplies, setSentReplies] = useState<ReadonlyMap<
     string,
@@ -622,11 +622,14 @@ export function ReviewCommentsInspector({
   );
 
   const openThreads = session.threads.filter((thread) => thread.state === "open");
+  const resolvedThreads = session.threads.filter((thread) => thread.state === "resolved");
   const visibleThreads = view === "sent"
     ? sentThreads
-    : session.threads.filter((thread) =>
-      view === "all" || thread.state === view
-    );
+    : view === "all"
+      ? [...openThreads, ...resolvedThreads]
+      : view === "open"
+        ? openThreads
+        : resolvedThreads;
   const visibleReplies = view === "sent" ? sentReplies : session.repliesByThread;
   const loadingVisible = view === "sent" ? sentLoading : session.loading;
   const now = Date.now();
@@ -701,7 +704,7 @@ export function ReviewCommentsInspector({
         <p className="as-comments__error" role="alert">{sentError.message}</p>
       )}
       <nav aria-label="Comment filters" className="as-comments__filters">
-        {(["all", "open", "resolved", "sent"] as const).map((candidate) => (
+        {(["open", "all", "resolved", "sent"] as const).map((candidate) => (
           <button
             aria-pressed={view === candidate}
             className="as-button"
@@ -735,7 +738,9 @@ export function ReviewCommentsInspector({
             ? "No comments on this version yet."
             : view === "sent"
               ? "No sent comments on this version."
-              : `No ${view} comments on this version.`}
+              : view === "open" && resolvedThreads.length > 0
+                ? "All comments on this version are resolved."
+                : `No ${view} comments on this version.`}
         </p>
       ) : null}
       <ol className="as-comment-list">

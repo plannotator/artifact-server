@@ -366,6 +366,9 @@ function ArtifactReview({
     projectId,
     versionId: selectedVersionId,
   });
+  const openCommentCount = comments.threads.filter(
+    (thread) => thread.state === "open",
+  ).length;
 
   // Browser agent tools (WebMCP): the ref hands the adapter live view state
   // each render; registration itself lives entirely in webmcp.tsx.
@@ -1304,7 +1307,7 @@ function ArtifactReview({
                   >
                     <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
                     Comments
-                    <span className="as-focus-controls__count">{comments.threads.length}</span>
+                    <span className="as-focus-controls__count">{openCommentCount}</span>
                   </button>
                   <ReviewShareControl
                     details={details}
@@ -1358,7 +1361,7 @@ function ArtifactReview({
                   <div>
                     <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
                     <h2 id="review-focus-comments-title">Comments</h2>
-                    <span>{comments.threads.length}</span>
+                    <span>{openCommentCount}</span>
                   </div>
                   <IconButton label="Close comments" onClick={() => setFocusCommentsOpen(false)}>
                     <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.8} />
@@ -1557,7 +1560,7 @@ function ArtifactReview({
               >
           <header className="as-pane-header as-inspector__header">
             <div aria-label="Artifact inspector" className="as-tabs" role="tablist">
-              <InspectorTabButton active={inspectorTab === "comments"} count={comments.threads.length} label="Comments" onClick={() => setInspectorTab("comments")} tab="comments" />
+              <InspectorTabButton active={inspectorTab === "comments"} count={openCommentCount} label="Comments" onClick={() => setInspectorTab("comments")} tab="comments" />
               <InspectorTabButton active={inspectorTab === "details"} label="Details" onClick={() => setInspectorTab("details")} tab="details" />
               <InspectorTabButton active={inspectorTab === "files"} count={selectedVersion?.manifest.entries.length ?? 0} label="Files" onClick={() => setInspectorTab("files")} tab="files" />
               <InspectorTabButton active={inspectorTab === "versions"} count={versions.length} label="Versions" onClick={() => setInspectorTab("versions")} tab="versions" />

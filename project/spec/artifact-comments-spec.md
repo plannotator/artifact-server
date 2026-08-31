@@ -291,6 +291,12 @@ Two surfaces.
 
 **Review view**, a new app route (added to the server shell-route allowlist) that shows one exact HTML version with Plannotator-grade in-page commenting: crosshair pinpoint mode, hover outline box with the element-label pill, click to pin, numbered speech-bubble markers at the anchored elements, text-selection highlights, a compose popover at the pin, and a synced thread panel beside the page. Selecting a pin focuses its thread; resolving hides or dims its marker. Non-HTML entries (images, PDFs) fall back to the Comments tab with whole-file anchors.
 
+The thread panel is an active review queue: it opens on **Open**, resolving a
+thread removes it from that queue, and **Resolved** keeps completed conversations
+available as history. **All** remains available for context but groups every open
+thread before resolved threads. Comment badges inside Review count open work;
+catalog cards continue to show total comment history.
+
 The review route owns the viewport instead of rendering inside the management
 application shell. One compact viewer bar identifies the artifact and exact
 version and exposes back, comments, version navigation, linked-source state,
