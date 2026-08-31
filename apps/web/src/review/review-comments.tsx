@@ -23,7 +23,6 @@ import {
 import {formatTimestamp} from "@/lib/presentation";
 import {bundleOfThreads} from "@/components/dispatch/dispatch-bundle";
 import {loadDispatchIndex} from "@/components/dispatch/dispatch-index";
-import {DispatchSelectionBar} from "@/components/dispatch/dispatch-selection-bar";
 import {
   dispatchIsCancelable,
   DispatchStateChip,
@@ -554,7 +553,6 @@ export function ReviewCommentsInspector({
   const [agents, setAgents] = useState<readonly AgentPresence[] | null>(null);
   const [agentError, setAgentError] = useState<Error | null>(null);
   const [view, setView] = useState<CommentView>("all");
-  const [selectedThreadIds, setSelectedThreadIds] = useState<readonly string[]>([]);
   const [sentThreads, setSentThreads] = useState<readonly CommentThread[]>([]);
   const [sentReplies, setSentReplies] = useState<ReadonlyMap<
     string,
@@ -623,16 +621,7 @@ export function ReviewCommentsInspector({
     view === "sent" && session.artifactId !== null && versionId !== null,
   );
 
-  useEffect(() => {
-    setSelectedThreadIds((current) => current.filter((threadId) =>
-      session.threads.some((thread) => thread.id === threadId && thread.state === "open")
-    ));
-  }, [session.threads]);
-
   const openThreads = session.threads.filter((thread) => thread.state === "open");
-  const selectedThreads = openThreads.filter((thread) =>
-    selectedThreadIds.includes(thread.id)
-  );
   const visibleThreads = view === "sent"
     ? sentThreads
     : session.threads.filter((thread) =>
@@ -641,12 +630,6 @@ export function ReviewCommentsInspector({
   const visibleReplies = view === "sent" ? sentReplies : session.repliesByThread;
   const loadingVisible = view === "sent" ? sentLoading : session.loading;
   const now = Date.now();
-
-  const toggleSelection = (threadId: string): void => {
-    setSelectedThreadIds((current) => current.includes(threadId)
-      ? current.filter((candidate) => candidate !== threadId)
-      : [...current, threadId]);
-  };
 
   const cancelDispatch = async (dispatch: AgentDispatch): Promise<void> => {
     setSentError(null);
@@ -659,7 +642,6 @@ export function ReviewCommentsInspector({
   };
 
   const onSent = async (): Promise<void> => {
-    setSelectedThreadIds([]);
     await reloadDispatchSurface();
   };
 
@@ -735,17 +717,6 @@ export function ReviewCommentsInspector({
           </button>
         ))}
       </nav>
-      {selectedThreads.length === 0 ? null : (
-        <DispatchSelectionBar
-          agents={agents}
-          feedback={dispatchUndo.feedback}
-          onClear={() => setSelectedThreadIds([])}
-          onSent={onSent}
-          principalId={principalId}
-          projectId={session.projectId}
-          threads={selectedThreads}
-        />
-      )}
       {canComment && versionId !== null && session.artifactId !== null ? (
         <NewThreadComposer
           artifactId={session.artifactId}
@@ -779,14 +750,6 @@ export function ReviewCommentsInspector({
                 data-selected={session.selectedThreadId === thread.id}
               >
                 <header>
-                  {view !== "sent" && canComment && thread.state === "open" ? (
-                    <input
-                      aria-label={`Select comment: ${thread.body}`}
-                      checked={selectedThreadIds.includes(thread.id)}
-                      onChange={() => toggleSelection(thread.id)}
-                      type="checkbox"
-                    />
-                  ) : null}
                   <strong>{thread.author.displayName}</strong>
                   {sentDispatch === undefined
                     ? <span data-state={thread.state}>{thread.state}</span>
@@ -823,6 +786,22 @@ export function ReviewCommentsInspector({
                         ) : null
                       ) : (
                         <>
+                          {canComment && thread.state === "open" ? (
+                            <SendToAgentControl
+                              agents={agents}
+                              buttonSize="xs"
+                              buttonVariant="outline"
+                              feedback={dispatchUndo.feedback}
+                              label="Send…"
+                              onSent={onSent}
+                              oneAgentLabel={(name) => `Send to ${name}`}
+                              openCount={1}
+                              principalId={principalId}
+                              projectId={session.projectId}
+                              reasonDisplay="hidden"
+                              resolveBundle={() => Promise.resolve(bundleOfThreads([thread]))}
+                            />
+                          ) : null}
                           {thread.path === null ? null : (
                             <button
                               className="as-button"

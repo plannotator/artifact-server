@@ -2296,11 +2296,6 @@ select:focus-visible {
   white-space: nowrap;
 }
 
-.as-comment-card > header input[type="checkbox"] {
-  accent-color: var(--as-iris);
-  flex: 0 0 auto;
-}
-
 .as-comment-card > header span {
   background: var(--as-iris-soft);
   color: var(--as-iris);

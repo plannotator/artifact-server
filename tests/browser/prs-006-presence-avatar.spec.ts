@@ -234,7 +234,7 @@ test.describe("PRS-006 presence avatar", () => {
       });
       await page.getByRole("button", {
         name: "Choose agent or send with a note",
-      }).click();
+      }).first().click();
       await page.getByRole("button", {name: "Send with a note…"}).click();
       const dialog = page.getByRole("dialog");
       const presRow = dialog.locator("label").filter({hasText: "pres"});

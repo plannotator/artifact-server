@@ -96,6 +96,9 @@ test.describe("PRS-004 one-click send and undo", () => {
       await page.getByRole("tab", {name: "Comments"}).click();
       const cards = page.getByRole("article");
       await expect(cards).toHaveCount(2);
+      await expect(page.getByLabel("Selected annotations")).toHaveCount(0);
+      await expect(page.getByRole("checkbox", {name: /Select comment:/u}))
+        .toHaveCount(0);
 
       // One click, no dialog: the primary button names its destination and
       // sends every open comment on the exact version.
@@ -128,13 +131,10 @@ test.describe("PRS-004 one-click send and undo", () => {
       // Nothing is left in the mailbox for the agent to take.
       expect((await agent.client.claim(agent.agentId, 1)).status).toBe(204);
 
-      // Selecting comments is the secondary path. A send the agent already
+      // A single card is the secondary path. A send the agent already
       // delivered refuses the undo, and says so.
       await cards.filter({hasText: bodies.second})
-        .getByRole("checkbox", {name: `Select comment: ${bodies.second}`})
-        .check();
-      await page.getByLabel("Selected annotations")
-        .getByRole("button", {name: "Send 1 to solo"}).click();
+        .getByRole("button", {name: "Send to solo"}).click();
       await expect(page.getByText("Sent 1 thread to solo")).toBeVisible();
       const claimed = await agent.client.claim(agent.agentId, 2);
       expect(claimed.status).toBe(200);

@@ -217,7 +217,7 @@ test.describe("Review send-all", () => {
         .toBeDisabled();
       await page.getByRole("button", {
         name: "Choose agent or send with a note",
-      }).click();
+      }).first().click();
       await page.getByRole("button", {name: "mailbox /work/mailbox"}).click();
       await expect(page.getByText(
         "Queued for mailbox — it picks this up when it next checks in.",
@@ -265,7 +265,7 @@ test.describe("Review send-all", () => {
 
       await page.getByRole("button", {
         name: "Choose agent or send with a note",
-      }).click();
+      }).first().click();
       await page.getByRole("button", {name: "replacement /work/replacement"}).click();
       await expect(page.getByText("Sent 1 thread to replacement")).toBeVisible();
 

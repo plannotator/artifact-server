@@ -132,6 +132,7 @@ export function SendToAgentControl({
   openCount,
   principalId,
   projectId,
+  reasonDisplay = "inline",
   resolveBundle,
 }: {
   /** The polled presence list, or null while the surface is reading it. */
@@ -147,6 +148,8 @@ export function SendToAgentControl({
   readonly oneAgentLabel?: (name: string) => string;
   readonly principalId: string;
   readonly projectId: string;
+  /** Whether this control repeats its disabled-state explanation beside the buttons. */
+  readonly reasonDisplay?: "hidden" | "inline";
   readonly resolveBundle: () => Promise<DispatchBundle>;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -444,7 +447,7 @@ export function SendToAgentControl({
           </PopoverContent>
         </Popover>
       </span>
-      {mainReason === null ? null : (
+      {mainReason === null || reasonDisplay === "hidden" ? null : (
         <span className="text-xs text-muted-foreground" role="status">
           {mainReason}
         </span>
@@ -455,7 +458,7 @@ export function SendToAgentControl({
           <DialogHeader>
             <DialogTitle>Send with a note</DialogTitle>
             <DialogDescription>
-              The selected annotations leave the open list when the send succeeds.
+              The annotations in this send leave the open list when it succeeds.
               Undo can call them back while the agent has not completed the send.
             </DialogDescription>
           </DialogHeader>

@@ -7,7 +7,7 @@
 
 ## 1. What this adds and why
 
-A human annotates an artifact, selects one or more annotations (comment threads), picks a connected agent, and clicks send. The annotations leave the screen. The Pi coding agent receives them as one message when it finishes its current work, does the work, replies to each thread with what it did, and resolves them. The human does nothing else.
+A human annotates an artifact, sends one annotation or all open annotations to a connected agent, and continues reviewing. The annotations leave the screen. The Pi coding agent receives them as one message when it finishes its current work, does the work, replies to each thread with what it did, and resolves them. The human does nothing else.
 
 This is the bi-directional loop the comment system was missing: Artifact Server already has the pull half (comment reads with `?since=` polling, at-least-once semantics, idempotent writes), and nothing today can tell an agent anything (no push of any kind exists in the codebase — verified: zero SSE/WebSocket/webhook primitives, MCP subscriptions disabled). This spec adds the push half as two small, transport-neutral concepts — a **registered agent** and a **dispatch mailbox** — plus one Pi extension that connects them to a live Pi session.
 
@@ -217,7 +217,7 @@ with what you did, then resolve it. Do not wait for confirmation.
 
 Consumptive send, per the owner:
 
-- **Send controls:** a "Send to agent" action on each annotation's card (the comment thread card, both surfaces), a multi-select bar in the Comments tab ("Send N to agent"), and — v1, owner decision — **"Send all open"** on a version (Comments tab version filter and the review panel header): thirty open annotations become ONE bundle, one dispatch, one message to Pi. All three open the agent picker: connected agents with display name, working directory, and last-seen; disabled state when none are connected. Confirming creates the dispatch (one idempotency key per confirm, held across retries). Past 100 open threads, "Send all open" sends the oldest 100 and says so — one bundle, never a silent split into several.
+- **Send controls:** a "Send to agent" action on each open annotation's card and — v1, owner decision — **"Send all open"** on a version (Comments tab version filter and the review panel header): thirty open annotations become ONE human-initiated send, split only at the server's 100-thread dispatch bound. Review does not support arbitrary multi-select bundles. Both actions use the same tier-aware agent control: connected agents with display name, working directory, and last-seen; disabled state when none are connected. Sending creates one idempotency key per dispatch and holds it across retries.
 - **On success the annotations vanish** — lists refresh under the default `dispatched=exclude`, review pins disappear with them. No status chip, badge, or progress surface appears anywhere on the artifact surfaces.
 - **The state filter gains "Sent"** (`dispatched=only`) so history is findable on demand. That view is where a queued/claimed/delivered dispatch can be canceled — cancel and failure are the single exception to "gone is gone": their threads reappear in the default views automatically because the server clears the markers.
 - The loop finishes invisibly: the agent's resolves leave the threads hidden (resolved), and reopening a thread the agent got wrong is the existing reopen action.
@@ -254,7 +254,7 @@ No transcript mirroring into Artifact Server. No WebSockets or SSE (the mailbox 
 ## 12. Acceptance walk-through
 
 1. Pi starts in a repo; the extension registers → `GET /agents` lists "pi · ~/work/site" as connected.
-2. The human opens the review view, pins two annotations, multi-selects them, clicks "Send to agent", picks the Pi session, confirms. The two pins and cards vanish.
+2. The human opens the review view, pins two annotations, and clicks "Send all open" to the Pi session. The two pins and cards vanish. A reviewer who wants to send only one uses that annotation card's Send action instead.
 3. Pi is mid-task. The extension claims the dispatch (long-poll), injects one two-item message with `followUp`, reports delivered. Pi finishes its current work, receives the bundle, edits the artifact source, replies to both threads via `artifact_comments`, publishes, resolves both.
 4. The dispatch reads `addressed`; the threads are resolved; the default views show nothing — the loop closed with zero further human actions.
 5. The human sends bundle B and then bundle C while Pi works on A's follow-up. B and C sit queued in Artifact Server (one-active-claim), then drain strictly in order, one work-boundary each.
