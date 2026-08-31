@@ -356,7 +356,7 @@ jobs:
           --password-stdin
           <<< "$ARTIFACTSERVER_GITHUB_TOKEN"
       - name: Attest downloadable asset provenance
-        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3.0.0
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
         with:
           subject-path: release/public/*
       - name: Attest local package SBOM
@@ -380,7 +380,7 @@ jobs:
           subject-path: release/public/plannotator-artifact-server-claude-channel-${{ needs.verify.outputs.version }}.tgz
           sbom-path: release/public/plannotator-artifact-server-claude-channel-${{ needs.verify.outputs.version }}.spdx.json
       - name: Attest image provenance in GHCR
-        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3.0.0
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
         with:
           subject-name: ${{ steps.image.outputs.name }}
           subject-digest: ${{ steps.image.outputs.digest }}
