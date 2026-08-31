@@ -627,10 +627,7 @@ select:focus-visible {
 }
 
 .as-catalog__tools {
-  align-items: flex-start;
   border-bottom: 1px solid var(--as-border);
-  display: flex;
-  gap: 0.45rem;
   padding: 0.65rem 0.65rem;
 }
 
@@ -841,10 +838,13 @@ select:focus-visible {
 }
 
 .as-catalog-refresh {
+  align-items: center;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: inherit;
+  gap: 0.35rem;
   transition:
     background-color 150ms ease,
-    border-color 150ms ease,
-    color 150ms ease,
     transform 150ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
@@ -855,8 +855,7 @@ select:focus-visible {
 .as-catalog-refresh[data-state="loading"],
 .as-catalog-refresh[data-state="complete"] {
   background: var(--as-iris-soft);
-  border-color: color-mix(in oklab, var(--as-iris) 42%, var(--as-border));
-  color: var(--as-iris);
+  color: var(--as-text);
 }
 
 .as-catalog-refresh[data-state="loading"]:disabled {
@@ -865,6 +864,11 @@ select:focus-visible {
 
 .as-catalog-refresh[data-state="loading"] .as-catalog-refresh__icon {
   animation: as-catalog-refresh-spin 480ms linear infinite;
+}
+
+.as-catalog-refresh__icon {
+  height: 0.78rem;
+  width: 0.78rem;
 }
 
 .as-catalog-refresh[data-state="complete"] .as-catalog-refresh__icon {
@@ -1077,15 +1081,20 @@ select:focus-visible {
 
 .as-catalog__footer {
   border-top: 1px solid var(--as-border);
-  justify-content: flex-end;
+  justify-content: space-between;
   padding: 0 0.75rem;
 }
 
 .as-catalog__footer button {
   background: transparent;
   border: 0;
-  color: var(--as-iris);
+  color: var(--as-text);
   cursor: pointer;
+}
+
+.as-catalog__footer button:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 
 .as-workspace {
@@ -3499,7 +3508,7 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
 @media (prefers-reduced-motion: reduce) {
   .as-catalog-refresh {
     transform: none !important;
-    transition-property: background-color, border-color, color !important;
+    transition-property: background-color !important;
   }
 
   .as-catalog-refresh[data-state="loading"] .as-catalog-refresh__icon,

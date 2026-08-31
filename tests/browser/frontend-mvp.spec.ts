@@ -87,7 +87,15 @@ test.describe("Artifact Server frontend MVP", () => {
       );
       await catalogRefresh.click();
       await expect(catalogRefresh).toHaveAttribute("data-state", "complete");
-      await expect(fixture.page.locator(".as-catalog__footer")).toHaveCount(0);
+      const catalogFooter = fixture.page.locator(".as-catalog__footer");
+      await expect(catalogFooter).toHaveCount(1);
+      await expect(catalogFooter.getByRole("button", {
+        name: "Refresh artifacts published by agents, the CLI, or other sessions",
+      })).toBeVisible();
+      await expect(fixture.page.locator(".as-catalog__tools").getByRole("button", {
+        name: "Refresh artifacts published by agents, the CLI, or other sessions",
+      })).toHaveCount(0);
+      await expect(catalogFooter.getByRole("button", {name: "Load more"})).toHaveCount(0);
       const accessRow = fixture.page.locator(".as-inspector-row").filter({
         hasText: "access",
       });
@@ -463,6 +471,7 @@ test.describe("Artifact Server frontend MVP", () => {
       expect(accessibility.violations).toEqual([]);
 
       await fixture.page.getByRole("button", {name: "Use light theme"}).click();
+      await expect(fixture.page.locator("html")).toHaveAttribute("data-review-theme", "dawn");
       const lightAccessibility = await new AxeBuilder({page: fixture.page})
         .exclude(".as-artifact-frame")
         .withTags(["wcag2a", "wcag2aa"])

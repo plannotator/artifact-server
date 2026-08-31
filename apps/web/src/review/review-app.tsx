@@ -1267,30 +1267,6 @@ function ArtifactReview({
         </header>
 
         <div className="as-catalog__tools">
-          <button
-            aria-busy={catalogRefreshState === "loading"}
-            aria-label="Refresh artifacts published by agents, the CLI, or other sessions"
-            className="as-icon-button as-catalog-refresh"
-            data-state={catalogRefreshState}
-            disabled={listLoading}
-            onClick={() => void refreshArtifacts()}
-            title="Refresh artifacts published by agents, the CLI, or other sessions"
-            type="button"
-          >
-            <HugeiconsIcon
-              aria-hidden="true"
-              className="as-catalog-refresh__icon"
-              icon={catalogRefreshState === "complete" ? Tick02Icon : RefreshIcon}
-              strokeWidth={1.8}
-            />
-          </button>
-          <span aria-live="polite" className="as-visually-hidden">
-            {catalogRefreshState === "loading"
-              ? "Refreshing artifact catalog."
-              : catalogRefreshState === "complete"
-                ? "Artifact catalog refreshed."
-                : ""}
-          </span>
           <div className="as-search-group">
             <label className="as-search">
               <span className="as-visually-hidden">Search artifacts</span>
@@ -1389,13 +1365,44 @@ function ArtifactReview({
           })}
         </div>
 
-        {nextCursor === null ? null : (
-          <footer className="as-app-footer as-catalog__footer">
+        <footer className="as-app-footer as-catalog__footer">
+          <button
+            aria-busy={catalogRefreshState === "loading"}
+            aria-label="Refresh artifacts published by agents, the CLI, or other sessions"
+            className="as-catalog-refresh"
+            data-state={catalogRefreshState}
+            disabled={listLoading}
+            onClick={() => void refreshArtifacts()}
+            title="Refresh artifacts published by agents, the CLI, or other sessions"
+            type="button"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="as-catalog-refresh__icon"
+              icon={catalogRefreshState === "complete" ? Tick02Icon : RefreshIcon}
+              strokeWidth={1.8}
+            />
+            <span>
+              {catalogRefreshState === "loading"
+                ? "Refreshing…"
+                : catalogRefreshState === "complete"
+                  ? "Refreshed"
+                  : "Refresh"}
+            </span>
+          </button>
+          <span aria-live="polite" className="as-visually-hidden">
+            {catalogRefreshState === "loading"
+              ? "Refreshing artifact catalog."
+              : catalogRefreshState === "complete"
+                ? "Artifact catalog refreshed."
+                : ""}
+          </span>
+          {nextCursor === null ? null : (
             <button disabled={listLoading} onClick={() => void loadArtifacts(nextCursor, false)} type="button">
               {listLoading ? "Loading…" : "Load more"}
             </button>
-          </footer>
-        )}
+          )}
+        </footer>
             </motion.aside>
           </motion.div>
           {catalogOpen ? (
