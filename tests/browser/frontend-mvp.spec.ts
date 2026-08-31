@@ -254,6 +254,9 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(fixture.page.getByRole("article").filter({
         hasText: "Make the release status easier to scan.",
       })).toBeVisible();
+      await expect(fixture.page.getByRole("button", {
+        name: /Review fixture.*1 comment.*2 versions/u,
+      })).toBeVisible();
       await expect(async () => {
         const stored = await listThreadsOverApi(
           fixture,
@@ -263,6 +266,45 @@ test.describe("Artifact Server frontend MVP", () => {
         expect(stored[0]?.body).toBe("Make the release status easier to scan.");
         expect(stored[0]?.path).toBe("index.html");
       }).toPass();
+      const listedArtifacts = z.object({
+        artifacts: z.array(z.object({
+          artifact: z.object({id: z.string()}),
+          commentCount: z.number().int().nonnegative(),
+        })),
+      }).parse(await (await fixture.page.request.get(
+        `${fixture.server.baseUrl}/api/v1/artifacts?projectId=${first.body.artifact.projectId}`,
+      )).json());
+      expect(listedArtifacts.artifacts.find(({artifact}) => artifact.id === first.body.artifact.id))
+        .toMatchObject({commentCount: 1});
+
+      const quietArtifact = await publishNew(fixture.server, fixture.installation, {
+        accessSetting: "account_required",
+        content: "<!doctype html><title>Quiet fixture</title><p>No review notes yet.</p>",
+        idempotencyKey: "frontend-review-quiet-fixture",
+        name: "Quiet fixture",
+        tags: ["inspection"],
+      });
+      await catalogRefresh.click();
+      await expect(catalogRefresh).toHaveAttribute("data-state", "complete");
+      const commentFilter = fixture.page.getByRole("combobox", {
+        name: "Filter artifacts by comments",
+      });
+      const catalogSort = fixture.page.getByRole("combobox", {name: "Sort artifacts"});
+      await commentFilter.selectOption("with");
+      await expect(fixture.page.getByRole("button", {name: /Review fixture/u})).toBeVisible();
+      await expect(fixture.page.getByRole("button", {name: /Quiet fixture/u})).toHaveCount(0);
+      await commentFilter.selectOption("without");
+      await expect(fixture.page.getByRole("button", {name: /Quiet fixture/u})).toBeVisible();
+      await expect(fixture.page.getByRole("button", {name: /Review fixture/u})).toHaveCount(0);
+      await expect(preview.getByRole("heading", {name: "Review preview content"})).toBeVisible();
+      await commentFilter.selectOption("all");
+      await catalogSort.selectOption("comments");
+      await expect(fixture.page.locator(".as-artifact-card").first())
+        .toContainText("Review fixture");
+      await catalogSort.selectOption("newest");
+      await expect(fixture.page.locator(".as-artifact-card").first())
+        .toContainText("Quiet fixture");
+      expect(quietArtifact.body.artifact.id).not.toBe(first.body.artifact.id);
 
       await fixture.page.reload();
       await expect(preview.locator("#review-target")).toBeVisible();
@@ -400,6 +442,7 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(fixture.page.getByRole("complementary", {name: "Artifact catalog"}))
         .toBeVisible();
       await expect(fixture.page).toHaveURL(/\/review\?project=prj_default/u);
+      await fixture.page.getByRole("button", {name: /Review fixture/u}).click();
       await expect(
         fixture.page.getByRole("heading", {exact: true, name: "Review fixture"}),
       ).toBeVisible();
@@ -1282,6 +1325,28 @@ test.describe("Artifact Server frontend MVP", () => {
       await defaultProjectRow.getByRole("link", {name: "Settings"}).click();
       await expect(fixture.page.getByRole("heading", {name: "Project identity"})).toBeVisible();
       await expect(fixture.page.getByRole("heading", {name: "Git history"})).toHaveCount(0);
+      await expect(fixture.page.getByRole("link", {name: "Artifact Server"})).toContainText("Settings");
+      const settingsHeaderBox = await fixture.page.locator(".as-settings__header-inner").boundingBox();
+      const settingsMarkBox = await fixture.page.locator(".as-settings__brand-mark").boundingBox();
+      expect(settingsHeaderBox?.height).toBeLessThanOrEqual(48);
+      expect(settingsMarkBox).toMatchObject({height: 32, width: 32});
+      const compactSettingsActions = [
+        fixture.page.getByRole("button", {name: "Sign out"}),
+        fixture.page.getByRole("link", {name: "Back to review"}),
+        fixture.page.getByRole("button", {name: "Save name"}),
+        fixture.page.getByRole("button", {name: "Archive project"}),
+      ];
+      const compactSettingsActionMetrics = await Promise.all(compactSettingsActions.map(async (action) => ({
+        box: await action.boundingBox(),
+        textTransform: await action.evaluate((element) => getComputedStyle(element).textTransform),
+      })));
+      for (const {box, textTransform} of compactSettingsActionMetrics) {
+        expect(box?.height).toBeLessThanOrEqual(32);
+        expect(textTransform).toBe("none");
+      }
+      const lifecycleBox = await fixture.page.getByLabel("Project lifecycle").boundingBox();
+      const archiveBox = await fixture.page.getByRole("button", {name: "Archive project"}).boundingBox();
+      expect(archiveBox?.width).toBeLessThan((lifecycleBox?.width ?? 0) / 2);
       await fixture.page.getByLabel("Project name").fill("Default renamed");
       await fixture.page.getByRole("button", {name: "Save name"}).click();
       await expect(fixture.page.getByRole("heading", {name: "Default renamed"})).toBeVisible();

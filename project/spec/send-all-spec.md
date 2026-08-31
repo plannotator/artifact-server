@@ -8,8 +8,8 @@ from the /review consolidation review.
 The common review workflow is: do a pass, leave N comments, hand the
 whole batch to a coding agent. The consolidation lost the "Send all open
 on this version" action without a recorded decision, leaving one-click
-send of *selected* comments as the only path. Owner direction: selecting
-is the exception; sending everything is the default. Two related
+send of one comment at a time as the only path. Owner direction: sending
+one specific comment is the exception; sending everything is the default. Two related
 decisions ride with it: comments are shown in full (pagination in the UI
 was what made the old send-all count dishonest), and the send control
 must never fake a send — its availability and label follow the connected
@@ -18,9 +18,9 @@ agent's tier.
 ## 2. Decisions
 
 1. **Send-all is the primary send action.** The comments panel's main
-   control reads `Send all open (N) to ‹agent›`. Selecting specific
-   comments is the secondary path (the existing selection bar, unchanged
-   in behavior).
+   control reads `Send all open (N) to ‹agent›`. Sending one specific
+   comment from its card is the only secondary path. Review has no
+   multi-select annotation state or selection bar.
 2. **Comments are not paginated in the UI.** The client walks every page
    of the comment list API (`maximumCommentPageSize` = 100 per page) on
    load and on each poll; the panel scrolls. The count in the control is

@@ -76,7 +76,9 @@ import {useWebmcp, type WebmcpBindings} from "./webmcp.tsx";
 type ReviewTheme = "dawn" | "moon";
 type InspectorTab = "activity" | "comments" | "compare" | "details" | "files" | "versions";
 type ArtifactListLoadResult = "failed" | "loaded" | "skipped";
+type CatalogCommentFilter = "all" | "with" | "without";
 type CatalogRefreshState = "complete" | "idle" | "loading";
+type CatalogSort = "comments" | "newest";
 const catalogDefaultWidth = 336;
 const catalogMinimumWidth = 240;
 const catalogMaximumWidth = 520;
@@ -284,6 +286,8 @@ function ArtifactReview({
   );
   const [query, setQuery] = useState("");
   const searchQuery = useDeferredValue(query.trim());
+  const [catalogCommentFilter, setCatalogCommentFilter] = useState<CatalogCommentFilter>("all");
+  const [catalogSort, setCatalogSort] = useState<CatalogSort>("newest");
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<Error | null>(null);
   const [catalogRefreshState, setCatalogRefreshState] = useState<CatalogRefreshState>(
@@ -362,6 +366,9 @@ function ArtifactReview({
     projectId,
     versionId: selectedVersionId,
   });
+  const openCommentCount = comments.threads.filter(
+    (thread) => thread.state === "open",
+  ).length;
 
   // Browser agent tools (WebMCP): the ref hands the adapter live view state
   // each render; registration itself lives entirely in webmcp.tsx.
@@ -416,14 +423,23 @@ function ArtifactReview({
     if (
       details === null
       || searchQuery !== ""
+      || catalogCommentFilter !== "all"
       || items.some(({artifact}) => artifact.id === details.artifact.id)
     ) return items;
     return [{
       artifact: details.artifact,
+      commentCount: comments.threads.length,
       links: details.links,
       versionCount: versions.length,
     }, ...items];
-  }, [details, items, searchQuery, versions.length]);
+  }, [
+    catalogCommentFilter,
+    comments.threads.length,
+    details,
+    items,
+    searchQuery,
+    versions.length,
+  ]);
   const selectedIndex = catalogItems.findIndex(
     ({artifact}) => artifact.id === selectedArtifactId,
   );
@@ -437,7 +453,10 @@ function ArtifactReview({
     setListLoading(true);
     setListError(null);
     try {
-      const page = await api.artifacts(projectId, cursor, "", searchQuery);
+      const page = await api.artifacts(projectId, cursor, "", searchQuery, {
+        comments: catalogCommentFilter,
+        sort: catalogSort,
+      });
       if (requestGeneration !== catalogRequestGenerationRef.current) return "skipped";
       setItems((current) => replace ? page.artifacts : [...current, ...page.artifacts]);
       setNextCursor(page.nextCursor);
@@ -459,7 +478,7 @@ function ArtifactReview({
         setListLoading(false);
       }
     }
-  }, [projectId, searchQuery]);
+  }, [catalogCommentFilter, catalogSort, projectId, searchQuery]);
 
   const refreshArtifacts = useCallback(async (): Promise<void> => {
     if (listLoading) return;
@@ -1133,6 +1152,39 @@ function ArtifactReview({
                 </button>
               )}
             </label>
+            <div className="as-catalog-query-controls">
+              <label>
+                <span className="as-visually-hidden">Filter artifacts by comments</span>
+                <select
+                  aria-label="Filter artifacts by comments"
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    if (value === "all" || value === "with" || value === "without") {
+                      setCatalogCommentFilter(value);
+                    }
+                  }}
+                  value={catalogCommentFilter}
+                >
+                  <option value="all">All artifacts</option>
+                  <option value="with">With comments</option>
+                  <option value="without">No comments</option>
+                </select>
+              </label>
+              <label>
+                <span className="as-visually-hidden">Sort artifacts</span>
+                <select
+                  aria-label="Sort artifacts"
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    if (value === "comments" || value === "newest") setCatalogSort(value);
+                  }}
+                  value={catalogSort}
+                >
+                  <option value="newest">Newest first</option>
+                  <option value="comments">Most comments</option>
+                </select>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -1149,28 +1201,39 @@ function ArtifactReview({
               title={query === "" ? "No artifacts yet" : "No matching artifacts"}
             />
           ) : null}
-          {catalogItems.map(({artifact, versionCount}) => (
-            <button
-              aria-current={artifact.id === selectedArtifactId ? "true" : undefined}
-              className="as-artifact-card"
-              data-selected={artifact.id === selectedArtifactId}
-              key={artifact.id}
-              onClick={() => selectArtifact(artifact.id, artifact.currentVersionId)}
-              type="button"
-            >
-              <span className="as-artifact-card__title-row">
-                <strong>{artifact.name}</strong>
-                <AccessPill access={artifact.accessSetting} />
-              </span>
-              <span className="as-artifact-card__tags">
-                {artifact.tags.length === 0 ? "untagged" : artifact.tags.join(" · ")}
-              </span>
-              <span className="as-artifact-card__meta">
-                <time dateTime={artifact.createdAt}>{formatTimestamp(artifact.createdAt)}</time>
-                <span>{versionCount} version{versionCount === 1 ? "" : "s"}</span>
-              </span>
-            </button>
-          ))}
+          {catalogItems.map(({artifact, commentCount, versionCount}) => {
+            const displayedCommentCount = artifact.id === selectedArtifactId && !comments.loading
+              ? comments.threads.length
+              : commentCount;
+            return (
+              <button
+                aria-current={artifact.id === selectedArtifactId ? "true" : undefined}
+                className="as-artifact-card"
+                data-selected={artifact.id === selectedArtifactId}
+                key={artifact.id}
+                onClick={() => selectArtifact(artifact.id, artifact.currentVersionId)}
+                type="button"
+              >
+                <span className="as-artifact-card__title-row">
+                  <strong>{artifact.name}</strong>
+                  <AccessPill access={artifact.accessSetting} />
+                </span>
+                <span className="as-artifact-card__tags">
+                  {artifact.tags.length === 0 ? "untagged" : artifact.tags.join(" · ")}
+                </span>
+                <span className="as-artifact-card__meta">
+                  <time dateTime={artifact.createdAt}>{formatTimestamp(artifact.createdAt)}</time>
+                  <span className="as-artifact-card__counts">
+                    <span>
+                      <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
+                      {displayedCommentCount} comment{displayedCommentCount === 1 ? "" : "s"}
+                    </span>
+                    <span>{versionCount} version{versionCount === 1 ? "" : "s"}</span>
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {nextCursor === null ? null : (
@@ -1244,7 +1307,7 @@ function ArtifactReview({
                   >
                     <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
                     Comments
-                    <span className="as-focus-controls__count">{comments.threads.length}</span>
+                    <span className="as-focus-controls__count">{openCommentCount}</span>
                   </button>
                   <ReviewShareControl
                     details={details}
@@ -1298,7 +1361,7 @@ function ArtifactReview({
                   <div>
                     <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
                     <h2 id="review-focus-comments-title">Comments</h2>
-                    <span>{comments.threads.length}</span>
+                    <span>{openCommentCount}</span>
                   </div>
                   <IconButton label="Close comments" onClick={() => setFocusCommentsOpen(false)}>
                     <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.8} />
@@ -1497,7 +1560,7 @@ function ArtifactReview({
               >
           <header className="as-pane-header as-inspector__header">
             <div aria-label="Artifact inspector" className="as-tabs" role="tablist">
-              <InspectorTabButton active={inspectorTab === "comments"} count={comments.threads.length} label="Comments" onClick={() => setInspectorTab("comments")} tab="comments" />
+              <InspectorTabButton active={inspectorTab === "comments"} count={openCommentCount} label="Comments" onClick={() => setInspectorTab("comments")} tab="comments" />
               <InspectorTabButton active={inspectorTab === "details"} label="Details" onClick={() => setInspectorTab("details")} tab="details" />
               <InspectorTabButton active={inspectorTab === "files"} count={selectedVersion?.manifest.entries.length ?? 0} label="Files" onClick={() => setInspectorTab("files")} tab="files" />
               <InspectorTabButton active={inspectorTab === "versions"} count={versions.length} label="Versions" onClick={() => setInspectorTab("versions")} tab="versions" />

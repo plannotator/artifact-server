@@ -62,9 +62,11 @@ export function CommentComposer({
   };
 
   return (
-    <div className="grid gap-2">
-      <div className="flex items-baseline justify-between gap-2">
-        <Label htmlFor={inputId}>{label}</Label>
+    <div className="as-comment-composer grid gap-2">
+      <div className="as-comment-composer__header flex items-baseline justify-between gap-2">
+        <Label className="as-comment-composer__label" htmlFor={inputId}>
+          {label}
+        </Label>
         {draftRestored && trimmed !== "" ? (
           <span className="flex items-baseline gap-2">
             <span className="text-xs text-muted-foreground" data-draft-marker>
@@ -85,6 +87,7 @@ export function CommentComposer({
       <Textarea
         aria-describedby={tooLong ? `${inputId}-limit` : undefined}
         aria-invalid={tooLong}
+        className="as-comment-composer__input"
         disabled={pending}
         id={inputId}
         onChange={(event) => {
@@ -103,7 +106,7 @@ export function CommentComposer({
           </p>
         )
         : null}
-      <div className="flex flex-wrap gap-2">
+      <div className="as-comment-composer__actions flex flex-wrap gap-2">
         <Button
           disabled={pending || trimmed === "" || tooLong}
           onClick={() => void submit()}

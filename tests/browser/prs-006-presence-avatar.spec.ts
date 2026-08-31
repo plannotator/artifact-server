@@ -106,6 +106,19 @@ test.describe("PRS-006 presence avatar", () => {
       const cards = page.getByRole("article");
       await expect(cards).toHaveCount(2);
 
+      // The primary compose action reads as a real input at rest: its label
+      // names the action plainly and the writing surface stays visibly
+      // bounded before focus instead of disappearing into the inspector.
+      const newCommentInput = page.getByLabel("Add a comment");
+      await expect(newCommentInput).toBeVisible();
+      expect(await newCommentInput.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          borderWidth: style.borderTopWidth,
+          height: element.getBoundingClientRect().height,
+        };
+      })).toEqual({borderWidth: "1px", height: 80});
+
       // Idle: the primary send-all control carries the agent's avatar — the
       // Pi brand mark in a circle whose solid ring is the state, not a bare
       // dot. Individual comments are now a secondary selection path.
@@ -113,6 +126,12 @@ test.describe("PRS-006 presence avatar", () => {
         name: "Send all open (2) to pres",
       });
       await expect(sendButton).toBeVisible();
+      await expect(sendButton).toHaveCSS("text-transform", "none");
+      expect(await sendButton.evaluate((element) => element.getBoundingClientRect().height))
+        .toBeLessThanOrEqual(32);
+      expect(await page.getByRole("button", {exact: true, name: "All"}).evaluate((element) =>
+        element.getBoundingClientRect().height
+      )).toBeLessThanOrEqual(32);
       const idleRing = sendButton.locator("[data-presence-ring=\"idle\"]");
       await expect(idleRing).toHaveCount(1);
       await expect(idleRing.locator("img")).toHaveCount(1);
@@ -191,6 +210,8 @@ test.describe("PRS-006 presence avatar", () => {
       fixture.clock.advance(100_000);
       await expect(page.getByRole("button", {name: "pres — Disconnected"}))
         .toBeVisible({timeout: 30_000});
+      await expect(page.getByText("0 connected · 1 offline", {exact: true}))
+        .toBeVisible();
 
       // Add another open comment so the disconnected default and replacement
       // destination remain observable on the primary control.
@@ -213,7 +234,7 @@ test.describe("PRS-006 presence avatar", () => {
       });
       await page.getByRole("button", {
         name: "Choose agent or send with a note",
-      }).click();
+      }).first().click();
       await page.getByRole("button", {name: "Send with a note…"}).click();
       const dialog = page.getByRole("dialog");
       const presRow = dialog.locator("label").filter({hasText: "pres"});
@@ -235,6 +256,14 @@ test.describe("PRS-006 presence avatar", () => {
         .toBeVisible();
       await dialog.getByRole("button", {name: "Cancel"}).click();
       await expect(dialog).toHaveCount(0);
+
+      // The comments surface responds to its own narrow panel width. Agent
+      // presence and the send control remain fully contained instead of
+      // turning the inspector body into a horizontal scroller.
+      await page.setViewportSize({height: 800, width: 320});
+      await expect.poll(() => page.locator(".as-inspector__body").evaluate((element) =>
+        element.scrollWidth - element.clientWidth
+      )).toBe(0);
 
       expect(await browserStorage(page)).toEqual({
         indexedDatabaseNames: [],

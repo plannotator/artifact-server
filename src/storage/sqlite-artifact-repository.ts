@@ -258,6 +258,7 @@ const artifactRowSchema = z.object({
   projectId: z.string(),
 });
 const artifactListRowSchema = artifactRowSchema.extend({
+  commentCount: z.number().int().nonnegative(),
   versionCount: z.number().int().positive(),
 });
 const artifactTagRowSchema = z.object({
@@ -1826,48 +1827,76 @@ export class SqliteArtifactRepository implements
     return Promise.resolve().then(() => {
       const cursorCreatedAt = command.cursor?.createdAt ?? null;
       const cursorId = command.cursor?.id ?? null;
+      const cursorRank = command.cursor?.rank ?? null;
+      const commentFilterSql = command.comments === "with"
+        ? "commentCount > 0"
+        : command.comments === "without"
+          ? "commentCount = 0"
+          : "1 = 1";
+      const cursorSql = command.sort === "comments"
+        ? `(
+          ? IS NULL
+          OR commentCount < ?
+          OR (commentCount = ? AND (
+            createdAt < ? OR (createdAt = ? AND id < ?)
+          ))
+        )`
+        : `(
+          ? IS NULL
+          OR createdAt < ?
+          OR (createdAt = ? AND id < ?)
+        )`;
+      const cursorParameters = command.sort === "comments"
+        ? [cursorRank, cursorRank, cursorRank, cursorCreatedAt, cursorCreatedAt, cursorId]
+        : [cursorCreatedAt, cursorCreatedAt, cursorCreatedAt, cursorId];
+      const orderSql = command.sort === "comments"
+        ? "commentCount DESC, createdAt DESC, id DESC"
+        : "createdAt DESC, id DESC";
       const rows = this.#database
         .prepare(
-          `SELECT
-            id,
-            project_id AS projectId,
-            name,
-            access_setting AS accessSetting,
-            current_version_id AS currentVersionId,
-            created_at AS createdAt,
-            deleted_at AS deletedAt,
-            (
-              SELECT COUNT(*) FROM versions
-              WHERE versions.project_id = artifacts.project_id
-                AND versions.artifact_id = artifacts.id
-            ) AS versionCount
-           FROM artifacts
-           WHERE project_id = ?
-             AND deleted_at IS NULL
-             AND (
-               ? IS NULL
-               OR instr(search_name, ?) > 0
-               OR EXISTS (
-                 SELECT 1 FROM artifact_tags searched_tags
-                 WHERE searched_tags.artifact_id = artifacts.id
-                   AND searched_tags.tag = ?
-               )
-             )
-             AND (
-               ? IS NULL
-               OR EXISTS (
-                 SELECT 1 FROM artifact_tags
-                 WHERE artifact_tags.artifact_id = artifacts.id
-                   AND artifact_tags.tag = ?
-               )
-             )
-             AND (
-               ? IS NULL
-               OR created_at < ?
-               OR (created_at = ? AND id < ?)
-             )
-           ORDER BY created_at DESC, id DESC
-           LIMIT ?`,
+          `SELECT * FROM (
+            SELECT
+              id,
+              project_id AS projectId,
+              name,
+              access_setting AS accessSetting,
+              current_version_id AS currentVersionId,
+              created_at AS createdAt,
+              deleted_at AS deletedAt,
+              (
+                SELECT COUNT(*) FROM comment_threads
+                WHERE comment_threads.project_id = artifacts.project_id
+                  AND comment_threads.artifact_id = artifacts.id
+              ) AS commentCount,
+              (
+                SELECT COUNT(*) FROM versions
+                WHERE versions.project_id = artifacts.project_id
+                  AND versions.artifact_id = artifacts.id
+              ) AS versionCount
+            FROM artifacts
+            WHERE project_id = ?
+              AND deleted_at IS NULL
+              AND (
+                ? IS NULL
+                OR instr(search_name, ?) > 0
+                OR EXISTS (
+                  SELECT 1 FROM artifact_tags searched_tags
+                  WHERE searched_tags.artifact_id = artifacts.id
+                    AND searched_tags.tag = ?
+                )
+              )
+              AND (
+                ? IS NULL
+                OR EXISTS (
+                  SELECT 1 FROM artifact_tags
+                  WHERE artifact_tags.artifact_id = artifacts.id
+                    AND artifact_tags.tag = ?
+                )
+              )
+          ) AS artifact_catalog
+          WHERE ${commentFilterSql} AND ${cursorSql}
+          ORDER BY ${orderSql}
+          LIMIT ?`,
         )
         .all(
           command.projectId,
@@ -1876,15 +1905,13 @@ export class SqliteArtifactRepository implements
           command.search ?? null,
           command.tag,
           command.tag,
-          cursorCreatedAt,
-          cursorCreatedAt,
-          cursorCreatedAt,
-          cursorId,
+          ...cursorParameters,
           command.limit + 1,
       );
       return pageFromRows(
         this.#withTagsForArtifacts(z.array(artifactListRowSchema).parse(rows)),
         command.limit,
+        command.sort === "comments" ? ({commentCount}) => commentCount : null,
       );
     });
   }
@@ -5907,13 +5934,16 @@ function changedDuringManagement(): ArtifactMutationConflict {
 function pageFromRows<Item extends PageCursor>(
   rows: readonly Item[],
   limit: number,
+  rankOf: ((item: Item) => number) | null = null,
 ): PageResult<Item> {
   const items = rows.slice(0, limit);
   const lastItem = items.at(-1);
   return {
     items,
     nextCursor: rows.length > limit && lastItem !== undefined
-      ? {createdAt: lastItem.createdAt, id: lastItem.id}
+      ? rankOf === null
+        ? {createdAt: lastItem.createdAt, id: lastItem.id}
+        : {createdAt: lastItem.createdAt, id: lastItem.id, rank: rankOf(lastItem)}
       : null,
   };
 }

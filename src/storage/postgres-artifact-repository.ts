@@ -232,6 +232,7 @@ const artifactRowSchema = z.object({
   projectId: z.string(),
 });
 const artifactListRowSchema = artifactRowSchema.extend({
+  commentCount: z.coerce.number().int().nonnegative(),
   versionCount: z.coerce.number().int().positive(),
 });
 const artifactTagRowSchema = z.object({artifactId: z.string(), tag: z.string()});
@@ -1642,52 +1643,88 @@ export class PostgresArtifactRepository implements
     const installationId = this.#installationId;
     return this.#database.run(Effect.gen({self: this}, function*() {
       const sql = yield* SqlClient;
+      const commentFilterSql = command.comments === "with"
+        ? `"commentCount" > 0`
+        : command.comments === "without"
+          ? `"commentCount" = 0`
+          : "TRUE";
+      const cursorSql = command.sort === "comments"
+        ? `($7::int IS NULL OR "commentCount" < $7
+          OR ("commentCount" = $7 AND (
+            "createdAt" < $5::text OR ("createdAt" = $5::text AND id < $6)
+          )))`
+        : `($5::text IS NULL OR "createdAt" < $5::text
+          OR ("createdAt" = $5::text AND id < $6))`;
+      const orderSql = command.sort === "comments"
+        ? `"commentCount" DESC, "createdAt" DESC, id DESC`
+        : `"createdAt" DESC, id DESC`;
+      const queryParameters = command.sort === "comments"
+        ? [
+            installationId,
+            command.projectId,
+            command.search ?? null,
+            command.tag,
+            command.cursor?.createdAt ?? null,
+            command.cursor?.id ?? null,
+            command.cursor?.rank ?? null,
+            command.limit + 1,
+          ]
+        : [
+            installationId,
+            command.projectId,
+            command.search ?? null,
+            command.tag,
+            command.cursor?.createdAt ?? null,
+            command.cursor?.id ?? null,
+            command.limit + 1,
+          ];
+      const limitPlaceholder = command.sort === "comments" ? "$8" : "$7";
       const rows = yield* sql.unsafe<object>(
-        `SELECT id, project_id AS "projectId", name,
-          access_setting AS "accessSetting",
-          current_version_id AS "currentVersionId",
-          created_at AS "createdAt", deleted_at AS "deletedAt",
-          (
-            SELECT COUNT(*)::int FROM versions
-            WHERE versions.installation_id = artifacts.installation_id
-              AND versions.project_id = artifacts.project_id
-              AND versions.artifact_id = artifacts.id
-          ) AS "versionCount"
-         FROM artifacts
-         WHERE installation_id = $1 AND project_id = $2
-           AND deleted_at IS NULL
-           AND ($3::text IS NULL
-             OR strpos(search_name, $3) > 0
-             OR EXISTS (
-               SELECT 1 FROM artifact_tags searched_tags
-               WHERE searched_tags.installation_id = artifacts.installation_id
-                 AND searched_tags.artifact_id = artifacts.id
-                 AND searched_tags.tag = $3
-             ))
-           AND ($4::text IS NULL OR EXISTS (
-             SELECT 1 FROM artifact_tags
-             WHERE artifact_tags.installation_id = artifacts.installation_id
-               AND artifact_tags.artifact_id = artifacts.id
-               AND artifact_tags.tag = $4
-           ))
-           AND ($5::text IS NULL OR created_at < $5
-             OR (created_at = $5 AND id < $6))
-         ORDER BY created_at DESC, id DESC
-         LIMIT $7`,
-        [
-          installationId,
-          command.projectId,
-          command.search ?? null,
-          command.tag,
-          command.cursor?.createdAt ?? null,
-          command.cursor?.id ?? null,
-          command.limit + 1,
-        ],
+        `SELECT * FROM (
+          SELECT id, project_id AS "projectId", name,
+            access_setting AS "accessSetting",
+            current_version_id AS "currentVersionId",
+            created_at AS "createdAt", deleted_at AS "deletedAt",
+            (
+              SELECT COUNT(*)::int FROM comment_threads
+              WHERE comment_threads.installation_id = artifacts.installation_id
+                AND comment_threads.project_id = artifacts.project_id
+                AND comment_threads.artifact_id = artifacts.id
+            ) AS "commentCount",
+            (
+              SELECT COUNT(*)::int FROM versions
+              WHERE versions.installation_id = artifacts.installation_id
+                AND versions.project_id = artifacts.project_id
+                AND versions.artifact_id = artifacts.id
+            ) AS "versionCount"
+          FROM artifacts
+          WHERE installation_id = $1 AND project_id = $2
+            AND deleted_at IS NULL
+            AND ($3::text IS NULL
+              OR strpos(search_name, $3) > 0
+              OR EXISTS (
+                SELECT 1 FROM artifact_tags searched_tags
+                WHERE searched_tags.installation_id = artifacts.installation_id
+                  AND searched_tags.artifact_id = artifacts.id
+                  AND searched_tags.tag = $3
+              ))
+            AND ($4::text IS NULL OR EXISTS (
+              SELECT 1 FROM artifact_tags
+              WHERE artifact_tags.installation_id = artifacts.installation_id
+                AND artifact_tags.artifact_id = artifacts.id
+                AND artifact_tags.tag = $4
+            ))
+        ) AS artifact_catalog
+        WHERE ${commentFilterSql} AND ${cursorSql}
+        ORDER BY ${orderSql}
+        LIMIT ${limitPlaceholder}`,
+        queryParameters,
       );
       const artifacts = z.array(artifactListRowSchema).parse(rows);
       return pageFromRows(
         yield* this.#withTagsForArtifacts(artifacts),
         command.limit,
+        command.sort === "comments" ? ({commentCount}) => commentCount : null,
       );
     }));
   }
@@ -4826,13 +4863,16 @@ function changedDuringManagement(): ArtifactMutationConflict {
 function pageFromRows<Item extends PageCursor>(
   rows: readonly Item[],
   limit: number,
+  rankOf: ((item: Item) => number) | null = null,
 ): PageResult<Item> {
   const items = rows.slice(0, limit);
   const lastItem = items.at(-1);
   return {
     items,
     nextCursor: rows.length > limit && lastItem !== undefined
-      ? {createdAt: lastItem.createdAt, id: lastItem.id}
+      ? rankOf === null
+        ? {createdAt: lastItem.createdAt, id: lastItem.id}
+        : {createdAt: lastItem.createdAt, id: lastItem.id, rank: rankOf(lastItem)}
       : null,
   };
 }

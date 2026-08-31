@@ -133,6 +133,8 @@ test.describe("WMC-001 WebMCP review tools", () => {
       }));
       expect(resolved.thread.state).toBe("resolved");
       expect(resolved.counts).toEqual({open: 1, resolved: 1});
+      await expect(firstCard).toHaveCount(0);
+      await page.getByRole("button", {name: "Resolved", exact: true}).click();
       await expect(firstCard.locator("[data-state=\"resolved\"]")).toBeVisible();
       await expect(firstCard.getByRole("button", {name: "Reopen"})).toBeVisible();
       const stored = await listThreadsOverApi(fixture, artifactId);
@@ -150,6 +152,9 @@ test.describe("WMC-001 WebMCP review tools", () => {
       }));
       expect(reopened.thread.state).toBe("open");
       expect(reopened.counts).toEqual({open: 2, resolved: 0});
+      await expect(firstCard).toHaveCount(0);
+      await page.getByRole("button", {name: "Open", exact: true}).click();
+      await expect(firstCard.locator("[data-state=\"open\"]")).toBeVisible();
 
       // A new comment through the tool lands in the UI list like any other.
       const commented = echoSchema.parse(await callTool(page, "artifact_server_comment", {
@@ -205,7 +210,7 @@ test.describe("WMC-001 WebMCP review tools", () => {
       await localLogin(fixture);
       await fixture.page.goto(reviewUrl);
       await fixture.page.getByRole("tab", {name: "Comments"}).click();
-      await expect(fixture.page.getByText("No comments on this version yet.")).toBeVisible();
+      await expect(fixture.page.getByText("No open comments on this version.")).toBeVisible();
       expect(await fixture.page.evaluate(() => "modelContext" in document)).toBe(false);
       expect(consoleMessages).toEqual([]);
 

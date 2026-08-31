@@ -48,6 +48,7 @@ test.describe("DRF-002 draft isolation", () => {
       await page.getByRole("tab", {name: "Comments"}).click();
 
       // Only a reply draft exists; the new-thread composer must stay empty.
+      await page.getByRole("button", {exact: true, name: "Reply"}).click();
       await page.getByLabel("Reply", {exact: true}).fill("Reply-only draft.");
       await page.waitForTimeout(mirrorSettle);
       const keys = await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("draft:")));
@@ -63,7 +64,7 @@ test.describe("DRF-002 draft isolation", () => {
       page.on("dialog", (dialog) => void dialog.accept());
       await page.reload();
       await page.getByRole("tab", {name: "Comments"}).click();
-      await expect(page.getByLabel("Comment on this version")).toHaveValue("");
+      await expect(page.getByLabel("Add a comment")).toHaveValue("");
       await expect(page.getByLabel("Reply", {exact: true})).toHaveValue("Reply-only draft.");
       expect(await page.evaluate(([key]) => localStorage.getItem(key ?? ""), [foreignKey]))
         .not.toBeNull();
@@ -83,11 +84,12 @@ test.describe("DRF-002 draft isolation", () => {
       await localLogin(fixture);
       await page.goto(reviewUrl);
       await page.getByRole("tab", {name: "Comments"}).click();
-      await expect(page.getByLabel("Reply", {exact: true})).toHaveValue("");
-      await expect(page.getByLabel("Comment on this version")).toHaveValue("");
+      await expect(page.getByLabel("Reply", {exact: true})).toHaveCount(0);
+      await expect(page.getByRole("button", {exact: true, name: "Reply"})).toBeVisible();
+      await expect(page.getByLabel("Add a comment")).toHaveValue("");
 
       // Closing the tab over a non-empty draft asks first.
-      await page.getByLabel("Comment on this version").fill("Unsaved thought.");
+      await page.getByLabel("Add a comment").fill("Unsaved thought.");
       const dialogTypes: string[] = [];
       page.removeAllListeners("dialog");
       page.on("dialog", (dialog) => {

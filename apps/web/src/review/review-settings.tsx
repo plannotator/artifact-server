@@ -42,9 +42,11 @@ export function ReviewSettings({
     <div className="as-settings">
       <header className="as-settings__header">
         <div className="as-settings__header-inner">
-          <a className="as-settings__brand" href="/review">
-            <ArtifactMark className="as-settings__mark" />
-            <span>Artifact Server</span>
+          <a aria-label="Artifact Server" className="as-settings__brand" href="/review">
+            <span className="as-settings__brand-mark">
+              <ArtifactMark className="as-settings__mark" />
+            </span>
+            <span className="as-settings__brand-label">Settings</span>
           </a>
           <div className="as-settings__header-actions">
             <button
@@ -58,7 +60,7 @@ export function ReviewSettings({
             </button>
             <ButtonLink href={reviewHref} size="sm" variant="outline">
               <HugeiconsIcon data-icon="inline-start" icon={ArrowLeft01Icon} strokeWidth={1.8} />
-              Back to Review
+              Back to review
             </ButtonLink>
             <Button
               onClick={() => void api.logout().finally(() => window.location.assign("/review"))}

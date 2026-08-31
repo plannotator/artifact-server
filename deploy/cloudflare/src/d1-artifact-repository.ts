@@ -281,6 +281,7 @@ const artifactRowSchema = z.object({
   projectId: z.string(),
 });
 const artifactListRowSchema = artifactRowSchema.extend({
+  commentCount: z.coerce.number().int().nonnegative(),
   versionCount: z.coerce.number().int().positive(),
 });
 const tagRowSchema = z.object({artifactId: z.string(), tag: z.string()});
@@ -2407,31 +2408,70 @@ export function createD1ArtifactRepository(
       return results[1]?.meta.changes === 1;
     },
     listArtifacts: async (command: ListArtifacts): Promise<ArtifactPage> => {
-      const result = await database.prepare(`
-        SELECT id, project_id AS projectId, name,
-          access_setting AS accessSetting,
-          current_version_id AS currentVersionId,
-          created_at AS createdAt, deleted_at AS deletedAt,
-          (
-            SELECT COUNT(*) FROM versions
-            WHERE versions.project_id = artifacts.project_id
-              AND versions.artifact_id = artifacts.id
-          ) AS versionCount
-        FROM artifacts
-        WHERE project_id = ? AND deleted_at IS NULL
-          AND (? IS NULL
-            OR instr(search_name, ?) > 0
-            OR EXISTS (
-              SELECT 1 FROM artifact_tags searched_tags
-              WHERE searched_tags.artifact_id = artifacts.id
-                AND searched_tags.tag = ?
-            ))
-          AND (? IS NULL OR EXISTS (
-            SELECT 1 FROM artifact_tags
-            WHERE artifact_tags.artifact_id = artifacts.id AND artifact_tags.tag = ?
+      const commentFilterSql = command.comments === "with"
+        ? "commentCount > 0"
+        : command.comments === "without"
+          ? "commentCount = 0"
+          : "1 = 1";
+      const cursorSql = command.sort === "comments"
+        ? `(
+          ? IS NULL
+          OR commentCount < ?
+          OR (commentCount = ? AND (
+            createdAt < ? OR (createdAt = ? AND id < ?)
           ))
-          AND (? IS NULL OR created_at < ? OR (created_at = ? AND id < ?))
-        ORDER BY created_at DESC, id DESC LIMIT ?
+        )`
+        : `(? IS NULL OR createdAt < ? OR (createdAt = ? AND id < ?))`;
+      const cursorParameters = command.sort === "comments"
+        ? [
+            command.cursor?.rank ?? null,
+            command.cursor?.rank ?? null,
+            command.cursor?.rank ?? null,
+            command.cursor?.createdAt ?? null,
+            command.cursor?.createdAt ?? null,
+            command.cursor?.id ?? null,
+          ]
+        : [
+            command.cursor?.createdAt ?? null,
+            command.cursor?.createdAt ?? null,
+            command.cursor?.createdAt ?? null,
+            command.cursor?.id ?? null,
+          ];
+      const orderSql = command.sort === "comments"
+        ? "commentCount DESC, createdAt DESC, id DESC"
+        : "createdAt DESC, id DESC";
+      const result = await database.prepare(`
+        SELECT * FROM (
+          SELECT id, project_id AS projectId, name,
+            access_setting AS accessSetting,
+            current_version_id AS currentVersionId,
+            created_at AS createdAt, deleted_at AS deletedAt,
+            (
+              SELECT COUNT(*) FROM comment_threads
+              WHERE comment_threads.project_id = artifacts.project_id
+                AND comment_threads.artifact_id = artifacts.id
+            ) AS commentCount,
+            (
+              SELECT COUNT(*) FROM versions
+              WHERE versions.project_id = artifacts.project_id
+                AND versions.artifact_id = artifacts.id
+            ) AS versionCount
+          FROM artifacts
+          WHERE project_id = ? AND deleted_at IS NULL
+            AND (? IS NULL
+              OR instr(search_name, ?) > 0
+              OR EXISTS (
+                SELECT 1 FROM artifact_tags searched_tags
+                WHERE searched_tags.artifact_id = artifacts.id
+                  AND searched_tags.tag = ?
+              ))
+            AND (? IS NULL OR EXISTS (
+              SELECT 1 FROM artifact_tags
+              WHERE artifact_tags.artifact_id = artifacts.id AND artifact_tags.tag = ?
+            ))
+        ) AS artifact_catalog
+        WHERE ${commentFilterSql} AND ${cursorSql}
+        ORDER BY ${orderSql} LIMIT ?
       `).bind(
         command.projectId,
         command.search ?? null,
@@ -2439,10 +2479,7 @@ export function createD1ArtifactRepository(
         command.search ?? null,
         command.tag,
         command.tag,
-        command.cursor?.createdAt ?? null,
-        command.cursor?.createdAt ?? null,
-        command.cursor?.createdAt ?? null,
-        command.cursor?.id ?? null,
+        ...cursorParameters,
         command.limit + 1,
       ).all<z.input<typeof artifactListRowSchema>>();
       const parsed = result.results.map((row) => artifactListRowSchema.parse(row));
@@ -2450,7 +2487,12 @@ export function createD1ArtifactRepository(
         parsed.slice(0, command.limit).map(async (artifact) =>
           Object.assign({}, artifact, {tags: await readTags(artifact.id)})),
       );
-      return pageResult(items, parsed, command.limit);
+      return pageResult(
+        items,
+        parsed,
+        command.limit,
+        command.sort === "comments" ? ({commentCount}) => commentCount : null,
+      );
     },
     listPublicLinks: async (
       command: ListPublicLinks,
@@ -4214,12 +4256,15 @@ function pageResult<Item extends {readonly createdAt: string; readonly id: strin
   items: readonly Item[],
   allRows: readonly {readonly createdAt: string; readonly id: string}[],
   limit: number,
+  rankOf: ((item: Item) => number) | null = null,
 ): PageResult<Item> {
   const boundary = allRows.length > limit ? items.at(-1) : undefined;
   return {
     items,
     nextCursor: boundary === undefined
       ? null
-      : {createdAt: boundary.createdAt, id: boundary.id},
+      : rankOf === null
+        ? {createdAt: boundary.createdAt, id: boundary.id}
+        : {createdAt: boundary.createdAt, id: boundary.id, rank: rankOf(boundary)},
   };
 }

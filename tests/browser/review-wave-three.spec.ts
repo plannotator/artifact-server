@@ -113,13 +113,25 @@ test.describe("Artifact Server Review wave three", () => {
       const conversation = fixture.page.getByRole("article").filter({hasText: "Root feedback"});
       await expect(conversation.getByText("Agent reply already in this conversation"))
         .toBeVisible();
+      await expect(conversation.getByText("1 reply", {exact: true})).toBeVisible();
+      await expect(conversation.locator(".as-comment-card__meta")).toContainText("Updated");
+      await expect(conversation.locator(".as-comment-card__meta")).toContainText("Whole version");
+      await expect(conversation.getByRole("textbox", {exact: true, name: "Reply"}))
+        .toHaveCount(0);
       const agentReply = conversation.locator(".as-comment-replies li")
         .filter({hasText: "Agent reply already in this conversation"});
       await expect(agentReply.getByRole("button", {name: "Edit"})).toHaveCount(0);
 
-      await conversation.getByLabel("Reply").fill("Human follow-up");
-      await conversation.getByRole("button", {name: "Post reply"}).click();
+      await conversation.getByRole("button", {exact: true, name: "Reply"}).click();
+      await conversation.getByRole("textbox", {exact: true, name: "Reply"})
+        .fill("Human follow-up");
+      const postReply = conversation.getByRole("button", {name: "Post reply"});
+      await expect(postReply).toHaveCSS("text-transform", "none");
+      expect(await postReply.evaluate((element) => element.getBoundingClientRect().height))
+        .toBeLessThanOrEqual(32);
+      await postReply.click();
       await expect(conversation.getByText("Human follow-up", {exact: true})).toBeVisible();
+      await expect(conversation.getByText("2 replies", {exact: true})).toBeVisible();
       const humanReply = conversation.locator(".as-comment-replies li")
         .filter({hasText: "Human follow-up"});
       await humanReply.getByRole("button", {name: "Edit"}).click();
@@ -133,7 +145,12 @@ test.describe("Artifact Server Review wave three", () => {
       await expect(conversation.getByText("Agent reply already in this conversation"))
         .toBeVisible();
       await conversation.getByRole("button", {name: "Resolve"}).click();
-      await expect(conversation.getByLabel("Reply")).toHaveCount(0);
+      await expect(conversation).toHaveCount(0);
+      await expect(fixture.page.getByRole("button", {name: "Open", exact: true}))
+        .toHaveAttribute("aria-pressed", "true");
+      await fixture.page.getByRole("button", {name: "Resolved", exact: true}).click();
+      await expect(conversation).toBeVisible();
+      await expect(conversation.getByRole("button", {name: "Reopen"})).toBeVisible();
     } finally {
       await stopBrowserFixture(fixture);
     }

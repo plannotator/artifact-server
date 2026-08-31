@@ -186,11 +186,13 @@ export interface DeleteArtifact {
 
 /** Values used to read one bounded page of active artifacts. */
 export interface ListArtifacts {
+  readonly comments: "all" | "with" | "without";
   readonly cursor: PageCursor | null;
   readonly limit: number;
   readonly projectId: string;
   /** Normalized name-substring or exact-tag search, when supplied. */
   readonly search?: string | null;
+  readonly sort: "comments" | "newest";
   readonly tag: string | null;
 }
 

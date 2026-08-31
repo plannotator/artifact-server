@@ -23,7 +23,6 @@ import {
 import {formatTimestamp} from "@/lib/presentation";
 import {bundleOfThreads} from "@/components/dispatch/dispatch-bundle";
 import {loadDispatchIndex} from "@/components/dispatch/dispatch-index";
-import {DispatchSelectionBar} from "@/components/dispatch/dispatch-selection-bar";
 import {
   dispatchIsCancelable,
   DispatchStateChip,
@@ -39,6 +38,16 @@ import {
 
 const threadPageSize = 100;
 const conversationLoadConcurrency = 6;
+
+function agentPresenceSummary(agents: readonly AgentPresence[] | null): string {
+  if (agents === null) return "Checking presence…";
+  const connectedCount = agents.filter((agent) => agent.connected).length;
+  const offlineCount = agents.length - connectedCount;
+  if (offlineCount === 0) {
+    return connectedCount === 0 ? "No agents connected" : `${connectedCount} connected`;
+  }
+  return `${connectedCount} connected · ${offlineCount} offline`;
+}
 
 function threadQuery(
   versionId: string,
@@ -433,14 +442,14 @@ function NewThreadComposer({
     versionId,
   });
   return (
-    <div className="mb-3 grid gap-2" data-new-thread-composer>
+    <div data-new-thread-composer>
       <CommentComposer
         cancelLabel={null}
         draftRestored={draft.restored}
         initialBody={draft.initialBody}
         inputId={`review-new-thread-${versionId}`}
         key={`new-thread-${versionId}-${draft.restored ? "draft" : "empty"}`}
-        label="Comment on this version"
+        label="Add a comment"
         maximumCharacters={maximumCommentBodyCharacters}
         onBodyChange={draft.onBodyChange}
         onCancel={null}
@@ -474,24 +483,53 @@ function ReplyComposer({
     threadId: thread.id,
     versionId: null,
   });
+  const [expanded, setExpanded] = useState(draft.restored);
+  const [replyBody, setReplyBody] = useState(draft.initialBody);
+
+  if (!expanded) {
+    return (
+      <div className="as-comment-reply-composer" data-expanded="false">
+        <button
+          className="as-button as-comment-reply-trigger"
+          onClick={() => setExpanded(true)}
+          type="button"
+        >
+          Reply
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <CommentComposer
-      cancelLabel={null}
-      draftRestored={draft.restored}
-      initialBody={draft.initialBody}
-      inputId={`review-reply-${thread.id}`}
-      label="Reply"
-      maximumCharacters={maximumCommentBodyCharacters}
-      onBodyChange={draft.onBodyChange}
-      onCancel={null}
-      onDiscardDraft={draft.onDiscard}
-      onSubmit={async (body, idempotencyKey) => {
-        const saved = await session.createReply(thread, body, idempotencyKey);
-        if (saved) draft.onPosted();
-        return saved;
-      }}
-      submitLabel="Post reply"
-    />
+    <div className="as-comment-reply-composer" data-expanded="true">
+      <CommentComposer
+        cancelLabel="Cancel"
+        draftRestored={draft.restored}
+        initialBody={replyBody}
+        inputId={`review-reply-${thread.id}`}
+        label="Reply"
+        maximumCharacters={maximumCommentBodyCharacters}
+        onBodyChange={(body) => {
+          setReplyBody(body);
+          draft.onBodyChange(body);
+        }}
+        onCancel={() => setExpanded(false)}
+        onDiscardDraft={() => {
+          setReplyBody("");
+          draft.onDiscard();
+        }}
+        onSubmit={async (body, idempotencyKey) => {
+          const saved = await session.createReply(thread, body, idempotencyKey);
+          if (saved) {
+            setReplyBody("");
+            draft.onPosted();
+            setExpanded(false);
+          }
+          return saved;
+        }}
+        submitLabel="Post reply"
+      />
+    </div>
   );
 }
 
@@ -514,8 +552,7 @@ export function ReviewCommentsInspector({
   const unanchored = new Set(session.unanchoredIds);
   const [agents, setAgents] = useState<readonly AgentPresence[] | null>(null);
   const [agentError, setAgentError] = useState<Error | null>(null);
-  const [view, setView] = useState<CommentView>("all");
-  const [selectedThreadIds, setSelectedThreadIds] = useState<readonly string[]>([]);
+  const [view, setView] = useState<CommentView>("open");
   const [sentThreads, setSentThreads] = useState<readonly CommentThread[]>([]);
   const [sentReplies, setSentReplies] = useState<ReadonlyMap<
     string,
@@ -584,30 +621,18 @@ export function ReviewCommentsInspector({
     view === "sent" && session.artifactId !== null && versionId !== null,
   );
 
-  useEffect(() => {
-    setSelectedThreadIds((current) => current.filter((threadId) =>
-      session.threads.some((thread) => thread.id === threadId && thread.state === "open")
-    ));
-  }, [session.threads]);
-
   const openThreads = session.threads.filter((thread) => thread.state === "open");
-  const selectedThreads = openThreads.filter((thread) =>
-    selectedThreadIds.includes(thread.id)
-  );
+  const resolvedThreads = session.threads.filter((thread) => thread.state === "resolved");
   const visibleThreads = view === "sent"
     ? sentThreads
-    : session.threads.filter((thread) =>
-      view === "all" || thread.state === view
-    );
+    : view === "all"
+      ? [...openThreads, ...resolvedThreads]
+      : view === "open"
+        ? openThreads
+        : resolvedThreads;
   const visibleReplies = view === "sent" ? sentReplies : session.repliesByThread;
   const loadingVisible = view === "sent" ? sentLoading : session.loading;
   const now = Date.now();
-
-  const toggleSelection = (threadId: string): void => {
-    setSelectedThreadIds((current) => current.includes(threadId)
-      ? current.filter((candidate) => candidate !== threadId)
-      : [...current, threadId]);
-  };
 
   const cancelDispatch = async (dispatch: AgentDispatch): Promise<void> => {
     setSentError(null);
@@ -620,7 +645,6 @@ export function ReviewCommentsInspector({
   };
 
   const onSent = async (): Promise<void> => {
-    setSelectedThreadIds([]);
     await reloadDispatchSurface();
   };
 
@@ -630,11 +654,11 @@ export function ReviewCommentsInspector({
       <div className="as-comments__agents">
         <div>
           <strong>Agents</strong>
-          <span>{agents?.filter((agent) => agent.connected).length ?? 0} connected</span>
+          <span>{agentPresenceSummary(agents)}</span>
         </div>
-        <div>
+        <div aria-label="Agent presence" role="group">
           {agents?.map((agent) => (
-            <PresenceAvatar agent={agent} key={agent.id} now={now} size="md" />
+            <PresenceAvatar agent={agent} key={agent.id} now={now} />
           ))}
         </div>
       </div>
@@ -645,7 +669,7 @@ export function ReviewCommentsInspector({
         <div className="as-comments__send-all">
           <SendToAgentControl
             agents={agents}
-            buttonSize="sm"
+            buttonSize="xs"
             buttonVariant="default"
             feedback={dispatchUndo.feedback}
             label={`Send all open (${openThreads.length})…`}
@@ -680,7 +704,7 @@ export function ReviewCommentsInspector({
         <p className="as-comments__error" role="alert">{sentError.message}</p>
       )}
       <nav aria-label="Comment filters" className="as-comments__filters">
-        {(["all", "open", "resolved", "sent"] as const).map((candidate) => (
+        {(["open", "all", "resolved", "sent"] as const).map((candidate) => (
           <button
             aria-pressed={view === candidate}
             className="as-button"
@@ -696,17 +720,6 @@ export function ReviewCommentsInspector({
           </button>
         ))}
       </nav>
-      {selectedThreads.length === 0 ? null : (
-        <DispatchSelectionBar
-          agents={agents}
-          feedback={dispatchUndo.feedback}
-          onClear={() => setSelectedThreadIds([])}
-          onSent={onSent}
-          principalId={principalId}
-          projectId={session.projectId}
-          threads={selectedThreads}
-        />
-      )}
       {canComment && versionId !== null && session.artifactId !== null ? (
         <NewThreadComposer
           artifactId={session.artifactId}
@@ -725,12 +738,15 @@ export function ReviewCommentsInspector({
             ? "No comments on this version yet."
             : view === "sent"
               ? "No sent comments on this version."
-              : `No ${view} comments on this version.`}
+              : view === "open" && resolvedThreads.length > 0
+                ? "All comments on this version are resolved."
+                : `No ${view} comments on this version.`}
         </p>
       ) : null}
       <ol className="as-comment-list">
         {visibleThreads.map((thread) => {
           const sentDispatch = view === "sent" ? dispatchByThread.get(thread.id) : undefined;
+          const replies = visibleReplies.get(thread.id) ?? [];
           return (
             <li key={thread.id}>
               <article
@@ -739,86 +755,112 @@ export function ReviewCommentsInspector({
                 data-selected={session.selectedThreadId === thread.id}
               >
                 <header>
-                  {view !== "sent" && canComment && thread.state === "open" ? (
-                    <input
-                      aria-label={`Select comment: ${thread.body}`}
-                      checked={selectedThreadIds.includes(thread.id)}
-                      onChange={() => toggleSelection(thread.id)}
-                      type="checkbox"
-                    />
-                  ) : null}
                   <strong>{thread.author.displayName}</strong>
                   {sentDispatch === undefined
                     ? <span data-state={thread.state}>{thread.state}</span>
                     : <DispatchStateChip state={sentDispatch.state} />}
                 </header>
-                <p>{thread.body}</p>
-                <ol className="as-comment-replies">
-                  {(visibleReplies.get(thread.id) ?? []).map((reply) => (
-                    <ReviewReply
-                      canDeleteAny={canDeleteAny}
-                      canMutate={canComment}
-                      key={reply.id}
-                      onDelete={session.deleteReply}
-                      onUpdate={session.updateReply}
-                      principalId={principalId}
-                      reply={reply}
-                    />
-                  ))}
-                </ol>
-                <footer>
-                  <span>
-                    <time dateTime={thread.updatedAt}>{formatTimestamp(thread.updatedAt)}</time>
-                    {thread.path === null ? " · Whole version" : ` · ${thread.path}`}
-                  </span>
-                  {view !== "sent" && unanchored.has(thread.id) ? (
-                    <small>Original location unavailable</small>
-                  ) : null}
-                  <div>
-                    {view === "sent" ? (
-                      sentDispatch !== undefined && dispatchIsCancelable(sentDispatch.state) ? (
-                        <button
-                          className="as-button"
-                          onClick={() => void cancelDispatch(sentDispatch)}
-                          type="button"
-                        >
-                          Cancel send
-                        </button>
-                      ) : null
-                    ) : (
-                      <>
-                        {thread.path === null ? null : (
-                          <button
-                            className="as-button"
-                            onClick={() => session.selectThread(thread.id)}
-                            type="button"
-                          >
-                            Show in page
-                          </button>
+                <div className="as-comment-card__body">
+                  <p>{thread.body}</p>
+                  <footer>
+                    <div className="as-comment-card__meta">
+                      <span>
+                        Updated <time dateTime={thread.updatedAt}>
+                          {formatTimestamp(thread.updatedAt)}
+                        </time>
+                      </span>
+                      <span>
+                        {thread.path === null ? "Whole version" : (
+                          <>Page <code>{thread.path}</code></>
                         )}
-                        {canComment ? (
+                      </span>
+                    </div>
+                    {view !== "sent" && unanchored.has(thread.id) ? (
+                      <small>Location unavailable in this version</small>
+                    ) : null}
+                    <div className="as-comment-card__actions">
+                      {view === "sent" ? (
+                        sentDispatch !== undefined && dispatchIsCancelable(sentDispatch.state) ? (
                           <button
                             className="as-button"
-                            onClick={() => void session.changeState(thread)}
+                            onClick={() => void cancelDispatch(sentDispatch)}
                             type="button"
                           >
-                            {thread.state === "open" ? "Resolve" : "Reopen"}
+                            Cancel send
                           </button>
-                        ) : null}
-                      </>
-                    )}
-                  </div>
-                </footer>
+                        ) : null
+                      ) : (
+                        <>
+                          {canComment && thread.state === "open" ? (
+                            <SendToAgentControl
+                              agents={agents}
+                              buttonSize="xs"
+                              buttonVariant="outline"
+                              feedback={dispatchUndo.feedback}
+                              label="Send…"
+                              onSent={onSent}
+                              oneAgentLabel={(name) => `Send to ${name}`}
+                              openCount={1}
+                              principalId={principalId}
+                              projectId={session.projectId}
+                              reasonDisplay="hidden"
+                              resolveBundle={() => Promise.resolve(bundleOfThreads([thread]))}
+                            />
+                          ) : null}
+                          {thread.path === null ? null : (
+                            <button
+                              className="as-button"
+                              onClick={() => session.selectThread(thread.id)}
+                              type="button"
+                            >
+                              Show in page
+                            </button>
+                          )}
+                          {canComment ? (
+                            <button
+                              className="as-button"
+                              onClick={() => void session.changeState(thread)}
+                              type="button"
+                            >
+                              {thread.state === "open" ? "Resolve" : "Reopen"}
+                            </button>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  </footer>
+                </div>
+                {replies.length === 0 ? null : (
+                  <section
+                    aria-label={`${replies.length} ${replies.length === 1 ? "reply" : "replies"}`}
+                    className="as-comment-card__conversation"
+                  >
+                    <p className="as-comment-card__conversation-label">
+                      {replies.length} {replies.length === 1 ? "reply" : "replies"}
+                    </p>
+                    <ol className="as-comment-replies">
+                      {replies.map((reply) => (
+                        <ReviewReply
+                          canDeleteAny={canDeleteAny}
+                          canMutate={canComment}
+                          key={reply.id}
+                          onDelete={session.deleteReply}
+                          onUpdate={session.updateReply}
+                          principalId={principalId}
+                          reply={reply}
+                        />
+                      ))}
+                    </ol>
+                  </section>
+                )}
                 {view !== "sent" && canComment && thread.state === "open"
                     && session.artifactId !== null ? (
-                  <div className="as-comment-reply-composer">
-                    <ReplyComposer
-                      artifactId={session.artifactId}
-                      principalId={principalId}
-                      session={session}
-                      thread={thread}
-                    />
-                  </div>
+                  <ReplyComposer
+                    artifactId={session.artifactId}
+                    principalId={principalId}
+                    session={session}
+                    thread={thread}
+                  />
                 ) : null}
               </article>
             </li>

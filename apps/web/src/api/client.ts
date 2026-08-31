@@ -268,6 +268,7 @@ export type PublicLinkMutationResponse = z.infer<
 export interface ArtifactPage {
   readonly artifacts: readonly {
     readonly artifact: Artifact;
+    readonly commentCount: number;
     readonly links: {
       readonly artifact: string;
       readonly management: string;
@@ -356,6 +357,7 @@ export interface ComparedFile {
 const artifactPageSchema: z.ZodType<ArtifactPage> = z.object({
   artifacts: z.array(z.object({
     artifact: artifactSchema,
+    commentCount: z.number().int().nonnegative(),
     links: z.object({ artifact: z.url(), management: z.url() }),
     versionCount: z.number().int().positive(),
   })),
@@ -949,8 +951,14 @@ export const api = {
     cursor: string | null,
     tag: string,
     search = "",
+    options: {
+      readonly comments?: "all" | "with" | "without";
+      readonly sort?: "comments" | "newest";
+    } = {},
   ) => {
     const query = new URLSearchParams({ limit: "25", projectId });
+    query.set("comments", options.comments ?? "all");
+    query.set("sort", options.sort ?? "newest");
     if (cursor !== null) query.set("cursor", cursor);
     if (tag.trim() !== "") query.set("tag", tag.trim());
     if (search.trim() !== "") query.set("search", search.trim());
