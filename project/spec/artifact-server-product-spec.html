@@ -1732,8 +1732,10 @@
                 restoring does not change them. Project search runs before pagination and matches a
                 normalized artifact-name substring or one exact normalized tag. It does not add tag
                 categories, nested tags, or per-version tags. The Review catalog can filter artifacts
-                by whether they have comments and sort them by newest or most commented; filtering and
-                ordering run before pagination.
+                by whether they have comments or by one exact tag, and sort them by newest or most
+                commented; filtering and ordering run before pagination. Catalog cards keep tags hidden
+                until someone opens the compact filter, so names and review activity remain the primary
+                navigation signals.
               </p>
               <p>
                 Review can make any saved version current after confirmation. The request includes

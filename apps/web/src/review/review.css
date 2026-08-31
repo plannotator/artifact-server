@@ -648,12 +648,15 @@ select:focus-visible {
 }
 
 .as-catalog-query-controls label,
-.as-catalog-query-controls select {
+.as-catalog-query-controls select,
+.as-catalog-filter-trigger {
   min-width: 0;
   width: 100%;
 }
 
-.as-catalog-query-controls select {
+.as-catalog-query-controls select,
+.as-catalog-filter-trigger {
+  align-items: center;
   background: var(--as-surface-raised);
   border: 1px solid var(--as-border);
   border-radius: 0;
@@ -665,15 +668,185 @@ select:focus-visible {
   padding: 0.28rem 0.45rem;
 }
 
+.as-catalog-filter-trigger {
+  cursor: pointer;
+  display: flex;
+  gap: 0.35rem;
+  text-align: start;
+}
+
+.as-catalog-filter-trigger > svg {
+  flex: 0 0 auto;
+  height: 0.75rem;
+  width: 0.75rem;
+}
+
+.as-catalog-filter-trigger > span:not(.as-catalog-filter-trigger__count) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.as-catalog-filter-trigger__count {
+  align-items: center;
+  background: var(--as-iris-soft);
+  color: var(--as-iris);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.58rem;
+  justify-content: center;
+  min-height: 1rem;
+  min-width: 1rem;
+  padding-inline: 0.2rem;
+}
+
 .as-catalog-query-controls option {
   background: Canvas;
   color: CanvasText;
 }
 
-.as-catalog-query-controls select:focus-visible {
+.as-catalog-query-controls select:focus-visible,
+.as-catalog-filter-trigger:focus-visible {
   border-color: var(--as-iris);
   outline: 1px solid var(--as-iris);
   outline-offset: 1px;
+}
+
+.as-catalog-filter-positioner {
+  isolation: isolate;
+  z-index: 60;
+}
+
+.as-catalog-filter-popover {
+  background: var(--as-surface);
+  border: 1px solid var(--as-border);
+  box-shadow:
+    0 1rem 3rem rgb(0 0 0 / 42%),
+    0 0.2rem 0.8rem rgb(0 0 0 / 22%);
+  color: var(--as-text);
+  max-height: min(28rem, var(--available-height));
+  outline: none;
+  overflow-y: auto;
+  transform-origin: var(--transform-origin);
+  transition: opacity 140ms ease, transform 160ms cubic-bezier(0.19, 1, 0.22, 1);
+  width: min(17rem, calc(100vw - 1rem));
+}
+
+.as-catalog-filter-popover[data-starting-style],
+.as-catalog-filter-popover[data-ending-style] {
+  opacity: 0;
+  transform: translateY(-0.2rem) scale(0.985);
+}
+
+.as-catalog-filter-popover > header {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--as-border);
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.7rem 0.75rem;
+}
+
+.as-catalog-filter-popover > header > div {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.as-catalog-filter-popover > header strong {
+  font-size: 0.78rem;
+}
+
+.as-catalog-filter-popover > header span {
+  color: var(--as-subtle);
+  font-size: 0.68rem;
+}
+
+.as-catalog-filter-popover__clear {
+  background: transparent;
+  border: 0;
+  color: var(--as-iris);
+  cursor: pointer;
+  font-size: 0.7rem;
+  min-height: 1.5rem;
+  padding: 0.1rem 0.2rem;
+}
+
+.as-catalog-filter-popover__clear:focus-visible {
+  outline: 2px solid var(--as-iris);
+  outline-offset: 1px;
+}
+
+.as-catalog-filter-popover fieldset {
+  border: 0;
+  display: grid;
+  gap: 0.12rem;
+  margin: 0;
+  padding: 0.65rem;
+}
+
+.as-catalog-filter-popover fieldset + fieldset {
+  border-top: 1px solid var(--as-border);
+}
+
+.as-catalog-filter-popover legend {
+  color: var(--as-subtle);
+  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-size: 0.61rem;
+  letter-spacing: 0.08em;
+  padding: 0.1rem 0.15rem 0.35rem;
+  text-transform: uppercase;
+}
+
+.as-catalog-filter-option {
+  align-items: center;
+  color: var(--as-muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.74rem;
+  gap: 0.5rem;
+  min-height: 2rem;
+  padding: 0.35rem 0.45rem;
+  position: relative;
+}
+
+.as-catalog-filter-option[data-selected="true"] {
+  background: var(--as-iris-soft);
+  color: var(--as-text);
+}
+
+.as-catalog-filter-option input {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.as-catalog-filter-option:has(input:focus-visible) {
+  outline: 2px solid var(--as-iris);
+  outline-offset: -2px;
+}
+
+.as-catalog-filter-option > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.as-catalog-filter-option > svg {
+  color: var(--as-iris);
+  flex: 0 0 auto;
+  height: 0.78rem;
+  width: 0.78rem;
+}
+
+.as-catalog-filter-popover__empty {
+  color: var(--as-subtle);
+  font-size: 0.7rem;
+  margin: 0;
+  padding: 0.35rem 0.45rem;
 }
 
 .as-search-scope {
@@ -800,7 +973,7 @@ select:focus-visible {
   cursor: pointer;
   display: grid;
   gap: 0.35rem;
-  min-height: 6.4rem;
+  min-height: 5rem;
   padding: 0.75rem;
   text-align: left;
   width: 100%;
@@ -827,14 +1000,6 @@ select:focus-visible {
   white-space: nowrap;
 }
 
-.as-artifact-card__tags {
-  color: var(--as-subtle);
-  font-size: 0.78rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .as-artifact-card__meta {
   align-items: center;
   color: var(--as-muted);
@@ -845,11 +1010,22 @@ select:focus-visible {
   min-width: 0;
 }
 
-.as-artifact-card__meta time {
+.as-artifact-card__history {
+  align-items: center;
+  display: inline-flex;
   flex: 1;
+  gap: 0.35rem;
   min-width: 0;
+}
+
+.as-artifact-card__history time {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.as-artifact-card__history > span {
+  flex: 0 0 auto;
   white-space: nowrap;
 }
 
@@ -861,7 +1037,6 @@ select:focus-visible {
 
 .as-artifact-card__counts {
   flex: 0 0 auto;
-  gap: 0.65rem;
 }
 
 .as-artifact-card__counts > span {
@@ -1525,6 +1700,12 @@ select:focus-visible {
   box-shadow:
     0 1.75rem 5rem rgb(0 0 0 / 20%),
     0 0.35rem 1.2rem rgb(0 0 0 / 10%);
+}
+
+:root[data-review-theme="dawn"] .as-catalog-filter-popover {
+  box-shadow:
+    0 1rem 3rem rgb(0 0 0 / 16%),
+    0 0.2rem 0.8rem rgb(0 0 0 / 8%);
 }
 
 .as-share-agent-setup {
@@ -3371,6 +3552,11 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
   }
 
   .as-share-popover {
+    transform: none !important;
+    transition-property: opacity !important;
+  }
+
+  .as-catalog-filter-popover {
     transform: none !important;
     transition-property: opacity !important;
   }
