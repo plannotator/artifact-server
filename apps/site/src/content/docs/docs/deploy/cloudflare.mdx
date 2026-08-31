@@ -16,9 +16,22 @@ Cloudflare is Artifact Server's first-class direct-cloud target. The deployment 
 
 ## Current release boundary
 
-<Aside type="note" title="Qualified integration; beta provider">
-Artifact Server's REST and Workers-binding paths pass the isolated live Cloudflare Artifacts qualification. Cloudflare Artifacts itself still requires beta access, and the broader Cloudflare deployment package retains its independent release gate.
+<Aside type="note" title="Live staging passed">
+The live staging pass used Artifact Server `c210384`. It covered WorkOS, D1, R2, isolated content, agent delivery, recovery, media previews, and Git history.
 </Aside>
+
+The current source revision is newer than the live staging revision. Browser and conformance verification covers the later UI and MCP-link changes. Staging did not grade those changes manually.
+
+The staging pass verified these operations:
+
+- Browser sign-in through WorkOS.
+- Publication and exact-version Review.
+- Private HTML, image, and video previews.
+- Pi, OpenCode, Claude Code, and MCP mailbox delivery.
+- Coordinated D1 and R2 recovery.
+- A bounded Cloudflare Artifacts lifecycle.
+
+The Git-history run used 530 fixture bytes. It did not apply quota pressure or load pressure.
 
 The checked-in deployment package lives in `deploy/cloudflare`. It pins Alchemy, Wrangler, Workers types, and the Cloudflare compatibility date. Team and CI deployments use Cloudflare-hosted Alchemy state.
 

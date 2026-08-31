@@ -1,22 +1,26 @@
 ---
 title: Deploy for a team
-description: Choose a deployment target for a private team — Cloudflare, Docker Compose, Kubernetes, AWS, or Google Cloud — and the boundaries every remote installation shares.
+description: Compare the tested deployment targets and the boundaries that every remote installation uses.
 ---
 
-Artifact Server runs on a laptop for one developer and deploys for a private team on Cloudflare, one server, Kubernetes, AWS, or Google Cloud. Product behavior is the same everywhere; only the storage and infrastructure providers change.
+Artifact Server runs locally and on four server shapes. The qualification level differs by target.
 
 ## Choose a deployment
 
-| Deployment | Data layer | Guide |
-| --- | --- | --- |
-| Cloudflare | D1 and R2 | [Deploy on Cloudflare](/docs/deploy/cloudflare/) |
-| Compact Compose | SQLite and one file volume | [Compose guide](https://github.com/plannotator/artifact-server/blob/main/packaging/compose/README.md) |
-| External-storage Compose | PostgreSQL and S3-compatible storage | [Compose guide](https://github.com/plannotator/artifact-server/blob/main/packaging/compose/README.md) |
-| Kubernetes | PostgreSQL and object storage | [Helm guide](https://github.com/plannotator/artifact-server/blob/main/packaging/helm/artifact-server/README.md) |
-| AWS | ECS, RDS, and S3 | [AWS Pulumi guide](https://github.com/plannotator/artifact-server/blob/main/deploy/pulumi/aws/README.md) |
-| Google Cloud | Cloud Run, Cloud SQL, and Cloud Storage | [Google Cloud Pulumi guide](https://github.com/plannotator/artifact-server/blob/main/deploy/pulumi/gcp/README.md) |
+| Deployment | Data layer | Qualification | Guide |
+| --- | --- | --- | --- |
+| Cloudflare | D1 and R2 | Live staging passed | [Deploy on Cloudflare](/docs/deploy/cloudflare/) |
+| Compact Compose | SQLite and one file volume | Automated runtime passed | [Compose guide](https://github.com/plannotator/artifact-server/blob/main/packaging/compose/README.md) |
+| External-storage Compose | PostgreSQL and S3-compatible storage | Automated runtime passed | [Compose guide](https://github.com/plannotator/artifact-server/blob/main/packaging/compose/README.md) |
+| Kubernetes | PostgreSQL and object storage | Helm and kind verification passed | [Helm guide](https://github.com/plannotator/artifact-server/blob/main/packaging/helm/artifact-server/README.md) |
+| AWS | ECS, RDS, and S3 | Pulumi verification passed. No live application deployment. | [AWS Pulumi guide](https://github.com/plannotator/artifact-server/blob/main/deploy/pulumi/aws/README.md) |
+| Google Cloud | Cloud Run, Cloud SQL, and Cloud Storage | Pulumi verification passed. No live application deployment. | [Google Cloud Pulumi guide](https://github.com/plannotator/artifact-server/blob/main/deploy/pulumi/gcp/README.md) |
 
-Cloudflare is the main hosted target, and [Cloudflare Artifacts](/docs/deploy/cloudflare/) can add private Git-backed history for selected projects. Azure teams deploy through the Helm chart on AKS; there is no separate Azure installer, and Azure Blob Storage is a preview adapter that has not passed live qualification.
+Cloudflare is the live-qualified hosted target. [Cloudflare Artifacts](/docs/deploy/cloudflare/) can add private Git history for selected projects.
+
+AWS and Google Cloud include verified Pulumi projects. Their shared PostgreSQL and object-storage runtime passes automated verification. Neither installer completed a live application deployment.
+
+Azure teams use the Helm chart on AKS. Artifact Server has no separate Azure installer. The Azure Blob Storage adapter remains a preview.
 
 <Aside type="note" title="Release status">
 Artifact Server has not shipped a public release. Each provider guide names the live infrastructure work already qualified. The immutable public image reference and its verification commands will be added on release day.
