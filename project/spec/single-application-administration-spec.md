@@ -38,6 +38,7 @@ That is a security boundary, not a second application.
 | `/review` | Browse, inspect, review, and share artifacts. | Admitted humans and authorized service principals. |
 | `/review/settings/projects` | List active and archived projects; create a project. | Admitted humans and principals with `project:manage`. |
 | `/review/settings/projects/:projectId` | Rename, archive or unarchive, and manage optional Git history for one project. | Admitted humans and principals with `project:manage`. |
+| `/review/settings/mcp` | Show the exact MCP address, local connection and diagnostic commands, agent-skill setup, and the per-browser WebMCP preference. | Admitted users. |
 | `/review/settings/members` | List, admit, and deactivate installation members. | Installation administrators. |
 | `/review/settings/api-keys` | Issue, rotate, and revoke scoped API keys. | Installation administrators. |
 | `/review/settings/public-links` | Inventory active public links and make selected links account-required. | Installation administrators. |
@@ -59,8 +60,9 @@ The existing **New project** action remains in the picker.
 
 A compact settings entry in the Review header opens the settings shell. It
 does not add a permanent sidebar to Review. Installation-administration links
-are shown only to an installation administrator, but hidden navigation is not
-an authorization boundary.
+are shown only to an installation administrator. The MCP connection page is
+available to every admitted user. Hidden navigation is not an authorization
+boundary.
 
 Settings uses a simple page shell with:
 

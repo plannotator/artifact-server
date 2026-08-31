@@ -7,10 +7,10 @@ import {Button, ButtonLink} from "@/components/ui/button";
 import {ArtifactMark} from "./artifact-mark.tsx";
 import {parseSettingsRoute, type SettingsRoute} from "./review-routes.ts";
 import {ApiKeysScreen} from "./settings-api-keys.tsx";
+import {McpScreen} from "./settings-mcp.tsx";
 import {MembersScreen} from "./settings-members.tsx";
 import {SettingsProject, SettingsProjects} from "./settings-projects.tsx";
 import {PublicLinksScreen} from "./settings-public-links.tsx";
-import {WebmcpSettingsCard} from "./webmcp.tsx";
 
 interface ReviewSettingsProps {
   readonly onProjectsChanged: () => Promise<readonly Project[]>;
@@ -80,6 +80,9 @@ export function ReviewSettings({
               Projects
             </SettingsLink>
           ) : null}
+          <SettingsLink active={route.kind === "mcp"} href="/review/settings/mcp">
+            MCP
+          </SettingsLink>
           {administrator ? (
             <>
               <SettingsLink active={route.kind === "members"} href="/review/settings/members">Members</SettingsLink>
@@ -87,7 +90,6 @@ export function ReviewSettings({
               <SettingsLink active={route.kind === "publicLinks"} href="/review/settings/public-links">Public links</SettingsLink>
             </>
           ) : null}
-          <WebmcpSettingsCard />
         </nav>
         <main className="as-settings__content" id="main-content">
           <SettingsContent
@@ -154,6 +156,7 @@ function SettingsContent({
       />
     );
   }
+  if (route.kind === "mcp") return <McpScreen administrator={administrator} />;
   if (!administrator) return <AdministratorPermissionRequired />;
   switch (route.kind) {
     case "members":

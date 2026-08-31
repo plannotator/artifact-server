@@ -2,6 +2,7 @@
 export type SettingsRoute =
   | {readonly kind: "projects"}
   | {readonly kind: "project"; readonly projectId: string}
+  | {readonly kind: "mcp"}
   | {readonly kind: "members"}
   | {readonly kind: "apiKeys"}
   | {readonly kind: "publicLinks"}
@@ -26,6 +27,8 @@ export function parseSettingsRoute(pathname: string): SettingsRoute {
     switch (segments[2]) {
       case "projects":
         return {kind: "projects"};
+      case "mcp":
+        return {kind: "mcp"};
       case "members":
         return {kind: "members"};
       case "api-keys":

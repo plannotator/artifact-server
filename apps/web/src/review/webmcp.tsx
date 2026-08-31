@@ -608,7 +608,7 @@ export function useWebmcp(ref: BindingsRef): void {
   }, [enabled, ref]);
 }
 
-/** The per-user "browser agent tools" preference, shown in settings. */
+/** The per-user "browser agent tools" preference, shown on MCP settings. */
 export function WebmcpSettingsCard() {
   const [enabled, setEnabled] = useState(webmcpEnabled);
   return (
@@ -624,9 +624,8 @@ export function WebmcpSettingsCard() {
       <span>
         <strong>Browser agent tools</strong>
         <small>
-          Let a browser-resident AI agent operate Review through WebMCP
-          tools in your session. Dispatching to coding agents stays a
-          human action.
+          Let a browser-resident AI agent operate Review through WebMCP tools in this session.
+          Dispatching to coding agents stays a human action.
         </small>
       </span>
     </label>

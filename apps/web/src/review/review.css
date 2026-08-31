@@ -3612,13 +3612,12 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
   }
 }
 
-/* Browser agent tools (WebMCP) preference, kept beside the settings nav. */
+/* Browser agent tools (WebMCP) preference on the MCP settings page. */
 .as-settings__webmcp {
   display: flex;
   gap: 0.6rem;
   align-items: flex-start;
-  margin-top: 1.25rem;
-  padding: 0.75rem;
+  padding: 1rem;
   border: 1px solid var(--as-border);
   font-size: 0.8125rem;
   cursor: pointer;
