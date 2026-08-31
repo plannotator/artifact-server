@@ -64,6 +64,7 @@ import {ArtifactMark} from "./artifact-mark.tsx";
 import {
   useReviewComments,
   ReviewCommentsInspector,
+  type ReviewCommentsInspectorHandle,
 } from "./review-comments.tsx";
 import { ReviewPreview } from "./review-preview.tsx";
 import {ReviewProjectPicker} from "./review-project-picker.tsx";
@@ -459,6 +460,7 @@ function ArtifactReview({
   const focusCommentsButtonRef = useRef<HTMLButtonElement>(null);
   const focusControlsRestoreRef = useRef<HTMLButtonElement>(null);
   const previewPanelRef = useRef<HTMLElement>(null);
+  const commentsInspectorRef = useRef<ReviewCommentsInspectorHandle>(null);
   const catalogRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const catalogRequestGenerationRef = useRef(0);
   const catalogWidthApplyRef = useRef<(width: number) => void>(() => undefined);
@@ -1539,6 +1541,7 @@ function ArtifactReview({
                     canComment={canComment}
                     canDeleteAny={canDeleteAnyComment}
                     principalId={session.principal.id}
+                    ref={commentsInspectorRef}
                     session={comments}
                     versionId={selectedVersionId}
                   />
@@ -1697,11 +1700,24 @@ function ArtifactReview({
                 <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={1.8} />
               </IconButton>
             </div>
-            <span className="as-preview-footer__status">
-              {selectedVersion === null
-                ? "No version selected"
-                : `${selectedVersion.manifest.entries.length} file${selectedVersion.manifest.entries.length === 1 ? "" : "s"} · ${selectedVersion.version.routingMode.toUpperCase()}`}
-            </span>
+            <div className="as-preview-footer__status">
+              <span className="as-preview-footer__metadata">
+                {selectedVersion === null
+                  ? "No version selected"
+                  : `${selectedVersion.manifest.entries.length} file${selectedVersion.manifest.entries.length === 1 ? "" : "s"} · ${selectedVersion.version.routingMode.toUpperCase()}`}
+              </span>
+              <button
+                className="as-button as-preview-footer__reload"
+                disabled={comments.loading || selectedVersion === null}
+                onClick={() => void (
+                  commentsInspectorRef.current?.reload() ?? comments.reload()
+                )}
+                type="button"
+              >
+                <HugeiconsIcon aria-hidden="true" icon={RefreshIcon} strokeWidth={1.8} />
+                {comments.loading ? "Loading…" : "Reload"}
+              </button>
+            </div>
           </footer>
         </section>
 
@@ -1764,6 +1780,7 @@ function ArtifactReview({
                 canComment={canComment}
                 canDeleteAny={canDeleteAnyComment}
                 principalId={session.principal.id}
+                ref={commentsInspectorRef}
                 session={comments}
                 versionId={selectedVersionId}
               />

@@ -262,6 +262,12 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(fixture.page.getByRole("article").filter({
         hasText: "Make the release status easier to scan.",
       })).toBeVisible();
+      await expect(fixture.page.getByText(
+        "Click any element in the HTML preview to place a comment.",
+      )).toHaveCount(0);
+      await expect(fixture.page.locator(".as-preview-footer").getByRole("button", {
+        name: "Reload",
+      })).toBeVisible();
       await expect(fixture.page.getByRole("button", {
         name: /Review fixture.*2 versions.*1 comment/u,
       })).toBeVisible();
