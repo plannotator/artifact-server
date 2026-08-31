@@ -740,28 +740,12 @@ select:focus-visible {
   transform: translateY(-0.2rem) scale(0.985);
 }
 
-.as-catalog-filter-popover > header {
-  align-items: flex-start;
+.as-catalog-filter-popover__actions {
+  align-items: center;
   border-bottom: 1px solid var(--as-border);
   display: flex;
-  gap: 0.75rem;
-  justify-content: space-between;
-  padding: 0.7rem 0.75rem;
-}
-
-.as-catalog-filter-popover > header > div {
-  display: grid;
-  gap: 0.12rem;
-  min-width: 0;
-}
-
-.as-catalog-filter-popover > header strong {
-  font-size: 0.78rem;
-}
-
-.as-catalog-filter-popover > header span {
-  color: var(--as-subtle);
-  font-size: 0.68rem;
+  justify-content: flex-end;
+  padding: 0.35rem 0.65rem;
 }
 
 .as-catalog-filter-popover__clear {

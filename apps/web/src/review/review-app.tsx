@@ -156,12 +156,8 @@ function CatalogFilters({
           sideOffset={6}
         >
           <Popover.Popup aria-label="Filter artifacts" className="as-catalog-filter-popover">
-            <header>
-              <div>
-                <strong>Filter artifacts</strong>
-                <span>Filters apply across the project.</span>
-              </div>
-              {activeFilterCount === 0 ? null : (
+            {activeFilterCount === 0 ? null : (
+              <div className="as-catalog-filter-popover__actions">
                 <button
                   className="as-catalog-filter-popover__clear"
                   onClick={() => {
@@ -170,10 +166,10 @@ function CatalogFilters({
                   }}
                   type="button"
                 >
-                  Clear
+                  Clear filters
                 </button>
-              )}
-            </header>
+              </div>
+            )}
             <fieldset>
               <legend>Comments</legend>
               {([
