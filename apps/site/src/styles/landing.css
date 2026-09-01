@@ -735,6 +735,80 @@
   font-size: 0.6875rem;
 }
 
+.landing-cloudflare-artifacts {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--nb-border);
+  color: var(--nb-foreground);
+  text-decoration: none;
+}
+
+.landing-cloudflare-artifacts:hover strong {
+  text-decoration: underline;
+  text-decoration-thickness: from-font;
+  text-underline-offset: 0.18em;
+}
+
+.landing-cloudflare-artifacts__mark {
+  width: 2rem;
+  height: 1.6rem;
+  background: #f38020;
+  -webkit-mask: url("/partners/cloudflare.svg") center / contain no-repeat;
+  mask: url("/partners/cloudflare.svg") center / contain no-repeat;
+}
+
+.landing-cloudflare-artifacts__label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.landing-cloudflare-artifacts__label small {
+  color: var(--nb-muted-foreground);
+  font-family: var(--nb-font-mono);
+  font-size: 0.5625rem;
+  font-style: normal;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.landing-cloudflare-artifacts__label > span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.landing-cloudflare-artifacts__label strong {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.landing-cloudflare-artifacts__label em {
+  padding: 0.1875rem 0.35rem;
+  background: color-mix(in oklch, #f38020 14%, transparent);
+  color: color-mix(in oklch, #f38020 78%, var(--nb-foreground));
+  font-family: var(--nb-font-mono);
+  font-size: 0.5625rem;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.landing-cloudflare-artifacts > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--nb-muted-foreground);
+}
+
 .landing-loop {
   display: grid;
   min-height: 40rem;
