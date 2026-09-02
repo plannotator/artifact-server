@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="184" viewBox="0 0 1200 184" role="img" aria-labelledby="title description">
-  <title id="title">Artifact Server includes a built-in MCP server</title>
-  <desc id="description">Claude, Codex, Cursor, GitHub Copilot, Pi, and OpenCode connect to Artifact Server through MCP to publish, review, comment, version, and share artifacts.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="220" viewBox="0 0 600 220" role="img" aria-labelledby="title description">
+  <title id="title">AI agents connect to Artifact Server through MCP</title>
+  <desc id="description">Claude, Codex, Cursor, GitHub Copilot, Pi, and OpenCode connect to Artifact Server through MCP.</desc>
 
   <defs>
     <linearGradient id="frame" x1="0" y1="0" x2="0" y2="1">
@@ -9,33 +9,34 @@
     </linearGradient>
   </defs>
 
-  <rect x="1" y="1" width="1198" height="182" rx="18" fill="url(#frame)" stroke="#232637" stroke-width="1.5"/>
+  <rect x="1" y="1" width="598" height="218" rx="18" fill="url(#frame)" stroke="#232637" stroke-width="1.5"/>
 
   <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
-    <text x="64" y="70" fill="#8f96ab" font-size="13" font-weight="600" letter-spacing="2.8">YOUR AI AGENT</text>
-    <text x="64" y="100" fill="#f5f6f8" font-size="20" font-weight="500" letter-spacing="-0.2">Claude · Codex · Cursor · Copilot</text>
-    <text x="64" y="126" fill="#f5f6f8" font-size="20" font-weight="500" letter-spacing="-0.2">Pi · OpenCode</text>
+    <text x="36" y="42" fill="#8f96ab" font-size="12" font-weight="600" letter-spacing="2.4">YOUR AI AGENT</text>
+    <text x="36" y="94" fill="#f5f6f8" font-size="17" font-weight="600">Claude, Codex, Cursor</text>
+    <text x="36" y="121" fill="#f5f6f8" font-size="17" font-weight="600">Copilot, Pi, OpenCode</text>
+    <text x="36" y="165" fill="#8f96ab" font-size="13" font-weight="500">Publish and update artifacts</text>
 
-    <g transform="translate(518 61)">
-      <rect width="166" height="62" rx="12" fill="#12131d" stroke="#6d6eff" stroke-width="2"/>
-      <text x="83" y="26" fill="#adb2ff" font-size="12" font-weight="600" text-anchor="middle" letter-spacing="3">BUILT-IN</text>
-      <text x="83" y="48" fill="#f5f6f8" font-size="20" font-weight="600" text-anchor="middle">MCP SERVER</text>
+    <g transform="translate(248 76)">
+      <rect width="108" height="68" rx="12" fill="#12131d" stroke="#6d6eff" stroke-width="2"/>
+      <text x="54" y="43" fill="#f5f6f8" font-size="28" font-weight="650" text-anchor="middle">MCP</text>
     </g>
 
     <g fill="none" stroke="#8286ff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" aria-hidden="true">
-      <path d="M474 92H504"/>
-      <path d="m497 85 7 7-7 7"/>
-      <path d="M698 92H728"/>
-      <path d="m721 85 7 7-7 7"/>
+      <path d="M214 110h22"/>
+      <path d="m229 103 7 7-7 7"/>
+      <path d="M368 110h22"/>
+      <path d="m383 103 7 7-7 7"/>
     </g>
 
-    <g transform="translate(758 50) scale(1.2)" aria-hidden="true">
-      <rect x="0" y="32" width="26" height="26" rx="7" fill="#6d6eff"/>
-      <circle cx="39" cy="10" r="10" fill="#adb2ff"/>
-      <path d="M34 58 48 32 62 58Z" fill="#f7f5ff"/>
+    <g transform="translate(410 78)" aria-hidden="true">
+      <rect x="0" y="31" width="24" height="24" rx="6" fill="#6d6eff"/>
+      <circle cx="36" cy="9" r="9" fill="#adb2ff"/>
+      <path d="M31 55 44 31 57 55Z" fill="#f7f5ff"/>
     </g>
 
-    <text x="856" y="84" fill="#f5f6f8" font-size="24" font-weight="600" letter-spacing="-0.2">Artifact Server</text>
-    <text x="856" y="112" fill="#8f96ab" font-size="15" font-weight="500">Publish · review · comment · version · share</text>
+    <text x="480" y="102" fill="#f5f6f8" font-size="19" font-weight="600">Artifact</text>
+    <text x="480" y="126" fill="#f5f6f8" font-size="19" font-weight="600">Server</text>
+    <text x="410" y="165" fill="#8f96ab" font-size="13" font-weight="500">Versioned and ready to review</text>
   </g>
 </svg>

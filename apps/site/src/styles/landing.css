@@ -285,10 +285,11 @@
 
 .landing-copy-prompt__label {
   min-width: 0;
-  flex: 1;
+  flex: none;
+  margin-inline-start: auto;
   font-size: 0.875rem;
   font-weight: 650;
-  text-align: left;
+  text-align: end;
   white-space: nowrap;
 }
 
@@ -317,70 +318,7 @@
   place-items: center;
 }
 
-.landing-manual-command {
-  display: grid;
-  min-height: 2.75rem;
-  grid-template-columns: minmax(0, 1fr) auto 2rem;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.375rem 0.375rem 0.375rem 0.875rem;
-  border: 1px solid var(--nb-border);
-  background: var(--nb-card);
-  font-family: var(--nb-font-mono);
-  font-size: 0.6875rem;
-}
-
-.landing-manual-command code {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--nb-foreground);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.landing-manual-command a {
-  color: var(--nb-muted-foreground);
-  text-decoration: none;
-  white-space: nowrap;
-  transition: color 150ms ease;
-}
-
-.landing-copy-icon-button {
-  display: grid;
-  width: 2rem;
-  height: 2rem;
-  place-items: center;
-  border: 1px solid var(--nb-border);
-  background: transparent;
-  color: var(--nb-muted-foreground);
-  cursor: pointer;
-  transition:
-    border-color 150ms ease,
-    color 150ms ease,
-    transform 150ms ease;
-}
-
-.landing-copy-icon-button svg {
-  width: 0.875rem;
-  height: 0.875rem;
-}
-
-.landing-copy-icon-button svg:last-child,
-.landing-copy-icon-button[data-copied] svg:first-child {
-  display: none;
-}
-
-.landing-copy-icon-button[data-copied] {
-  border-color: color-mix(in oklch, var(--nb-success) 70%, var(--nb-border));
-  color: var(--nb-success);
-}
-
-.landing-copy-icon-button[data-copied] svg:last-child {
-  display: block;
-}
-
-.landing-copy-prompt:active,
-.landing-copy-icon-button:active {
+.landing-copy-prompt:active {
   transform: scale(0.96);
 }
 
@@ -390,14 +328,6 @@
     background: var(--nb-muted);
   }
 
-  .landing-manual-command a:hover,
-  .landing-copy-icon-button:hover {
-    color: var(--nb-foreground);
-  }
-
-  .landing-copy-icon-button:hover {
-    border-color: var(--nb-foreground);
-  }
 }
 
 /* Hero: the full-screen review — artifact canvas plus the open comment panel. */
@@ -949,6 +879,16 @@
   object-fit: contain;
 }
 
+.landing-agent-setup__marks img.agent-logo--opencode {
+  width: 0.8rem;
+  height: 1rem;
+}
+
+.landing-loop__agents img.agent-logo--opencode {
+  width: 0.7rem;
+  height: 0.875rem;
+}
+
 .landing-shell .theme-dark {
   display: none;
 }
@@ -1339,26 +1279,19 @@
   }
 
   .landing-copy-prompt__label {
-    grid-column: 1 / -1;
+    grid-column: 1;
     grid-row: 2;
     min-width: auto;
+    justify-self: end;
     font-size: 0.8125rem;
+    text-align: end;
   }
 
   .landing-copy-prompt__icon {
     grid-column: 2;
-    grid-row: 1;
+    grid-row: 2;
     width: 0.875rem;
     height: 0.875rem;
-  }
-
-  .landing-manual-command {
-    grid-template-columns: minmax(0, 1fr) 2rem;
-  }
-
-  .landing-manual-command a {
-    grid-column: 1 / -1;
-    grid-row: 2;
   }
 
   .artifact-window {

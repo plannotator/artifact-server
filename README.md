@@ -17,7 +17,7 @@ Run it on a laptop for one developer. Deploy it for a private team on Cloudflare
 ## Contents
 
 - [Why Artifact Server](#why-artifact-server)
-- [Built for AI agents](#built-for-ai-agents)
+- [Built for AI agents and team collaboration](#built-for-ai-agents-and-team-collaboration)
 - [Cloudflare and Artifact Server](#cloudflare-and-artifact-server)
 - [Deploy it for a team](#deploy-it-for-a-team)
 - [Run it locally](#run-it-locally)
@@ -31,7 +31,7 @@ Teams now use HTML, images, and video for plans, mockups, prototypes, code revie
 
 Artifact Server gives teams a self-hosted place to organize and collaborate on that work. Store artifacts by project, share them, comment on them, and keep control of the files and data.
 
-## Built for AI agents
+## Built for AI agents and team collaboration
 
 <p>
   <img src="./apps/web/src/review/assets/agents/claude.svg" alt="Claude" width="30" height="30">
@@ -62,9 +62,13 @@ Artifact Server gives teams a self-hosted place to organize and collaborate on t
   </picture>
 </p>
 
-<a href="./docs/mcp.md"><img src="./docs/assets/agent-native-mcp.svg" alt="AI agents connect to Artifact Server through its built-in MCP server" width="800"></a>
+<p align="center">
+  <a href="./docs/mcp.md"><img src="./docs/assets/agent-native-mcp.svg" alt="AI agents connect to Artifact Server through its built-in MCP server" width="395"></a>
+  &nbsp;&nbsp;
+  <img src="./docs/assets/team-collaboration.svg" alt="Team members add comments to exact artifact versions" width="395">
+</p>
 
-Artifact Server includes a built-in MCP server and a portable Agent Skill. Agents can publish, organize, review, comment on, and share versioned artifacts.
+Artifact Server includes a built-in MCP server and a portable Agent Skill. Agents publish and update versioned artifacts. Teams review, comment on, and share the same work.
 
 Connect the agent and install the skill:
 
@@ -81,13 +85,21 @@ Then ask:
 
 The agent returns the full-screen review link first. [Read the MCP guide](./docs/mcp.md) for source checkouts, remote servers, permissions, and supported operations.
 
-<a href="./integrations/pi/README.md"><img src="./docs/assets/pi-live-feedback.svg" alt="Artifact Server has first-class Pi support through a live feedback extension" width="500"></a>
+Live session delivery is available from source for Pi and Claude Code Channels. Claude Channels require its research-preview development flag and, on managed plans, the organization policy. The OpenCode adapter is not release-qualified; live-host verification and contributions are welcome.
+
+<p align="center">
+  <a href="./integrations/pi/README.md"><img src="./docs/assets/pi-live-feedback.svg" alt="Artifact Server has native Pi support for live integrated feedback" width="268"></a>
+  <a href="./integrations/claude-channel/README.md"><img src="./docs/assets/claude-channel-feedback.svg" alt="Artifact Server supports live feedback through the Claude Code Channels research preview" width="268"></a>
+  <a href="./integrations/opencode/README.md"><img src="./docs/assets/opencode-plugin-wanted.svg" alt="OpenCode live-host verification, features, and pull requests are welcome" width="268"></a>
+</p>
 
 ## Cloudflare and Artifact Server
 
 Cloudflare is the main hosted deployment target. Cloudflare Artifacts can add private Git-backed history for selected projects. It is off by default and currently requires closed beta access.
 
-<a href="./docs/cloudflare-artifacts.md"><img src="./docs/assets/cloudflare-artifacts-git-handoff.svg" alt="Cloudflare Artifacts provides optional Git-backed history" width="800"></a>
+<p align="center">
+  <a href="./docs/cloudflare-artifacts.md"><img src="./docs/assets/cloudflare-artifacts-git-handoff.svg" alt="Cloudflare Artifacts provides optional Git-backed history" width="800"></a>
+</p>
 
 - [Deploy Artifact Server on Cloudflare](./deploy/cloudflare/README.md)
 - [Configure optional Git history](./docs/cloudflare-artifacts.md)
