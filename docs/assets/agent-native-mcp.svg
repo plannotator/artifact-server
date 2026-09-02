@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="600" height="220" viewBox="0 0 600 220" role="img" aria-labelledby="title description">
   <title id="title">AI agents connect to Artifact Server through MCP</title>
-  <desc id="description">Claude, Codex, Cursor, GitHub Copilot, Pi, and OpenCode connect to the built-in Artifact Server MCP server.</desc>
+  <desc id="description">Claude, Codex, Cursor, GitHub Copilot, Pi, and OpenCode connect to Artifact Server through MCP.</desc>
 
   <defs>
     <linearGradient id="frame" x1="0" y1="0" x2="0" y2="1">
@@ -19,8 +19,7 @@
 
     <g transform="translate(248 76)">
       <rect width="108" height="68" rx="12" fill="#12131d" stroke="#6d6eff" stroke-width="2"/>
-      <text x="54" y="28" fill="#adb2ff" font-size="10" font-weight="600" text-anchor="middle" letter-spacing="2.4">BUILT-IN</text>
-      <text x="54" y="51" fill="#f5f6f8" font-size="17" font-weight="600" text-anchor="middle">MCP</text>
+      <text x="54" y="43" fill="#f5f6f8" font-size="28" font-weight="650" text-anchor="middle">MCP</text>
     </g>
 
     <g fill="none" stroke="#8286ff" stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" aria-hidden="true">
