@@ -21,7 +21,7 @@ import plannotatorBadge from "../../../../docs/images/star-plannotator.svg";
 import workspacesBadge from "../../../../docs/images/plannotator-workspaces.svg";
 import "../styles/landing.css";
 
-const description = "The open-source, self-hostable alternative to Claude Code artifacts. One place for people and agents to publish, review, comment on, version, and share the artifacts they create while building products.";
+const description = "The open-source, self-hostable alternative to Claude Code artifacts. Publish, review, version, and share work from people and agents in one place.";
 
 // Each agent carries a light- and dark-theme mark; CSS shows the one that
 // matches `[data-mode]` so single-color marks stay visible on both grounds.
@@ -52,10 +52,9 @@ const agents = [
             <Icon name="ph:arrow-up-right" />
           </a>
           <p class="landing-lede">
-            The self-hostable alternative to Claude Code artifacts. Artifact Server gives
-            people and agents one place to publish, review, comment on, version, and
-            share the artifacts they create while building products. Its built-in MCP
-            server gives agents direct access to the same work.
+            Artifact Server gives people and agents one place for the files they create
+            during product development. Publish, review, comment on, version, and share
+            the same work. The built-in MCP server gives agents direct access.
           </p>
           <div class="landing-actions">
             <a class="landing-button landing-button--primary" href="/docs/get-started/">
@@ -151,13 +150,11 @@ const agents = [
         <header class="landing-section-heading">
           <p>Why Artifact Server</p>
           <div>
-            <h2 id="principles-title">Keep the work your team makes, not just the code.</h2>
+            <h2 id="principles-title">Own your team's development process outputs</h2>
             <p class="landing-section-lede">
-              Teams now use HTML, images, and video for plans, mockups, prototypes, code
-              reviews, and other work created during product development. That work
-              quickly becomes disorganized, and providers try to lock it inside their
-              platforms. Artifact Server gives teams a self-hosted place to organize and
-              collaborate on it, and to keep control of the files and data.
+              Product teams create plans, mockups, prototypes, and code reviews as HTML,
+              images, and video. These files often end up scattered across tools.
+              Artifact Server keeps them organized, reviewable, and under your control.
             </p>
           </div>
         </header>
@@ -166,21 +163,21 @@ const agents = [
             <span>01</span>
             <Icon name="ph:upload-simple" />
             <h3>Publish from where the work happens.</h3>
-            <p>Agents publish through MCP or the Agent Skill; people use the CLI or the browser. Complete files or whole sites, one verified upload.</p>
+            <p>Agents publish through MCP or the Agent Skill. People use the CLI or browser. Each upload can contain one file or a complete site.</p>
             <code>/artifact-server upload that HTML design doc</code>
           </article>
           <article>
             <span>02</span>
             <Icon name="ph:stack" />
             <h3>Keep immutable versions.</h3>
-            <p>Every save creates a version with stable bytes and identity, organized by project. The artifact link moves; history does not.</p>
+            <p>Every save creates an immutable version inside a project. Stable artifact links open the current version. Exact version links never change.</p>
             <code>Project → Artifact → Version</code>
           </article>
           <article>
             <span>03</span>
             <Icon name="ph:chat-centered-text" />
-            <h3>Review, comment, share.</h3>
-            <p>Comments stay attached to the exact version and target. Share a review link, not a file path, and the next change starts with real context.</p>
+            <h3>Review and share feedback.</h3>
+            <p>Comments stay attached to the exact version and selected content. Share a review link so the next change starts with the full context.</p>
             <code>Comment → Agent → New version</code>
           </article>
         </div>
@@ -189,14 +186,13 @@ const agents = [
       <section class="landing-loop" id="agents" aria-labelledby="loop-title">
         <div class="landing-loop__copy">
           <p class="landing-eyebrow"><span></span>Built for AI agents</p>
-          <h2 id="loop-title">Comment. Send all. The agent closes every thread.</h2>
+          <h2 id="loop-title">Comment threads with connected agents.</h2>
           <p>
-            Every agent that speaks MCP can publish, organize, review, comment on, and
-            share versioned artifacts through the built-in MCP server. Connect Pi,
-            OpenCode, or Claude Code as a live agent and it appears in the review with a
-            presence avatar: one click sends every open comment into its running session,
-            and it replies, resolves, and publishes the next version. Nothing gets pasted
-            into a chat.
+            Any MCP client can publish, organize, review, comment on, and share versioned
+            artifacts through the built-in server. Pi, OpenCode, and Claude Code can also
+            connect as live agents. One click sends every open comment to the running
+            session. The agent can reply, resolve comments, and publish the next version
+            without copying feedback into chat.
           </p>
           <ul class="landing-loop__agents" aria-label="Supported agents">
             {agents.map((agent) => (
@@ -241,12 +237,12 @@ const agents = [
       <section class="landing-boundary" aria-labelledby="boundary-title">
         <div class="landing-boundary__copy">
           <p class="landing-eyebrow"><span></span>Security model</p>
-          <h2 id="boundary-title">The artifact gets the canvas. The application keeps control.</h2>
+          <h2 id="boundary-title">Untrusted artifacts stay isolated.</h2>
           <p>
-            Untrusted artifact content is served from isolated version hosts, separate
-            from the trusted application origin that owns authentication, review,
-            comments, the API, and MCP. Private content uses version-scoped browser
-            sessions, and untrusted paths never select storage locations.
+            Artifact Server serves untrusted content from an isolated host for each
+            version. The trusted application host handles authentication, metadata,
+            comments, the API, and MCP. Private content uses browser sessions scoped to
+            one version. Untrusted paths cannot select storage locations.
           </p>
           <a href="/docs/concepts/security-boundary/">Understand the two-origin model <Icon name="ph:arrow-right" /></a>
         </div>
@@ -268,19 +264,19 @@ const agents = [
       <section class="landing-deploy" aria-labelledby="deploy-title">
         <header class="landing-section-heading">
           <p>Yours to run</p>
-          <h2 id="deploy-title">Run it on a laptop. Deploy it for a team.</h2>
+          <h2 id="deploy-title">Run it on a laptop or deploy it for a team.</h2>
         </header>
         <div class="landing-deploy__grid">
           <article>
             <Icon name="ph:laptop" />
             <h3>Local</h3>
-            <p>Loopback-only owner access with no sign-in ceremony. SQLite and files on disk, directly on your machine.</p>
+            <p>Run with loopback-only owner access and no sign-in. Store SQLite data and files on your machine.</p>
             <code>git clone … && pnpm dev</code>
           </article>
           <article>
             <Icon name="ph:cloud" />
             <h3>Cloudflare</h3>
-            <p>The main hosted target: Workers, D1, and R2 with private team authentication and isolated content domains.</p>
+            <p>Deploy with Workers, D1, R2, private team authentication, and isolated content domains.</p>
             <code>Workers · D1 · R2</code>
             <a
               class="landing-cloudflare-artifacts"
@@ -302,13 +298,13 @@ const agents = [
           <article>
             <Icon name="ph:buildings" />
             <h3>Your infrastructure</h3>
-            <p>Docker Compose, Kubernetes with Helm, AWS with ECS and RDS, or Google Cloud with Cloud Run and Cloud SQL. Product behavior stays independent of the provider.</p>
+            <p>Deploy with Docker Compose, Kubernetes, AWS, or Google Cloud. The storage provider does not change product behavior.</p>
             <code>Compose · Kubernetes · AWS · Google Cloud</code>
           </article>
         </div>
         <div class="landing-deploy__cta">
           <div>
-            <span>Every remote deployment uses one trusted application origin and one isolated wildcard content domain.</span>
+            <span>Every remote deployment requires one trusted application origin and one isolated wildcard content domain.</span>
             <p>The deployment guide covers shared requirements, storage choices, authentication, and backups.</p>
           </div>
           <a class="landing-button" href="/docs/deploy/">Choose a deployment <Icon name="ph:arrow-right" /></a>
@@ -318,7 +314,7 @@ const agents = [
       <section class="landing-close" aria-labelledby="close-title">
         <ArtifactMark />
         <p>Get started</p>
-        <h2 id="close-title">Your work, your artifacts.</h2>
+        <h2 id="close-title">Start with a local installation.</h2>
         <div class="landing-actions">
           <a class="landing-button landing-button--primary" href="/docs/get-started/">Get started locally <Icon name="ph:arrow-right" /></a>
           <a class="landing-button" href={repositoryUrl}><Icon name="ph:star" /> Star on GitHub <Icon name="ph:arrow-up-right" /></a>

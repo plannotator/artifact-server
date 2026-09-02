@@ -5,7 +5,7 @@ description: Give teammates and agents one short path into your team's Artifact 
 
 <TeamWelcome />
 
-Artifact Server is your team's shared home for plans, prototypes, reports, screenshots, videos, and other finished work. People can review and comment in the browser. Agents can publish new versions and act on the feedback.
+Artifact Server stores the team's plans, prototypes, reports, screenshots, videos, and other finished work. People review and comment in the browser. Agents publish new versions and respond to feedback.
 
 <Aside type="note" title="For team leads">
 Share this page and your Artifact Server address with each teammate. The address is the only team-specific value they need.
@@ -15,7 +15,7 @@ Share this page and your Artifact Server address with each teammate. The address
 
 <Steps>
   <Step title="Open your team's Artifact Server">
-    Your team lead will give you an address such as `https://artifacts.example.com`. Open it and sign in with your team account.
+    Your team lead will give you an address such as `https://artifacts.example.com`. Open the address. Then sign in with your team account.
 
     Open **Settings → MCP** to copy the exact address and client instructions for this installation.
   </Step>
@@ -44,17 +44,17 @@ Share this page and your Artifact Server address with each teammate. The address
   </Step>
 </Steps>
 
-That is enough to start. Ask the agent to publish a finished file or directory:
+Ask the agent to publish a finished file or directory:
 
 ```text
 /artifact-server upload that HTML design doc
 ```
 
-The agent will return a full-screen review link. Open it to view the exact version and leave comments.
+The agent returns a full-screen review link. Open the link to view the exact version and leave comments.
 
 ## Recommended for Claude Code teams
 
-If Artifact Server is your team's shared artifact home, turn off Claude Code's built-in Artifacts so work does not split across two systems.
+If Artifact Server is your team's shared artifact home, turn off Claude Code's built-in Artifacts. This setting keeps the work in one system.
 
 - For your own sessions, add `"disableArtifact": true` to Claude Code settings or set `CLAUDE_CODE_DISABLE_ARTIFACT=1`.
 - For a Team or Enterprise organization, an Owner can turn off **Artifacts** in **Settings → Claude Code → Capabilities**.
@@ -63,7 +63,7 @@ If Artifact Server is your team's shared artifact home, turn off Claude Code's b
 
 ## Close the loop without copy-paste
 
-The steps above let an agent publish. To let it *receive* review feedback too, connect it as a live agent: it shows up in the review with a presence avatar, and every open comment on a version goes to it in one click with **Send all open (N) to ‹agent›**. Pi, OpenCode, and Claude Code (through a channel) get the bundle pushed into their running session; any MCP client can pick it up from its inbox.
+The steps above let an agent publish. Connect it as a live agent to send review feedback from the review interface. The agent appears with a presence avatar. **Send all open (N) to ‹agent›** sends every open comment on the version. Pi, OpenCode, and Claude Code (through a channel) receive the bundle in their running session. Other MCP clients retrieve the bundle from their inbox.
 
 [Connect a coding agent for live review →](/docs/agents/)
 
@@ -72,6 +72,6 @@ The steps above let an agent publish. To let it *receive* review feedback too, c
 - Publish plans, prototypes, reports, images, videos, or complete HTML sites.
 - Share the review link, not a local file path.
 - Leave comments on the exact version you reviewed.
-- Send the comments to the agent that published, and let it reply and resolve them in place.
+- Send the comments to the agent that published. The agent can reply and resolve them in place.
 
 [Learn how publishing works →](/docs/publish/)

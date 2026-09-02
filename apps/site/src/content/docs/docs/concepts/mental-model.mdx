@@ -5,25 +5,25 @@ description: The five product ideas that explain Artifact Server's hierarchy, ve
 
 Five ideas explain most Artifact Server behavior.
 
-## 1. Versions are immutable; artifact links move
+## 1. Artifact links can select different immutable versions
 
 An artifact is the durable record people recognize. Each publication adds a version with immutable bytes and identity. The artifact's current-version pointer can move forward or be restored to an earlier version without rewriting history.
 
 ## 2. One installation contains projects
 
-An installation represents one person, team, or company. Projects are the working boundary. Artifacts belong to exactly one project, and versions belong to exactly one artifact.
+An installation represents one person, team, or company. Projects group related artifacts. Each artifact belongs to one project. Each version belongs to one artifact.
 
 ## 3. Attribution and idempotency are product behavior
 
 Publications, access changes, comments, restores, and destructive actions record who acted. Retried requests must return the same result rather than create new durable state.
 
-## 4. One product layer sits over several providers
+## 4. Storage providers do not change product behavior
 
 SQLite and local files, Postgres and S3-compatible storage, and Cloudflare D1 and R2 implement narrow ports. Storage paths, database details, and deployment SDKs do not choose product behavior.
 
 ## 5. Linked files still produce captured versions
 
-A linked local file can provide a live view for admitted local members, but every shareable or public version remains a captured immutable snapshot. Drift never mutates the captured version.
+A linked local file can provide a live view for admitted local members. Every shareable or public version remains a captured immutable snapshot. File changes never modify a captured version.
 
 ## The hierarchy
 

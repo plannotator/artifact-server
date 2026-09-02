@@ -22,27 +22,27 @@ Artifact Server stores finished browser files as immutable versions and serves e
     [Read the mental model →](/docs/concepts/mental-model/)
   </Card>
   <Card title="Built-in MCP server" icon="ph:plugs-connected">
-    Connect Claude Code, Codex, Cursor, or any MCP client with one command, install the Agent Skill, and publish from the agent.
+    Connect Claude Code, Codex, Cursor, or another MCP client. Install the Agent Skill to publish from the agent.
 
     [Connect your agent →](/docs/mcp/)
   </Card>
   <Card title="Publish from agents" icon="ph:robot">
-    Use the CLI for local files or MCP when the connected agent already has the bytes and context.
+    Use the CLI for local files. If the connected agent has the bytes and context, use MCP.
 
     [Choose a publishing path →](/docs/publish/)
   </Card>
   <Card title="Review with your coding agent" icon="ph:chats-circle">
-    Leave comments, send them all to Pi, OpenCode, or Claude Code in one click, and watch the agent reply and resolve each thread.
+    Leave comments and send them to Pi, OpenCode, or Claude Code. The agent can reply to and resolve each thread.
 
     [Connect a coding agent →](/docs/agents/)
   </Card>
   <Card title="Deploy for a team" icon="ph:cloud">
-    Compare the live-qualified targets, automated deployment verification, and installer-only cloud targets.
+    Compare each deployment target and its current qualification level.
 
     [Choose a deployment →](/docs/deploy/)
   </Card>
   <Card title="Verify the supply chain" icon="ph:shield-check">
-    See the checks that protect source changes, the evidence recorded in package outputs, and the current public-verification boundary.
+    Read how CI protects source changes and what evidence each package contains. Learn which public verification assets do not exist yet.
 
     [Read the security evidence →](/docs/security/)
   </Card>
@@ -57,17 +57,17 @@ Artifact Server installation
         └── Immutable version
 ```
 
-One installation represents one person, team, or company. A fresh installation creates a default project. Stable artifact links resolve to the current version; exact version links never move.
+One installation represents one person, team, or company. A fresh installation creates a default project. Stable artifact links resolve to the current version. Exact version links never move.
 
 <Aside type="note" title="Release status">
-Artifact Server has not shipped a public release. Its local application, deployment packages, and private release workflow are under qualification; each deployment page names the live infrastructure boundary already proved. Public install and verification commands will be added on release day.
+No public Artifact Server release exists. The local application, deployment packages, and private release workflow remain under qualification. Each deployment page identifies the live infrastructure that passed verification. Public install and verification commands will be added on release day.
 </Aside>
 
 ## License
 
-Artifact Server is open source under the [GNU Affero General Public License v3.0](https://github.com/plannotator/artifact-server/blob/main/LICENSE.md) (AGPL-3.0-only). Use it, self-host it, and modify it freely. If you modify it and offer it to others over a network, the AGPL requires you to publish your modified source under the same license; running it unmodified, or inside your own team, carries no such obligation.
+Artifact Server uses the [GNU Affero General Public License v3.0](https://github.com/plannotator/artifact-server/blob/main/LICENSE.md) (AGPL-3.0-only). You can use, self-host, and modify it. If you offer a modified version over a network, the AGPL requires you to publish the modified source under the same license. This requirement does not apply when you run the unmodified software or use it inside your own team.
 
-The pieces built for maximum adoption are MIT: the [@plannotator/agent-bridge](https://github.com/plannotator/agent-bridge) protocol client and the agent extensions under [`integrations/`](https://github.com/plannotator/artifact-server/tree/main/integrations).
+The [@plannotator/agent-bridge](https://github.com/plannotator/agent-bridge) protocol client and the agent extensions under [`integrations/`](https://github.com/plannotator/artifact-server/tree/main/integrations) use the MIT License.
 
 ## Browse by job
 

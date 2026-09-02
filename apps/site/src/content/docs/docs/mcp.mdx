@@ -3,7 +3,7 @@ title: Built-in MCP server
 description: Connect Claude Code, Codex, Cursor, or any MCP client to Artifact Server's built-in MCP server, install the Agent Skill, and publish from an agent.
 ---
 
-Artifact Server exposes one MCP endpoint at `POST /mcp`. MCP uses the same product operations and permissions as the CLI and HTTP API, so an agent can publish, organize, review, comment on, and share versioned artifacts with exactly the authority its user has.
+Artifact Server exposes one MCP endpoint at `POST /mcp`. MCP uses the same product operations and permissions as the CLI and HTTP API. An agent can only perform operations that its user can perform.
 
 ## Connect a local client
 
@@ -38,7 +38,7 @@ If more than one supported client is installed, name the one to connect:
   </TabItem>
 </Tabs>
 
-The command registers a local stdio bridge. The bridge starts or locates the local service and handles its private credential; the credential never appears in client configuration, command output, or startup logs.
+The command registers a local stdio bridge. The bridge starts or locates the local service and handles its private credential. The credential never appears in client settings, command output, or startup logs.
 
 Inspect or remove a managed connection:
 
@@ -47,7 +47,7 @@ artifactserver doctor codex
 artifactserver disconnect codex
 ```
 
-Review also provides these commands. Open **Settings → MCP** to copy the local command or the exact team-server address.
+The review application also shows these commands. Open **Settings → MCP** to copy the local command or the exact team-server address.
 The page links administrators to API-key settings for clients that cannot use browser authentication.
 
 ## Connect to a team server
@@ -58,11 +58,11 @@ Add the exact MCP address to the client:
 https://artifacts.example.com/mcp
 ```
 
-The client opens the configured identity provider. Complete browser authorization, then return to the client. The access token is valid for that exact `/mcp` resource; a token for another installation or application resource does not qualify.
+The client opens the selected identity provider. Complete browser authorization. Then return to the client. The access token is valid only for that exact `/mcp` resource. A token for another installation or application resource is not valid.
 
 ## Install the Artifact Server skill
 
-The portable Agent Skill teaches an agent when to use the CLI (files on the developer machine) and when to use MCP (server data and agent-held context), and keeps artifact work separate from server administration:
+The portable Agent Skill defines two publication paths. It uses the CLI for files on the developer machine and MCP for server data or agent-held content. It also keeps artifact work separate from server administration.
 
 ```sh
 npx skills add plannotator/artifact-server
@@ -78,17 +78,17 @@ The agent returns the full-screen review link first so the recipient can view an
 
 ## Publish from an agent
 
-MCP carries metadata and small results; artifact files go through the staged upload API. An agent uses this sequence:
+MCP carries metadata and small results. Artifact files use the staged upload API. An agent uses this sequence:
 
 <Steps>
   <Step title="Read the limits">
     Call `artifact_capabilities` to read limits and available features.
   </Step>
   <Step title="Stage the files">
-    Call `artifact_create_upload` with each path, size, media type, and SHA-256 fingerprint, then upload each file to its returned opaque upload URL.
+    Call `artifact_create_upload` with each path, size, media type, and SHA-256 fingerprint. Then upload each file to its opaque upload URL.
   </Step>
   <Step title="Commit one version">
-    Call `artifact_commit_upload` with the publication target and an idempotency key. When publishing a new version of an existing artifact, send the current version ID as `expectedCurrentVersionId` so a stale publish is rejected instead of racing.
+    Call `artifact_commit_upload` with the publication target and an idempotency key. If you publish a new version, send the current version ID as `expectedCurrentVersionId`. The server rejects a stale publication.
   </Step>
 </Steps>
 
@@ -104,7 +104,7 @@ Every successful publication returns structured data and a short text summary:
 }
 ```
 
-The server instructions tell the agent to share `links.review` first: it opens the exact version full screen with comments. `links.artifact` follows the current version; `links.version` opens the immutable raw artifact without the Artifact Server interface.
+The server instructions tell the agent to share `links.review` first. This link opens the exact version in full-screen Review with comments. `links.artifact` follows the current version. `links.version` opens the immutable raw artifact without the Artifact Server interface.
 
 <Aside type="caution" title="Never in chat">
 The agent must not place bootstrap URLs, access tokens, or credentials in chat.
@@ -113,7 +113,7 @@ The agent must not place bootstrap URLs, access tokens, or credentials in chat.
 Read operations use the same link roles. `artifact_get.current.links.review`
 opens the current exact version in full-screen Review. `artifact_open.reviewUrl`
 opens the selected exact version in Review, while `artifact_open.browserUrl`
-opens its raw immutable content. Agents should hand people the Review URL.
+opens its raw immutable content. Agents give people the Review URL.
 
 ## Tool groups
 
@@ -125,16 +125,16 @@ opens its raw immutable content. Agents should hand people the Review URL.
 | Publication | `artifact_create_upload`, `artifact_commit_upload` |
 | Management | `artifact_set_visibility`, `artifact_set_tags`, `artifact_restore_version`, `artifact_delete` |
 | Comments | `comment_list`, `comment_get`, `comment_create`, `comment_reply`, `comment_update`, `comment_resolve`, `comment_delete` |
-| Review dispatch | `dispatch_inbox` — claim review bundles sent to this agent from the review UI |
+| Review dispatch | `dispatch_inbox`: claim review bundles sent to this agent from the review UI |
 | Git history planning | `project_git_history_status`, `project_git_history_estimate` |
 
 Linked-artifact tools remain in the tool list on every deployment. They return `CAPABILITY_UNAVAILABLE` when the deployment does not enable linked artifacts.
 
-`project_set_git_history` enables one project after an authorized caller confirms a fresh estimate. Provider settings alone copy nothing.
+`project_set_git_history` enables one project after an authorized caller approves a fresh estimate. Provider settings alone copy nothing.
 
 ## Review feedback over MCP
 
-Comments sent to an MCP-connected agent from the review UI wait in that agent's inbox. Every MCP tool result the agent receives carries a short trailing nudge until the work is claimed:
+Comments sent to an MCP-connected agent wait in that agent's inbox. Each MCP tool result includes a short reminder until the agent claims the work:
 
 ```text
 — artifact server —
@@ -142,7 +142,7 @@ Comments sent to an MCP-connected agent from the review UI wait in that agent's 
 {"operation": "claim"} to pick up the oldest.
 ```
 
-That is the mailbox tier of the agent loop: honest, and better than pasting feedback by hand, but not a push into the running session. Pi, OpenCode, and Claude Code (through a channel) get the bundle delivered live. [Compare the tiers and connect a live agent →](/docs/agents/)
+Mailbox delivery waits for the agent's next tool call. It does not push work into the running session. Pi, OpenCode, and Claude Code (through a channel) receive the bundle live. [Compare the tiers and connect a live agent →](/docs/agents/)
 
 ## Browser agents through WebMCP
 
@@ -150,9 +150,9 @@ Review registers seven `artifact_server_` tools when the browser provides `docum
 
 Open **Settings → WebMCP** to enable or disable these tools for the current browser profile. This setting does not change external MCP clients.
 
-The browser test suite verifies registration, comment changes, and tool removal. No real WebMCP browser session completed manual qualification.
+The browser test suite verifies registration, comment changes, and tool removal. The team did not complete manual qualification with a real WebMCP browser session.
 
 ## Further reading
 
-- [Publishing paths](/docs/publish/) — CLI versus MCP versus HTTP.
-- [MCP product baseline](https://github.com/plannotator/artifact-server/blob/main/project/spec/artifact-server-mcp-baseline.md) — protocol and authorization contracts.
+- [Publishing paths](/docs/publish/): CLI versus MCP versus HTTP.
+- [MCP product baseline](https://github.com/plannotator/artifact-server/blob/main/project/spec/artifact-server-mcp-baseline.md): protocol and authorization contracts.

@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 
 import { installDraftGuard } from "@/components/comments/comment-drafts";
 
-import { ReviewAccentDebugger } from "./review-accent-debugger.tsx";
 import { ReviewApp } from "./review-app.tsx";
 import "../index.css";
 import "./review.css";
@@ -27,6 +26,5 @@ if (!(rootElement instanceof HTMLElement)) {
 createRoot(rootElement).render(
   <StrictMode>
     <ReviewApp />
-    {import.meta.env.DEV ? <ReviewAccentDebugger /> : null}
   </StrictMode>,
 );

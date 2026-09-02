@@ -22,6 +22,7 @@ import {
   FullScreenIcon,
   GithubIcon,
   Home01Icon,
+  KeyboardIcon,
   LayoutLeftIcon,
   Link01Icon,
   Moon02Icon,
@@ -90,6 +91,43 @@ const inspectorMinimumWidth = 240;
 const inspectorMaximumWidth = 480;
 const inspectorGapPixels = 12;
 const catalogRefreshConfirmationMilliseconds = 1_600;
+
+function reviewShortcutBlocked(event: KeyboardEvent): boolean {
+  if (
+    event.defaultPrevented
+    || event.isComposing
+    || event.altKey
+    || event.ctrlKey
+    || event.metaKey
+    || event.shiftKey
+  ) {
+    return true;
+  }
+
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest([
+    "input",
+    "textarea",
+    "select",
+    "[contenteditable]:not([contenteditable='false'])",
+    "[role='dialog']",
+    "[role='listbox']",
+    "[role='menu']",
+    "[role='radiogroup']",
+    "[role='slider']",
+    "[role='tablist']",
+  ].join(", "))) {
+    return true;
+  }
+
+  return document.querySelector([
+    ".as-catalog-filter-popover[data-open]",
+    "[data-slot='popover-content'][data-open]",
+    "[role='dialog'][data-open]",
+    "[role='listbox'][data-open]",
+    "[role='menu'][data-open]",
+  ].join(", ")) !== null;
+}
 
 interface VersionListItem {
   readonly links: {readonly review: string; readonly version: string};
@@ -240,6 +278,77 @@ function CatalogFilters({
   );
 }
 
+function ReviewKeyboardShortcuts() {
+  return (
+    <Popover.Root>
+      <Popover.Trigger
+        render={(
+          <button
+            aria-label="Keyboard shortcuts"
+            className="as-keyboard-shortcuts__trigger"
+            title="Keyboard shortcuts"
+            type="button"
+          />
+        )}
+      >
+        <HugeiconsIcon aria-hidden="true" icon={KeyboardIcon} strokeWidth={1.8} />
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner
+          align="end"
+          className="as-keyboard-shortcuts__positioner"
+          side="top"
+          sideOffset={8}
+        >
+          <Popover.Popup className="as-keyboard-shortcuts">
+            <Popover.Title className="as-keyboard-shortcuts__title">
+              Keyboard shortcuts
+            </Popover.Title>
+            <section aria-labelledby="review-shortcuts-navigation">
+              <h3 id="review-shortcuts-navigation">Navigate</h3>
+              <dl>
+                <div>
+                  <dt>Previous artifact</dt>
+                  <dd><kbd>K</kbd><span>or</span><kbd>↑</kbd></dd>
+                </div>
+                <div>
+                  <dt>Next artifact</dt>
+                  <dd><kbd>J</kbd><span>or</span><kbd>↓</kbd></dd>
+                </div>
+              </dl>
+            </section>
+            <section aria-labelledby="review-shortcuts-layout">
+              <h3 id="review-shortcuts-layout">Layout</h3>
+              <dl>
+                <div>
+                  <dt>Artifact catalog</dt>
+                  <dd><kbd>[</kbd></dd>
+                </div>
+                <div>
+                  <dt>Inspector or comments</dt>
+                  <dd><kbd>]</kbd></dd>
+                </div>
+                <div>
+                  <dt>Full screen</dt>
+                  <dd><kbd>F</kbd></dd>
+                </div>
+                <div>
+                  <dt>Back or close current layer</dt>
+                  <dd><kbd>Esc</kbd></dd>
+                </div>
+                <div>
+                  <dt>Reveal hidden viewer controls</dt>
+                  <dd><kbd>⌘ / Ctrl</kbd><span>+</span><kbd>\</kbd></dd>
+                </div>
+              </dl>
+            </section>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
 /** Start the artifact-first Artifact Server review application. */
 export function ReviewApp() {
   const [session, setSession] = useState<Session | null>(null);
@@ -376,11 +485,6 @@ export function ReviewApp() {
       />
     );
   }
-
-  window.sessionStorage.setItem(
-    "artifact-review-return-url",
-    `${window.location.pathname}${window.location.search}`,
-  );
 
   return (
     <ArtifactReview
@@ -553,18 +657,6 @@ function ArtifactReview({
     reloadComments: comments.reload,
   };
   useWebmcp(webmcpRef);
-
-  useEffect(() => {
-    if (!htmlAnnotateModeActive) return undefined;
-    const exitAnnotateMode = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
-      const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest('[role="dialog"], [data-slot="popover-content"]')) return;
-      setHtmlAnnotateModeActive(false);
-    };
-    window.addEventListener("keydown", exitAnnotateMode);
-    return () => window.removeEventListener("keydown", exitAnnotateMode);
-  }, [htmlAnnotateModeActive]);
 
   const selectedProject = projects.find((project) => project.id === projectId) ?? null;
   const catalogItems = useMemo<ArtifactPage["artifacts"]>(() => {
@@ -788,13 +880,15 @@ function ArtifactReview({
   }, [details, projectId, selectedArtifactId, selectedVersionId]);
 
   useEffect(() => {
-    window.history.replaceState(null, "", reviewHref({
+    const href = reviewHref({
       artifactId: selectedArtifactId,
       path: selectedPath,
       projectId,
       versionId: selectedVersionId,
       view: focusMode ? "focus" : null,
-    }));
+    });
+    window.history.replaceState(null, "", href);
+    window.sessionStorage.setItem("artifact-review-return-url", href);
   }, [focusMode, projectId, selectedArtifactId, selectedPath, selectedVersionId]);
 
   useEffect(() => {
@@ -866,12 +960,12 @@ function ArtifactReview({
     && session.principal.membershipRole === "administrator"
   ) || session.principal.capabilities.includes("artifact:manage:any");
   const previewKind = reviewPreviewKind(selectedVersion, selectedPath);
-  const selectArtifact = (artifactId: string, versionId?: string): void => {
+  const selectArtifact = useCallback((artifactId: string, versionId?: string): void => {
     setDetailError(null);
     setSelectedArtifactId(artifactId);
     setSelectedVersionId(versionId ?? null);
     setSelectedPath(null);
-  };
+  }, []);
   const selectProject = (nextProjectId: string): void => {
     if (nextProjectId !== projectId) {
       setCatalogKnownTags([]);
@@ -1040,7 +1134,7 @@ function ArtifactReview({
       return false;
     }
   };
-  const enterFocusMode = (): void => {
+  const enterFocusMode = useCallback((): void => {
     window.history.pushState(null, "", reviewHref({
       artifactId: selectedArtifactId,
       path: selectedPath,
@@ -1051,8 +1145,8 @@ function ArtifactReview({
     setFocusCommentsOpen(false);
     setFocusControlsCollapsed(false);
     setFocusMode(true);
-  };
-  const exitFocusMode = (): void => {
+  }, [projectId, selectedArtifactId, selectedPath, selectedVersionId]);
+  const exitFocusMode = useCallback((): void => {
     window.history.pushState(null, "", reviewHref({
       artifactId: selectedArtifactId,
       path: selectedPath,
@@ -1063,7 +1157,74 @@ function ArtifactReview({
     setFocusCommentsOpen(false);
     setFocusControlsCollapsed(false);
     setFocusMode(false);
-  };
+  }, [projectId, selectedArtifactId, selectedPath, selectedVersionId]);
+  useEffect(() => {
+    const handleReviewShortcut = (event: KeyboardEvent): void => {
+      if (homeOpen || reviewShortcutBlocked(event)) return;
+
+      const key = event.key.toLowerCase();
+      if (key === "escape") {
+        if (focusCommentsOpen) {
+          event.preventDefault();
+          setFocusCommentsOpen(false);
+        } else if (htmlAnnotateModeActive) {
+          event.preventDefault();
+          setHtmlAnnotateModeActive(false);
+        } else if (focusMode) {
+          event.preventDefault();
+          exitFocusMode();
+        }
+        return;
+      }
+
+      if (key === "f" && selectedVersionId !== null) {
+        event.preventDefault();
+        if (focusMode) exitFocusMode();
+        else enterFocusMode();
+        return;
+      }
+
+      if (key === "]") {
+        event.preventDefault();
+        if (focusMode) setFocusCommentsOpen((current) => !current);
+        else setInspectorOpen((current) => !current);
+        return;
+      }
+
+      if (key === "[" && !focusMode) {
+        event.preventDefault();
+        setCatalogOpen((current) => !current);
+        return;
+      }
+
+      const direction = key === "j" || key === "arrowdown"
+        ? 1
+        : key === "k" || key === "arrowup"
+          ? -1
+          : 0;
+      if (direction === 0) return;
+
+      event.preventDefault();
+      const next = catalogItems[selectedIndex + direction];
+      if (next !== undefined) {
+        selectArtifact(next.artifact.id, next.artifact.currentVersionId);
+      }
+    };
+
+    window.addEventListener("keydown", handleReviewShortcut);
+    return () => window.removeEventListener("keydown", handleReviewShortcut);
+  }, [
+    catalogItems,
+    enterFocusMode,
+    exitFocusMode,
+    focusCommentsOpen,
+    focusMode,
+    homeOpen,
+    htmlAnnotateModeActive,
+    selectArtifact,
+    selectedIndex,
+    selectedVersionId,
+  ]);
   const hideFocusControls = (event: ReactMouseEvent<HTMLButtonElement>): void => {
     previewPanelRef.current?.focus({preventScroll: true});
     setFocusControlsHoverArmed(event.detail === 0);
@@ -1269,7 +1430,12 @@ function ArtifactReview({
             >
               <HugeiconsIcon icon={Settings02Icon} strokeWidth={1.8} />
             </a>
-            <IconButton label="Collapse artifact catalog" onClick={() => setCatalogOpen(false)}>
+            <IconButton
+              keyShortcuts="["
+              label="Collapse artifact catalog"
+              onClick={() => setCatalogOpen(false)}
+              title="Collapse artifact catalog ([)"
+            >
               <HugeiconsIcon icon={LayoutLeftIcon} strokeWidth={1.8} />
             </IconButton>
           </div>
@@ -1406,11 +1572,14 @@ function ArtifactReview({
                 ? "Artifact catalog refreshed."
                 : ""}
           </span>
-          {nextCursor === null ? null : (
-            <button disabled={listLoading} onClick={() => void loadArtifacts(nextCursor, false)} type="button">
-              {listLoading ? "Loading…" : "Load more"}
-            </button>
-          )}
+          <div className="as-catalog__footer-actions">
+            {nextCursor === null ? null : (
+              <button disabled={listLoading} onClick={() => void loadArtifacts(nextCursor, false)} type="button">
+                {listLoading ? "Loading…" : "Load more"}
+              </button>
+            )}
+            <ReviewKeyboardShortcuts />
+          </div>
         </footer>
             </motion.aside>
           </motion.div>
@@ -1468,10 +1637,12 @@ function ArtifactReview({
                   <button
                     aria-controls="review-focus-comments"
                     aria-expanded={focusCommentsOpen}
+                    aria-keyshortcuts="]"
                     className="as-button as-focus-controls__button"
                     data-active={focusCommentsOpen}
                     onClick={() => setFocusCommentsOpen((current) => !current)}
                     ref={focusCommentsButtonRef}
+                    title="Toggle comments (])"
                     type="button"
                   >
                     <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
@@ -1487,8 +1658,10 @@ function ArtifactReview({
                     triggerClassName="as-button as-focus-controls__button"
                   />
                   <button
+                    aria-keyshortcuts="F"
                     className="as-button as-focus-controls__button"
                     onClick={exitFocusMode}
+                    title="Exit full screen (F)"
                     type="button"
                   >
                     <HugeiconsIcon aria-hidden="true" icon={ArrowShrinkIcon} strokeWidth={1.8} />
@@ -1532,7 +1705,12 @@ function ArtifactReview({
                     <h2 id="review-focus-comments-title">Comments</h2>
                     <span>{openCommentCount}</span>
                   </div>
-                  <IconButton label="Close comments" onClick={() => setFocusCommentsOpen(false)}>
+                  <IconButton
+                    keyShortcuts="] Escape"
+                    label="Close comments"
+                    onClick={() => setFocusCommentsOpen(false)}
+                    title="Close comments (] or Esc)"
+                  >
                     <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.8} />
                   </IconButton>
                 </header>
@@ -1552,7 +1730,12 @@ function ArtifactReview({
           <header className="as-pane-header as-preview-header">
             <div className="as-preview-header__identity">
               {!catalogOpen ? (
-                <IconButton label="Open artifact catalog" onClick={() => setCatalogOpen(true)}>
+                <IconButton
+                  keyShortcuts="["
+                  label="Open artifact catalog"
+                  onClick={() => setCatalogOpen(true)}
+                  title="Open artifact catalog ([)"
+                >
                   <HugeiconsIcon icon={LayoutLeftIcon} strokeWidth={1.8} />
                 </IconButton>
               ) : null}
@@ -1588,16 +1771,23 @@ function ArtifactReview({
                 triggerClassName="as-button as-button--secondary"
               />
               <button
+                aria-keyshortcuts="F"
                 className="as-button as-button--primary"
                 disabled={selectedVersionId === null}
                 onClick={enterFocusMode}
+                title="Full screen (F)"
                 type="button"
               >
                 <HugeiconsIcon aria-hidden="true" icon={FullScreenIcon} strokeWidth={1.8} />
                 Full screen
               </button>
               {!inspectorOpen ? (
-                <IconButton label="Open inspector" onClick={() => setInspectorOpen(true)}>
+                <IconButton
+                  keyShortcuts="]"
+                  label="Open inspector"
+                  onClick={() => setInspectorOpen(true)}
+                  title="Open inspector (])"
+                >
                   <HugeiconsIcon icon={PanelRightIcon} strokeWidth={1.8} />
                 </IconButton>
               ) : null}
@@ -1651,9 +1841,7 @@ function ArtifactReview({
                   }
                   if (saved) {
                     setInspectorTab("comments");
-                    if (focusMode) {
-                      setFocusCommentsOpen(true);
-                    } else {
+                    if (!focusMode) {
                       setInspectorOpen(true);
                     }
                   }
@@ -1674,6 +1862,7 @@ function ArtifactReview({
             <div className="as-preview-footer__nav">
               <IconButton
                 disabled={selectedIndex <= 0}
+                keyShortcuts="K ArrowUp"
                 label="Previous artifact"
                 onClick={() => {
                   const previous = catalogItems[selectedIndex - 1];
@@ -1681,6 +1870,7 @@ function ArtifactReview({
                     selectArtifact(previous.artifact.id, previous.artifact.currentVersionId);
                   }
                 }}
+                title="Previous artifact (K or ↑)"
               >
                 <HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={1.8} />
               </IconButton>
@@ -1689,6 +1879,7 @@ function ArtifactReview({
               </span>
               <IconButton
                 disabled={selectedIndex < 0 || selectedIndex >= catalogItems.length - 1}
+                keyShortcuts="J ArrowDown"
                 label="Next artifact"
                 onClick={() => {
                   const next = catalogItems[selectedIndex + 1];
@@ -1696,6 +1887,7 @@ function ArtifactReview({
                     selectArtifact(next.artifact.id, next.artifact.currentVersionId);
                   }
                 }}
+                title="Next artifact (J or ↓)"
               >
                 <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={1.8} />
               </IconButton>
@@ -1752,7 +1944,12 @@ function ArtifactReview({
                 <InspectorTabButton active={inspectorTab === "compare"} label="Compare" onClick={() => setInspectorTab("compare")} tab="compare" />
               )}
             </div>
-            <IconButton label="Close inspector" onClick={() => setInspectorOpen(false)}>
+            <IconButton
+              keyShortcuts="]"
+              label="Close inspector"
+              onClick={() => setInspectorOpen(false)}
+              title="Close inspector (])"
+            >
               <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.8} />
             </IconButton>
           </header>
@@ -2373,24 +2570,29 @@ function IconButton({
   active,
   children,
   disabled = false,
+  keyShortcuts,
   label,
   onClick,
+  title,
 }: {
   readonly active?: boolean;
   readonly children: React.ReactNode;
   readonly disabled?: boolean;
+  readonly keyShortcuts?: string;
   readonly label: string;
   readonly onClick: () => void;
+  readonly title?: string;
 }) {
   return (
     <button
+      aria-keyshortcuts={keyShortcuts}
       aria-label={label}
       aria-pressed={active}
       className="as-icon-button"
       data-active={active}
       disabled={disabled}
       onClick={onClick}
-      title={label}
+      title={title ?? label}
       type="button"
     >
       {children}

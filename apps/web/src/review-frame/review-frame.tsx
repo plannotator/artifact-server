@@ -13,6 +13,7 @@ import {
   type FrameMessage,
   type ReviewAnnotation,
   type ReviewInit,
+  type ReviewTheme,
 } from "./protocol.ts";
 
 interface ReviewSession {
@@ -57,12 +58,12 @@ function sessionFrom(init: ReviewInit): ReviewSession {
 }
 
 /** Adopt the host's palette so the viewer chrome and the sandbox agree. */
-function applyTheme(init: ReviewInit): void {
+function applyTheme(theme: ReviewInit | ReviewTheme): void {
   const root = document.documentElement;
-  for (const [token, value] of Object.entries(init.themeTokens)) {
+  for (const [token, value] of Object.entries(theme.themeTokens)) {
     root.style.setProperty(token, value);
   }
-  root.classList.toggle("light", init.isLight);
+  root.classList.toggle("light", theme.isLight);
 }
 
 /**
@@ -97,6 +98,10 @@ export function ReviewFrame(): React.ReactNode {
           message.annotations.map((annotation) => annotation.threadId),
         );
         setSession(sessionFrom(message));
+        return;
+      }
+      if (message.type === "as-review-theme") {
+        applyTheme(message);
         return;
       }
       if (message.type === "as-review-annotations") {

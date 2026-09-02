@@ -3,20 +3,20 @@ title: The two-origin security boundary
 description: Why the trusted Artifact Server application and untrusted artifact content use separate origins.
 ---
 
-Artifact Server intentionally gives HTML artifacts a large, useful canvas. It does not give published HTML access to the trusted application session.
+Artifact Server displays HTML artifacts on a large canvas. Published HTML cannot access the trusted application session.
 
 ## Trusted application origin
 
 The application origin owns:
 
-- browser authentication and membership;
-- projects, artifact metadata, versions, and manifests;
-- comments, sharing, access changes, and administrative actions; and
-- the review and review controls.
+- browser authentication and membership
+- projects, artifact metadata, versions, and manifests
+- comments, sharing, access changes, and administrative actions
+- the review interface and its controls
 
 ## Isolated content origin
 
-Each exact artifact version is served from an isolated content hostname. Content-session cookies are scoped to the content host, exact-version browser access uses single-use bootstraps, and the trusted application embeds review content through a separate sandboxed frame.
+Each exact artifact version uses an isolated content hostname. Content-session cookies apply only to the content host. Exact-version browser access uses single-use bootstraps. The trusted application embeds review content through a separate sandboxed frame.
 
 ```text
 app.example.com                      trusted application
