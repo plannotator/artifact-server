@@ -34,6 +34,10 @@ Open source under the GNU Affero General Public License v3.0 (AGPL-3.0-only): us
 - [Review with coding agents](https://artifactserver.com/docs/agents/index.md)
 - [Deploy for a team](https://artifactserver.com/docs/deploy/index.md)
 - [Cloudflare deployment](https://artifactserver.com/docs/deploy/cloudflare/index.md)
+- [Compose deployment](https://artifactserver.com/docs/deploy/compose/index.md)
+- [Kubernetes deployment](https://artifactserver.com/docs/deploy/kubernetes/index.md)
+- [AWS deployment](https://artifactserver.com/docs/deploy/aws/index.md)
+- [Google Cloud deployment](https://artifactserver.com/docs/deploy/google-cloud/index.md)
 - [Source](https://github.com/plannotator/artifact-server)
 `;
 

@@ -1,64 +1,64 @@
 ---
 title: Deploy for a team
-description: Compare the tested deployment targets and the boundaries that every remote installation uses.
+description: Compare the deployment targets, data layers, and verified qualification boundaries.
 ---
 
-Artifact Server runs locally and on four server shapes. The qualification level differs by target.
+Artifact Server provides five team deployment guides. The Compose guide covers compact and external-storage modes.
 
 ## Choose a deployment
 
-| Deployment | Data layer | Qualification | Guide |
+| Deployment | Data layer | Verified qualification | Guide |
 | --- | --- | --- | --- |
 | Cloudflare | D1 and R2 | Live staging passed | [Deploy on Cloudflare](/docs/deploy/cloudflare/) |
-| Compact Compose | SQLite and one file volume | Automated runtime passed | [Compose guide](https://github.com/plannotator/artifact-server/blob/main/packaging/compose/README.md) |
-| External-storage Compose | PostgreSQL and S3-compatible storage | Automated runtime passed | [Compose guide](https://github.com/plannotator/artifact-server/blob/main/packaging/compose/README.md) |
-| Kubernetes | PostgreSQL and object storage | Helm and kind verification passed | [Helm guide](https://github.com/plannotator/artifact-server/blob/main/packaging/helm/artifact-server/README.md) |
-| AWS (Amazon Web Services) | ECS, RDS, and S3 | Pulumi verification passed. No live application deployment. | [AWS Pulumi guide](https://github.com/plannotator/artifact-server/blob/main/deploy/pulumi/aws/README.md) |
-| Google Cloud (GCP) | Cloud Run, Cloud SQL, and Cloud Storage | Pulumi verification passed. No live application deployment. | [Google Cloud Pulumi guide](https://github.com/plannotator/artifact-server/blob/main/deploy/pulumi/gcp/README.md) |
+| Compact Compose | SQLite and one file volume | Automated runtime passed | [Deploy with Compose](/docs/deploy/compose/) |
+| External-storage Compose | PostgreSQL and S3-compatible storage | Automated runtime passed | [Deploy with Compose](/docs/deploy/compose/) |
+| Kubernetes | PostgreSQL and object storage | Helm and disposable kind-cluster verification passed | [Deploy on Kubernetes](/docs/deploy/kubernetes/) |
+| AWS (Amazon Web Services) | ECS Fargate, RDS, and S3 | Default public stack passed live isolated qualification | [Deploy on AWS](/docs/deploy/aws/) |
+| Google Cloud (GCP) | Cloud Run, Cloud SQL, and Cloud Storage | Public stack passed live isolated qualification | [Deploy on Google Cloud](/docs/deploy/google-cloud/) |
 
-Cloudflare is the live-qualified hosted target. [Cloudflare Artifacts](/docs/deploy/cloudflare/) can add private Git history for selected projects.
+The AWS private-ingress variant has not passed its live lifecycle gate. The Google Cloud package rejects private ingress.
 
-AWS and Google Cloud include verified Pulumi projects. Their shared PostgreSQL and object-storage runtime passes automated verification. Neither installer completed a live application deployment.
-
-Azure teams use the Helm chart on AKS. Artifact Server has no separate Azure installer. The Azure Blob Storage adapter remains a preview.
+Use the Kubernetes guide for EKS, GKE, or AKS. Artifact Server does not provide a separate Azure installer.
 
 <Aside type="note" title="Release status">
-Artifact Server has not shipped a public release. Each provider guide names the live infrastructure work already qualified. The immutable public image reference and its verification commands will be added on release day.
+Artifact Server has not shipped a public release. The guides identify completed tests and remaining qualification limits. Release image references will be available on release day.
 </Aside>
 
-## The boundaries every remote deployment shares
+## Meet the remote deployment requirements
 
 <Steps>
-  <Step title="One trusted application origin">
-    A single HTTPS origin serves Artifact Server, its API, and its MCP endpoint. This is where people sign in and where agents connect.
+  <Step title="Configure one application origin">
+    Use one HTTPS origin for the application, API, and MCP endpoint. People sign in at this origin.
   </Step>
-  <Step title="One isolated wildcard content domain">
-    Untrusted artifact files are served from a separate wildcard domain, one hostname per version. The application origin never serves artifact bytes. [Why the two origins are separate →](/docs/concepts/security-boundary/)
+  <Step title="Configure one isolated content domain">
+    Use a separate registrable domain with wildcard TLS. Each artifact version receives its own hostname.
+
+    [Read about the two-origin security boundary →](/docs/concepts/security-boundary/)
   </Step>
-  <Step title="An identity provider">
-    Remote deployments authenticate through WorkOS or one generic OIDC provider. Local-owner access works only on an exact loopback origin. Remote deployments never use local-owner access. Network access and application authorization remain separate controls. An administrator admits team members inside Artifact Server.
+  <Step title="Configure one identity provider">
+    Use WorkOS or one generic OIDC provider. Remote deployments do not use local-owner access.
   </Step>
-  <Step title="Credentials outside source control">
-    Service credentials live in the platform's secret store, never in the repository or the image.
+  <Step title="Protect credentials">
+    Store service credentials in the deployment platform's secret store. Keep credentials out of source control and deployment outputs.
   </Step>
-  <Step title="Coordinated backups">
-    Back up metadata and artifact files as one recovery set. Use the procedure in the selected guide. Do a restore test before the first production release. Do another restore test after a storage or deployment change.
+  <Step title="Configure coordinated backups">
+    Back up metadata and artifact files as one recovery set. Verify a restore before production use.
   </Step>
-  <Step title="Pinned releases">
-    Pin the production deployment to an immutable image digest. Verify the release as described in [supply-chain evidence](/docs/security/).
+  <Step title="Pin the release image">
+    Pin production containers to an immutable image digest. Verify the release with the [supply-chain guide](/docs/security/).
   </Step>
 </Steps>
 
-## Pick a data layer
+## Choose a data layer
 
-**Compact Compose** uses one SQLite database and one file volume. Run only one application process with this data layer.
+**Compact Compose** uses one SQLite database and one file volume. Run one application process with this mode.
 
-**External storage** uses PostgreSQL and object storage. Kubernetes, AWS, Google Cloud, and external-storage Compose use this data layer. Application processes can scale horizontally.
+**External storage** uses PostgreSQL and object storage. Compose, Kubernetes, AWS, and Google Cloud support this data layer.
 
-**Cloudflare** uses D1 and R2 through the Worker runtime, with the same product services as the other targets.
+**Cloudflare** uses D1 and R2 through the Worker runtime. It uses the same product services as the other targets.
 
-## After deploying
+## Continue after deployment
 
-- [Welcome your team](/docs/connect-agents/): the introduction for each teammate.
-- [Connect agents to the MCP server](/docs/mcp/): one command for each client.
-- [Review with coding agents](/docs/agents/): live feedback for Pi, OpenCode, and Claude Code.
+- [Welcome your team](/docs/connect-agents/).
+- [Connect agents to the MCP server](/docs/mcp/).
+- [Review with coding agents](/docs/agents/).

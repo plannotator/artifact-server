@@ -193,11 +193,10 @@ recommended by this production package.
 
 ### Configure providers and secrets
 
-Copy the external-storage environment example and create the two required
-secret files:
+Copy the shared environment example. Then create the two required secret files:
 
 ```sh
-cp .env.external-storage.example .env
+cp .env.example .env
 install -d -o 1000 -g 1000 -m 0700 /etc/artifact-server
 printf 'as_key_key_%s_%s\n' "$(openssl rand -hex 16)" "$(openssl rand -hex 32)" \
   > /etc/artifact-server/api-token

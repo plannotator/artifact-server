@@ -1,0 +1,338 @@
+---
+title: Deploy on Kubernetes
+description: Install Artifact Server in an existing Kubernetes cluster with Helm, PostgreSQL, and S3-compatible object storage.
+sidebar:
+  order: 3
+---
+
+Use this guide to run Artifact Server in an existing Kubernetes cluster. The Helm chart installs only the application workload.
+
+You must supply PostgreSQL, S3-compatible object storage, DNS, TLS certificates, routing, secrets, and one browser identity provider.
+
+<Aside type="note" title="Current qualification">
+The static gate verifies the chart with Helm 4.2.x for Kubernetes 1.34, 1.35, and 1.36.
+
+The runtime gate passed in a two-worker Kubernetes 1.36 kind cluster. It used external PostgreSQL and MinIO containers.
+
+This result does not qualify EKS, GKE, AKS, an Ingress controller, or a provider backup service.
+</Aside>
+
+The chart source is in [`packaging/helm/artifact-server`](https://github.com/plannotator/artifact-server/tree/main/packaging/helm/artifact-server). A public chart package is not available yet.
+
+## Requirements
+
+| Requirement | Supported configuration |
+| --- | --- |
+| Kubernetes | Versions 1.34, 1.35, or 1.36 |
+| Helm | Version 4.2.x |
+| Application image | The released OCI image, pinned by SHA-256 digest |
+| Database | An existing PostgreSQL database |
+| Object storage | An existing S3-compatible bucket |
+| Routing | An Ingress, Gateway, or provider edge that routes two hosts |
+| TLS | One application certificate and one wildcard-content certificate |
+| Browser authentication | WorkOS or one OpenID Connect (OIDC) provider |
+| Secrets | One existing Kubernetes Secret in the release namespace |
+| Recovery | Provider procedures for PostgreSQL and object storage |
+
+Run the commands in this guide from the repository root. Use a released image digest for a team installation.
+
+## Prepare the external services
+
+Create one PostgreSQL database for the installation. Create one S3-compatible bucket for the same installation.
+
+Use encrypted provider connections. Give Artifact Server access only to its database and bucket.
+
+When possible, use a dedicated bucket. A dedicated bucket makes complete backup and restore operations easier to define.
+
+Create these two public DNS names:
+
+- `artifacts.example.com` for the trusted application.
+- `*.content.example.net` for isolated artifact versions.
+
+The two names must use separate registrable domains. The routing layer sends both names to the same private `ClusterIP` Service.
+
+## Create the runtime Secret
+
+Keep all credential values outside the repository and Helm values. The chart mounts Secret keys as read-only files.
+
+Create the bootstrap service key in `as_key_key_<id>_<secret>` form:
+
+```sh
+install -d -m 0700 /secure/artifact-server
+printf 'as_key_key_%s_%s\n' "$(openssl rand -hex 16)" "$(openssl rand -hex 32)" \
+  > /secure/artifact-server/api-token
+chmod 0400 /secure/artifact-server/api-token
+```
+
+Place the PostgreSQL connection URL in `/secure/artifact-server/database-url`. Protect this file with mode `0400`.
+
+If you use static S3 credentials, place them in two files. When you use workload identity, skip these files.
+
+```text
+/secure/artifact-server/s3-access-key-id
+/secure/artifact-server/s3-secret-access-key
+```
+
+Create the namespace and Secret for static S3 credentials:
+
+```sh
+kubectl create namespace artifact-server
+
+kubectl --namespace artifact-server create secret generic artifact-server-runtime \
+  --from-file=api-token=/secure/artifact-server/api-token \
+  --from-file=database-url=/secure/artifact-server/database-url \
+  --from-file=s3-access-key-id=/secure/artifact-server/s3-access-key-id \
+  --from-file=s3-secret-access-key=/secure/artifact-server/s3-secret-access-key
+```
+
+If you use workload identity, create the Secret without the two S3 key files:
+
+```sh
+kubectl --namespace artifact-server create secret generic artifact-server-runtime \
+  --from-file=api-token=/secure/artifact-server/api-token \
+  --from-file=database-url=/secure/artifact-server/database-url
+```
+
+The first startup stores the bootstrap service key as a managed API key. Later startups require the exact same key.
+
+Protect the Secret with your cluster recovery system. A restored database will reject a different bootstrap key.
+
+## Configure browser authentication
+
+Each team installation requires exactly one browser identity provider. The chart rejects an incomplete provider configuration.
+
+### Generic OIDC
+
+Register this redirect URI with the provider:
+
+```text
+https://artifacts.example.com/auth/callback
+```
+
+Use the exact issuer URL and client ID in the Helm values. The default scope string is `openid email profile`.
+
+If the client requires a secret, add the secret file to `artifact-server-runtime`. Then name its key with `secret.keys.oidcClientSecret`.
+
+### WorkOS
+
+Set `identity.workosClientId` and `identity.workosIssuer` in the Helm values. The issuer is the exact HTTPS AuthKit origin.
+
+Add the WorkOS API key to `artifact-server-runtime`. Then name its key with `secret.keys.workosApiKey`.
+
+Do not configure WorkOS and OIDC together.
+
+## Create the Helm values
+
+Create `artifact-server-values.yaml`. Replace every example value before installation.
+
+```yaml
+replicaCount: 2
+
+image:
+  repository: ghcr.io/plannotator/artifact-server
+  digest: sha256:REPLACE_WITH_THE_RELEASE_DIGEST
+
+configuration:
+  installationId: team-example
+  bootstrapAdministratorEmail: admin@example.com
+  applicationOrigin: https://artifacts.example.com
+  contentDomain: content.example.net
+  postgresConnectionBudget: 22
+  postgresPoolSize: 10
+  s3:
+    bucket: artifact-server-team-example
+    region: us-east-1
+
+identity:
+  oidcClientId: artifact-server
+  oidcIssuer: https://idp.example.com/realms/main
+
+secret:
+  name: artifact-server-runtime
+  rolloutChecksum: secret-version-1
+  keys:
+    s3AccessKeyId: s3-access-key-id
+    s3SecretAccessKey: s3-secret-access-key
+```
+
+The chart rejects a mutable image tag by default. `image.allowMutableTag` exists only for local chart development.
+
+The example connection budget covers two server pools, one migration connection, and one cleanup connection.
+
+Use this formula for another replica count:
+
+```text
+(replicaCount × postgresPoolSize) + migration connection + cleanup connection ≤ postgresConnectionBudget
+```
+
+The chart rejects values that exceed the connection budget.
+
+## Configure workload identity
+
+When the workload uses its cloud identity, leave both S3 key names empty.
+
+Add the provider annotations to the service account:
+
+```yaml
+secret:
+  keys:
+    s3AccessKeyId: ""
+    s3SecretAccessKey: ""
+
+serviceAccount:
+  annotations:
+    example.com/workload-identity: replace-with-provider-value
+  automountServiceAccountToken: false
+```
+
+Replace the example annotation with the annotation for your identity system.
+
+If the identity system requires the projected Kubernetes token, set `automountServiceAccountToken` to `true`.
+
+Otherwise, keep `automountServiceAccountToken` set to `false`.
+
+## Configure routing and TLS
+
+The chart creates a private `ClusterIP` Service. Ingress is disabled by default.
+
+If your controller uses `networking.k8s.io/v1`, enable the included Ingress:
+
+```yaml
+ingress:
+  enabled: true
+  className: nginx
+  applicationTlsSecretName: artifact-server-application-tls
+  contentTlsSecretName: artifact-server-content-tls
+```
+
+The application TLS Secret must cover `artifacts.example.com`. The content TLS Secret must cover `*.content.example.net`.
+
+The included Ingress requires an HTTPS application origin without a path or explicit port.
+
+If you use Gateway API or a provider edge, leave `ingress.enabled` set to `false`. Route both hosts to the chart Service.
+
+## Install Artifact Server
+
+Install the chart with Helm:
+
+```sh
+helm upgrade --install artifact-server ./packaging/helm/artifact-server \
+  --namespace artifact-server \
+  --values artifact-server-values.yaml \
+  --rollback-on-failure \
+  --wait
+```
+
+Helm runs `artifactserver migrate apply` before each installation and upgrade. A failed migration blocks the Deployment change.
+
+Successful migration Jobs are removed. Failed migration Jobs remain for inspection until the next Helm attempt.
+
+Inspect a failed migration:
+
+```sh
+kubectl --namespace artifact-server logs job/artifact-server-migrate
+```
+
+Correct the provider or Secret failure. Then run the installation command again.
+
+## Verify the installation
+
+Verify the rollout and the internal readiness endpoint:
+
+```sh
+kubectl --namespace artifact-server rollout status deployment/artifact-server
+helm test artifact-server --namespace artifact-server --logs
+kubectl --namespace artifact-server get pods,service,cronjob
+```
+
+The chart uses `/health` for startup and liveness probes. It uses `/ready` for readiness and the Helm test.
+
+Verify both public and account-required delivery through the final HTTPS hosts. Then verify browser login and the `/mcp` endpoint.
+
+Use the [publishing guide](/docs/publish/) and the [MCP guide](/docs/mcp/) to verify this product behavior.
+
+## Staging cleanup
+
+The chart creates a cleanup `CronJob` by default. It runs one bounded cleanup pass every 15 minutes.
+
+Serving Pods use the `external` cleanup schedule. They do not run a second cleanup loop.
+
+Change the schedule or limits under `cleanup` in the Helm values.
+
+If another operator runs this command, you can disable the `CronJob`:
+
+```sh
+artifactserver maintenance cleanup-staging --once --mode external-storage
+```
+
+## Back up and restore
+
+The chart does not create or restore database and object backups. Use the recovery procedures for your PostgreSQL and object providers.
+
+Treat the database, the complete installation object set, and the runtime Secret as one recovery set.
+
+Before each upgrade, complete these actions:
+
+1. Stop write traffic at the trusted application edge.
+2. Suspend the cleanup `CronJob`.
+3. Scale the Artifact Server Deployment to zero replicas.
+4. Create a transaction-consistent PostgreSQL backup.
+5. Copy the complete installation object set.
+6. Record the installation ID, image digest, provider backup IDs, and backup time.
+7. Scale the Deployment to its configured replica count.
+8. Resume the cleanup `CronJob`.
+9. Restore traffic at the trusted application edge.
+
+Restore both providers into empty targets. Use the same installation ID and the exact runtime Secret from the recovery set.
+
+After restoration, install the same image digest. Then verify readiness, stable IDs, private access, and exact artifact bytes.
+
+## Upgrade and rollback
+
+Create and verify one recovery set before each upgrade. Then replace `image.digest` with the new release digest.
+
+Run the installation command again. The migration Job completes before the rolling Deployment change.
+
+The default Deployment uses two replicas, zero unavailable Pods, and one surge Pod during a rolling update.
+
+Verify the new release before you remove the recovery set.
+
+Helm rollback does not reverse a database migration. Verify that the old image supports the current schema before rollback.
+
+List the release revisions:
+
+```sh
+helm history artifact-server --namespace artifact-server
+```
+
+Roll back to one compatible revision:
+
+```sh
+helm rollback artifact-server <revision> --namespace artifact-server --wait
+helm test artifact-server --namespace artifact-server --logs
+```
+
+## Uninstall
+
+Remove the Artifact Server workloads:
+
+```sh
+helm uninstall artifact-server --namespace artifact-server --wait
+```
+
+This command does not remove the external Secret, PostgreSQL database, bucket, DNS records, or TLS certificates.
+
+Verify a complete recovery set before you remove any durable provider resource.
+
+## Current limits
+
+- The chart does not create a cluster, database, bucket, DNS zone, certificate, Ingress controller, or secret manager.
+- The chart does not include a Horizontal Pod Autoscaler.
+- The chart leaves `NetworkPolicy` disabled until the operator supplies exact rules for the cluster network.
+- The kind gate uses `ClusterIP` and port forwarding. It does not verify an Ingress controller or wildcard TLS.
+- The kind gate uses placeholder OIDC configuration. It does not complete browser authentication.
+- The kind gate does not verify the scheduled execution of the cleanup `CronJob`.
+- The kind gate preserves external providers through uninstall and reinstall. It does not perform a coordinated provider restore.
+- The bounded kind read sample is a regression baseline. It is not a production capacity claim.
+
+Read the [chart README](https://github.com/plannotator/artifact-server/blob/main/packaging/helm/artifact-server/README.md), [`values.yaml`](https://github.com/plannotator/artifact-server/blob/main/packaging/helm/artifact-server/values.yaml), and the [runtime qualification test](https://github.com/plannotator/artifact-server/blob/main/tests/release/helm-chart.test.ts) for implementation details.
