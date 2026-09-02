@@ -37,10 +37,10 @@ const agents = [
 const setupPrompt = `Install and configure Artifact Server for me. Do the work, not only explain the steps.
 
 Use these pages as the source of truth:
-- https://artifactserver.com/docs/get-started/
-- https://artifactserver.com/docs/deploy/
-- https://artifactserver.com/docs/mcp/
-- https://artifactserver.com/docs/agents/
+- https://artifactserver.com/docs/get-started/index.md
+- https://artifactserver.com/docs/deploy/index.md
+- https://artifactserver.com/docs/mcp/index.md
+- https://artifactserver.com/docs/agents/index.md
 
 First, ask me exactly one question: “Do you want to run Artifact Server locally on this machine, or deploy it for a team?” Wait for my answer before you continue.
 
@@ -54,7 +54,7 @@ Then complete the matching setup:
 - Verify the server health, the review application, the installed skill, and MCP tool discovery. Fix failures that are within the setup scope.
 - Do not stop after producing a plan. Complete the setup unless you need a credential or a deployment choice from me.
 
-When the setup is complete, begin your final response with “Artifact Server is running at <URL>.” State whether it is local or deployed for a team, where its data is stored, whether the skill is installed, whether this agent is connected through MCP, and what you verified. Link to https://artifactserver.com/docs/ for operating guidance. If anything is incomplete, list the exact blocker instead of claiming success.`;
+When the setup is complete, begin your final response with “Artifact Server is running at <URL>.” State whether it is local or deployed for a team, where its data is stored, whether the skill is installed, whether this agent is connected through MCP, and what you verified. Link to https://artifactserver.com/docs/index.md for operating guidance. If anything is incomplete, list the exact blocker instead of claiming success.`;
 ---
 
 <BaseLayout title="Artifact Server — open-source Claude Code artifacts" description={description} markdownUrl="/index.md">
