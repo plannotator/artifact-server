@@ -1362,19 +1362,6 @@
   }
 
   .artifact-window {
-    height: 30rem;
-    box-shadow: 0.75rem 0.75rem 0 color-mix(in oklch, var(--nb-primary) 12%, transparent);
-  }
-
-  .artifact-window::before {
-    display: none;
-  }
-
-  .artifact-window__body {
-    grid-template-columns: 1fr;
-  }
-
-  .artifact-canvas {
     display: none;
   }
 
