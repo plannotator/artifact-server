@@ -39,8 +39,8 @@
       <path d="M0 34h248M0 78h248" stroke="#303345" stroke-width="1.5"/>
 
       <circle cx="20" cy="56" r="11" fill="#202139"/>
-      <text x="20" y="60" fill="#adb2ff" font-size="8" font-weight="700" text-anchor="middle">AL</text>
-      <text x="40" y="52" fill="#adb2ff" font-size="9" font-weight="700">Ada Lovelace</text>
+      <text x="20" y="60" fill="#ff7a59" font-size="8" font-weight="700" text-anchor="middle">AL</text>
+      <text x="40" y="52" fill="#ff7a59" font-size="9" font-weight="700">Ada Lovelace</text>
       <text x="40" y="68" fill="#f5f6f8" font-size="10" font-weight="600">Tighten the hierarchy.</text>
 
       <circle cx="20" cy="100" r="11" fill="#202139"/>
