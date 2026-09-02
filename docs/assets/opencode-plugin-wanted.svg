@@ -2,23 +2,16 @@
   <title id="title">OpenCode plugin contributions welcome</title>
   <desc id="description">The OpenCode bridge is not release-qualified. Live-host verification, feature work, and pull requests are welcome.</desc>
 
-  <defs>
-    <linearGradient id="frame" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0e0f19"/>
-      <stop offset="1" stop-color="#07080d"/>
-    </linearGradient>
-  </defs>
-
-  <rect x="1" y="1" width="598" height="90" rx="14" fill="url(#frame)" stroke="#555a70" stroke-width="1.5" stroke-dasharray="6 6"/>
+  <rect x="1" y="1" width="598" height="90" rx="14" fill="#262838" stroke="#6b6e80" stroke-width="1.5" stroke-dasharray="6 6"/>
 
   <g id="opencode-mark" transform="translate(23 18) scale(.16)" aria-hidden="true">
-    <path d="M180 240H60V120H180V240Z" fill="#4b4646"/>
-    <path d="M180 60H60V240H180V60ZM240 300H0V0H240V300Z" fill="#f1ecec"/>
+    <path d="M180 240H60V120H180V240Z" fill="#555a70"/>
+    <path d="M180 60H60V240H180V60ZM240 300H0V0H240V300Z" fill="#8f96ab"/>
   </g>
 
   <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
     <text x="84" y="39" fill="#8f96ab" font-size="10.5" font-weight="600" letter-spacing="2.2">OPENCODE PLUGIN</text>
-    <text x="84" y="63" fill="#f5f6f8" font-size="16" font-weight="500" letter-spacing="-.2">Feature or pull request welcome</text>
+    <text x="84" y="63" fill="#8f96ab" font-size="16" font-weight="500" letter-spacing="-.2">Feature or pull request welcome</text>
   </g>
 
   <g transform="translate(542 46)" fill="none" stroke="#8f96ab" stroke-linecap="square" stroke-width="2" aria-hidden="true">
