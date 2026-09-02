@@ -88,9 +88,9 @@ The agent returns the full-screen review link first. [Read the MCP guide](./docs
 Live session delivery is available from source for Pi and Claude Code Channels. Claude Channels require its research-preview development flag and, on managed plans, the organization policy. The OpenCode adapter is not release-qualified; live-host verification and contributions are welcome.
 
 <p align="center">
-  <a href="./integrations/pi/README.md"><img src="./docs/assets/pi-live-feedback.svg" alt="Artifact Server has native Pi support for live integrated feedback" width="260"></a>
-  <a href="./integrations/claude-channel/README.md"><img src="./docs/assets/claude-channel-feedback.svg" alt="Artifact Server supports live feedback through the Claude Code Channels research preview" width="260"></a>
-  <a href="./integrations/opencode/README.md"><img src="./docs/assets/opencode-plugin-wanted.svg" alt="OpenCode live-host verification, features, and pull requests are welcome" width="260"></a>
+  <a href="./integrations/pi/README.md"><img src="./docs/assets/pi-live-feedback.svg" alt="Artifact Server has native Pi support for live integrated feedback" width="268"></a>
+  <a href="./integrations/claude-channel/README.md"><img src="./docs/assets/claude-channel-feedback.svg" alt="Artifact Server supports live feedback through the Claude Code Channels research preview" width="268"></a>
+  <a href="./integrations/opencode/README.md"><img src="./docs/assets/opencode-plugin-wanted.svg" alt="OpenCode live-host verification, features, and pull requests are welcome" width="268"></a>
 </p>
 
 ## Cloudflare and Artifact Server
