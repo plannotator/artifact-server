@@ -90,8 +90,16 @@ When the setup is complete, begin your final response with “Artifact Server is
               <span class="landing-agent-setup__marks" aria-hidden="true">
                 {agents.map((agent) => (
                   <span title={agent.name}>
-                    <img src={agent.light} alt="" class="theme-light" />
-                    <img src={agent.dark} alt="" class="theme-dark" />
+                    <img
+                      src={agent.light}
+                      alt=""
+                      class:list={["theme-light", { "agent-logo--opencode": agent.name === "OpenCode" }]}
+                    />
+                    <img
+                      src={agent.dark}
+                      alt=""
+                      class:list={["theme-dark", { "agent-logo--opencode": agent.name === "OpenCode" }]}
+                    />
                   </span>
                 ))}
               </span>
@@ -103,20 +111,6 @@ When the setup is complete, begin your final response with “Artifact Server is
                 <Icon name="ph:copy" /><Icon name="ph:check" />
               </span>
             </button>
-            <div class="landing-manual-command" aria-label="Manual agent skill installation">
-              <code>npx skills add plannotator/artifact-server</code>
-              <a href="/docs/mcp/#install-the-artifact-server-skill">Install manually</a>
-              <button
-                type="button"
-                class="landing-copy-icon-button"
-                data-copy="npx skills add plannotator/artifact-server"
-                data-copy-label="Copy the agent skill install command"
-                data-copy-success-label="Agent skill install command copied"
-                aria-label="Copy the agent skill install command"
-              >
-                <Icon name="ph:copy" /><Icon name="ph:check" />
-              </button>
-            </div>
           </div>
           <div class="landing-actions">
             <a class="landing-button landing-button--primary" href="/docs/get-started/">
@@ -243,8 +237,16 @@ When the setup is complete, begin your final response with “Artifact Server is
           <ul class="landing-loop__agents" aria-label="Supported agents">
             {agents.map((agent) => (
               <li title={`${agent.name} · ${agent.tier}`}>
-                <img alt="" src={agent.light} class="theme-light" />
-                <img alt="" src={agent.dark} class="theme-dark" />
+                <img
+                  alt=""
+                  src={agent.light}
+                  class:list={["theme-light", { "agent-logo--opencode": agent.name === "OpenCode" }]}
+                />
+                <img
+                  alt=""
+                  src={agent.dark}
+                  class:list={["theme-dark", { "agent-logo--opencode": agent.name === "OpenCode" }]}
+                />
                 <span>{agent.name}</span>
               </li>
             ))}
