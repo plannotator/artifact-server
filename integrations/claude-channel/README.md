@@ -1,88 +1,134 @@
-# @plannotator/artifact-server-claude-channel
+# Claude Code live feedback
 
-The Artifact Server bridge for [Claude Code
-channels](https://code.claude.com/docs/en/channels-reference). Claude Code
-spawns this process over stdio; it runs the same claim loop as the Pi bridge
-(the long poll is the heartbeat, so presence is real), pushes each dispatched
-annotation bundle into the opted-in session as a
-`notifications/claude/channel` event, and exposes the `artifact_comments`
-tool so Claude replies to and resolves each thread.
+Connect a Claude Code session to Artifact Server through
+[Claude Code Channels](https://code.claude.com/docs/en/channels-reference).
+Reviewers can send open comment threads to the session. Claude receives the
+threads, completes the work, replies, and resolves them in Artifact Server.
 
-## Evidence tier
+## Current support
 
-This bridge registers with `capabilities: {beacon: true, evidence:
-"channel"}`. `delivered` means the notification was written to the
-transport — admission to the session, not model processing. Claude Code
-queues channel events while the session is busy, which matches the bridge's
-follow-up-only delivery rule. A rejected notification fails that dispatch and
-leaves the channel process available for later bundles.
+Claude Code Channels are a research preview. Custom channels require a
+development flag. Team and Enterprise administrators must also enable the
+`channelsEnabled` organization policy.
 
-## Configuration
+The Artifact Server channel is currently available from a source checkout.
+The npm package is not published yet.
 
-Same resolution as the Pi extension, once at start:
+## Before you start
 
-| Source | Setting |
-| --- | --- |
-| Environment | `ARTIFACT_SERVER_ORIGIN` + `ARTIFACT_SERVER_AGENT_TOKEN` |
-| Environment | `ARTIFACT_SERVER_AGENT_NAME` (optional display name) |
-| Local discovery | `~/.artifact-server/local-service.json` + `local-api-token` |
+Before you start, make sure that:
 
-Nothing resolved → one stderr notice, then dormant.
+- Artifact Server is running.
+- The Artifact Server source is available locally.
+- Node.js 24.12.0 or later is installed.
+- pnpm 10.34.3 is installed.
+- Claude Code supports Channels.
 
-## Try it (research preview)
+From the Artifact Server source directory, install the dependencies:
 
-Channels are a research preview; custom channels run behind a development
-flag. From a project directory:
+```bash
+pnpm install
+```
 
-1. Add the channel to that project's `.mcp.json`:
+## Connect to Artifact Server
 
-   ```json
-   {
-     "mcpServers": {
-       "artifact-server": {
-         "command": "npx",
-         "args": ["-y", "@plannotator/artifact-server-claude-channel@<release-version>"]
-       }
-     }
-   }
-   ```
+### Local installation
 
-2. Start the local Artifact Server (`pnpm dev` in this repository, or a
-   packaged `artifactserver start`).
+If `artifactserver start` runs the server, the channel reads the connection
+from these files:
 
-3. Launch Claude Code with the development bypass for this entry:
+- `~/.artifact-server/local-service.json`
+- `~/.artifact-server/local-api-token`
 
-   ```bash
-   claude --dangerously-load-development-channels server:artifact-server
-   ```
+No additional connection settings are necessary.
 
-4. In the Artifact Server web UI: comment on an artifact and Send to agent —
-   the session appears in the picker as a `claude`-kind agent with live
-   presence. The bundle lands in the Claude session as a
-   `<channel source="artifact-server">` event; Claude replies and resolves
-   through `artifact_comments`, and the threads update in the web UI.
+If `pnpm dev` runs the server from source, set the origin and token in the
+shell that starts Claude Code:
 
-The package version above is a release-day placeholder. For development from
-this repository, replace the command and arguments with
-`"node"` and
-`["/path/to/artifact-server/integrations/claude-channel/bin/claude-channel.js"]`.
+```bash
+export ARTIFACT_SERVER_ORIGIN="http://127.0.0.1:8787"
+export ARTIFACT_SERVER_AGENT_TOKEN="$(<.artifact-server/local-api-token)"
+```
 
-The `channelsEnabled` organization policy still applies; the flag bypasses
-only the allowlist.
+Run these commands from the Artifact Server source directory. Do not print or
+commit the token.
 
-If the session starts but bundles never arrive, check in order:
+### Team installation
 
-1. Team/Enterprise org policy: `channelsEnabled` must be true — Claude Code
-   drops channel events silently when it is off.
-2. `MCP_PROTOCOL_NEGOTIATION=auto` in your environment: Claude Code refuses
-   to register a channel server that negotiates MCP revision 2026-07-28
-   (this package's SDK can). Unset it for the channel session.
-3. The startup notice: Claude Code prints one line naming exactly why a
-   channel did not register.
+Ask an Artifact Server administrator to issue an API key with these
+permissions:
 
-## Tested
+- **Connect agents**
+- **Manage comments**
 
-`tests/client/claude-channel.test.ts` drives this process over real stdio
-MCP against a real spawned server: channel-tier registration, one
-notification per bundle (sanitized), `delivered` on transport admission,
-and reply/resolve through the tool to `addressed`.
+Set the server origin and API key in the shell that starts Claude Code:
+
+```bash
+export ARTIFACT_SERVER_ORIGIN="https://artifacts.example.com"
+export ARTIFACT_SERVER_AGENT_TOKEN="replace-with-the-api-key"
+```
+
+Do not add the API key to `.mcp.json` or source control.
+
+You can also set `ARTIFACT_SERVER_AGENT_NAME` to change the session name that
+appears in Artifact Server. The default name is the current directory name.
+
+## Add the channel to Claude Code
+
+Add this entry to `.mcp.json` in the project where you use Claude Code:
+
+```json
+{
+  "mcpServers": {
+    "artifact-server": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/artifact-server/integrations/claude-channel/bin/claude-channel.js"
+      ]
+    }
+  }
+}
+```
+
+Replace the example path with the absolute path to your Artifact Server
+checkout.
+
+## Start Claude Code
+
+Start Claude Code from the project that contains `.mcp.json`:
+
+```bash
+claude --dangerously-load-development-channels server:artifact-server
+```
+
+Claude Code shows a warning for the development channel. Select **I am using
+this for local development**. If Claude Code also asks whether to use the MCP
+server, select **Use this MCP server**.
+
+## Send comments to Claude
+
+1. Open an artifact in Artifact Server.
+2. Add one or more comments.
+3. Select the Claude session in the agent picker.
+4. Send the open comments to the session.
+
+Claude receives the comments as follow-up work. The channel gives Claude the
+`artifact_comments` tool to read, reply to, and resolve each thread.
+
+## Troubleshooting
+
+If the channel does not start, run `/mcp` in Claude Code. Make sure that the
+server entry uses the correct absolute path.
+
+If Claude Code reports that an organization policy blocked the channel, ask
+an administrator to enable `channelsEnabled`.
+
+If the channel starts but no agent appears in Artifact Server, make sure that
+Artifact Server is running. Then make sure that the connection settings are
+available in the shell that started Claude Code.
+
+If `MCP_PROTOCOL_NEGOTIATION=auto` is set, Claude Code can reject the MCP
+version of the channel. Unset the variable. Then restart Claude Code.
+
+Claude Code writes channel errors to
+`~/.claude/debug/<session-id>.txt`.
