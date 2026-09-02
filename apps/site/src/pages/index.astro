@@ -78,18 +78,15 @@ When the setup is complete, begin your final response with “Artifact Server is
             during product development. Publish, review, comment on, version, and share
             the same work. The built-in MCP server gives agents direct access.
           </p>
-          <div class="landing-actions">
-            <a class="landing-button landing-button--primary" href="/docs/get-started/">
-              Run it locally
-              <Icon name="ph:arrow-right" />
-            </a>
-            <a class="landing-button" href="/docs/deploy/">
-              Deploy for a team
-              <Icon name="ph:cloud-arrow-up" />
-            </a>
-          </div>
           <div class="landing-agent-setup" aria-label="Set up Artifact Server with an AI coding agent">
-            <button type="button" class="landing-copy-prompt" data-copy={setupPrompt} aria-label="Copy the Artifact Server setup prompt">
+            <button
+              type="button"
+              class="landing-copy-prompt"
+              data-copy={setupPrompt}
+              data-copy-label="Copy the Artifact Server agent install prompt"
+              data-copy-success-label="Artifact Server agent install prompt copied"
+              aria-label="Copy the Artifact Server agent install prompt"
+            >
               <span class="landing-agent-setup__marks" aria-hidden="true">
                 {agents.map((agent) => (
                   <span title={agent.name}>
@@ -99,16 +96,36 @@ When the setup is complete, begin your final response with “Artifact Server is
                 ))}
               </span>
               <span class="landing-copy-prompt__label" aria-live="polite">
-                <span>Copy prompt</span>
+                <span>Copy agent install prompt</span>
                 <span>Copied</span>
               </span>
               <span class="landing-copy-prompt__icon" aria-hidden="true">
                 <Icon name="ph:copy" /><Icon name="ph:check" />
               </span>
             </button>
-            <a class="landing-agent-setup__docs" href="/docs/mcp/">
-              Connect MCP
+            <div class="landing-manual-command" aria-label="Manual agent skill installation">
+              <code>npx skills add plannotator/artifact-server</code>
+              <a href="/docs/mcp/#install-the-artifact-server-skill">Install manually</a>
+              <button
+                type="button"
+                class="landing-copy-icon-button"
+                data-copy="npx skills add plannotator/artifact-server"
+                data-copy-label="Copy the agent skill install command"
+                data-copy-success-label="Agent skill install command copied"
+                aria-label="Copy the agent skill install command"
+              >
+                <Icon name="ph:copy" /><Icon name="ph:check" />
+              </button>
+            </div>
+          </div>
+          <div class="landing-actions">
+            <a class="landing-button landing-button--primary" href="/docs/get-started/">
+              Run it locally
               <Icon name="ph:arrow-right" />
+            </a>
+            <a class="landing-button" href="/docs/deploy/">
+              Deploy for a team
+              <Icon name="ph:cloud-arrow-up" />
             </a>
           </div>
         </div>
@@ -340,10 +357,10 @@ When the setup is complete, begin your final response with “Artifact Server is
       try {
         await navigator.clipboard.writeText(text);
         button.dataset.copied = "true";
-        button.setAttribute("aria-label", "Artifact Server setup prompt copied");
+        button.setAttribute("aria-label", button.dataset.copySuccessLabel ?? "Copied");
         window.setTimeout(() => {
           delete button.dataset.copied;
-          button.setAttribute("aria-label", "Copy the Artifact Server setup prompt");
+          button.setAttribute("aria-label", button.dataset.copyLabel ?? "Copy");
         }, 1600);
       } catch {
         // Clipboard unavailable (insecure context or permission denied).
