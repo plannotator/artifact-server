@@ -17,7 +17,7 @@ Run it on a laptop for one developer. Deploy it for a private team on Cloudflare
 ## Contents
 
 - [Why Artifact Server](#why-artifact-server)
-- [Built for AI agents](#built-for-ai-agents)
+- [Built for AI agents and team collaboration](#built-for-ai-agents-and-team-collaboration)
 - [Cloudflare and Artifact Server](#cloudflare-and-artifact-server)
 - [Deploy it for a team](#deploy-it-for-a-team)
 - [Run it locally](#run-it-locally)
@@ -31,7 +31,7 @@ Teams now use HTML, images, and video for plans, mockups, prototypes, code revie
 
 Artifact Server gives teams a self-hosted place to organize and collaborate on that work. Store artifacts by project, share them, comment on them, and keep control of the files and data.
 
-## Built for AI agents
+## Built for AI agents and team collaboration
 
 <p>
   <img src="./apps/web/src/review/assets/agents/claude.svg" alt="Claude" width="30" height="30">
@@ -62,9 +62,13 @@ Artifact Server gives teams a self-hosted place to organize and collaborate on t
   </picture>
 </p>
 
-<a href="./docs/mcp.md"><img src="./docs/assets/agent-native-mcp.svg" alt="AI agents connect to Artifact Server through its built-in MCP server" width="800"></a>
+<p align="center">
+  <a href="./docs/mcp.md"><img src="./docs/assets/agent-native-mcp.svg" alt="AI agents connect to Artifact Server through its built-in MCP server" width="395"></a>
+  &nbsp;&nbsp;
+  <img src="./docs/assets/team-collaboration.svg" alt="Team members add comments to exact artifact versions" width="395">
+</p>
 
-Artifact Server includes a built-in MCP server and a portable Agent Skill. Agents can publish, organize, review, comment on, and share versioned artifacts.
+Artifact Server includes a built-in MCP server and a portable Agent Skill. Agents publish and update versioned artifacts. Teams review, comment on, and share the same work.
 
 Connect the agent and install the skill:
 
