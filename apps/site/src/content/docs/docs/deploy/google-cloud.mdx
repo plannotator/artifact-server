@@ -1,0 +1,380 @@
+---
+title: Deploy on Google Cloud
+description: Deploy Artifact Server on Cloud Run, Cloud SQL for PostgreSQL, and Google Cloud Storage with the checked-in Pulumi project.
+sidebar:
+  order: 5
+---
+
+The Google Cloud package deploys the external-storage runtime with Pulumi. It creates Cloud Run, Cloud SQL, Google Cloud Storage, DNS, TLS, and edge resources.
+
+<Aside type="caution" title="Public ingress passed its minimum live qualification">
+The public stack passed an isolated create-to-delete run on August 15 and 16, 2026. Artifact Server has not released this package.
+
+Private ingress is not implemented. The package rejects `ingress: private` before it writes provider resources. Use the Helm guide for private GKE deployments.
+</Aside>
+
+The live run covered product operations, bounded reads, upgrades, rollback, API-secret rotation, state import, provider restore operations, and safe deletion. The release ledger still requires complete signed evidence and full product conformance.
+
+## Deployment architecture
+
+| Product need | Google Cloud service |
+| --- | --- |
+| Application runtime | Cloud Run |
+| Durable records | Cloud SQL for PostgreSQL 17 |
+| Artifact and staged-upload bytes | Google Cloud Storage |
+| Public edge | External Application Load Balancer and Cloud CDN |
+| DNS and TLS | Cloud DNS and Certificate Manager |
+| Application credentials | Secret Manager |
+| Workload identity | Dedicated Cloud Run service account |
+| Expired-upload cleanup | Cloud Run Job and Cloud Scheduler |
+| Provisioning and lifecycle | Pulumi |
+
+Cloud Run accepts traffic from the load balancer. The package disables the default Cloud Run URL.
+
+The load balancer serves the application host and wildcard content hosts. Cloud CDN follows origin cache headers and bypasses every request with a `Range` header.
+
+Cloud SQL uses private IP. The storage bucket blocks public access and uses uniform bucket access.
+
+## Prerequisites
+
+Prepare these items before you create a stack:
+
+- A dedicated Google Cloud project.
+- A source checkout with Node.js 24.12 or later and pnpm 10.34.3.
+- The Pulumi CLI and Google Cloud CLI.
+- Application Default Credentials for the Pulumi process.
+- An existing versioned GCS bucket or Pulumi Cloud for Pulumi state.
+- A Pulumi secrets provider, such as one Cloud KMS key.
+- A multi-architecture Artifact Server image pinned to one SHA-256 digest.
+- Two separate registrable domains.
+- One authoritative Cloud DNS managed zone for each domain.
+
+The Pulumi identity must manage Service Usage, IAM, Cloud Run, Cloud SQL, GCS, Compute, DNS, Certificate Manager, Secret Manager, and Cloud Scheduler.
+
+The identity must also change records in both existing Cloud DNS managed zones. The repository does not define a minimum operator IAM role.
+
+The stack enables these Google Cloud APIs:
+
+```text
+certificatemanager.googleapis.com
+cloudscheduler.googleapis.com
+compute.googleapis.com
+dns.googleapis.com
+run.googleapis.com
+secretmanager.googleapis.com
+servicenetworking.googleapis.com
+sqladmin.googleapis.com
+storage.googleapis.com
+```
+
+If you use Cloud KMS for Pulumi secrets, enable `cloudkms.googleapis.com` before you create the stack.
+
+## Prepare Pulumi
+
+Install the repository dependencies:
+
+```sh
+pnpm install --frozen-lockfile
+```
+
+Authenticate Pulumi through Application Default Credentials. For an interactive shell, run these commands:
+
+```sh
+gcloud auth application-default login
+gcloud config set project YOUR_GCP_PROJECT_ID
+```
+
+Select the external state backend:
+
+```sh
+pulumi login gs://YOUR_STATE_BUCKET/artifact-server
+```
+
+Create the stack with its secrets provider:
+
+```sh
+pulumi stack init production \
+  --cwd deploy/pulumi/gcp \
+  --secrets-provider gcpkms://projects/YOUR_GCP_PROJECT_ID/locations/global/keyRings/YOUR_KEY_RING/cryptoKeys/YOUR_KEY
+```
+
+If the stack exists, select it instead:
+
+```sh
+pulumi stack select production --cwd deploy/pulumi/gcp
+```
+
+Enable object versioning on the state bucket. The checked-in state recovery probe rejects a GCS backend without versioning.
+
+## Configure the stack
+
+Create `deploy/pulumi/gcp/Pulumi.production.yaml`. Replace every example value before you run a preview.
+
+```yaml
+config:
+  gcp:project: YOUR_GCP_PROJECT_ID
+  gcp:region: us-central1
+  artifact-server-gcp:applicationDomain: artifacts.example.com
+  artifact-server-gcp:backupRetentionDays: 14
+  artifact-server-gcp:bootstrapAdministratorEmail: admin@example.com
+  artifact-server-gcp:capacity:
+    cpu: 1
+    maximumInstances: 3
+    memoryMiB: 2048
+    minimumInstances: 2
+  artifact-server-gcp:contentDomain: artifact-content.example.net
+  artifact-server-gcp:databasePlan: high-availability
+  artifact-server-gcp:deletionProtection: true
+  artifact-server-gcp:dnsZoneIds:
+    application: artifacts-example-com
+    content: artifact-content-example-net
+  artifact-server-gcp:environment: production
+  artifact-server-gcp:imageReference: ghcr.io/plannotator/artifact-server@sha256:REPLACE_WITH_64_HEX_CHARACTERS
+  artifact-server-gcp:ingress: public
+  artifact-server-gcp:installationName: artifact-server
+  artifact-server-gcp:region: us-central1
+  artifact-server-gcp:secretsProvider: gcpkms://projects/YOUR_GCP_PROJECT_ID/locations/global/keyRings/YOUR_KEY_RING/cryptoKeys/YOUR_KEY
+  artifact-server-gcp:stackName: production
+  artifact-server-gcp:stateBackendUrl: gs://YOUR_STATE_BUCKET/artifact-server
+```
+
+`dnsZoneIds.application` and `dnsZoneIds.content` are managed-zone names. They are not project numbers or DNS zone numbers.
+
+The application and content domains must have different registrable domains. Public ingress requires both DNS zone values.
+
+Production configuration requires these values:
+
+- `minimumInstances` is 1 or more.
+- `backupRetentionDays` is 14 through 35.
+- `deletionProtection` is `true`.
+- `imageReference` contains one immutable SHA-256 digest.
+
+Optional configuration includes `otlpEndpoint`, `requestLogSampleRate`, and `resourceTags`. The request-log sample rate defaults to `0.01`.
+
+The GCP package accepts 0.25, 0.5, 1, 2, 4, or 8 CPUs. Memory must be 512 MiB through 32,768 MiB.
+
+| Database plan | Cloud SQL availability | Tier | Initial disk | Connection budget |
+| --- | --- | --- | --- | --- |
+| `small` | Zonal | `db-custom-1-3840` | 20 GiB | 80 |
+| `standard` | Zonal | `db-custom-2-7680` | 50 GiB | 200 |
+| `high-availability` | Regional | `db-custom-4-15360` | 100 GiB | 500 |
+
+The package reserves connections for a rolling replacement. It rejects a maximum instance count that exceeds the selected database budget.
+
+### Use an existing network
+
+The package creates a VPC, a `/24` regional subnet, and private service networking by default.
+
+Set `existingNetwork` to use customer-owned network resources:
+
+```yaml
+  artifact-server-gcp:existingNetwork:
+    privateServiceConnection: projects/YOUR_GCP_PROJECT_ID/global/networks/YOUR_VPC/peerings/YOUR_SQL_PEERING
+    vpcEgressConfiguration: projects/YOUR_GCP_PROJECT_ID/regions/us-central1/subnetworks/YOUR_SUBNET
+    vpcName: projects/YOUR_GCP_PROJECT_ID/global/networks/YOUR_VPC
+```
+
+Make sure that private services access works before deployment. Reserve enough subnet addresses for the maximum Cloud Run instance count.
+
+## Configure authentication and secrets
+
+The stack generates an API token and database password. It stores both values in Secret Manager and omits them from stack outputs.
+
+The Cloud Run service account receives access to generated secrets, the artifact bucket, and Cloud SQL. It uses Application Default Credentials for GCS.
+
+The direct GCP package exposes typed WorkOS configuration. It does not expose typed generic OIDC configuration.
+
+The stack can start without browser login configuration. Do not treat that mode as a team-ready installation.
+
+To enable WorkOS, set all three values together:
+
+```yaml
+  artifact-server-gcp:workosApiKeySecretRef: YOUR_WORKOS_SECRET_ID
+  artifact-server-gcp:workosClientId: client_YOUR_CLIENT_ID
+  artifact-server-gcp:workosIssuer: https://YOUR_TENANT.authkit.app
+```
+
+`workosApiKeySecretRef` identifies an existing Secret Manager secret. It does not contain the WorkOS API key.
+
+Grant the generated Cloud Run service account `roles/secretmanager.secretAccessor` on this secret. The Pulumi project does not create that grant.
+
+## Preview and deploy
+
+Run the package verification before you create cloud resources:
+
+```sh
+pnpm --dir deploy/pulumi/gcp verify
+```
+
+Review the infrastructure preview:
+
+```sh
+pulumi preview --cwd deploy/pulumi/gcp --stack production
+```
+
+Create or update the stack:
+
+```sh
+pulumi up --cwd deploy/pulumi/gcp --stack production
+```
+
+Certificate Manager creates DNS authorization records for both domains. Certificate issuance and DNS changes can delay the first healthy response.
+
+## Verify the deployment
+
+Save the secret-free deployment output:
+
+```sh
+pulumi stack output deployment \
+  --cwd deploy/pulumi/gcp \
+  --stack production \
+  --json > deployment.json
+```
+
+Verify the health and readiness endpoints:
+
+```sh
+curl --fail --silent --show-error "$(jq -r '.healthUrl' deployment.json)"
+curl --fail --silent --show-error "$(jq -r '.readinessUrl' deployment.json)"
+```
+
+Open the `applicationUrl` from `deployment.json`. If you configured WorkOS, verify browser sign-in.
+
+Verify publication, private access, version reads, comments, and MCP discovery.
+
+The output also contains the runtime, database, bucket, network, secret, state, identity, log, and support-manifest resource identifiers.
+
+<Aside type="caution" title="Use qualification scripts only on an isolated stack">
+The product qualification script publishes artifacts and changes access. Do not run it against a production installation.
+</Aside>
+
+Run the repeatable product probe against an isolated stack:
+
+```sh
+PULUMI_BACKEND_URL=gs://YOUR_STATE_BUCKET/artifact-server \
+ARTIFACT_SERVER_GCP_QUALIFICATION_STACK=gcp-qualification \
+  scripts/run-gcp-deployment-product-qualification.sh
+```
+
+## Back up and restore
+
+Cloud SQL keeps scheduled backups and point-in-time recovery. The selected plan retains 7 through 35 backups.
+
+The GCS bucket enables object versioning and soft deletion. Its soft-delete period equals `backupRetentionDays`.
+
+These independent controls do not form one coordinated recovery point. Quiesce writes before you back up both data stores.
+
+Create one Cloud SQL backup. Then copy the complete artifact bucket. Record both provider results as one recovery set.
+
+Restore the database into an empty private instance. Then restore the objects into an empty private bucket.
+
+Verify installation IDs, project IDs, artifact IDs, version IDs, names, sizes, and checksums.
+
+The live qualification restored Cloud SQL and copied 29 GCS objects with exact names, sizes, and CRC32C checksums. A later restored installation passed the integrity scanner.
+
+The repository does not provide automated disaster recovery or cross-region failover. The release ledger still requires detailed application-level restore evidence.
+
+## Update and roll back
+
+Create one coordinated recovery set before you update the stack.
+
+Record the current image digest before an update:
+
+```sh
+pulumi config get imageReference \
+  --cwd deploy/pulumi/gcp \
+  --stack production
+```
+
+Set the new digest-pinned image:
+
+```sh
+pulumi config set imageReference REGISTRY/IMAGE@sha256:NEW_DIGEST \
+  --cwd deploy/pulumi/gcp \
+  --stack production
+```
+
+Preview the update. Then apply it:
+
+```sh
+pulumi preview --cwd deploy/pulumi/gcp --stack production
+pulumi up --cwd deploy/pulumi/gcp --stack production
+```
+
+Verify the product after the update. The container applies database migrations before it starts the server.
+
+If the image is schema-compatible, set the prior digest. Then run `pulumi up` again.
+
+Do not use an incompatible image for rollback.
+
+The live qualification preserved the installation, database, and bucket identities during its update and rollback.
+
+## Recover Pulumi state
+
+Keep the GCS state bucket outside this stack. Enable object versioning.
+
+Protect the bucket with its own access controls.
+
+Pulumi state recovery depends on the selected backend. Follow the Pulumi recovery procedure for that backend.
+
+The checked-in probe exports and imports one exact checkpoint. It then compares resource identities and requires a no-change preview.
+
+Run this probe only against an isolated stack:
+
+```sh
+PULUMI_BACKEND_URL=gs://YOUR_STATE_BUCKET/artifact-server \
+ARTIFACT_SERVER_GCP_QUALIFICATION_STACK=gcp-qualification \
+  scripts/run-gcp-state-recovery-qualification.sh
+```
+
+## Delete a stack
+
+<Aside type="caution" title="Back up durable data before deletion">
+The artifact bucket uses `forceDestroy: false`. A normal destroy does not remove a bucket that contains artifact versions.
+</Aside>
+
+Production configuration requires deletion protection. The package does not include a procedure that disables production protection.
+
+For an unprotected non-production stack, run the native destroy command:
+
+```sh
+pulumi destroy \
+  --cwd deploy/pulumi/gcp \
+  --stack staging \
+  --yes \
+  --non-interactive
+```
+
+If the artifact bucket stops deletion, back up its contents. Then remove every object version.
+
+Run the same destroy command again.
+
+Cloud Run can retain subnet addresses for one or two hours. If an address blocks deletion, wait for Google to release it.
+
+Then run the same destroy command. Do not manually delete a `serverless-ipv4-*` address.
+
+Cloud SQL can retain producer network resources for up to four days. The package abandons the connection while Google completes that cleanup.
+
+The stack does not own the Pulumi state bucket or image repository. Delete those prerequisites in separate, explicit operations.
+
+## Known limits
+
+- The package supports public ingress only.
+- The package is pre-release.
+- The direct package exposes WorkOS inputs but not generic OIDC inputs.
+- An installation without WorkOS does not provide team browser login.
+- The package does not automate disaster recovery or cross-region failover.
+- The repository does not define a minimum operator IAM role.
+- Production teardown requires an operator-owned deprotection procedure.
+- Complete signed release evidence and full product conformance remain open.
+
+## Source and evidence
+
+- [Google Cloud Pulumi package](https://github.com/plannotator/artifact-server/tree/main/deploy/pulumi/gcp)
+- [Package configuration and qualification status](https://github.com/plannotator/artifact-server/blob/main/deploy/pulumi/gcp/README.md)
+- [Shared cloud deployment contract](https://github.com/plannotator/artifact-server/blob/main/project/spec/cloud-deployment-contract.md)
+- [Live product evidence](https://github.com/plannotator/artifact-server/blob/main/project/evidence/gcp-deployment-product.json)
+- [Update and rollback evidence](https://github.com/plannotator/artifact-server/blob/main/project/evidence/gcp-upgrade-rollback.json)
+- [State recovery evidence](https://github.com/plannotator/artifact-server/blob/main/project/evidence/gcp-state-recovery.json)
+- [Backup and restore evidence](https://github.com/plannotator/artifact-server/blob/main/project/evidence/gcp-phase11-qualification.json)
+- [Safe deletion evidence](https://github.com/plannotator/artifact-server/blob/main/project/evidence/gcp-destroy.json)

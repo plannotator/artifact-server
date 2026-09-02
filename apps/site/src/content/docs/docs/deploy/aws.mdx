@@ -1,0 +1,356 @@
+---
+title: Deploy on AWS
+description: Deploy the live-qualified public AWS stack with ECS Fargate, RDS PostgreSQL, S3, CloudFront, and Pulumi.
+sidebar:
+  order: 4
+---
+
+The AWS Pulumi package creates an Artifact Server installation on ECS Fargate, RDS PostgreSQL, S3, CloudFront, and Route 53.
+
+The package does not create an EKS cluster. Use the [Kubernetes guide](/docs/deploy/kubernetes/) for an existing EKS cluster.
+
+## Current qualification
+
+<Aside type="note" title="Public ingress passed live qualification">
+The public stack passed the recorded live AWS lifecycle in `us-east-1` on August 15 and 16, 2026.
+</Aside>
+
+The live run covered clean deployment, repeat preview, product operations, two-task scaling, S3 outage recovery, state recovery, backup, and restore.
+
+The run also covered image upgrade, image rollback, secret rotation, 100 concurrent read users, and safe removal of the qualification stack.
+
+Private ingress has not passed the same live lifecycle. Treat private ingress as unqualified.
+
+The local `pnpm test:aws-pulumi` command verifies the resource graph and configuration rules. This command does not access live AWS resources.
+
+Read the [AWS findings](https://github.com/plannotator/artifact-server/blob/main/deploy/pulumi/aws/FINDINGS.md) for the failures and corrections from the live run.
+
+## Deployment architecture
+
+| Product need | AWS service |
+| --- | --- |
+| Application runtime | ECS Fargate on Linux ARM64 |
+| Records | RDS PostgreSQL 17 |
+| Artifact and staged-upload files | Versioned S3 bucket |
+| Public HTTPS | CloudFront and an Application Load Balancer |
+| Certificates | AWS Certificate Manager (ACM) |
+| DNS | Route 53 |
+| Application credentials | Secrets Manager |
+| Workload identity | ECS task role |
+| Logs | CloudWatch Logs |
+| Staged-upload cleanup | EventBridge and a separate Fargate task |
+| Infrastructure lifecycle | Pulumi |
+
+The generated network puts the application in private subnets. RDS has no public address and accepts PostgreSQL traffic only from application tasks.
+
+For public ingress, CloudFront serves the application host and the wildcard content host. The load balancer accepts HTTPS only from CloudFront addresses.
+
+## Prerequisites
+
+Prepare these items before you create a stack:
+
+- AWS credentials that can create the services in the architecture table.
+- Node.js 24.12 or newer.
+- pnpm 10.34.3.
+- Pulumi CLI 3.257 or newer.
+- An existing Pulumi state backend or Pulumi Cloud organization.
+- An existing Pulumi secrets provider.
+- Two Route 53 hosted zones for separate registrable domains.
+- An OCI image digest that contains a Linux ARM64 image.
+- When you enable browser sign-in, prepare a WorkOS AuthKit client and secret ARN.
+
+<Aside type="note" title="A public release image is not available yet">
+Artifact Server has not published its first public release image. Use a verified private image digest until the release is available.
+</Aside>
+
+The main stack never creates the storage for its Pulumi state. Enable encryption, versioning, access control, backup, and update locking on that backend.
+
+## Prepare the Pulumi stack
+
+<Steps>
+  <Step title="Install the repository dependencies">
+    Run this command from the repository root.
+
+    ```sh
+    pnpm install --frozen-lockfile
+    ```
+  </Step>
+  <Step title="Open the AWS package directory">
+    ```sh
+    cd deploy/pulumi/aws
+    ```
+  </Step>
+  <Step title="Connect Pulumi to the state backend">
+    Replace the example URL with your existing backend.
+
+    ```sh
+    pulumi login s3://replace-with-existing-pulumi-state/artifact-server
+    ```
+  </Step>
+  <Step title="Select or create the stack">
+    If the stack exists, select it.
+
+    ```sh
+    pulumi stack select production
+    ```
+
+    If the stack does not exist, create it with the selected secrets provider.
+
+    ```sh
+    pulumi stack init production \
+      --secrets-provider 'awskms://alias/artifact-server?region=us-east-1'
+    ```
+  </Step>
+  <Step title="Copy the production configuration">
+    ```sh
+    cp Pulumi.production.example.yaml Pulumi.production.yaml
+    ```
+  </Step>
+</Steps>
+
+## Configure the stack
+
+Edit `Pulumi.production.yaml`. Replace every example value.
+
+Use the [production configuration example](https://github.com/plannotator/artifact-server/blob/main/deploy/pulumi/aws/Pulumi.production.example.yaml) as the complete key reference.
+
+| Configuration key | Rule |
+| --- | --- |
+| `applicationDomain` | Use the trusted application hostname. |
+| `contentDomain` | Use a separate registrable domain for untrusted version hosts. |
+| `imageReference` | Use an immutable `@sha256:` digest. |
+| `installationName` | Use 1 to 40 lowercase letters, numbers, or hyphens. |
+| `environment` | Use `development`, `staging`, or `production`. |
+| `aws:region` and `region` | Use the same AWS region in both keys. |
+| `capacity` | Set minimum tasks, maximum tasks, CPU, and memory. |
+| `databasePlan` | Use `small`, `standard`, or `high-availability`. |
+| `backupRetentionDays` | Use 7 to 35 days. Production requires at least 14 days. |
+| `deletionProtection` | Use `true` for production. |
+| `dnsZoneIds` | Supply different Route 53 zones for the application and content domains. |
+| `stateBackendUrl` | Record the active Pulumi backend address. |
+| `secretsProvider` | Record the active Pulumi secrets provider. |
+| `stackName` | Match the active Pulumi stack name. |
+| `workosClientId`, `workosIssuer`, `workosApiKeySecretRef` | Supply all three values, or omit all three values. |
+
+The package rejects unsafe CPU and memory combinations. It also rejects task counts that exceed the selected RDS connection budget.
+
+### Use the generated network
+
+The default network spans two availability zones. It contains public load-balancer subnets, private application subnets, and isolated database subnets.
+
+Production creates two NAT gateways. Development and staging create one NAT gateway.
+
+### Use an existing VPC
+
+Set every value in `existingNetwork`:
+
+```yaml
+artifact-server-aws:existingNetwork:
+  vpcId: vpc-replace
+  loadBalancerSubnetIds: [subnet-lb-a, subnet-lb-b]
+  applicationSubnetIds: [subnet-app-a, subnet-app-b]
+  databaseSubnetIds: [subnet-db-a, subnet-db-b]
+```
+
+Each subnet group must belong to the VPC. Each subnet group must span at least two availability zones.
+
+Application subnets need outbound access to the OCI registry, S3, Secrets Manager, and the configured identity service.
+
+If you configure OTLP export, application subnets also need access to the telemetry endpoint.
+
+Database subnets must not have public routes.
+
+## Configure HTTPS and DNS
+
+### Public ingress
+
+Set `ingress: public`. Supply both Route 53 zone IDs.
+
+Pulumi creates regional ACM certificates for the load balancer. It also creates a CloudFront certificate in `us-east-1`.
+
+Pulumi creates Route 53 aliases for the application hostname and `*.contentDomain`. Both aliases point to CloudFront.
+
+CloudFront uses the origin `Cache-Control` headers. Private application and API responses use `private, no-store` and are not cached.
+
+### Private ingress
+
+<Aside type="caution" title="Private ingress is not live-qualified">
+Use private ingress only after your team completes the same lifecycle qualification in its AWS environment.
+</Aside>
+
+Set `ingress: private`. Set `tlsCertificateArn` to an existing ACM certificate that covers both hostnames.
+
+The private stack creates an internal load balancer and no CloudFront distribution.
+
+If Pulumi manages private DNS, supply both `dnsZoneIds` values. Otherwise, create the private DNS records outside this stack.
+
+By default, private HTTPS accepts the VPC CIDR. Set `privateIngressCidrs` for other trusted IPv4 networks.
+
+## Configure identity and secrets
+
+Store the WorkOS API key in Secrets Manager before deployment. Put only its ARN in `workosApiKeySecretRef`.
+
+The stack creates the Artifact Server API credential and database URL. It stores both values in Secrets Manager.
+
+ECS injects these values into the container. Pulumi outputs contain only secret resource identifiers.
+
+The ECS task role uses temporary AWS credentials. Its S3 policy covers only the installation prefix.
+
+The package exposes typed WorkOS configuration. It does not expose typed configuration for a generic OIDC provider.
+
+## Preview and deploy
+
+<Steps>
+  <Step title="Verify the local resource graph">
+    Run this command from the repository root.
+
+    ```sh
+    pnpm test:aws-pulumi
+    ```
+  </Step>
+  <Step title="Preview the stack">
+    Run this command from `deploy/pulumi/aws`.
+
+    ```sh
+    pulumi preview --stack production
+    ```
+
+    Verify the expected resources. Verify that no generated credential appears in the preview.
+  </Step>
+  <Step title="Deploy the stack">
+    ```sh
+    pulumi up --stack production
+    ```
+  </Step>
+  <Step title="Read the deployment record">
+    ```sh
+    pulumi stack output deployment --stack production --json
+    ```
+
+    Keep this secret-free record with the release evidence.
+  </Step>
+</Steps>
+
+Each Fargate task applies compatible database migrations before the server starts. A PostgreSQL advisory lock serializes concurrent migration attempts.
+
+The ECS deployment circuit breaker rolls back tasks that do not become ready.
+
+## Verify the deployment
+
+<Steps>
+  <Step title="Read the application URL">
+    ```sh
+    application_url=$(pulumi stack output applicationUrl --stack production)
+    ```
+  </Step>
+  <Step title="Verify liveness">
+    ```sh
+    curl --fail --silent "$application_url/health"
+    ```
+  </Step>
+  <Step title="Verify readiness">
+    ```sh
+    curl --fail --silent "$application_url/ready"
+    ```
+  </Step>
+  <Step title="Verify browser access">
+    Open the application URL. Sign in with the bootstrap administrator email.
+  </Step>
+  <Step title="Verify immutable delivery">
+    Publish one artifact. Open its exact-version Review link.
+  </Step>
+  <Step title="Verify agent access">
+    [Connect an agent to the MCP endpoint](/docs/mcp/). Verify tool discovery and an authenticated read.
+  </Step>
+</Steps>
+
+The deployment record also contains the health URL, readiness URL, MCP URL, log destination, and support manifest location.
+
+## Back up and restore
+
+The stack configures RDS automated backups and an RDS final snapshot. It also enables S3 versioning and blocks public bucket access.
+
+The stack does not create a coordinated backup service. A usable recovery point must contain matching RDS and S3 states.
+
+Create a production restore procedure with these operations:
+
+1. Suspend ECS autoscaling.
+2. Stop all application tasks.
+3. Create an RDS snapshot.
+4. Copy the current S3 objects to a separate protected bucket.
+5. Restore the original ECS capacity.
+6. Restore the snapshot into a clean RDS instance.
+7. Restore the object copy into a clean S3 bucket.
+8. Run `artifactserver integrity check --mode external-storage` against the restored providers.
+9. Verify the installation, project, artifact, version, and file identities.
+10. Remove the temporary restore resources after the verification passes.
+
+Do not point an existing database at an unrelated S3 namespace. Preserve the installation identifier and the matching database and file set.
+
+The [tested AWS restore workflow](https://github.com/plannotator/artifact-server/blob/main/scripts/run-aws-coordinated-restore-qualification.sh) is qualification evidence. Adapt it to your recovery controls before production use.
+
+Back up the Pulumi state backend separately. The live qualification restored an exact checkpoint from a versioned S3 backend.
+
+## Update and roll back
+
+Record the current image digest before an update. Create a coordinated backup before a database migration.
+
+<Steps>
+  <Step title="Set the candidate image">
+    Use an immutable digest that contains a Linux ARM64 image.
+
+    ```sh
+    pulumi config set imageReference \
+      'repository@sha256:replace_with_64_hex_characters' \
+      --stack production
+    ```
+  </Step>
+  <Step title="Preview the update">
+    ```sh
+    pulumi preview --stack production
+    ```
+  </Step>
+  <Step title="Apply the update">
+    ```sh
+    pulumi up --stack production
+    ```
+  </Step>
+  <Step title="Verify the updated service">
+    Verify health, readiness, browser access, artifact delivery, and MCP access.
+  </Step>
+</Steps>
+
+For rollback, set `imageReference` to the previous digest. Then preview and apply the stack again.
+
+Use only a release that supports the current database schema. The live qualification covered one schema-compatible update and rollback.
+
+## Remove a stack
+
+<Aside type="caution" title="Production resources are protected">
+Production configuration requires deletion protection. RDS, S3, Secrets Manager resources, and the load balancer reject ordinary removal.
+</Aside>
+
+The S3 bucket uses `forceDestroy: false`. Pulumi cannot delete a nonempty bucket.
+
+Before permanent removal, verify a coordinated backup and a clean restore. Remove protection only through a separately approved procedure.
+
+For an approved, unprotected, empty non-production stack, run:
+
+```sh
+pulumi destroy --stack staging
+```
+
+RDS creates a final snapshot during removal. Verify that the stack has no remaining managed resources.
+
+## Known limits
+
+- Only public ingress has passed the live AWS lifecycle.
+- The stack uses ARM64 Fargate tasks.
+- The stack does not create EKS.
+- The stack does not create its Pulumi state backend.
+- The stack does not automate coordinated RDS and S3 backups.
+- The Pulumi package exposes WorkOS inputs but no typed generic OIDC inputs.
+- The first public Artifact Server image is not available yet.
+- Complete signed release evidence and full product conformance remain open.
+
+Read the [AWS package guide](https://github.com/plannotator/artifact-server/blob/main/deploy/pulumi/aws/README.md) for the source-level resource details and qualification commands.

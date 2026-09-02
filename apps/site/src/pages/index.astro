@@ -37,10 +37,10 @@ const agents = [
 const setupPrompt = `Install and configure Artifact Server for me. Do the work, not only explain the steps.
 
 Use these pages as the source of truth:
-- https://artifactserver.com/docs/get-started/
-- https://artifactserver.com/docs/deploy/
-- https://artifactserver.com/docs/mcp/
-- https://artifactserver.com/docs/agents/
+- https://artifactserver.com/docs/get-started/index.md
+- https://artifactserver.com/docs/deploy/index.md
+- https://artifactserver.com/docs/mcp/index.md
+- https://artifactserver.com/docs/agents/index.md
 
 First, ask me exactly one question: “Do you want to run Artifact Server locally on this machine, or deploy it for a team?” Wait for my answer before you continue.
 
@@ -54,7 +54,7 @@ Then complete the matching setup:
 - Verify the server health, the review application, the installed skill, and MCP tool discovery. Fix failures that are within the setup scope.
 - Do not stop after producing a plan. Complete the setup unless you need a credential or a deployment choice from me.
 
-When the setup is complete, begin your final response with “Artifact Server is running at <URL>.” State whether it is local or deployed for a team, where its data is stored, whether the skill is installed, whether this agent is connected through MCP, and what you verified. Link to https://artifactserver.com/docs/ for operating guidance. If anything is incomplete, list the exact blocker instead of claiming success.`;
+When the setup is complete, begin your final response with “Artifact Server is running at <URL>.” State whether it is local or deployed for a team, where its data is stored, whether the skill is installed, whether this agent is connected through MCP, and what you verified. Link to https://artifactserver.com/docs/index.md for operating guidance. If anything is incomplete, list the exact blocker instead of claiming success.`;
 ---
 
 <BaseLayout title="Artifact Server — open-source Claude Code artifacts" description={description} markdownUrl="/index.md">
@@ -78,18 +78,15 @@ When the setup is complete, begin your final response with “Artifact Server is
             during product development. Publish, review, comment on, version, and share
             the same work. The built-in MCP server gives agents direct access.
           </p>
-          <div class="landing-actions">
-            <a class="landing-button landing-button--primary" href="/docs/get-started/">
-              Run it locally
-              <Icon name="ph:arrow-right" />
-            </a>
-            <a class="landing-button" href="/docs/deploy/">
-              Deploy for a team
-              <Icon name="ph:cloud-arrow-up" />
-            </a>
-          </div>
           <div class="landing-agent-setup" aria-label="Set up Artifact Server with an AI coding agent">
-            <button type="button" class="landing-copy-prompt" data-copy={setupPrompt} aria-label="Copy the Artifact Server setup prompt">
+            <button
+              type="button"
+              class="landing-copy-prompt"
+              data-copy={setupPrompt}
+              data-copy-label="Copy the Artifact Server agent install prompt"
+              data-copy-success-label="Artifact Server agent install prompt copied"
+              aria-label="Copy the Artifact Server agent install prompt"
+            >
               <span class="landing-agent-setup__marks" aria-hidden="true">
                 {agents.map((agent) => (
                   <span title={agent.name}>
@@ -99,16 +96,36 @@ When the setup is complete, begin your final response with “Artifact Server is
                 ))}
               </span>
               <span class="landing-copy-prompt__label" aria-live="polite">
-                <span>Copy prompt</span>
+                <span>Copy agent install prompt</span>
                 <span>Copied</span>
               </span>
               <span class="landing-copy-prompt__icon" aria-hidden="true">
                 <Icon name="ph:copy" /><Icon name="ph:check" />
               </span>
             </button>
-            <a class="landing-agent-setup__docs" href="/docs/mcp/">
-              Connect MCP
+            <div class="landing-manual-command" aria-label="Manual agent skill installation">
+              <code>npx skills add plannotator/artifact-server</code>
+              <a href="/docs/mcp/#install-the-artifact-server-skill">Install manually</a>
+              <button
+                type="button"
+                class="landing-copy-icon-button"
+                data-copy="npx skills add plannotator/artifact-server"
+                data-copy-label="Copy the agent skill install command"
+                data-copy-success-label="Agent skill install command copied"
+                aria-label="Copy the agent skill install command"
+              >
+                <Icon name="ph:copy" /><Icon name="ph:check" />
+              </button>
+            </div>
+          </div>
+          <div class="landing-actions">
+            <a class="landing-button landing-button--primary" href="/docs/get-started/">
+              Run it locally
               <Icon name="ph:arrow-right" />
+            </a>
+            <a class="landing-button" href="/docs/deploy/">
+              Deploy for a team
+              <Icon name="ph:cloud-arrow-up" />
             </a>
           </div>
         </div>
@@ -205,9 +222,9 @@ When the setup is complete, begin your final response with “Artifact Server is
           <article>
             <span>03</span>
             <Icon name="ph:chat-centered-text" />
-            <h3>Review and share feedback.</h3>
-            <p>Comments stay attached to the exact version and selected content. Share a review link so the next change starts with the full context.</p>
-            <code>Comment → Agent → New version</code>
+            <h3>Review with your team.</h3>
+            <p>Comments stay attached to the exact version and selected content. Share a review link so everyone can discuss the same work.</p>
+            <code>Review link → Team feedback → Next version</code>
           </article>
         </div>
       </section>
@@ -340,10 +357,10 @@ When the setup is complete, begin your final response with “Artifact Server is
       try {
         await navigator.clipboard.writeText(text);
         button.dataset.copied = "true";
-        button.setAttribute("aria-label", "Artifact Server setup prompt copied");
+        button.setAttribute("aria-label", button.dataset.copySuccessLabel ?? "Copied");
         window.setTimeout(() => {
           delete button.dataset.copied;
-          button.setAttribute("aria-label", "Copy the Artifact Server setup prompt");
+          button.setAttribute("aria-label", button.dataset.copyLabel ?? "Copy");
         }, 1600);
       } catch {
         // Clipboard unavailable (insecure context or permission denied).

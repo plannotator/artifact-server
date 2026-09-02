@@ -1,0 +1,446 @@
+---
+title: Deploy with Compose
+description: Run Artifact Server on one server with compact or external storage.
+sidebar:
+  order: 2
+---
+
+Compose provides two team deployment modes. Both modes use the same OCI image and private HTTP service.
+
+| Mode | Application processes | Records | Artifact files | Use this mode when |
+| --- | --- | --- | --- | --- |
+| Compact Compose | Exactly one | SQLite | One file volume | One server owns all durable data. |
+| External-storage Compose | One or more | Existing PostgreSQL | Existing S3-compatible storage | Your team operates the durable providers separately. |
+
+<Aside type="note" title="Automated Compose qualification passed">
+The Compact Compose gate passed publication, replacement, backup, restore, isolation, permission, and corruption tests.
+
+The external-storage gate passed two-replica publication, conflict, replacement, secret, migration, provider, and isolation tests.
+
+The gates used Docker Compose 5.1.4. The project does not define a minimum supported Compose version yet.
+</Aside>
+
+<Aside type="caution" title="A public release image is not available yet">
+Do not use `latest` or another floating tag. These packages require an immutable Artifact Server image digest.
+</Aside>
+
+## Choose a mode
+
+Use Compact Compose for the shortest one-server team installation. This mode does not provide application failover or horizontal scaling.
+
+Use external-storage Compose for multiple application processes. This mode requires PostgreSQL and supported S3-compatible storage before startup.
+
+Artifact Server does not implement transfer from compact storage to external storage. Select the durable storage model before production use.
+
+## Meet the shared requirements
+
+Both modes require these items:
+
+- Docker with Docker Compose.
+- An immutable Artifact Server image digest for the release.
+- One HTTPS application origin, such as `https://artifacts.example.com`.
+- One separate registrable content domain, such as `content.example.net`.
+- Wildcard DNS and TLS for `*.content.example.net`.
+- One OIDC or WorkOS browser-login provider.
+- A trusted reverse proxy or gateway.
+
+The package does not install DNS, certificates, a reverse proxy, PostgreSQL, or object storage.
+
+## Prepare the server
+
+Copy the Compose package from the source checkout. Then work from the copied directory.
+
+```sh
+cp -R packaging/compose /srv/artifact-server
+cd /srv/artifact-server
+cp .env.example .env
+```
+
+Edit `.env`. Set the shared configuration:
+
+```dotenv
+ARTIFACT_SERVER_IMAGE=ghcr.io/plannotator/artifact-server@sha256:replace_with_release_digest
+ARTIFACT_SERVER_BIND_ADDRESS=127.0.0.1
+ARTIFACT_SERVER_PORT=8787
+ARTIFACT_SERVER_ORIGIN=https://artifacts.example.com
+ARTIFACT_SERVER_CONTENT_DOMAIN=content.example.net
+ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS=1000
+ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS=10000
+ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE=0.01
+```
+
+The application origin and content domain must have different registrable domains. This rule keeps untrusted artifact content outside the trusted application origin.
+
+[Read the security boundary →](/docs/concepts/security-boundary/)
+
+## Configure browser login
+
+Configure exactly one browser-login provider. A partial configuration or two provider families cause startup to fail.
+
+### OIDC
+
+Register this redirect URI with the OIDC provider:
+
+```text
+https://artifacts.example.com/auth/callback
+```
+
+Set these values in `.env`:
+
+```dotenv
+ARTIFACT_SERVER_OIDC_ISSUER=https://idp.example.com/realms/main
+ARTIFACT_SERVER_OIDC_CLIENT_ID=artifact-server
+ARTIFACT_SERVER_OIDC_SCOPES=openid email profile
+```
+
+The client secret is optional for a public client that uses PKCE. A confidential client requires one secret source.
+
+Use `ARTIFACT_SERVER_OIDC_CLIENT_SECRET_FILE` for a mounted secret file. Add a private Compose override that mounts this file read-only.
+
+### WorkOS
+
+Set the exact AuthKit issuer and client ID:
+
+```dotenv
+ARTIFACT_SERVER_WORKOS_ISSUER=https://replace.authkit.app
+ARTIFACT_SERVER_WORKOS_CLIENT_ID=client_replace_me
+```
+
+WorkOS also requires `ARTIFACT_SERVER_WORKOS_API_KEY_FILE`. Add a private Compose override that mounts this file read-only.
+
+Use one dedicated WorkOS environment for each Artifact Server environment.
+
+## Configure the reverse proxy
+
+Route the application hostname and all wildcard content hosts to port 8787. Preserve the requested host and HTTPS protocol.
+
+The proxy must support streamed uploads, response streaming, required timeouts, and the configured upload limits.
+
+Keep the default loopback bind for one replica behind a host-level proxy. Attach a network gateway for multiple external-storage replicas.
+
+Caddy, Nginx, Traefik, HAProxy, or an existing gateway can provide this boundary. The Compose package does not select one.
+
+Public artifact access removes the Artifact Server login check. It does not make a private server reachable from the internet.
+
+## Run Compact Compose
+
+Compact Compose stores SQLite, artifact files, staged uploads, and generated secrets in the `artifact-server-data` volume.
+
+Verify that the server has space for the active volume, one backup copy, and expected growth.
+
+<Steps>
+  <Step title="Verify the Compose configuration">
+    ```sh
+    docker compose config
+    ```
+  </Step>
+  <Step title="Initialize the data volume">
+    ```sh
+    docker compose run --rm --no-deps artifact-server \
+      init --admin-email admin@example.com \
+      --data /var/lib/artifact-server/data
+    ```
+
+    The command creates the installation identity and machine API credential. It prints only the installation ID and data directory.
+  </Step>
+  <Step title="Start the server">
+    ```sh
+    docker compose up --detach --wait
+    ```
+  </Step>
+  <Step title="Verify liveness and readiness">
+    ```sh
+    curl --fail http://127.0.0.1:8787/health
+    curl --fail http://127.0.0.1:8787/ready
+    ```
+
+    Then open the configured HTTPS application origin through the reverse proxy.
+  </Step>
+</Steps>
+
+Do not scale the compact service. The fixed container name makes a second writer fail during Compose startup.
+
+The volume needs reliable SQLite locking and atomic replacement. NFS-like filesystems do not have qualification for this mode.
+
+### Back up Compact Compose
+
+Run the included backup script with a new target directory:
+
+```sh
+./compact-backup.sh /srv/backups/artifact-server/2026-09-02
+```
+
+The script stops the service before it copies data. Then it writes these files:
+
+- `data.tar`
+- `data.tar.sha256`
+- `support-manifest.json`
+
+The script restarts the service after a successful copy. A failed backup retains an `INCOMPLETE` marker.
+
+### Restore Compact Compose
+
+Stop the target service. Use an empty target volume and a new Compose project name for a recovery drill.
+
+```sh
+export COMPOSE_PROJECT_NAME=artifact-server-restored
+./compact-restore.sh /srv/backups/artifact-server/2026-09-02
+docker compose up --detach --wait
+```
+
+The restore script verifies the checksum, archive paths, filesystem entries, and complete installation integrity.
+
+The script rejects running targets, nonempty volumes, incomplete backups, unsafe paths, links, special files, and checksum failures.
+
+If you restore the same installation, keep the application origin and content domain unchanged.
+
+Verify the installation ID, projects, artifacts, versions, actions, access configuration, manifests, and exact file bytes.
+
+## Run external-storage Compose
+
+External-storage Compose uses the base file and `compose.external-storage.yaml`. The override removes the compact volume and fixed container name.
+
+Provide these dependencies before startup:
+
+- One PostgreSQL database for this installation.
+- One AWS S3 or Cloudflare R2 bucket.
+- One gateway on the Compose network for multiple replicas.
+- Enough database connections for every replica and migration process.
+
+Another S3-compatible provider requires successful Artifact Server adapter contract tests. Provider compatibility text alone is not qualification.
+
+MinIO is an integration-test provider. The production package does not install or recommend MinIO.
+
+### Create the required secret files
+
+Create the secret directory and machine API credential:
+
+```sh
+install -d -o 1000 -g 1000 -m 0700 /etc/artifact-server
+printf 'as_key_key_%s_%s\n' "$(openssl rand -hex 16)" "$(openssl rand -hex 32)" \
+  > /etc/artifact-server/api-token
+chown 1000:1000 /etc/artifact-server/api-token
+chmod 0400 /etc/artifact-server/api-token
+```
+
+Write the complete PostgreSQL URL to its secret file:
+
+```sh
+printf '%s\n' 'postgresql://artifactserver:replace_me@postgres.example/artifactserver' \
+  > /etc/artifact-server/database-url
+chown 1000:1000 /etc/artifact-server/database-url
+chmod 0400 /etc/artifact-server/database-url
+```
+
+The image runs with UID and GID `1000:1000`. Each mounted secret file must use this ownership and mode `0400`.
+
+Do not put the machine API credential or PostgreSQL URL in `.env`.
+
+### Configure the external providers
+
+Add these values to `.env`:
+
+```dotenv
+ARTIFACT_SERVER_INSTALLATION_ID=artifact-server-production
+ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+ARTIFACT_SERVER_API_TOKEN_SECRET_FILE=/etc/artifact-server/api-token
+ARTIFACT_SERVER_DATABASE_URL_SECRET_FILE=/etc/artifact-server/database-url
+ARTIFACT_SERVER_POSTGRES_MAX_CONNECTIONS=10
+ARTIFACT_SERVER_S3_BUCKET=replace-me
+ARTIFACT_SERVER_S3_REGION=us-east-1
+ARTIFACT_SERVER_S3_FORCE_PATH_STYLE=false
+```
+
+Keep `ARTIFACT_SERVER_INSTALLATION_ID` stable for the complete installation lifetime.
+
+AWS installations can use an instance role or another AWS workload identity. Do not add static S3 keys for that configuration.
+
+For R2 or another qualified provider, copy the static-credential overlay:
+
+```sh
+cp compose.external-storage.s3-credentials.yaml.example \
+  compose.external-storage.s3-credentials.yaml
+```
+
+Create both S3 credential files with UID and GID `1000:1000`. Set each file mode to `0400`.
+
+Set these configuration values for the private overlay:
+
+```dotenv
+ARTIFACT_SERVER_S3_ENDPOINT=https://replace-me.r2.cloudflarestorage.com
+ARTIFACT_SERVER_S3_ACCESS_KEY_ID_SECRET_FILE=/etc/artifact-server/s3-access-key-id
+ARTIFACT_SERVER_S3_SECRET_ACCESS_KEY_SECRET_FILE=/etc/artifact-server/s3-secret-access-key
+```
+
+If you use static credentials, add `--file compose.external-storage.s3-credentials.yaml` to every external-storage command.
+
+### Verify the configuration and migrate PostgreSQL
+
+Parse the complete configuration and connect to both providers:
+
+```sh
+docker compose --file compose.yaml --file compose.external-storage.yaml \
+  run --rm --no-deps artifact-server \
+  config check --mode external-storage
+```
+
+Verify the current schema:
+
+```sh
+docker compose --file compose.yaml --file compose.external-storage.yaml \
+  run --rm --no-deps artifact-server migrate status
+```
+
+Apply the release migrations:
+
+```sh
+docker compose --file compose.yaml --file compose.external-storage.yaml \
+  run --rm --no-deps artifact-server migrate apply
+```
+
+Serving containers verify the schema. They never apply migrations during startup.
+
+### Start one replica
+
+Use the loopback overlay for one replica behind a host-level reverse proxy:
+
+```sh
+docker compose --file compose.yaml \
+  --file compose.external-storage.yaml \
+  --file compose.external-storage.local-port.yaml \
+  up --detach --wait
+```
+
+Verify the local process:
+
+```sh
+curl --fail http://127.0.0.1:8787/health
+curl --fail http://127.0.0.1:8787/ready
+```
+
+Do not combine the fixed local-port overlay with multiple replicas.
+
+### Start multiple replicas
+
+Attach the reverse proxy or gateway to the Compose network. Then start the replicas:
+
+```sh
+docker compose --file compose.yaml --file compose.external-storage.yaml \
+  up --detach --scale artifact-server=2 --wait
+```
+
+Route both HTTPS host families to the `artifact-server` service on port 8787.
+
+Set `ARTIFACT_SERVER_POSTGRES_MAX_CONNECTIONS` from the PostgreSQL connection budget. Each replica uses its own bounded pool.
+
+The package does not configure autoscaling, load balancing, or multi-region failover.
+
+### Back up external storage
+
+PostgreSQL and the complete Artifact Server object prefix form one backup unit. A database-only or bucket-only backup is incomplete.
+
+<Steps>
+  <Step title="Stop every application replica">
+    ```sh
+    docker compose --file compose.yaml --file compose.external-storage.yaml \
+      stop artifact-server
+    ```
+  </Step>
+  <Step title="Back up PostgreSQL">
+    Create one transaction-consistent logical PostgreSQL backup with the provider procedure.
+  </Step>
+  <Step title="Back up object storage">
+    Copy the complete Artifact Server installation prefix with the provider procedure.
+  </Step>
+  <Step title="Record the support manifest">
+    ```sh
+    docker compose --file compose.yaml --file compose.external-storage.yaml \
+      run --rm --no-deps artifact-server \
+      support manifest --mode external-storage
+    ```
+
+    Store this output and checksums with both backup parts.
+  </Step>
+  <Step title="Verify a restore">
+    Restore both parts into empty providers. Then run the integrity command:
+
+    ```sh
+    docker compose --file compose.yaml --file compose.external-storage.yaml \
+      run --rm --no-deps artifact-server \
+      integrity check --mode external-storage
+    ```
+  </Step>
+</Steps>
+
+Start the application only after the integrity report has status `healthy`.
+
+## Update the application image
+
+Cross-version update and rollback compatibility does not have a release qualification yet. Do not change versions without release-specific compatibility instructions.
+
+When release instructions permit an update, use this sequence:
+
+<Steps>
+  <Step title="Create and verify a backup">
+    Use the backup procedure for the selected storage mode.
+  </Step>
+  <Step title="Set the new image digest">
+    Replace `ARTIFACT_SERVER_IMAGE` with the exact digest from the release instructions.
+  </Step>
+  <Step title="Verify the configuration">
+    Run `docker compose config` for compact mode. Run `config check` for external-storage mode.
+  </Step>
+  <Step title="Apply permitted migrations">
+    For external-storage mode, run `migrate status`. Then run `migrate apply`.
+  </Step>
+  <Step title="Replace the application containers">
+    Run `docker compose up --detach --force-recreate --wait` with the files for the selected mode.
+  </Step>
+  <Step title="Verify the installation">
+    Verify `/health`, `/ready`, browser sign-in, one private artifact, and one public artifact.
+  </Step>
+</Steps>
+
+The prior image must accept the current schema before rollback. Artifact Server does not apply an automatic down-migration.
+
+## Remove the Compose application
+
+Stop and remove compact application containers while you preserve the data volume:
+
+```sh
+docker compose down
+```
+
+<Aside type="caution" title="The compact volume contains the installation data">
+If you must remove the volume, create a backup. Verify the backup. Then run `docker compose down --volumes`.
+
+The command removes all compact installation data.
+</Aside>
+
+Stop and remove external-storage application containers with both Compose files:
+
+```sh
+docker compose --file compose.yaml --file compose.external-storage.yaml down
+```
+
+The external command does not remove PostgreSQL or object storage. Those providers are outside the Compose package.
+
+## Known limits
+
+- Compact Compose supports exactly one application process.
+- Compact Compose does not support NFS-like data volumes without separate qualification.
+- External-storage Compose does not install or back up its durable providers.
+- External-storage Compose does not configure autoscaling or multi-region failover.
+- The package does not configure a reverse proxy, DNS, TLS, or firewall rules.
+- Cross-version update and rollback compatibility does not have qualification.
+- Compact-to-external-storage transfer is not implemented.
+
+## Read the package sources
+
+- [Compose package instructions](https://github.com/plannotator/artifact-server/blob/main/packaging/compose/README.md)
+- [Compact Compose file](https://github.com/plannotator/artifact-server/blob/main/packaging/compose/compose.yaml)
+- [External-storage Compose file](https://github.com/plannotator/artifact-server/blob/main/packaging/compose/compose.external-storage.yaml)
+- [Compact recovery decision](https://github.com/plannotator/artifact-server/blob/main/project/spec/decisions/0011-compact-compose-recovery.md)
+- [External-storage decision](https://github.com/plannotator/artifact-server/blob/main/project/spec/decisions/0012-external-storage-compose.md)
+- [Compact release test](https://github.com/plannotator/artifact-server/blob/main/tests/release/compact-compose.test.ts)
+- [External-storage release test](https://github.com/plannotator/artifact-server/blob/main/tests/release/external-storage-compose.test.ts)

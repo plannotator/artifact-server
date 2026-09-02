@@ -1,8 +1,8 @@
 # Cloud deployment contract
 
-Status: shared executable contract and AWS and GCP provider packages
-implemented; every target remains gated by its own unfinished real-cloud release
-qualification
+Status: shared executable contract and AWS and GCP provider packages implemented.
+The public AWS and GCP variants passed isolated live qualification. Signed
+release evidence and the AWS private-ingress qualification remain open.
 
 This document is the handoff boundary for the Cloudflare, AWS, and GCP
 deployment work. It says exactly what every package receives, what it creates,

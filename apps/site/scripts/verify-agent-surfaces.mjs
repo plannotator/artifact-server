@@ -21,6 +21,27 @@ assert.ok(llmsFiles.some((file) => file === join(outputDirectory, "llms.txt")), 
 const rootLlms = readFileSync(join(outputDirectory, "llms.txt"), "utf8");
 assert.match(rootLlms, /^# Artifact Server\n\n> /, "/llms.txt must start with an H1 and project summary blockquote.");
 
+const homepage = readFileSync(join(outputDirectory, "index.html"), "utf8");
+const installPromptButton = [...homepage.matchAll(/<button\b[\s\S]*?<\/button>/g)]
+  .map((match) => match[0])
+  .find((button) => attribute(button, "data-copy-label") === "Copy the Artifact Server agent install prompt");
+assert.ok(installPromptButton, "The homepage is missing the agent install prompt.");
+
+const installPrompt = attribute(installPromptButton, "data-copy");
+assert.ok(installPrompt, "The agent install prompt is empty.");
+for (const path of [
+  "/docs/get-started/index.md",
+  "/docs/deploy/index.md",
+  "/docs/mcp/index.md",
+  "/docs/agents/index.md",
+  "/docs/index.md",
+]) {
+  assert.ok(
+    installPrompt.includes(new URL(path, canonicalOrigin).href),
+    `The agent install prompt does not link to ${path}.`,
+  );
+}
+
 for (const htmlFile of htmlFiles) {
   const html = readFileSync(htmlFile, "utf8");
   const htmlPath = publicPath(htmlFile);
