@@ -181,15 +181,9 @@ Public guides live in the [documentation index](./docs/README.md).
 
 ## License
 
-Artifact Server is open source under the
+Artifact Server is licensed under the
 [GNU Affero General Public License v3.0](./LICENSE.md) (AGPL-3.0-only),
-© 2026 backnotprop. Use it, self-host it, and modify it freely. If you
-modify it and offer it to others over a network, the AGPL requires you to
-publish your modified source under the same license.
-
-The pieces meant for maximum adoption are MIT: the
-[@plannotator/agent-bridge](https://github.com/plannotator/agent-bridge)
-protocol client and the agent extensions under [`integrations/`](./integrations).
+© 2026 backnotprop.
 
 ---
 
