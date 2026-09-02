@@ -1,4 +1,4 @@
-![Artifact Server](./docs/assets/banner.png)
+![Artifact Server](./docs/assets/banner.webp)
 
 # Artifact Server
 
