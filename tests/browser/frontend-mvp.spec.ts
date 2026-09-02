@@ -44,14 +44,14 @@ test.describe("Artifact Server frontend MVP", () => {
     try {
       const first = await publishNew(fixture.server, fixture.installation, {
         accessSetting: "account_required",
-        content: "<!doctype html><html lang=\"en\"><title>Review fixture</title><main><h1 id=\"review-target\">Review preview content</h1><button id=\"review-native-action\" onclick=\"this.dataset.clicked = 'true'\">Artifact action</button></main></html>",
+        content: "<!doctype html><html lang=\"en\"><title>Review fixture</title><main><h1 id=\"review-target\">Review preview content</h1><p id=\"review-theme-target\">Theme target</p><button id=\"review-native-action\" onclick=\"this.dataset.clicked = 'true'\">Artifact action</button></main></html>",
         idempotencyKey: "frontend-review-fixture",
         name: "Review fixture",
         tags: ["inspection", "prototype"],
       });
       await publishVersion(fixture.server, fixture.installation, {
         artifactId: first.body.artifact.id,
-        content: "<!doctype html><html lang=\"en\"><title>Review fixture</title><main><h1 id=\"review-target\">Review preview content</h1><button id=\"review-native-action\" onclick=\"this.dataset.clicked = 'true'\">Artifact action</button></main></html>",
+        content: "<!doctype html><html lang=\"en\"><title>Review fixture</title><main><h1 id=\"review-target\">Review preview content</h1><p id=\"review-theme-target\">Theme target</p><button id=\"review-native-action\" onclick=\"this.dataset.clicked = 'true'\">Artifact action</button></main></html>",
         expectedCurrentVersionId: first.body.version.id,
         idempotencyKey: "frontend-review-fixture-v2",
       });
@@ -96,6 +96,40 @@ test.describe("Artifact Server frontend MVP", () => {
         name: "Refresh artifacts published by agents, the CLI, or other sessions",
       })).toHaveCount(0);
       await expect(catalogFooter.getByRole("button", {name: "Load more"})).toHaveCount(0);
+      const shortcutTrigger = catalogFooter.getByRole("button", {
+        name: "Keyboard shortcuts",
+      });
+      await expect(shortcutTrigger).toBeVisible();
+      await expect(shortcutTrigger).toHaveAttribute("title", "Keyboard shortcuts");
+      const catalogFooterBox = await catalogFooter.boundingBox();
+      const shortcutTriggerBox = await shortcutTrigger.boundingBox();
+      expect(catalogFooterBox).not.toBeNull();
+      expect(shortcutTriggerBox).not.toBeNull();
+      if (catalogFooterBox === null || shortcutTriggerBox === null) {
+        throw new Error("Keyboard shortcut footer geometry was unavailable.");
+      }
+      expect(shortcutTriggerBox.x).toBeGreaterThan(
+        catalogFooterBox.x + catalogFooterBox.width / 2,
+      );
+      await shortcutTrigger.click();
+      const shortcutMap = fixture.page.locator(".as-keyboard-shortcuts[data-open]");
+      await expect(shortcutMap).toBeVisible();
+      await expect(shortcutMap).toContainText("Previous artifact");
+      await expect(shortcutMap).toContainText("Inspector or comments");
+      await expect(shortcutMap.locator("kbd")).toHaveText([
+        "K",
+        "↑",
+        "J",
+        "↓",
+        "[",
+        "]",
+        "F",
+        "Esc",
+        "⌘ / Ctrl",
+        "\\",
+      ]);
+      await fixture.page.keyboard.press("Escape");
+      await expect(shortcutMap).toBeHidden();
       const accessRow = fixture.page.locator(".as-inspector-row").filter({
         hasText: "access",
       });
@@ -259,9 +293,13 @@ test.describe("Artifact Server frontend MVP", () => {
 
       await expect(fixture.page.getByRole("tab", {name: /Comments.*1/u}))
         .toHaveAttribute("aria-selected", "true");
-      await expect(fixture.page.getByRole("article").filter({
+      const selectedComment = fixture.page.getByRole("article").filter({
         hasText: "Make the release status easier to scan.",
-      })).toBeVisible();
+      });
+      await expect(selectedComment).toBeVisible();
+      await expect(selectedComment).toHaveAttribute("aria-current", "true");
+      expect(await selectedComment.evaluate((element) => getComputedStyle(element).boxShadow))
+        .not.toContain("inset");
       await expect(fixture.page.getByText(
         "Click any element in the HTML preview to place a comment.",
       )).toHaveCount(0);
@@ -329,6 +367,67 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(fixture.page.locator(".as-artifact-card").first())
         .toContainText("Quiet fixture");
       expect(quietArtifact.body.artifact.id).not.toBe(first.body.artifact.id);
+      await fixture.page.keyboard.press("Escape");
+      await expect(filterPopover).toBeHidden();
+
+      const searchArtifacts = fixture.page.getByRole("searchbox", {
+        name: "Search artifacts",
+      });
+      await searchArtifacts.focus();
+      await fixture.page.keyboard.press("j");
+      await expect(searchArtifacts).toHaveValue("j");
+      await expect(fixture.page.getByRole("heading", {exact: true, name: "Review fixture"}))
+        .toBeVisible();
+      await searchArtifacts.fill("");
+      await expect(fixture.page.getByRole("button", {name: /Quiet fixture/u})).toBeVisible();
+
+      await fixture.page.locator(".as-preview-panel").focus();
+      await fixture.page.keyboard.press("k");
+      await expect(fixture.page.getByRole("heading", {exact: true, name: "Quiet fixture"}))
+        .toBeVisible();
+      await fixture.page.keyboard.press("j");
+      await expect(fixture.page.getByRole("heading", {exact: true, name: "Review fixture"}))
+        .toBeVisible();
+      await fixture.page.keyboard.press("ArrowUp");
+      await expect(fixture.page.getByRole("heading", {exact: true, name: "Quiet fixture"}))
+        .toBeVisible();
+      await fixture.page.keyboard.press("ArrowDown");
+      await expect(fixture.page.getByRole("heading", {exact: true, name: "Review fixture"}))
+        .toBeVisible();
+
+      await catalogFilters.click();
+      await expect(filterPopover).toBeVisible();
+      await fixture.page.keyboard.press("k");
+      await expect(fixture.page.getByRole("heading", {exact: true, name: "Review fixture"}))
+        .toBeVisible();
+      await fixture.page.keyboard.press("Escape");
+      await expect(filterPopover).toBeHidden();
+
+      const collapseCatalog = fixture.page.getByRole("button", {
+        name: "Collapse artifact catalog",
+      });
+      await expect(collapseCatalog).toHaveAttribute("aria-keyshortcuts", "[");
+      await fixture.page.locator(".as-preview-panel").focus();
+      await fixture.page.keyboard.press("[");
+      const openCatalog = fixture.page.getByRole("button", {name: "Open artifact catalog"});
+      await expect(openCatalog).toBeVisible();
+      await expect(openCatalog).toHaveAttribute("aria-keyshortcuts", "[");
+      await fixture.page.keyboard.press("[");
+      await expect(catalog).toBeVisible();
+
+      const closeInspector = fixture.page.getByRole("button", {name: "Close inspector"});
+      await expect(closeInspector).toHaveAttribute("aria-keyshortcuts", "]");
+      await fixture.page.keyboard.press("]");
+      const openInspector = fixture.page.getByRole("button", {name: "Open inspector"});
+      await expect(openInspector).toBeVisible();
+      await expect(openInspector).toHaveAttribute("aria-keyshortcuts", "]");
+      await fixture.page.keyboard.press("]");
+      await expect(inspector).toBeVisible();
+
+      await expect(fixture.page.getByRole("button", {name: "Previous artifact"}))
+        .toHaveAttribute("aria-keyshortcuts", "K ArrowUp");
+      await expect(fixture.page.getByRole("button", {name: "Next artifact"}))
+        .toHaveAttribute("aria-keyshortcuts", "J ArrowDown");
 
       await fixture.page.reload();
       await expect(preview.locator("#review-target")).toBeVisible();
@@ -349,8 +448,13 @@ test.describe("Artifact Server frontend MVP", () => {
         fixture.page.locator(".as-catalog-filter-popover[data-open]")
           .getByRole("checkbox", {name: "polished"}),
       ).toBeVisible();
+      await fixture.page.keyboard.press("Escape");
+      await expect(filterPopover).toBeHidden();
 
-      await fixture.page.getByRole("button", {name: "Full screen"}).click();
+      const fullScreen = fixture.page.getByRole("button", {name: "Full screen"});
+      await expect(fullScreen).toHaveAttribute("aria-keyshortcuts", "F");
+      await fixture.page.locator(".as-preview-panel").focus();
+      await fixture.page.keyboard.press("f");
       await expect(fixture.page.getByRole("button", {name: "Exit full screen"})).toBeVisible();
       await expect(fixture.page.getByRole("button", {name: "Annotate mode", exact: true}))
         .toHaveAttribute("aria-pressed", "true");
@@ -361,11 +465,22 @@ test.describe("Artifact Server frontend MVP", () => {
       });
       await expect(focusInteractMode).toHaveAttribute("aria-pressed", "false");
       await focusInteractMode.click();
-      await fixture.page.getByRole("button", {name: /Comments.*1/u}).click();
       const focusComments = fixture.page.getByRole("complementary", {name: "Comments"});
+      await expect(focusComments).toBeHidden();
+      await preview.locator("#review-native-action").click();
+      const focusComposer = reviewFrame.getByPlaceholder("Add a comment...");
+      await expect(focusComposer).toBeVisible();
+      await focusComposer.fill("Keep the full-screen canvas uninterrupted.");
+      await reviewFrame.getByRole("button", {name: "Save"}).click();
+      await expect(focusComments).toBeHidden();
+      await fixture.page.locator(".as-preview-panel").focus();
+      await fixture.page.keyboard.press("]");
       await expect(focusComments).toBeVisible();
       await expect(focusComments.getByRole("article").filter({
         hasText: "Make the release status easier to scan.",
+      })).toBeVisible();
+      await expect(focusComments.getByRole("article").filter({
+        hasText: "Keep the full-screen canvas uninterrupted.",
       })).toBeVisible();
       const focusAccessibility = await new AxeBuilder({page: fixture.page})
         .exclude(".as-artifact-frame")
@@ -388,6 +503,10 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(viewerControlsElement).toHaveCSS("pointer-events", "none");
       await expect(viewerControlsElement).toHaveCSS("visibility", "hidden");
       await fixture.page.keyboard.press("Escape");
+      await expect(focusComments).toBeHidden();
+      await expect(fixture.page.locator(".as-app"))
+        .toHaveAttribute("data-html-annotate-mode", "true");
+      await fixture.page.keyboard.press("Escape");
       await expect(fixture.page.locator(".as-app"))
         .toHaveAttribute("data-html-annotate-mode", "false");
       expect(await fixture.page.evaluate(() => ({x: window.scrollX, y: window.scrollY})))
@@ -408,8 +527,6 @@ test.describe("Artifact Server frontend MVP", () => {
       await fixture.page.keyboard.press("Control+Backslash");
       await expect(viewerControlsDock).toHaveAttribute("data-collapsed", "false");
       await expect(viewerControls).toBeVisible();
-      await focusComments.getByRole("button", {name: "Close comments"}).click();
-      await expect(focusComments).toBeHidden();
       await expect(fixture.page.getByRole("complementary", {name: "Artifact catalog"}))
         .toBeHidden();
       await expect(fixture.page.getByRole("complementary", {name: "Artifact inspector"}))
@@ -422,9 +539,14 @@ test.describe("Artifact Server frontend MVP", () => {
         .evaluate((node) => getComputedStyle(node).backgroundImage)).toBe("none");
       await expect(preview.getByRole("heading", {name: "Review preview content"}))
         .toBeVisible();
-      await fixture.page.getByRole("button", {name: "Exit full screen"}).click();
+      await fixture.page.keyboard.press("Escape");
+      await expect(fixture.page.getByRole("button", {name: "Full screen"})).toBeVisible();
       await expect(fixture.page.getByRole("complementary", {name: "Artifact catalog"}))
         .toBeVisible();
+      await fixture.page.keyboard.press("f");
+      await expect(fixture.page.getByRole("button", {name: "Exit full screen"})).toBeVisible();
+      await fixture.page.keyboard.press("f");
+      await expect(fixture.page.getByRole("button", {name: "Full screen"})).toBeVisible();
 
       await fixture.page.getByRole("tab", {name: /Files/u}).click();
       await expect(fixture.page.getByText("index.html", {exact: true})).toBeVisible();
@@ -482,8 +604,33 @@ test.describe("Artifact Server frontend MVP", () => {
         .analyze();
       expect(accessibility.violations).toEqual([]);
 
+      await fixture.page.getByRole("button", {name: /^Interact mode:/u}).click();
+      await preview.locator("#review-theme-target").click();
+      const themedCommentPopover = reviewFrame.locator('[data-comment-popover="true"]');
+      await expect(themedCommentPopover).toBeVisible();
+      const themedCommentSurface = reviewFrame.locator([
+        '[data-comment-popover="true"] [role="dialog"]',
+        '[data-comment-popover="true"].bg-popover',
+      ].join(", "));
+      await expect(themedCommentSurface).toBeVisible();
+      const darkPopoverBackground = await themedCommentSurface.evaluate(
+        (node) => getComputedStyle(node).backgroundColor,
+      );
       await fixture.page.getByRole("button", {name: "Use light theme"}).click();
       await expect(fixture.page.locator("html")).toHaveAttribute("data-review-theme", "dawn");
+      await expect(reviewFrame.locator("html")).toHaveClass(/\blight\b/u);
+      await expect(themedCommentPopover).toBeVisible();
+      await expect.poll(() => themedCommentSurface.evaluate(
+        (node) => getComputedStyle(node).backgroundColor,
+      )).not.toBe(darkPopoverBackground);
+      const shellPopoverColor = await fixture.page.locator("html").evaluate(
+        (node) => getComputedStyle(node).getPropertyValue("--as-surface-raised").trim(),
+      );
+      await expect.poll(() => reviewFrame.locator("html").evaluate(
+        (node) => getComputedStyle(node).getPropertyValue("--popover").trim(),
+      )).toBe(shellPopoverColor);
+      await reviewFrame.getByPlaceholder("Add a comment...").press("Escape");
+      await expect(themedCommentPopover).toBeHidden();
       const lightAccessibility = await new AxeBuilder({page: fixture.page})
         .exclude(".as-artifact-frame")
         .withTags(["wcag2a", "wcag2aa"])
@@ -581,6 +728,58 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(reducedHomeOverlay).toHaveCount(0);
       expect(new URL(fixture.page.url()).pathname).toBe("/review");
 
+    } finally {
+      await stopBrowserFixture(fixture);
+    }
+  });
+
+  test("CMT-015-B CMT-015-F: settings returns to the active project and artifact", async ({browser}) => {
+    const fixture = await startBrowserFixture(browser);
+    try {
+      const project = await createProject(fixture, "Navigation state project");
+      const artifact = await publishNew(fixture.server, fixture.installation, {
+        accessSetting: "account_required",
+        content: "<!doctype html><title>Navigation state</title><h1>Preserved review context</h1>",
+        idempotencyKey: "frontend-review-settings-return",
+        name: "Navigation state artifact",
+        projectId: project.id,
+      });
+      const reviewUrl = `/review?${new URLSearchParams({
+        artifact: artifact.body.artifact.id,
+        project: project.id,
+        version: artifact.body.version.id,
+      })}`;
+
+      await localLogin(fixture);
+      await fixture.page.goto(`${fixture.server.baseUrl}${reviewUrl}`);
+      await expect(fixture.page.getByRole("button", {
+        name: "Current project: Navigation state project",
+      })).toBeVisible();
+      await expect(fixture.page.getByRole("heading", {
+        exact: true,
+        name: "Navigation state artifact",
+      })).toBeVisible();
+      const canonicalReviewLocation = new URL(fixture.page.url());
+      const canonicalReviewUrl = `${canonicalReviewLocation.pathname}${canonicalReviewLocation.search}`;
+
+      await fixture.page.getByRole("link", {name: "Open settings"}).click();
+      await expect(fixture.page).toHaveURL(
+        new RegExp(`/review/settings/projects/${project.id}$`, "u"),
+      );
+      const backToReview = fixture.page.getByRole("link", {name: "Back to review"});
+      await expect(backToReview).toHaveAttribute("href", canonicalReviewUrl);
+      await expect(fixture.page.getByRole("link", {name: "Artifact Server"}))
+        .toHaveAttribute("href", canonicalReviewUrl);
+
+      await backToReview.click();
+      await expect(fixture.page).toHaveURL(`${fixture.server.baseUrl}${canonicalReviewUrl}`);
+      await expect(fixture.page.getByRole("button", {
+        name: "Current project: Navigation state project",
+      })).toBeVisible();
+      await expect(fixture.page.getByRole("heading", {
+        exact: true,
+        name: "Navigation state artifact",
+      })).toBeVisible();
     } finally {
       await stopBrowserFixture(fixture);
     }

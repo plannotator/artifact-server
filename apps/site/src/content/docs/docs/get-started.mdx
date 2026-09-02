@@ -3,7 +3,7 @@ title: Get started locally
 description: Run Artifact Server on a laptop and publish a first immutable artifact version.
 ---
 
-The local target runs directly on the host with SQLite, local blob storage, loopback-only content origins, and frictionless local-owner browser access. Running from source requires Node.js 24.12 or newer and pnpm 10.34.3.
+The local target runs directly on the host with SQLite, local blob storage, and loopback-only content origins. The loopback application gives the local owner browser access without a sign-in form. The source installation requires Node.js 24.12 or newer and pnpm 10.34.3.
 
 <Aside type="note" title="Packaged release">
 The public download, checksum, and attestation commands will be added here on release day. Until then, run Artifact Server from this repository.
@@ -51,10 +51,10 @@ The public download, checksum, and attestation commands will be added here on re
 
 ## Local access behavior
 
-Requests from the loopback application origin can obtain the local-owner session without a sign-in form. This behavior does not disable authentication for remote access: hosted and private-team deployments still use their configured identity provider.
+Requests from the loopback application origin can obtain the local-owner session without a sign-in form. Remote access still requires authentication. Hosted and private-team deployments use their selected identity provider.
 
 <Aside type="caution" title="Loopback is the boundary">
-Do not expose the local-owner development target directly to another device or a public network. Use a private-team deployment when Artifact Server must be reachable remotely.
+Do not expose the local-owner development target directly to another device or a public network. If Artifact Server must be reachable remotely, use a private-team deployment.
 </Aside>
 
 ## Next

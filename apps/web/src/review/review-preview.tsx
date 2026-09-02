@@ -347,6 +347,19 @@ function HtmlPreview({
   }, [annotateModeActive, postToFrame]);
 
   useEffect(() => {
+    if (!initialisedRef.current) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      postToFrame({
+        isLight,
+        themeTokens: reviewThemeTokens(),
+        type: "as-review-theme",
+        v: reviewProtocolVersion,
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [isLight, postToFrame]);
+
+  useEffect(() => {
     if (!initialisedRef.current) return;
     postToFrame({
       annotations: [...annotations],
@@ -524,6 +537,8 @@ function reviewThemeTokens() {
     "--input": value("--as-border"),
     "--muted": value("--as-surface-raised"),
     "--muted-foreground": value("--as-subtle"),
+    "--popover": value("--as-surface-raised"),
+    "--popover-foreground": value("--as-text"),
     "--primary": value("--as-action"),
     "--primary-foreground": value("--as-on-action"),
     "--radius": "0.75rem",

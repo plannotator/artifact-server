@@ -1,28 +1,28 @@
 ---
 title: Software supply-chain security
-description: What Artifact Server checks, what its package metadata proves, and how to verify it.
+description: How Artifact Server protects source changes, records package evidence, and verifies archives.
 ---
 
-Artifact Server treats workflow, dependency, package, and container integrity as part of product security. This page documents controls that are implemented in the repository today. It separates continuous-integration evidence from public release proof.
+Artifact Server includes workflow, dependency, package, and container integrity in its security model. This page documents the controls available in the repository today. It separates continuous-integration evidence from public release proof.
 
 <CardGrid>
   <Card title="Changes are tested" icon="ph:checks">
     Pull requests run five parallel product jobs and the macOS job. Changes to `main` run the complete Linux iteration gate.
   </Card>
   <Card title="Secrets are scanned" icon="ph:key">
-    Gitleaks scans the complete Git history. Its downloaded binary is checksum-verified, and a synthetic token proves the detector before the repository scan starts.
+    Gitleaks scans the complete Git history. The workflow verifies the checksum of the downloaded binary. A synthetic token proves the detector before the repository scan.
   </Card>
   <Card title="Workflows are audited" icon="ph:shield-check">
-    zizmor checks GitHub workflows and Dependabot configuration in strict offline mode. A synthetic unsafe workflow proves the detector first.
+    zizmor audits GitHub workflows and Dependabot settings in strict offline mode. A synthetic unsafe workflow proves the detector first.
   </Card>
   <Card title="Dependencies are reviewed" icon="ph:arrows-clockwise">
-    Dependabot checks pnpm and GitHub Actions each week. Routine version updates wait seven days before opening a pull request.
+    Dependabot scans pnpm and GitHub Actions each week. Routine version updates wait seven days before opening a pull request.
   </Card>
 </CardGrid>
 
 ## Pull-request verification
 
-The [CI workflow](https://github.com/plannotator/artifact-server/actions/workflows/ci.yml) runs with read-only repository permissions. Third-party actions are pinned to complete commit SHAs, checkout credentials are not persisted, and dependencies install from the committed lockfile.
+The [CI workflow](https://github.com/plannotator/artifact-server/actions/workflows/ci.yml) uses read-only repository permissions. It pins third-party actions to complete commit SHAs. Checkout does not persist credentials. Dependencies install from the committed lockfile.
 
 The pull-request workflow runs these required jobs:
 
@@ -40,14 +40,14 @@ The separate [security workflow](https://github.com/plannotator/artifact-server/
 
 - Gitleaks scans all repository history with findings redacted from logs.
 - zizmor audits workflow and Dependabot files without sending source to a hosted scanner.
-- Both scanners are downloaded at pinned versions and verified with SHA-256 before use.
+- The workflow downloads both scanners at pinned versions and verifies them with SHA-256 before use.
 - Both scanners must detect a synthetic problem before their real analysis can pass.
 
 See the [Actions history](https://github.com/plannotator/artifact-server/actions) for individual runs and logs.
 
 ## Evidence in package outputs
 
-Artifact Server currently creates two package formats. Each includes a machine-readable manifest next to the archive.
+Artifact Server creates two package formats. Each package includes a machine-readable manifest next to the archive.
 
 | Package | Command | Evidence |
 | --- | --- | --- |
@@ -98,9 +98,9 @@ A matching checksum proves that the archive matches its manifest. Until the mani
 
 ## Public release verification
 
-Artifact Server has not shipped a tagged public release. The release workflow is qualified privately, but there is no public archive or image for an external user to verify today.
+No tagged public Artifact Server release exists. The release workflow passed private qualification. No public archive or image is available for external verification.
 
-The release-day commands for downloading checksums, verifying GitHub attestations, and verifying the immutable GHCR image will be added here only after those public assets exist. Until then, the source-build evidence above is the honest verification boundary.
+The team will add release commands after the public assets exist. These commands will download checksums and verify GitHub attestations and the immutable GHCR image. Until then, source-build evidence is the available verification boundary.
 
 ## Reporting and product boundaries
 

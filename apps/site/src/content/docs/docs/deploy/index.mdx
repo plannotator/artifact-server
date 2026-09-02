@@ -36,29 +36,29 @@ Artifact Server has not shipped a public release. Each provider guide names the 
     Untrusted artifact files are served from a separate wildcard domain, one hostname per version. The application origin never serves artifact bytes. [Why the two origins are separate →](/docs/concepts/security-boundary/)
   </Step>
   <Step title="An identity provider">
-    Remote deployments authenticate through WorkOS or one generic OIDC provider. Local-owner access works only on an exact loopback origin and is never used remotely. Network access and application authorization stay separate controls; team members are admitted inside Artifact Server.
+    Remote deployments authenticate through WorkOS or one generic OIDC provider. Local-owner access works only on an exact loopback origin. Remote deployments never use local-owner access. Network access and application authorization remain separate controls. An administrator admits team members inside Artifact Server.
   </Step>
   <Step title="Credentials outside source control">
     Service credentials live in the platform's secret store, never in the repository or the image.
   </Step>
   <Step title="Coordinated backups">
-    Back up metadata and artifact files as one recovery set, using the procedure in the chosen guide. Do a restore test before the first production release and again after any storage or deployment change.
+    Back up metadata and artifact files as one recovery set. Use the procedure in the selected guide. Do a restore test before the first production release. Do another restore test after a storage or deployment change.
   </Step>
   <Step title="Pinned releases">
-    Pin production deployments to an immutable image digest, and verify the release the way the [supply-chain evidence](/docs/security/) describes.
+    Pin the production deployment to an immutable image digest. Verify the release as described in [supply-chain evidence](/docs/security/).
   </Step>
 </Steps>
 
 ## Pick a data layer
 
-**Compact Compose** uses one SQLite database and one file volume. It is the smallest remote installation; run only one application process against this data layer.
+**Compact Compose** uses one SQLite database and one file volume. Run only one application process with this data layer.
 
-**External storage** — PostgreSQL plus object storage — is what Kubernetes, AWS, Google Cloud, and external-storage Compose use. Application processes become replaceable and can scale horizontally.
+**External storage** uses PostgreSQL and object storage. Kubernetes, AWS, Google Cloud, and external-storage Compose use this data layer. Application processes can scale horizontally.
 
 **Cloudflare** uses D1 and R2 through the Worker runtime, with the same product services as the other targets.
 
 ## After deploying
 
-- [Welcome your team](/docs/connect-agents/) — the one page to send each teammate.
-- [Connect agents to the MCP server](/docs/mcp/) — one command per client.
-- [Review with coding agents](/docs/agents/) — live feedback into Pi, OpenCode, and Claude Code.
+- [Welcome your team](/docs/connect-agents/): the introduction for each teammate.
+- [Connect agents to the MCP server](/docs/mcp/): one command for each client.
+- [Review with coding agents](/docs/agents/): live feedback for Pi, OpenCode, and Claude Code.

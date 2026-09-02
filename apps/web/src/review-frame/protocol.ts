@@ -81,6 +81,12 @@ export const hostMessageSchema = z.discriminatedUnion("type", [
     v: versionSchema,
   }),
   z.object({
+    isLight: z.boolean(),
+    themeTokens: themeTokensSchema,
+    type: z.literal("as-review-theme"),
+    v: versionSchema,
+  }),
+  z.object({
     active: z.boolean(),
     type: z.literal("as-review-annotate-mode"),
     v: versionSchema,
@@ -96,6 +102,7 @@ export type HostMessage = z.infer<typeof hostMessageSchema>;
 export type ReviewAnnotation = z.infer<typeof reviewAnnotationSchema>;
 export type ReviewAnchor = z.infer<typeof reviewAnchorSchema>;
 export type ReviewInit = Extract<HostMessage, {type: "as-review-init"}>;
+export type ReviewTheme = Extract<HostMessage, {type: "as-review-theme"}>;
 
 /** Every message the review frame sends back to the host. */
 export const frameMessageSchema = z.discriminatedUnion("type", [
