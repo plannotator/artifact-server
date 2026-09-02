@@ -97,7 +97,9 @@ Live session delivery is available from source for Pi and Claude Code Channels. 
 
 Cloudflare is the main hosted deployment target. Cloudflare Artifacts can add private Git-backed history for selected projects. It is off by default and currently requires closed beta access.
 
-<a href="./docs/cloudflare-artifacts.md"><img src="./docs/assets/cloudflare-artifacts-git-handoff.svg" alt="Cloudflare Artifacts provides optional Git-backed history" width="800"></a>
+<p align="center">
+  <a href="./docs/cloudflare-artifacts.md"><img src="./docs/assets/cloudflare-artifacts-git-handoff.svg" alt="Cloudflare Artifacts provides optional Git-backed history" width="800"></a>
+</p>
 
 - [Deploy Artifact Server on Cloudflare](./deploy/cloudflare/README.md)
 - [Configure optional Git history](./docs/cloudflare-artifacts.md)
