@@ -33,6 +33,28 @@ const agents = [
   { name: "Pi", tier: "native", light: piLight.src, dark: piDark.src },
   { name: "OpenCode", tier: "native", light: opencodeLight.src, dark: opencodeDark.src },
 ];
+
+const setupPrompt = `Install and configure Artifact Server for me. Do the work, not only explain the steps.
+
+Use these pages as the source of truth:
+- https://artifactserver.com/docs/get-started/
+- https://artifactserver.com/docs/deploy/
+- https://artifactserver.com/docs/mcp/
+- https://artifactserver.com/docs/agents/
+
+First, ask me exactly one question: “Do you want to run Artifact Server locally on this machine, or deploy it for a team?” Wait for my answer before you continue.
+
+Then complete the matching setup:
+
+- Inspect the system before you make changes. Follow the current documentation and do not invent commands.
+- For a local setup, verify that Node.js 24.12 or later and pnpm 10.34.3 are available. Use the current source checkout when one exists. Otherwise, clone https://github.com/plannotator/artifact-server.git, install its dependencies, and run \`pnpm dev\`. Keep the server on loopback only and use the URL printed by the process.
+- For a team deployment, ask only for choices or credentials that are still missing. Explain the current qualification status of the available deployment targets. Follow the selected deployment guide, keep secrets out of source control, use HTTPS for the trusted application origin, configure an isolated wildcard content domain, and configure backups. Do not describe AWS or Google Cloud as live-qualified deployments.
+- Install the Artifact Server skill with \`npx skills add plannotator/artifact-server\`.
+- Connect this agent to Artifact Server through MCP as part of the setup. From a source checkout, run \`pnpm artifactserver connect --data .artifact-server\`. With an installed CLI, run \`artifactserver connect\`. For a team deployment, configure the exact HTTPS \`/mcp\` endpoint and complete browser authorization. Never print or paste bootstrap URLs, tokens, or credentials into chat.
+- Verify the server health, the review application, the installed skill, and MCP tool discovery. Fix failures that are within the setup scope.
+- Do not stop after producing a plan. Complete the setup unless you need a credential or a deployment choice from me.
+
+When the setup is complete, begin your final response with “Artifact Server is running at <URL>.” State whether it is local or deployed for a team, where its data is stored, whether the skill is installed, whether this agent is connected through MCP, and what you verified. Link to https://artifactserver.com/docs/ for operating guidance. If anything is incomplete, list the exact blocker instead of claiming success.`;
 ---
 
 <BaseLayout title="Artifact Server — open-source Claude Code artifacts" description={description} markdownUrl="/index.md">
@@ -66,21 +88,28 @@ const agents = [
               <Icon name="ph:cloud-arrow-up" />
             </a>
           </div>
-          <div class="landing-commands" aria-label="Install commands">
-            <p>
-              <code>artifactserver connect</code>
-              <a href="/docs/mcp/">connect your agent</a>
-              <button type="button" data-copy="artifactserver connect" aria-label="Copy the connect command">
+          <div class="landing-agent-setup" aria-label="Set up Artifact Server with an AI coding agent">
+            <button type="button" class="landing-copy-prompt" data-copy={setupPrompt} aria-label="Copy the Artifact Server setup prompt">
+              <span class="landing-agent-setup__marks" aria-hidden="true">
+                {agents.map((agent) => (
+                  <span title={agent.name}>
+                    <img src={agent.light} alt="" class="theme-light" />
+                    <img src={agent.dark} alt="" class="theme-dark" />
+                  </span>
+                ))}
+              </span>
+              <span class="landing-copy-prompt__label" aria-live="polite">
+                <span>Copy prompt</span>
+                <span>Copied</span>
+              </span>
+              <span class="landing-copy-prompt__icon" aria-hidden="true">
                 <Icon name="ph:copy" /><Icon name="ph:check" />
-              </button>
-            </p>
-            <p>
-              <code>npx skills add plannotator/artifact-server</code>
-              <a href="/docs/mcp/#install-the-artifact-server-skill">install the skill</a>
-              <button type="button" data-copy="npx skills add plannotator/artifact-server" aria-label="Copy the skill install command">
-                <Icon name="ph:copy" /><Icon name="ph:check" />
-              </button>
-            </p>
+              </span>
+            </button>
+            <a class="landing-agent-setup__docs" href="/docs/mcp/">
+              Connect MCP
+              <Icon name="ph:arrow-right" />
+            </a>
           </div>
         </div>
 
@@ -150,7 +179,7 @@ const agents = [
         <header class="landing-section-heading">
           <p>Why Artifact Server</p>
           <div>
-            <h2 id="principles-title">Own your team's development process outputs</h2>
+            <h2 id="principles-title">Own your team's SDLC outputs</h2>
             <p class="landing-section-lede">
               Product teams create plans, mockups, prototypes, and code reviews as HTML,
               images, and video. These files often end up scattered across tools.
@@ -162,7 +191,7 @@ const agents = [
           <article>
             <span>01</span>
             <Icon name="ph:upload-simple" />
-            <h3>Publish from where the work happens.</h3>
+            <h3>Integrated with Agents</h3>
             <p>Agents publish through MCP or the Agent Skill. People use the CLI or browser. Each upload can contain one file or a complete site.</p>
             <code>/artifact-server upload that HTML design doc</code>
           </article>
@@ -234,33 +263,6 @@ const agents = [
         </figure>
       </section>
 
-      <section class="landing-boundary" aria-labelledby="boundary-title">
-        <div class="landing-boundary__copy">
-          <p class="landing-eyebrow"><span></span>Security model</p>
-          <h2 id="boundary-title">Untrusted artifacts stay isolated.</h2>
-          <p>
-            Artifact Server serves untrusted content from an isolated host for each
-            version. The trusted application host handles authentication, metadata,
-            comments, the API, and MCP. Private content uses browser sessions scoped to
-            one version. Untrusted paths cannot select storage locations.
-          </p>
-          <a href="/docs/concepts/security-boundary/">Understand the two-origin model <Icon name="ph:arrow-right" /></a>
-        </div>
-        <div class="boundary-diagram" role="img" aria-label="Trusted Artifact Server application connected to an isolated artifact content origin">
-          <article>
-            <small>TRUSTED ORIGIN</small>
-            <strong>Artifact Server</strong>
-            <span>Identity · versions · comments · MCP</span>
-          </article>
-          <div><span>exact version</span><i></i><span>sandboxed view</span></div>
-          <article>
-            <small>CONTENT ORIGIN</small>
-            <strong>Your artifact</strong>
-            <span>HTML · images · video</span>
-          </article>
-        </div>
-      </section>
-
       <section class="landing-deploy" aria-labelledby="deploy-title">
         <header class="landing-section-heading">
           <p>Yours to run</p>
@@ -330,16 +332,18 @@ const agents = [
 </BaseLayout>
 
 <script>
-  // Copy buttons on the hero commands. Progressive: without clipboard access
-  // the button does nothing and the command text is still selectable.
+  // Clipboard failure leaves the action unchanged so the page never reports
+  // a false success.
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
     button.addEventListener("click", async () => {
       const text = button.dataset.copy ?? "";
       try {
         await navigator.clipboard.writeText(text);
         button.dataset.copied = "true";
+        button.setAttribute("aria-label", "Artifact Server setup prompt copied");
         window.setTimeout(() => {
           delete button.dataset.copied;
+          button.setAttribute("aria-label", "Copy the Artifact Server setup prompt");
         }, 1600);
       } catch {
         // Clipboard unavailable (insecure context or permission denied).

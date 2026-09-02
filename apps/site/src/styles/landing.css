@@ -89,7 +89,6 @@
 .landing-hero,
 .landing-principles,
 .landing-loop,
-.landing-boundary,
 .landing-deploy,
 .landing-close {
   width: min(100%, var(--landing-rail));
@@ -233,84 +232,113 @@
   }
 }
 
-.landing-commands {
-  display: grid;
-  max-width: 32rem;
-  margin-top: 1.25rem;
-  border: 1px solid var(--nb-border);
-  background: var(--nb-card);
-  font-family: var(--nb-font-mono);
-  font-size: 0.6875rem;
-}
-
-.landing-commands p {
+.landing-agent-setup {
   display: flex;
-  align-items: center;
+  max-width: 36rem;
+  margin-top: 1.25rem;
   gap: 0.75rem;
-  padding: 0.5rem 0.5rem 0.5rem 1rem;
 }
 
-.landing-commands p + p {
-  border-top: 1px solid var(--nb-border);
-}
-
-.landing-commands code {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
+.landing-copy-prompt,
+.landing-agent-setup__docs {
+  display: flex;
+  min-height: 3.25rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--nb-border-strong);
+  background: color-mix(in oklch, var(--nb-card) 92%, transparent);
   color: var(--nb-foreground);
-  text-overflow: ellipsis;
+  text-decoration: none;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
+}
+
+.landing-copy-prompt {
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 0.875rem;
+  padding: 0.75rem 0.875rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.landing-agent-setup__marks {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.4375rem;
+}
+
+.landing-agent-setup__marks > span {
+  display: grid;
+  width: 1.25rem;
+  height: 1.25rem;
+  place-items: center;
+}
+
+.landing-agent-setup__marks img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.landing-copy-prompt__label {
+  min-width: 5.75rem;
+  font-size: 0.875rem;
+  font-weight: 650;
+  text-align: left;
   white-space: nowrap;
 }
 
-.landing-commands a {
-  flex: none;
-  color: var(--nb-muted-foreground);
-  text-decoration: none;
-  transition: color 150ms ease;
-}
-
-.landing-commands a:hover {
-  color: var(--nb-primary);
-}
-
-.landing-commands button {
-  display: grid;
-  width: 2rem;
-  height: 2rem;
-  flex: none;
-  place-items: center;
-  border: 1px solid var(--nb-border);
-  background: transparent;
-  color: var(--nb-muted-foreground);
-  cursor: pointer;
-  transition:
-    border-color 150ms ease,
-    color 150ms ease;
-}
-
-.landing-commands button:hover {
-  border-color: var(--nb-foreground);
-  color: var(--nb-foreground);
-}
-
-.landing-commands button svg {
-  width: 0.875rem;
-  height: 0.875rem;
-}
-
-.landing-commands button svg:last-child,
-.landing-commands button[data-copied] svg:first-child {
+.landing-copy-prompt__label span:last-child,
+.landing-copy-prompt[data-copied] .landing-copy-prompt__label span:first-child,
+.landing-copy-prompt__icon svg:last-child,
+.landing-copy-prompt[data-copied] .landing-copy-prompt__icon svg:first-child {
   display: none;
 }
 
-.landing-commands button[data-copied] {
-  border-color: var(--nb-success);
+.landing-copy-prompt[data-copied] .landing-copy-prompt__label span:last-child,
+.landing-copy-prompt[data-copied] .landing-copy-prompt__icon svg:last-child {
+  display: block;
+}
+
+.landing-copy-prompt[data-copied] {
+  border-color: color-mix(in oklch, var(--nb-success) 70%, var(--nb-border));
   color: var(--nb-success);
 }
 
-.landing-commands button[data-copied] svg:last-child {
-  display: block;
+.landing-copy-prompt__icon,
+.landing-agent-setup__docs svg {
+  display: grid;
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  place-items: center;
+}
+
+.landing-agent-setup__docs {
+  flex: none;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.landing-copy-prompt:active,
+.landing-agent-setup__docs:active {
+  transform: scale(0.96);
+}
+
+@media (hover: hover) {
+  .landing-copy-prompt:hover,
+  .landing-agent-setup__docs:hover {
+    border-color: var(--nb-foreground);
+    background: var(--nb-muted);
+  }
 }
 
 /* Hero: the full-screen review — artifact canvas plus the open comment panel. */
@@ -1059,125 +1087,6 @@
   font-size: 0.625rem;
 }
 
-.landing-boundary {
-  display: grid;
-  min-height: 42rem;
-  grid-template-columns: minmax(18rem, 0.85fr) minmax(30rem, 1.15fr);
-  align-items: center;
-  gap: clamp(3rem, 7vw, 7rem);
-  padding: clamp(4.5rem, 8vw, 7rem) clamp(1.5rem, 4vw, 4rem);
-  border-bottom: 1px solid var(--nb-border);
-  background: var(--nb-card);
-}
-
-.landing-boundary__copy h2 {
-  max-width: 13ch;
-  margin-top: 1.5rem;
-  font-size: clamp(2.5rem, 4.3vw, 4.4rem);
-  font-weight: 600;
-  letter-spacing: -0.055em;
-  line-height: 0.98;
-}
-
-.landing-boundary__copy > p:not(.landing-eyebrow) {
-  max-width: 48ch;
-  margin-top: 1.5rem;
-  color: var(--nb-muted-foreground);
-  line-height: 1.65;
-}
-
-.landing-boundary__copy > a {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 1.5rem;
-  color: var(--nb-primary);
-  font-size: 0.875rem;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.landing-boundary__copy > a svg {
-  width: 1rem;
-}
-
-.boundary-diagram {
-  display: grid;
-  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 0.75fr) minmax(9rem, 1fr);
-  align-items: center;
-}
-
-.boundary-diagram article {
-  display: grid;
-  min-height: 15rem;
-  align-content: center;
-  gap: 0.75rem;
-  padding: 1.5rem;
-  border: 1px solid var(--nb-border-strong);
-  background: var(--nb-background);
-}
-
-.boundary-diagram article:last-child {
-  background: var(--nb-primary);
-  color: var(--nb-primary-foreground);
-}
-
-.boundary-diagram small {
-  font-family: var(--nb-font-mono);
-  font-size: 0.5625rem;
-  letter-spacing: 0.1em;
-}
-
-.boundary-diagram strong {
-  font-size: 1.25rem;
-}
-
-.boundary-diagram article span {
-  color: var(--nb-muted-foreground);
-  font-size: 0.75rem;
-}
-
-.boundary-diagram article:last-child span {
-  color: color-mix(in oklch, var(--nb-primary-foreground) 72%, transparent);
-}
-
-.boundary-diagram > div {
-  display: grid;
-  justify-items: center;
-  gap: 0.75rem;
-  color: var(--nb-muted-foreground);
-  font-family: var(--nb-font-mono);
-  font-size: 0.5625rem;
-  text-align: center;
-}
-
-.boundary-diagram > div i {
-  position: relative;
-  display: block;
-  width: 100%;
-  height: 1px;
-  background: var(--nb-border-strong);
-}
-
-.boundary-diagram > div i::before,
-.boundary-diagram > div i::after {
-  position: absolute;
-  top: 50%;
-  width: 0.4rem;
-  height: 0.4rem;
-  background: var(--nb-primary);
-  content: "";
-  transform: translateY(-50%);
-}
-
-.boundary-diagram > div i::before {
-  left: 0;
-}
-
-.boundary-diagram > div i::after {
-  right: 0;
-}
-
 .landing-deploy__grid article {
   min-height: 18rem;
 }
@@ -1285,12 +1194,10 @@
     width: 100%;
   }
 
-  .landing-boundary,
   .landing-loop {
     grid-template-columns: 1fr;
   }
 
-  .landing-boundary__copy,
   .landing-loop__copy {
     max-width: 45rem;
   }
@@ -1300,7 +1207,6 @@
   .landing-hero,
   .landing-principles,
   .landing-loop,
-  .landing-boundary,
   .landing-deploy,
   .landing-close {
     border-inline: 0;
@@ -1349,10 +1255,36 @@
     font-size: clamp(2.4rem, 11.5vw, 3.6rem);
   }
 
-  .landing-commands p {
-    align-items: flex-start;
+  .landing-agent-setup {
+    align-items: stretch;
     flex-direction: column;
+  }
+
+  .landing-copy-prompt {
+    justify-content: flex-start;
+    gap: 0.625rem;
+    padding-inline: 0.625rem;
+  }
+
+  .landing-agent-setup__marks {
+    flex: 1 1 auto;
     gap: 0.25rem;
+  }
+
+  .landing-agent-setup__marks > span {
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+  }
+
+  .landing-copy-prompt__label {
+    min-width: auto;
+    font-size: 0.8125rem;
+  }
+
+  .landing-copy-prompt__icon {
+    width: 0.875rem;
+    height: 0.875rem;
   }
 
   .artifact-window {
@@ -1368,8 +1300,8 @@
     grid-template-columns: 1fr;
   }
 
-  .landing-commands p {
-    flex-wrap: wrap;
+  .landing-agent-setup__docs {
+    align-self: flex-start;
   }
 
   .artifact-canvas {
@@ -1380,33 +1312,6 @@
     box-shadow: 0.75rem 0.75rem 0 color-mix(in oklch, var(--nb-primary) 12%, transparent);
   }
 
-  .boundary-diagram {
-    grid-template-columns: 1fr;
-  }
-
-  .boundary-diagram > div {
-    min-height: 6rem;
-    align-content: center;
-  }
-
-  .boundary-diagram > div i {
-    width: 1px;
-    height: 3rem;
-  }
-
-  .boundary-diagram > div i::before,
-  .boundary-diagram > div i::after {
-    left: 50%;
-    transform: translate(-50%, -50%);
-  }
-
-  .boundary-diagram > div i::before {
-    top: 0;
-  }
-
-  .boundary-diagram > div i::after {
-    top: 100%;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
