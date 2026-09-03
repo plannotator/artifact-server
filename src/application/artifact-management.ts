@@ -56,6 +56,12 @@ export interface ArtifactDetails {
   readonly current: ArtifactVersion;
 }
 
+/** One artifact and one exact saved version selected for a version-level action. */
+export interface ArtifactVersionDetails {
+  readonly artifact: ArtifactRecord;
+  readonly saved: ArtifactVersion;
+}
+
 /** Input for reading one artifact through authenticated application policy. */
 export interface ReadArtifactCommand {
   readonly artifactId: string;
@@ -211,6 +217,9 @@ interface ArtifactManagementOperations {
   readonly getVersion: (
     command: ReadArtifactVersionCommand,
   ) => Effect.Effect<ArtifactVersion, ArtifactManagementFailure>;
+  readonly getVersionDetails: (
+    command: ReadArtifactVersionCommand,
+  ) => Effect.Effect<ArtifactVersionDetails, ArtifactManagementFailure>;
   readonly listVersions: (
     command: ReadArtifactCommand,
   ) => Effect.Effect<readonly VersionRecord[], ArtifactManagementFailure>;
@@ -343,7 +352,7 @@ function makeArtifactManagementService(
     },
   );
 
-  const getVersion = Effect.fn("ArtifactManagementService.getVersion")(
+  const getVersionDetails = Effect.fn("ArtifactManagementService.getVersionDetails")(
     function*(command: ReadArtifactVersionCommand) {
       const project = yield* resolveProjectForRead(
         command.principal,
@@ -369,7 +378,14 @@ function makeArtifactManagementService(
           message: "The saved version does not exist on this artifact.",
         });
       }
-      return version;
+      return {artifact, saved: version};
+    },
+  );
+
+  const getVersion = Effect.fn("ArtifactManagementService.getVersion")(
+    function*(command: ReadArtifactVersionCommand) {
+      const details = yield* getVersionDetails(command);
+      return details.saved;
     },
   );
 
@@ -581,6 +597,7 @@ function makeArtifactManagementService(
     deleteArtifact,
     getArtifact,
     getVersion,
+    getVersionDetails,
     listArtifactActions,
     listArtifacts,
     listVersions,

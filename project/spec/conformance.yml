@@ -2532,6 +2532,30 @@ requirements:
         run: project/evidence/local-foundation.json
         recorded_at: "2026-08-27T00:19:45.636Z"
 
+  - id: CMT-021
+    kind: behavior
+    behavior: Review downloads an artifact's selected immutable version in standard and full-screen modes; one-file versions return the original file, while multi-file versions return a streamed path-preserving ZIP without opening another Review panel.
+    owner: artifact-comments
+    source: {file: artifact-comments-spec.md, anchor: complete-version-downloads}
+    acceptance:
+      behavior: {id: CMT-021-B, description: "Download one-file and multi-file current and historical versions from standard and full-screen Review; verify original filenames, ZIP paths, exact bytes, stable archive metadata, and unchanged Review state."}
+      failure: {id: CMT-021-F, description: "Anonymous, unauthorized, cross-project, cross-artifact, and mismatched-version requests return no bytes, and downloading cannot open comments, change the selected version, or leave full-screen mode."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local service and browser evidence proves exact one-file and multi-file downloads, immutable historical bytes, archive authorization, and unchanged Review state. Equivalent evidence for every team deployment remains unrecorded.
+    depends_on: [CMT-013, CMT-015, VER-001]
+    evidence:
+      - deployment: local
+        tests: [CMT-021-B, CMT-021-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-09-03T16:08:06.755Z"
+      - deployment: local
+        tests: [CMT-021-B, CMT-021-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-09-03T16:09:11.243Z"
+
   - id: ADM-001
     kind: behavior
     behavior: Artifact Server ships one canonical React application for Review and settings, plus the isolated Review frame; every former application route redirects to the equivalent canonical destination without serving or loading a legacy application bundle.

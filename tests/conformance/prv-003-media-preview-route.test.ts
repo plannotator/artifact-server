@@ -131,7 +131,10 @@ describe("authenticated media preview delivery", () => {
     );
     expect(download.status).toBe(200);
     expect(download.headers.get("content-type")).toBe("application/octet-stream");
-    expect(download.headers.get("content-disposition")).toBe("attachment");
+    expect(download.headers.get("content-disposition")).toBe(
+      "attachment; filename=\"pixel image.png\"; "
+        + "filename*=UTF-8''pixel%20image.png",
+    );
   });
 
   test("PRV-003-F: hostile contexts, unsupported types, and absent paths fail closed", async () => {

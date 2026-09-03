@@ -103,7 +103,10 @@ describe("version file route for the review viewer", () => {
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toBe("application/octet-stream");
       expect(response.headers.get("x-content-type-options")).toBe("nosniff");
-      expect(response.headers.get("content-disposition")).toBe("attachment");
+      expect(response.headers.get("content-disposition")).toBe(
+        `attachment; filename="${file.path.split("/").at(-1)}"; `
+          + `filename*=UTF-8''${encodeURIComponent(file.path.split("/").at(-1) ?? "artifact")}`,
+      );
       expect(response.headers.get("cache-control")).toBe(
         "private, max-age=31536000, immutable",
       );
@@ -268,7 +271,9 @@ describe("version file route for the review viewer", () => {
     const rendered = await fileFetch(readerToken, published, "index.html");
     expect(rendered.status).toBe(200);
     expect(rendered.headers.get("content-type")).toBe("application/octet-stream");
-    expect(rendered.headers.get("content-disposition")).toBe("attachment");
+    expect(rendered.headers.get("content-disposition")).toBe(
+      "attachment; filename=\"index.html\"; filename*=UTF-8''index.html",
+    );
     expect(rendered.headers.get("x-content-type-options")).toBe("nosniff");
   });
 

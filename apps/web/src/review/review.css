@@ -1558,6 +1558,15 @@ select:focus-visible {
   flex: 1;
 }
 
+.as-preview-header__actions {
+  flex: 0 0 auto;
+}
+
+.as-preview-header__actions > .as-button,
+.as-preview-header__actions > [data-popup-open] {
+  flex: 0 0 auto;
+}
+
 .as-preview-header h1 {
   font-size: 0.92rem;
   font-weight: 600;
@@ -2177,6 +2186,21 @@ select:focus-visible {
 
 @container preview-panel (max-width: 23rem) {
   .as-preview-footer__metadata {
+    display: none;
+  }
+}
+
+@container preview-panel (max-width: 40rem) {
+  .as-preview-header__actions {
+    gap: 0.35rem;
+  }
+
+  .as-preview-header__actions .as-button {
+    min-width: 2rem;
+    padding-inline: 0.45rem;
+  }
+
+  .as-preview-header__actions .as-button__label {
     display: none;
   }
 }

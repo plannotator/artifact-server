@@ -1,5 +1,6 @@
 import {AxeBuilder} from "@axe-core/playwright";
 import {expect, test} from "@playwright/test";
+import {unzipSync} from "fflate";
 import {readFile} from "node:fs/promises";
 import {z} from "zod";
 
@@ -839,6 +840,73 @@ test.describe("Artifact Server frontend MVP", () => {
         .toBeVisible();
       expect(new URL(fixture.page.url()).searchParams.get("version"))
         .toBe(published.body.version.id);
+    } finally {
+      await stopBrowserFixture(fixture);
+    }
+  });
+
+  test("CMT-021-B CMT-021-F: Review downloads the selected version in standard and full-screen modes without opening comments", async ({browser}) => {
+    const fixture = await startBrowserFixture(browser);
+    try {
+      const downloadFixture = await publishReviewDownloadFixture(fixture);
+      await localLogin(fixture);
+      await fixture.page.goto(
+        `${fixture.server.baseUrl}/review?${new URLSearchParams({
+          artifact: downloadFixture.artifactId,
+          project: downloadFixture.projectId,
+          version: downloadFixture.versionId,
+        })}`,
+      );
+
+      const standardDownload = fixture.page.getByRole("link", {
+        exact: true,
+        name: "Download",
+      });
+      await expect(standardDownload).toBeVisible();
+      await expect(standardDownload).toHaveAttribute(
+        "title",
+        "Download 2 files as a ZIP",
+      );
+      const [standardArchive] = await Promise.all([
+        fixture.page.waitForEvent("download"),
+        standardDownload.click(),
+      ]);
+      expect(standardArchive.suggestedFilename()).toBe(
+        "Download fixture - version 1.zip",
+      );
+      expectDownloadArchive(
+        await requiredDownloadBytes(standardArchive.path()),
+        downloadFixture.files,
+      );
+
+      await fixture.page.getByRole("button", {name: "Full screen"}).click();
+      const focusControls = fixture.page.getByRole("toolbar", {
+        name: "Artifact viewer controls",
+      });
+      const focusComments = fixture.page.getByRole("complementary", {
+        name: "Comments",
+      });
+      await expect(focusComments).toBeHidden();
+      const focusDownload = focusControls.getByRole("link", {
+        exact: true,
+        name: "Download",
+      });
+      await expect(focusDownload).toHaveAttribute(
+        "title",
+        "Download 2 files as a ZIP",
+      );
+      const [focusArchive] = await Promise.all([
+        fixture.page.waitForEvent("download"),
+        focusDownload.click(),
+      ]);
+      expectDownloadArchive(
+        await requiredDownloadBytes(focusArchive.path()),
+        downloadFixture.files,
+      );
+      await expect(focusComments).toBeHidden();
+      await expect(
+        fixture.page.getByRole("button", {name: "Exit full screen"}),
+      ).toBeVisible();
     } finally {
       await stopBrowserFixture(fixture);
     }
@@ -1846,6 +1914,78 @@ async function publishReviewMediaFixture(
     projectId: committed.body.artifact.projectId,
     versionId: committed.body.version.id,
   };
+}
+
+async function publishReviewDownloadFixture(
+  fixture: BrowserFixture,
+): Promise<{
+  readonly artifactId: string;
+  readonly files: readonly TestSiteFile[];
+  readonly projectId: string;
+  readonly versionId: string;
+}> {
+  const encoder = new TextEncoder();
+  const files = [
+    {
+      bytes: encoder.encode(
+        "<!doctype html><html lang=\"en\"><title>Download fixture</title><p>Exact export</p>",
+      ),
+      mediaType: "text/html; charset=utf-8",
+      path: "index.html",
+    },
+    {
+      bytes: encoder.encode("export const downloaded = true;\n"),
+      mediaType: "text/javascript; charset=utf-8",
+      path: "assets/app.js",
+    },
+  ] satisfies readonly TestSiteFile[];
+  const upload = await createStagedUpload(
+    fixture.server,
+    fixture.installation,
+    "index.html",
+    files,
+  );
+  await uploadEveryStagedFile(fixture.installation, upload.body, files);
+  const committed = await commitStagedUpload(
+    fixture.installation,
+    upload.body,
+    "frontend-review-download-fixture",
+    {
+      accessSetting: "account_required",
+      kind: "new_artifact",
+      name: "Download fixture",
+      tags: ["download"],
+    },
+  );
+  return {
+    artifactId: committed.body.artifact.id,
+    files,
+    projectId: committed.body.artifact.projectId,
+    versionId: committed.body.version.id,
+  };
+}
+
+async function requiredDownloadBytes(
+  pendingPath: Promise<string | null>,
+): Promise<Uint8Array> {
+  const path = await pendingPath;
+  if (path === null) {
+    throw new Error("The browser did not retain the downloaded file.");
+  }
+  return readFile(path);
+}
+
+function expectDownloadArchive(
+  archive: Uint8Array,
+  expectedFiles: readonly TestSiteFile[],
+): void {
+  const decoded = unzipSync(archive);
+  expect(Object.keys(decoded).toSorted()).toEqual(
+    expectedFiles.map(({path}) => path).toSorted(),
+  );
+  for (const file of expectedFiles) {
+    expect(decoded[file.path]).toEqual(file.bytes);
+  }
 }
 
 async function createProject(
