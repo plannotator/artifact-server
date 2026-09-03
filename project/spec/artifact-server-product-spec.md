@@ -43,6 +43,8 @@ The server supports `GET`, `HEAD`, byte ranges where applicable, a stable `ETag`
 
 The authenticated Review presents a selected image or video from one exact immutable version through native browser elements. A dedicated same-origin media route supplies typed image or video bytes only to an authorized matching subresource destination, supports ranged video playback, and rejects top-level document navigation. The download-only application route and version-scoped content origins keep their existing security roles. See [Image and video previews](./media-preview-spec.md).
 
+Review provides **Download** in standard and full-screen modes. For an artifact with one file, it downloads the original file. For an artifact with multiple files, it downloads a ZIP that preserves every path and byte from the selected immutable version. The server streams the archive; the browser does not rebuild or hold all source files in memory. Downloading does not change the selected version or open another Review panel.
+
 Client-side sites may load scripts, styles, fonts, images, and data from other websites. Normal browser rules still apply. A remote service must allow the artifact's origin, and a private network may block internet access. Artifact Server does not copy dependencies loaded from other websites.
 
 ## Project, artifact, and version model

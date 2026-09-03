@@ -44,6 +44,7 @@ import {
 } from "../application/artifact-comments.js";
 import {
   type ArtifactDetails,
+  type ArtifactVersionDetails,
   ArtifactManagementService,
 } from "../application/artifact-management.js";
 import {
@@ -144,7 +145,12 @@ import {
   versionFileBrowserUrl,
 } from "./artifact-http-links.js";
 import {artifactServerFailureResponse} from "./artifact-http-failure.js";
+import {attachmentContentDisposition} from "./content-disposition.js";
 import {observeHttpRequest} from "../observability/application-observability.js";
+import {
+  createVersionArchive,
+  versionArchiveFilename,
+} from "./version-archive.js";
 import type {
   RuntimeLifecycle,
   RuntimeLifecycleState,
@@ -1716,6 +1722,31 @@ export function createHttpApp(
       return serveVersionFile(
         saved,
         query.path,
+        context.req.method,
+        context.req.raw.headers,
+        dependencies,
+      );
+    },
+  );
+
+  app.on(
+    ["GET", "HEAD"],
+    "/api/v1/artifacts/:artifactId/versions/:versionId/archive",
+    async (context) => {
+      const details = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ArtifactManagementService.use((management) =>
+          management.getVersionDetails({
+            artifactId: context.req.param("artifactId"),
+            principal: context.get("principal"),
+            projectId: requestedProjectId(context),
+            versionId: context.req.param("versionId"),
+          })
+        ),
+      );
+      return serveVersionArchive(
+        details,
         context.req.method,
         context.req.raw.headers,
         dependencies,
@@ -3705,18 +3736,47 @@ function mediaPreviewFailure(
 }
 
 function versionFileHeaders(entry: ManifestEntry): Headers {
+  const filename = entry.path.split("/").at(-1) ?? "artifact-file";
   return new Headers({
     "Accept-Ranges": "bytes",
     // The route names one immutable version, so the bytes never change for
     // this URL; `private` keeps the authenticated response in browser caches
     // only.
     "Cache-Control": "private, max-age=31536000, immutable",
-    "Content-Disposition": "attachment",
+    "Content-Disposition": attachmentContentDisposition(filename),
     "Content-Length": String(entry.size),
     "Content-Type": "application/octet-stream",
     ETag: `"${entry.sha256}"`,
     "X-Content-Type-Options": "nosniff",
   });
+}
+
+function serveVersionArchive(
+  details: ArtifactVersionDetails,
+  method: string,
+  requestHeaders: Headers,
+  dependencies: HttpAppDependencies,
+): Response {
+  const strongEtag = `"archive-${details.saved.manifest.digest}"`;
+  const filename = versionArchiveFilename(
+    details.artifact.name,
+    details.saved.version.number,
+  );
+  const headers = new Headers({
+    "Cache-Control": "private, max-age=31536000, immutable",
+    "Content-Disposition": attachmentContentDisposition(filename),
+    "Content-Type": "application/zip",
+    ETag: strongEtag,
+    "X-Content-Type-Options": "nosniff",
+    "X-Robots-Tag": "noindex, nofollow",
+  });
+  if (etagMatches(requestHeaders.get("if-none-match") ?? undefined, strongEtag)) {
+    return new Response(null, {headers, status: 304});
+  }
+  const archive = createVersionArchive(details.saved, dependencies.blobs);
+  headers.set("Content-Length", archive.byteLength.toString());
+  if (method === "HEAD") return new Response(null, {headers, status: 200});
+  return new Response(archive.body, {headers, status: 200});
 }
 
 function versionMediaHeaders(entry: ManifestEntry): Headers {

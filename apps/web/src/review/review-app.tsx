@@ -15,6 +15,7 @@ import {
   BookOpen01Icon,
   Cancel01Icon,
   Comment01Icon,
+  Download04Icon,
   Edit02Icon,
   ExternalLinkIcon,
   File01Icon,
@@ -132,6 +133,11 @@ function reviewShortcutBlocked(event: KeyboardEvent): boolean {
 interface VersionListItem {
   readonly links: {readonly review: string; readonly version: string};
   readonly version: Version;
+}
+
+interface ReviewDownload {
+  readonly href: string;
+  readonly title: string;
 }
 
 interface ReviewLocation {
@@ -960,6 +966,11 @@ function ArtifactReview({
     && session.principal.membershipRole === "administrator"
   ) || session.principal.capabilities.includes("artifact:manage:any");
   const previewKind = reviewPreviewKind(selectedVersion, selectedPath);
+  const download = reviewDownload(
+    projectId,
+    selectedArtifactId,
+    selectedVersion,
+  );
   const selectArtifact = useCallback((artifactId: string, versionId?: string): void => {
     setDetailError(null);
     setSelectedArtifactId(artifactId);
@@ -1657,6 +1668,10 @@ function ArtifactReview({
                     selectedVersion={selectedVersion}
                     triggerClassName="as-button as-focus-controls__button"
                   />
+                  <ReviewDownloadControl
+                    className="as-button as-focus-controls__button"
+                    download={download}
+                  />
                   <button
                     aria-keyshortcuts="F"
                     className="as-button as-focus-controls__button"
@@ -1754,13 +1769,16 @@ function ArtifactReview({
                 </IconButton>
               ) : null}
               <button
+                aria-label={opening ? "Opening raw artifact" : "Open raw artifact"}
                 className="as-button as-button--secondary as-preview-header__raw"
                 disabled={selectedVersionId === null || opening}
                 onClick={() => void openRawArtifact()}
                 type="button"
               >
                 <HugeiconsIcon aria-hidden="true" icon={ExternalLinkIcon} strokeWidth={1.8} />
-                {opening ? "Opening…" : "Open raw artifact"}
+                <span className="as-button__label">
+                  {opening ? "Opening…" : "Open raw artifact"}
+                </span>
               </button>
               <ReviewShareControl
                 details={details}
@@ -1770,7 +1788,12 @@ function ArtifactReview({
                 selectedVersion={selectedVersion}
                 triggerClassName="as-button as-button--secondary"
               />
+              <ReviewDownloadControl
+                className="as-button as-button--secondary"
+                download={download}
+              />
               <button
+                aria-label="Full screen"
                 aria-keyshortcuts="F"
                 className="as-button as-button--primary"
                 disabled={selectedVersionId === null}
@@ -1779,7 +1802,7 @@ function ArtifactReview({
                 type="button"
               >
                 <HugeiconsIcon aria-hidden="true" icon={FullScreenIcon} strokeWidth={1.8} />
-                Full screen
+                <span className="as-button__label">Full screen</span>
               </button>
               {!inspectorOpen ? (
                 <IconButton
@@ -2020,6 +2043,60 @@ function ArtifactReview({
         ) : null}
       </main>
     </div>
+  );
+}
+
+function reviewDownload(
+  projectId: string,
+  artifactId: string | null,
+  version: ArtifactVersion | null,
+): ReviewDownload | null {
+  if (artifactId === null || version === null) return null;
+  const entries = version.manifest.entries;
+  const onlyEntry = entries.length === 1 ? entries[0] : undefined;
+  if (onlyEntry !== undefined) {
+    return {
+      href: api.versionFileUrl(
+        projectId,
+        artifactId,
+        version.version.id,
+        onlyEntry.path,
+      ),
+      title: `Download ${onlyEntry.path}`,
+    };
+  }
+  return {
+    href: api.versionArchiveUrl(projectId, artifactId, version.version.id),
+    title: `Download ${entries.length} files as a ZIP`,
+  };
+}
+
+function ReviewDownloadControl({
+  className,
+  download,
+}: {
+  readonly className: string;
+  readonly download: ReviewDownload | null;
+}) {
+  if (download === null) {
+    return (
+      <button aria-label="Download" className={className} disabled type="button">
+        <HugeiconsIcon aria-hidden="true" icon={Download04Icon} strokeWidth={1.8} />
+        <span className="as-button__label">Download</span>
+      </button>
+    );
+  }
+  return (
+    <a
+      aria-label="Download"
+      className={className}
+      download
+      href={download.href}
+      title={download.title}
+    >
+      <HugeiconsIcon aria-hidden="true" icon={Download04Icon} strokeWidth={1.8} />
+      <span className="as-button__label">Download</span>
+    </a>
   );
 }
 

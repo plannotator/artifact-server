@@ -1150,6 +1150,11 @@ export const api = {
     versionId: string,
     path: string,
   ) => versionAssetUrl("file", projectId, artifactId, versionId, path),
+  versionArchiveUrl: (
+    projectId: string,
+    artifactId: string,
+    versionId: string,
+  ) => `/api/v1/artifacts/${encodeURIComponent(artifactId)}/versions/${encodeURIComponent(versionId)}/archive?${projectQuery(projectId)}`,
   versionMediaUrl: (
     projectId: string,
     artifactId: string,

@@ -182,6 +182,7 @@ export function ReviewShareControl({
       <Popover.Trigger
         render={(
           <button
+            aria-label="Share"
             className={triggerClassName}
             disabled={details === null || selectedVersion === null}
             type="button"
@@ -189,7 +190,7 @@ export function ReviewShareControl({
         )}
       >
         <HugeiconsIcon aria-hidden="true" icon={Share01Icon} strokeWidth={1.8} />
-        Share
+        <span className="as-button__label">Share</span>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Backdrop className="as-share-backdrop" />
