@@ -1,0 +1,70 @@
+name: Bug report
+description: Report reproducible incorrect behavior.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security vulnerabilities here. Read the [security policy](https://github.com/plannotator/artifact-server/blob/main/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Give the release version, commit SHA, or container digest.
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment mode
+      options:
+        - Local source checkout
+        - Local release package
+        - Docker Compose
+        - Kubernetes with Helm
+        - Cloudflare
+        - AWS
+        - Google Cloud
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Describe the incorrect behavior and its effect.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Give the smallest sequence that reproduces the bug.
+      placeholder: |
+        1. Start Artifact Server with ...
+        2. Open ...
+        3. Select ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Describe the result that you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots
+      description: Remove tokens, credentials, private artifact contents, and personal data.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Give the operating system, Node.js version, browser, and storage providers that apply.
+    validations:
+      required: true

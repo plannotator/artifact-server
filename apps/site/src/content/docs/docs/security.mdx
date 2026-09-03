@@ -98,9 +98,28 @@ A matching checksum proves that the archive matches its manifest. Until the mani
 
 ## Public release verification
 
-No tagged public Artifact Server release exists. The release workflow passed private qualification. No public archive or image is available for external verification.
+Each [GitHub release](https://github.com/plannotator/artifact-server/releases) includes package manifests, SPDX software bills of materials, and `SHA256SUMS`. Download all release assets before you verify them.
 
-The team will add release commands after the public assets exist. These commands will download checksums and verify GitHub attestations and the immutable GHCR image. Until then, source-build evidence is the available verification boundary.
+On Linux, run:
+
+```sh
+sha256sum --check --strict SHA256SUMS
+```
+
+On macOS, run:
+
+```sh
+shasum --algorithm 256 --check SHA256SUMS
+```
+
+GitHub also records build provenance and SBOM attestations for the downloadable files and the container image. Use GitHub CLI to verify a downloaded file:
+
+```sh
+gh attestation verify artifact-server-0.1.0-node.tar.gz \
+  --repo plannotator/artifact-server
+```
+
+The release asset named `image-reference.txt` contains the immutable GHCR image reference. Use that digest instead of a mutable tag in production.
 
 ## Reporting and product boundaries
 

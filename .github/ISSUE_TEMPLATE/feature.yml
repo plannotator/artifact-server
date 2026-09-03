@@ -1,0 +1,46 @@
+name: Feature request
+description: Propose a change to an Artifact Server workflow.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Describe the task that is difficult or impossible now.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior
+      description: Describe what the user does and what Artifact Server returns.
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Primary area
+      options:
+        - Review application
+        - CLI
+        - MCP
+        - Agent integration
+        - Local deployment
+        - Team deployment
+        - Storage or versioning
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Current workaround
+      description: Describe how you complete the task now, if a workaround exists.
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints or examples
+      description: Add examples, deployment limits, or compatibility requirements that affect the request.

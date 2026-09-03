@@ -1680,7 +1680,7 @@ select:focus-visible {
 
 .as-share-link h3,
 .as-share-agent h3 {
-  color: var(--as-subtle);
+  color: color-mix(in oklab, var(--as-subtle) 80%, var(--as-text));
   font-size: 0.65rem;
   font-weight: 600;
   letter-spacing: 0.08em;
