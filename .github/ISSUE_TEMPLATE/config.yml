@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://artifactserver.com/docs/
+    about: Read the installation, deployment, MCP, agent, and operator guides.
+  - name: Security vulnerability
+    url: https://github.com/plannotator/artifact-server/blob/main/SECURITY.md
+    about: Read the private reporting instructions. Do not open a public issue.

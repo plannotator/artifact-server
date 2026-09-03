@@ -5,9 +5,34 @@ description: Run Artifact Server on a laptop and publish a first immutable artif
 
 The local target runs directly on the host with SQLite, local blob storage, and loopback-only content origins. The loopback application gives the local owner browser access without a sign-in form. The source installation requires Node.js 24.12 or newer and pnpm 10.34.3.
 
-<Aside type="note" title="Packaged release">
-The public download, checksum, and attestation commands will be added here on release day. Until then, run Artifact Server from this repository.
-</Aside>
+## Run the packaged release
+
+Artifact Server `v0.1.0` includes a portable Node.js package. It requires Node.js 24.12 or newer.
+
+<Steps>
+  <Step title="Download and verify the package">
+    Download these files from the [`v0.1.0` GitHub release](https://github.com/plannotator/artifact-server/releases/tag/v0.1.0):
+
+    - `artifact-server-0.1.0-node.tar.gz`
+    - `artifact-server-0.1.0-node.tar.gz.manifest.json`
+
+    Run this command in the download directory:
+
+    ```sh
+    node -e 'const crypto = require("node:crypto"); const fs = require("node:fs"); const archive = process.argv[1]; const manifest = JSON.parse(fs.readFileSync(process.argv[2], "utf8")); const actual = crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex"); if (actual !== manifest.sha256) throw new Error("Archive checksum mismatch"); console.log(actual);' artifact-server-0.1.0-node.tar.gz artifact-server-0.1.0-node.tar.gz.manifest.json
+    ```
+
+    For provenance verification, use the [supply-chain guide](/docs/security/).
+  </Step>
+  <Step title="Extract and start Artifact Server">
+    ```sh
+    tar -xzf artifact-server-0.1.0-node.tar.gz
+    ./artifactserver/bin/artifactserver open
+    ```
+
+    Open the printed URL. The application stores its data in `.artifact-server` by default.
+  </Step>
+</Steps>
 
 ## Run from source
 
