@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@plannotator/agent-bridge": "^0.1.1",
-    "zod": "4.4.3"
+    "zod": "4.5.4"
   },
   "devDependencies": {
     "typescript": "7.0.2"

@@ -26,12 +26,12 @@
     "effect": "4.0.0-rc.110"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20260815.1",
+    "@cloudflare/workers-types": "5.20260831.1",
     "@effect/platform-node": "4.0.0-rc.110",
     "@types/node": "24.13.3",
-    "oxlint": "1.78.0",
+    "oxlint": "1.80.0",
     "typescript": "7.0.2",
-    "vitest": "4.1.10",
-    "wrangler": "4.123.0"
+    "vitest": "4.1.11",
+    "wrangler": "4.127.1"
   }
 }
