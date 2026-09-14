@@ -124,7 +124,7 @@
     "@oxlint/plugins": "1.78.0",
     "@plannotator/agent-bridge": "^0.1.1",
     "@playwright/test": "1.62.1",
-    "@types/node": "24.13.3",
+    "@types/node": "26.5.0",
     "@vitest/coverage-v8": "4.1.10",
     "fflate": "0.8.3",
     "node-pty": "1.1.0",
