@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "alchemy": "2.0.0-beta.74",
-    "effect": "4.0.0-rc.110"
+    "effect": "4.0.0-rc.112"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260815.1",
