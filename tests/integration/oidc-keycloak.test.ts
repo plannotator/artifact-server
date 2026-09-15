@@ -9,8 +9,8 @@ import {z} from "zod";
 
 import {privateTeamBrowserAccess, browserLoginKinds} from
   "../../src/core/browser-access.js";
-import {createOidcIdentityProvider} from
-  "../../src/identity/oidc-identity-provider.js";
+import {createOidcHostedAuthentication} from
+  "../../src/identity/oidc-hosted-authentication.js";
 import {
   loginHandshakeCookie,
   reserveLoopbackPort,
@@ -19,6 +19,10 @@ import {
 
 const realmName = "artifact-server";
 const oidcClientId = "artifact-server-integration";
+const mcpClientId = "artifact-server-mcp-integration";
+const mcpClientSecret = "keycloak-integration-only-mcp-secret";
+const unboundClientId = "artifact-server-unbound-integration";
+const unboundClientSecret = "keycloak-integration-only-unbound-secret";
 const oidcClientSecret = "keycloak-integration-only-client-secret";
 const oidcScopes = "openid email profile";
 const admittedEmail = "admitted@example.test";
@@ -84,9 +88,17 @@ interface KeycloakRealmRepresentation {
   readonly realm: string;
 }
 
+interface KeycloakProtocolMapperRepresentation {
+  readonly config: Readonly<Record<string, string>>;
+  readonly name: string;
+  readonly protocol: string;
+  readonly protocolMapper: string;
+}
+
 interface KeycloakClientRepresentation {
   readonly attributes: {readonly "pkce.code.challenge.method": string};
   readonly clientId: string;
+  readonly protocolMappers?: readonly KeycloakProtocolMapperRepresentation[];
   readonly directAccessGrantsEnabled: boolean;
   readonly enabled: boolean;
   readonly protocol: string;
@@ -238,7 +250,114 @@ describe.sequential("Keycloak generic OIDC browser login", () => {
     expect(rowCount(application.dataDirectory, "installation_members")).toBe(1);
     expect(rowCount(application.dataDirectory, "application_sessions")).toBe(1);
   });
+
+  test("a real Keycloak access token bound to /mcp authorizes the MCP endpoint", async () => {
+    const bound = await requestPasswordToken(realm.issuer, mcpClientId, mcpClientSecret, {
+      password: admittedPassword,
+      username: admittedEmail,
+    });
+    const authorized = await callMcp(application.baseUrl, bound);
+    expect(authorized.status).toBe(200);
+    expect(await readMcpToolNames(authorized)).toContain("artifact_capabilities");
+
+    const unbound = await requestPasswordToken(
+      realm.issuer,
+      unboundClientId,
+      unboundClientSecret,
+      {
+        password: admittedPassword,
+        username: admittedEmail,
+      },
+    );
+    const refused = await callMcp(application.baseUrl, unbound);
+    expect(refused.status).toBe(401);
+
+    const missing = await callMcp(application.baseUrl, null);
+    expect(missing.status).toBe(401);
+    expect(missing.headers.get("www-authenticate")).toContain(
+      `resource_metadata="${application.baseUrl}/.well-known/oauth-protected-resource/mcp"`,
+    );
+
+    const metadata = await fetch(
+      `${application.baseUrl}/.well-known/oauth-protected-resource/mcp`,
+    );
+    expect(metadata.status).toBe(200);
+    expect(await metadata.json()).toMatchObject({
+      authorization_servers: [realm.issuer],
+      resource: `${application.baseUrl}/mcp`,
+    });
+  });
+
+  test("a Keycloak identity that was never admitted is refused at MCP too", async () => {
+    const stranger = await requestPasswordToken(realm.issuer, mcpClientId, mcpClientSecret, {
+      password: strangerPassword,
+      username: strangerEmail,
+    });
+    const refused = await callMcp(application.baseUrl, stranger);
+    expect(refused.status).toBe(401);
+    expect(rowCount(application.dataDirectory, "installation_members")).toBe(1);
+  });
 });
+
+async function requestPasswordToken(
+  issuer: string,
+  clientId: string,
+  clientSecret: string,
+  credentials: KeycloakCredentials,
+): Promise<string> {
+  const response = await fetch(
+    `${issuer}/protocol/openid-connect/token`,
+    {
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: "password",
+        password: credentials.password,
+        scope: "openid email profile",
+        username: credentials.username,
+      }),
+      headers: {"Content-Type": "application/x-www-form-urlencoded"},
+      method: "POST",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Keycloak refused the password grant: ${response.status} ${await response.text()}`,
+    );
+  }
+  return z.object({access_token: z.string().min(1)})
+    .parse(await response.json()).access_token;
+}
+
+function callMcp(baseUrl: string, token: string | null): Promise<Response> {
+  const headers = new Headers({
+    Accept: "application/json, text/event-stream",
+    "Content-Type": "application/json",
+  });
+  if (token !== null) headers.set("Authorization", `Bearer ${token}`);
+  return fetch(`${baseUrl}/mcp`, {
+    body: JSON.stringify({
+      id: 1,
+      jsonrpc: "2.0",
+      method: "tools/list",
+      params: {},
+    }),
+    headers,
+    method: "POST",
+  });
+}
+
+async function readMcpToolNames(response: Response): Promise<readonly string[]> {
+  const body = await response.text();
+  const payload = body.split("\n")
+    .filter((line) => line.startsWith("data: "))
+    .map((line) => line.slice(6))
+    .at(-1) ?? body;
+  const parsed: unknown = JSON.parse(payload);
+  return z.object({
+    result: z.object({tools: z.array(z.object({name: z.string()}))}),
+  }).parse(parsed).result.tools.map((tool) => tool.name);
+}
 
 function readKeycloakEnvironment(): KeycloakEnvironment {
   const adminPassword = process.env["ARTIFACT_SERVER_TEST_KEYCLOAK_ADMIN_PASSWORD"];
@@ -275,6 +394,54 @@ async function provisionKeycloakRealm(
       publicClient: false,
       redirectUris: [`${applicationOrigin}/auth/callback`],
       secret: oidcClientSecret,
+      serviceAccountsEnabled: false,
+      standardFlowEnabled: true,
+      webOrigins: [applicationOrigin],
+    },
+  );
+  await adminRequest(
+    environment,
+    token,
+    "POST",
+    `/admin/realms/${realmName}/clients`,
+    {
+      attributes: {"pkce.code.challenge.method": "S256"},
+      clientId: mcpClientId,
+      directAccessGrantsEnabled: true,
+      enabled: true,
+      protocol: "openid-connect",
+      protocolMappers: [{
+        config: {
+          "access.token.claim": "true",
+          "id.token.claim": "false",
+          "included.custom.audience": `${applicationOrigin}/mcp`,
+        },
+        name: "mcp audience",
+        protocol: "openid-connect",
+        protocolMapper: "oidc-audience-mapper",
+      }],
+      publicClient: false,
+      redirectUris: [`${applicationOrigin}/auth/callback`],
+      secret: mcpClientSecret,
+      serviceAccountsEnabled: false,
+      standardFlowEnabled: true,
+      webOrigins: [applicationOrigin],
+    },
+  );
+  await adminRequest(
+    environment,
+    token,
+    "POST",
+    `/admin/realms/${realmName}/clients`,
+    {
+      attributes: {"pkce.code.challenge.method": "S256"},
+      clientId: unboundClientId,
+      directAccessGrantsEnabled: true,
+      enabled: true,
+      protocol: "openid-connect",
+      publicClient: false,
+      redirectUris: [`${applicationOrigin}/auth/callback`],
+      secret: unboundClientSecret,
       serviceAccountsEnabled: false,
       standardFlowEnabled: true,
       webOrigins: [applicationOrigin],
@@ -479,6 +646,13 @@ async function startApplicationProcess(
   const dataDirectory = await mkdtemp(
     path.join(tmpdir(), "artifact-server-oidc-"),
   );
+  const hosted = await createOidcHostedAuthentication({
+    applicationOrigin,
+    clientId: oidcClientId,
+    clientSecret: Redacted.make(oidcClientSecret, {label: "oidc-client-secret"}),
+    issuer,
+    scopes: oidcScopes,
+  });
   const server = await startTestServer({
     apiToken:
       "as_key_key_00000000-0000-4000-8000-000000000002_oidcIntegrationMachineCredential12345",
@@ -488,13 +662,9 @@ async function startApplicationProcess(
     applicationOrigin,
     bootstrapAdministratorEmail: admittedEmail,
     browserAccess: privateTeamBrowserAccess(browserLoginKinds.oidc),
-    interactiveIdentityProvider: createOidcIdentityProvider({
-      applicationOrigin,
-      clientId: oidcClientId,
-      clientSecret: Redacted.make(oidcClientSecret, {label: "oidc-client-secret"}),
-      issuer,
-      scopes: oidcScopes,
-    }),
+    externalMcpOAuthVerifier: hosted.externalMcpOAuthVerifier,
+    interactiveIdentityProvider: hosted.interactiveIdentityProvider,
+    mcpOAuthResource: hosted.mcpOAuthResource,
     port,
   });
   return {
