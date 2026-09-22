@@ -47,7 +47,7 @@ importers:
         version: 8.0.1
       '@hono/node-server':
         specifier: 2.1.0
-        version: 2.1.0(hono@4.13.1)
+        version: 2.1.0(hono@4.13.5)
       '@modelcontextprotocol/client':
         specifier: 2.0.0
         version: 2.0.0
@@ -64,8 +64,8 @@ importers:
         specifier: 4.0.0-rc.110
         version: 4.0.0-rc.110
       hono:
-        specifier: 4.13.1
-        version: 4.13.1
+        specifier: 4.13.5
+        version: 4.13.5
       isomorphic-git:
         specifier: 1.41.9
         version: 1.41.9
@@ -5389,6 +5389,10 @@ packages:
     resolution: {integrity: sha512-kdJoFVv2xmayw6cY09H7AbMJMt8Jn5jdlEdXsP7AGBdF2DIptVlKlOLKXP41yPip4/a3yQPv9gVcJYI8YY04dw==}
     engines: {node: '>=16.9.0'}
 
+  hono@4.13.5:
+    resolution: {integrity: sha512-O6+/eCYRkzzzy0rPWwKLiGBR1nFuUPZynnwjxN1MBA62NNqbT0wQEzQyK2gSO5yDIDB336sXQleAhOHrzlYyKw==}
+    engines: {node: '>=16.9.0'}
+
   hosted-git-info@7.0.2:
     resolution: {integrity: sha512-puUZAUKT5m8Zzvs72XWy3HtvVbTWljRE66cP60bxJzAqf2DgICo7lYTY2IHUmLnNpjYvw5bvmoHvPc0QO2a62w==}
     engines: {node: ^16.14.0 || >=18.0.0}
@@ -9967,6 +9971,10 @@ snapshots:
     dependencies:
       hono: 4.13.1
 
+  '@hono/node-server@2.1.0(hono@4.13.5)':
+    dependencies:
+      hono: 4.13.5
+
   '@hugeicons/core-free-icons@4.2.3': {}
 
   '@hugeicons/react@1.1.9(react@19.2.8)':
@@ -13782,6 +13790,8 @@ snapshots:
       space-separated-tokens: 2.0.2
 
   hono@4.13.1: {}
+
+  hono@4.13.5: {}
 
   hosted-git-info@7.0.2:
     dependencies:
