@@ -1964,15 +1964,15 @@ requirements:
 
   - id: MCP-013
     kind: behavior
-    behavior: Local mode connects through artifactserver connect and a stdio bridge without browser OAuth or a human-visible secret; self-hosted mode uses browser OAuth when compatible authorization is configured and otherwise uses administration-issued scoped API keys.
+    behavior: Local mode connects through artifactserver connect and a stdio bridge without browser OAuth or a human-visible secret; self-hosted mode uses browser OAuth when compatible authorization is configured and otherwise uses administration-issued scoped API keys. A generic OIDC issuer is compatible authorization when it signs verifiable access-token JWTs, binds the exact <origin>/mcp audience, and offers a client registration path its clients can use; the installation registers that client and never runs an authorization server of its own.
     owner: mcp
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:
-      behavior: {id: MCP-013-B, description: "Connect locally through the stdio bridge with no visible credential, connect to a private OAuth server through browser approval, and connect to a no-OAuth server using an administration-issued revocable API key."}
+      behavior: {id: MCP-013-B, description: "Connect locally through the stdio bridge with no visible credential, connect to a private OAuth server through browser approval including a generic OIDC issuer whose access token names the exact /mcp resource, and connect to a no-OAuth server using an administration-issued revocable API key."}
       failure: {id: MCP-013-F, description: "Startup logs, diagnostics, project files, generic OIDC ID tokens, browser login cookies, and wrong-resource tokens cannot expose or substitute for a valid MCP credential."}
     deployments: [local, single_server, kubernetes, aws, gcp]
     status: implementing
-    proof_gap: Local stdio and API-key paths are implemented, but the combined private OAuth, no-OAuth, local, wrong-credential, and credential-leak matrix has no deployment-specific MCP-013 evidence.
+    proof_gap: Local stdio, API-key, and generic OIDC access-token paths are implemented and covered by the local conformance suite and the real Keycloak harness, but the combined private OAuth, no-OAuth, local, wrong-credential, and credential-leak matrix has no deployment-specific MCP-013 evidence. The Keycloak harness obtains its MCP access tokens through the password grant; no MCP client has yet completed browser approval (authorization code with S256 PKCE, client registration, and the RFC 8707 resource parameter) against a generic OIDC issuer, so the browser-approval half of MCP-013-B is unproved for OIDC.
     depends_on: [AUTH-009]
     evidence: []
 

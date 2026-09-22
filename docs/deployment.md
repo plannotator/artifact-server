@@ -39,6 +39,58 @@ Local-owner access works only on an exact loopback origin. Do not use it for rem
 
 Remote deployments use WorkOS or a generic OIDC provider. Network access and application authorization remain separate controls.
 
+### Use a generic OIDC issuer for MCP
+
+The issuer configured for browser login also protects `/mcp`. Agents present an
+end-user access token, and the server records the person who obtained it. The
+server never issues client credentials and never runs an authorization server of
+its own.
+
+The issuer must provide four things:
+
+- an OpenID Connect discovery document at `<issuer>/.well-known/openid-configuration`;
+- access tokens signed as JWTs with RS256 or ES256, verifiable against the
+  published JWKS;
+- the authorization code flow with S256 PKCE;
+- an access token whose `aud` contains the exact `<ARTIFACT_SERVER_ORIGIN>/mcp`.
+
+The audience is the one step an operator must configure. Providers do not bind a
+resource URL on their own. In Keycloak, add a client scope with an audience
+mapper whose included custom audience is that exact URL, and assign the scope to
+the client the agents use. Okta sets the audience on a custom authorization
+server. A provider that supports RFC 8707 resource indicators can bind it per
+request instead.
+
+Microsoft Entra ID cannot protect `/mcp` this way. Its v2.0 access tokens name
+the API's client ID in `aud`, not a URL, and its userinfo endpoint accepts only
+Microsoft Graph tokens. Entra installations keep browser login and use API keys
+for MCP.
+
+On first use, the token or the issuer's userinfo response must carry the
+person's `email` with `email_verified: true`. A person who already signed in
+through the browser is recognized by issuer and subject and needs neither.
+
+Register the client the agents use in one of two supported ways:
+
+- the issuer offers RFC 7591 dynamic client registration, its discovery document
+  advertises `registration_endpoint`, and each client registers itself;
+- an administrator registers one client in the issuer and gives its client ID to
+  the agents that need it.
+
+Artifact Server publishes RFC 9728 protected-resource metadata at
+`/.well-known/oauth-protected-resource/mcp` naming the issuer, and answers an
+unauthenticated MCP request with `401` and a `resource_metadata` challenge, so a
+compliant client finds the issuer without further configuration.
+
+Clients that cannot complete OAuth keep using administration-issued API keys.
+Tokens that name another resource are refused. ID tokens and other JWTs that are
+not access tokens are refused too: a JOSE `typ` other than `at+jwt` or `JWT`,
+or an ID-token claim such as `nonce` or `at_hash`.
+
+The server reads the issuer's discovery document once at startup. If the issuer
+cannot be reached then, the server logs a warning and starts with browser login
+and API keys only. MCP OAuth stays off until the next restart.
+
 ## Back up the installation
 
 Back up metadata and artifact files as one coordinated recovery set. Use the procedure in the selected deployment guide.
