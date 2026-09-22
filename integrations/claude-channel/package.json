@@ -1,6 +1,6 @@
 {
   "name": "@plannotator/artifact-server-claude-channel",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Claude Code channel bridge for Artifact Server: pushes annotation bundles into an opted-in Claude Code session and closes them through the comment API.",
   "type": "module",
   "keywords": [
