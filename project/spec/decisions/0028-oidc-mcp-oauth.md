@@ -58,8 +58,41 @@ indicator, and the deployment guide says so.
 
 ### An ID token is not an MCP credential
 
-A payload `typ` of `ID` is refused. Keycloak marks its ID tokens that way, and
 MCP-013-F requires that an ID token cannot substitute for an MCP credential.
+Audience binding refuses most ID tokens, because their `aud` is a client ID.
+It does not refuse them when an operator names a client after the resource
+URL, so the verifier also refuses a JWT that is typed or shaped as something
+other than an access token:
+
+- a JOSE header `typ` that is present and is not `at+jwt` or `JWT`, compared
+  case-insensitively with an optional `application/` prefix. RFC 9068 `at+jwt`
+  is the preferred type; `JWT` and a missing header stay accepted because
+  Keycloak and many other issuers still send them. This refuses logout tokens,
+  security event tokens, and ID-JAG assertions from the same issuer;
+- a payload that carries `nonce`, `at_hash`, or `c_hash`, which OIDC defines
+  for ID tokens only;
+- a payload `typ` of `ID`, which Keycloak writes into its ID tokens.
+
+The MCP specification itself only requires OAuth 2.1 resource-server
+validation and audience binding. These checks follow RFC 9068 section 4 and
+the explicit-typing advice of RFC 8725 so that the ledger promise holds for
+every issuer, not only Keycloak.
+
+### An access token's email must be verified before it links a member
+
+Browser login treats a missing `email_verified` claim as verified, and
+decision 0020 keeps that rule. The MCP path does not: an access token, or the
+userinfo profile it falls back to, must carry `email_verified: true` before its
+email can link the token to an admitted member or claim the bootstrap
+administrator on a fresh installation. Otherwise the admission gate refuses it.
+
+The paths differ because their risks differ. Access-token profile claims are
+often configurable fields, not verified addresses. Entra's optional `email`
+claim, for example, is mutable and arrives with no `email_verified` claim. On
+this path the first presented token can bind the bootstrap administrator, and
+any client registered at the issuer, including a dynamically registered one,
+can present such a token. A subject that is already bound, by an earlier browser login or MCP
+token, is recognized by `oidc:<issuer>` and `sub` alone and needs no email.
 
 ### An issuer that cannot serve its keys is unavailable, not a bad token
 

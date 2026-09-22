@@ -57,9 +57,18 @@ The issuer must provide four things:
 The audience is the one step an operator must configure. Providers do not bind a
 resource URL on their own. In Keycloak, add a client scope with an audience
 mapper whose included custom audience is that exact URL, and assign the scope to
-the client the agents use. Entra exposes an API and uses its application ID URI.
-Okta sets the audience on a custom authorization server. A provider that
-supports RFC 8707 resource indicators can bind it per request instead.
+the client the agents use. Okta sets the audience on a custom authorization
+server. A provider that supports RFC 8707 resource indicators can bind it per
+request instead.
+
+Microsoft Entra ID cannot protect `/mcp` this way. Its v2.0 access tokens name
+the API's client ID in `aud`, not a URL, and its userinfo endpoint accepts only
+Microsoft Graph tokens. Entra installations keep browser login and use API keys
+for MCP.
+
+On first use, the token or the issuer's userinfo response must carry the
+person's `email` with `email_verified: true`. A person who already signed in
+through the browser is recognized by issuer and subject and needs neither.
 
 Register the client the agents use in one of two supported ways:
 
@@ -74,7 +83,13 @@ unauthenticated MCP request with `401` and a `resource_metadata` challenge, so a
 compliant client finds the issuer without further configuration.
 
 Clients that cannot complete OAuth keep using administration-issued API keys.
-Tokens that name another resource, and ID tokens, are refused.
+Tokens that name another resource are refused. ID tokens and other JWTs that are
+not access tokens are refused too: a JOSE `typ` other than `at+jwt` or `JWT`,
+or an ID-token claim such as `nonce` or `at_hash`.
+
+The server reads the issuer's discovery document once at startup. If the issuer
+cannot be reached then, the server logs a warning and starts with browser login
+and API keys only. MCP OAuth stays off until the next restart.
 
 ## Back up the installation
 

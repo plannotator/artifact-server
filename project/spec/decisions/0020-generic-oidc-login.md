@@ -104,7 +104,7 @@ the end-session endpoint.
   register against and whose tokens it can introspect, and that a bare
   enterprise identity provider is generally not that server. Introspection was
   never part of the path: the WorkOS verifier reads a JWT against a discovered
-  JWKS, which a Keycloak, Entra, or Okta access token supports as well.
+  JWKS, which a Keycloak or Okta access token supports as well.
   Registration is an operator step rather than a protocol gap. 0028 records what
   an issuer must provide instead.
 - Directory sync, SCIM, role and group mapping, and provisioning beyond the
