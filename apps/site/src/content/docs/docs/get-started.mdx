@@ -7,26 +7,26 @@ The local target runs directly on the host with SQLite, local blob storage, and 
 
 ## Run the packaged release
 
-Artifact Server `v0.1.0` includes a portable Node.js package. It requires Node.js 24.12 or newer.
+Artifact Server `v0.1.1` includes a portable Node.js package. It requires Node.js 24.12 or newer.
 
 <Steps>
   <Step title="Download and verify the package">
-    Download these files from the [`v0.1.0` GitHub release](https://github.com/plannotator/artifact-server/releases/tag/v0.1.0):
+    Download these files from the [`v0.1.1` GitHub release](https://github.com/plannotator/artifact-server/releases/tag/v0.1.1):
 
-    - `artifact-server-0.1.0-node.tar.gz`
-    - `artifact-server-0.1.0-node.tar.gz.manifest.json`
+    - `artifact-server-0.1.1-node.tar.gz`
+    - `artifact-server-0.1.1-node.tar.gz.manifest.json`
 
     Run this command in the download directory:
 
     ```sh
-    node -e 'const crypto = require("node:crypto"); const fs = require("node:fs"); const archive = process.argv[1]; const manifest = JSON.parse(fs.readFileSync(process.argv[2], "utf8")); const actual = crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex"); if (actual !== manifest.sha256) throw new Error("Archive checksum mismatch"); console.log(actual);' artifact-server-0.1.0-node.tar.gz artifact-server-0.1.0-node.tar.gz.manifest.json
+    node -e 'const crypto = require("node:crypto"); const fs = require("node:fs"); const archive = process.argv[1]; const manifest = JSON.parse(fs.readFileSync(process.argv[2], "utf8")); const actual = crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex"); if (actual !== manifest.sha256) throw new Error("Archive checksum mismatch"); console.log(actual);' artifact-server-0.1.1-node.tar.gz artifact-server-0.1.1-node.tar.gz.manifest.json
     ```
 
     For provenance verification, use the [supply-chain guide](/docs/security/).
   </Step>
   <Step title="Extract and start Artifact Server">
     ```sh
-    tar -xzf artifact-server-0.1.0-node.tar.gz
+    tar -xzf artifact-server-0.1.1-node.tar.gz
     ./artifactserver/bin/artifactserver open
     ```
 
