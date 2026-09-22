@@ -21,19 +21,19 @@ export default Alchemy.Stack(
   Effect.gen(function* () {
     const document = yield* cloudflareDeploymentDocumentConfig;
     const input = yield* parseCloudflareDeploymentInput(document);
-    const apiToken = yield* Config.redacted("ARTIFACT_SERVER_API_TOKEN");
+    const apiToken = yield* Config.Redacted("ARTIFACT_SERVER_API_TOKEN");
     let authenticationSecrets: CloudflareAuthenticationSecrets = {};
     if (input.workosApiKeySecretRef !== undefined) {
       authenticationSecrets = {
         ...authenticationSecrets,
-        workOsApiKey: yield* Config.redacted("ARTIFACT_SERVER_WORKOS_API_KEY"),
+        workOsApiKey: yield* Config.Redacted("ARTIFACT_SERVER_WORKOS_API_KEY"),
       };
     }
     if (input.oidcClientSecretRef !== undefined) {
       authenticationSecrets = {
         ...authenticationSecrets,
         oidcClientSecret:
-          yield* Config.redacted("ARTIFACT_SERVER_OIDC_CLIENT_SECRET"),
+          yield* Config.Redacted("ARTIFACT_SERVER_OIDC_CLIENT_SECRET"),
       };
     }
     return yield* defineCloudflareFoundation(

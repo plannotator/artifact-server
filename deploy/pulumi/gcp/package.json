@@ -19,12 +19,12 @@
     "@pulumi/gcp": "9.34.1",
     "@pulumi/pulumi": "3.257.0",
     "@pulumi/random": "4.21.1",
-    "effect": "4.0.0-rc.110"
+    "effect": "4.0.0-rc.115"
   },
   "devDependencies": {
-    "@types/node": "24.13.3",
+    "@types/node": "26.6.0",
     "ts-node": "10.9.2",
     "typescript": "6.0.3",
-    "vitest": "4.1.10"
+    "vitest": "4.1.11"
   }
 }

@@ -1,7 +1,7 @@
 import {
   monitorEventLoopDelay,
   performance,
-  type IntervalHistogram,
+  type ELDHistogram,
 } from "node:perf_hooks";
 
 import {z} from "zod";
@@ -19,7 +19,7 @@ const controlRequestSchema = z.discriminatedUnion("kind", [
 
 interface ActiveStage {
   readonly cpuBefore: NodeJS.CpuUsage;
-  readonly delay: IntervalHistogram;
+  readonly delay: ELDHistogram;
   readonly eventLoopBefore: ReturnType<typeof performance.eventLoopUtilization>;
   readonly interval: NodeJS.Timeout;
   peak: NodeJS.MemoryUsage;
