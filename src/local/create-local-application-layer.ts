@@ -947,7 +947,7 @@ export function createApplicationLayer(
           verified.subject,
         );
         if (principal === null) {
-          const identity = yield* verifier.resolveIdentity(verified);
+          const identity = yield* verifier.resolveIdentity(verified, credential);
           principal = yield* installationAccess.authenticateExternalIdentity(identity);
         }
         return {

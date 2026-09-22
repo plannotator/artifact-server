@@ -99,11 +99,14 @@ the end-session endpoint.
 
 ## What stays excluded
 
-- MCP OAuth. The MCP bearer path needs an authorization server that clients can
-  register against and whose tokens it can introspect. A bare enterprise
-  identity provider is generally not that server, so MCP authorization stays
-  WorkOS-only and OIDC installations use administration-issued API keys, which
-  already work everywhere.
+- MCP OAuth, until [0028](./0028-oidc-mcp-oauth.md) reversed this. The exclusion
+  read that the MCP bearer path needs an authorization server clients can
+  register against and whose tokens it can introspect, and that a bare
+  enterprise identity provider is generally not that server. Introspection was
+  never part of the path: the WorkOS verifier reads a JWT against a discovered
+  JWKS, which a Keycloak or Okta access token supports as well.
+  Registration is an operator step rather than a protocol gap. 0028 records what
+  an issuer must provide instead.
 - Directory sync, SCIM, role and group mapping, and provisioning beyond the
   existing bootstrap-administrator rule. Admission stays explicit.
 - Refresh tokens and `offline_access`. Sessions are server-side records with

@@ -38,8 +38,10 @@ export interface VerifiedExternalMcpBearer {
 
 /** External MCP token verification and first-use identity resolution. */
 export interface ExternalMcpBearerVerifier {
+  /** The credential travels along so a provider can read the profile it carries. */
   readonly resolveIdentity: (
     verified: VerifiedExternalMcpBearer,
+    credential: Redacted.Redacted,
   ) => Effect.Effect<
     ExternalIdentity,
     AuthenticationRequired | IdentityProviderFailure
