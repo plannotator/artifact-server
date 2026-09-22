@@ -24,7 +24,7 @@ Artifact Server gives people and agents one place to publish, review, comment on
 
 ## License
 
-Open source under the GNU Affero General Public License v3.0 (AGPL-3.0-only): use, self-host, and modify freely; if you modify it and offer it over a network, publish your modified source under the same license. The agent-bridge client and the agent extensions are MIT.
+Open source under either the MIT License or the Apache License 2.0, at your option: use, self-host, modify, and redistribute freely, including commercially. The agent-bridge client and the agent extensions are MIT.
 
 ## Start
 

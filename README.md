@@ -181,9 +181,17 @@ Public guides live in the [documentation index](./docs/README.md).
 
 ## License
 
-Artifact Server is licensed under the
-[GNU Affero General Public License v3.0](./LICENSE.md) (AGPL-3.0-only),
-© 2026 backnotprop.
+Artifact Server is dual-licensed under either of
+
+- [MIT License](./LICENSE-MIT)
+- [Apache License, Version 2.0](./LICENSE-APACHE)
+
+at your option, © 2026 backnotprop.
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in this project by you, as defined in the Apache-2.0
+license, shall be dual licensed as above, without any additional terms or
+conditions.
 
 ---
 

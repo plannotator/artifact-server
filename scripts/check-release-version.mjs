@@ -59,7 +59,7 @@ function parseTagArgument() {
 const rootPackage = await readPackage("package.json");
 if (rootPackage.version === "0.0.0") fail("root package version is still a placeholder.");
 expectEqual(rootPackage.private, true, "root package private flag");
-expectEqual(rootPackage.license, "AGPL-3.0-only", "root package license");
+expectEqual(rootPackage.license, "(MIT OR Apache-2.0)", "root package license");
 expectEqual(rootPackage.bin?.artifactserver, "./dist/cli/main.js", "root CLI entry");
 
 const publicPackages = [

@@ -39,10 +39,10 @@ proves configuration only; it does not replace the live client-flow gate.
 
 | Tool | Version |
 | --- | --- |
-| Alchemy | `2.0.0-beta.72` |
+| Alchemy | `2.0.0-beta.79` |
 | Wrangler | `4.123.0` |
 | Cloudflare Workers types | `5.20260815.1` |
-| Effect | `4.0.0-rc.108` |
+| Effect | `4.0.0-rc.115` |
 | TypeScript | `7.0.2` |
 | Worker compatibility date | `2026-08-15` |
 
