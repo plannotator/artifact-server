@@ -28,7 +28,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260815.1",
     "@effect/platform-node": "4.0.0-rc.110",
-    "@types/node": "24.13.3",
+    "@types/node": "26.6.0",
     "oxlint": "1.78.0",
     "typescript": "7.0.2",
     "vitest": "4.1.10",
