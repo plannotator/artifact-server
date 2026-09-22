@@ -22,16 +22,16 @@
     "wrangler": "wrangler"
   },
   "dependencies": {
-    "alchemy": "2.0.0-beta.74",
-    "effect": "4.0.0-rc.110"
+    "alchemy": "2.0.0-beta.79",
+    "effect": "4.0.0-rc.115"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260815.1",
-    "@effect/platform-node": "4.0.0-rc.110",
-    "@types/node": "24.13.3",
+    "@effect/platform-node": "4.0.0-rc.115",
+    "@types/node": "26.6.0",
     "oxlint": "1.78.0",
     "typescript": "7.0.2",
-    "vitest": "4.1.10",
+    "vitest": "4.1.11",
     "wrangler": "4.123.0"
   }
 }
