@@ -11,6 +11,7 @@ import {
   SignJWT,
   type CryptoKey,
   type JWK,
+  type JWTPayload,
 } from "jose";
 import {Effect, Predicate, Redacted} from "effect";
 import {afterEach, beforeEach, describe, expect, test} from "vitest";
@@ -114,7 +115,7 @@ describe("generic OIDC MCP authorization", () => {
     })).rejects.toThrow("registration endpoint");
   });
 
-  test("an end-user token authenticates once and keeps its own membership", async () => {
+  test("MCP-013-B: an end-user token authenticates once and keeps its own membership", async () => {
     expect.hasAssertions();
     const protectedMetadata = await fetch(
       `${server.baseUrl}/.well-known/oauth-protected-resource/mcp`,
@@ -212,7 +213,7 @@ describe("generic OIDC MCP authorization", () => {
     }
   });
 
-  test("wrong token contracts fail closed and issuer outages stay distinct", async () => {
+  test("MCP-013-F: wrong token contracts fail closed and issuer outages stay distinct", async () => {
     expect.hasAssertions();
     expect((await mcpDiscovery(await issueToken({
       audience: "https://attacker.example/mcp",
@@ -239,12 +240,68 @@ describe("generic OIDC MCP authorization", () => {
     expect((await mcpDiscovery(await issueToken({idToken: true}))).status)
       .toBe(401);
 
+    // An ID token from an issuer that does not mark it with a payload typ,
+    // minted for a client whose ID happens to be the MCP URL, still carries
+    // claims only an ID token has.
+    const idTokenClaims = ["nonce", "at_hash", "c_hash"];
+    expect(await discoveryStatuses(idTokenClaims.map((claim) => ({
+      extraClaims: {auth_time: Math.floor(Date.now() / 1_000), [claim]: "x"},
+      type: "JWT",
+    })))).toEqual(idTokenClaims.map(() => 401));
+
+    // Any other explicitly typed JWT from the same issuer is not an access
+    // token either.
+    const otherTypes = ["logout+jwt", "secevent+jwt", "oauth-id-jag+jwt", "id+jwt"];
+    expect(await discoveryStatuses(otherTypes.map((type) => ({type}))))
+      .toEqual(otherTypes.map(() => 401));
+
     provider.setUserInfoStatus(401);
     expect((await mcpDiscovery(await issueToken({profile: false}))).status)
       .toBe(401);
     provider.setUserInfoStatus(503);
     expect((await mcpDiscovery(await issueToken({profile: false}))).status)
       .toBe(500);
+  });
+
+  test("the access-token types issuers really send are accepted", async () => {
+    expect.hasAssertions();
+    // RFC 9068 says at+jwt; Keycloak and many others say JWT or nothing.
+    // The first request binds the member, so the rest can run together.
+    expect((await mcpDiscovery(await issueToken({}))).status).toBe(200);
+    const types = ["at+jwt", "application/at+jwt", "AT+JWT", "JWT"];
+    expect(await discoveryStatuses(types.map((type) => ({type}))))
+      .toEqual(types.map(() => 200));
+  });
+
+  test("an unverified email cannot claim the administrator or link to a member", async () => {
+    expect.hasAssertions();
+    const intruder = "0b7e7f7c-0000-4000-8000-intruder";
+
+    // On a fresh installation the bootstrap email would admit an administrator.
+    expect((await mcpDiscovery(await issueToken({
+      emailVerified: null,
+      subject: intruder,
+    }))).status).toBe(401);
+    expect((await mcpDiscovery(await issueToken({
+      emailVerified: false,
+      subject: intruder,
+    }))).status).toBe(401);
+
+    // The real person arrives with a verified address and becomes the member.
+    expect((await mcpDiscovery(await issueToken({}))).status).toBe(200);
+
+    // The same unverified address still cannot link to that admitted member.
+    expect((await mcpDiscovery(await issueToken({
+      emailVerified: null,
+      subject: intruder,
+    }))).status).toBe(401);
+
+    // A subject that is already bound is known by issuer and subject alone.
+    expect((await mcpDiscovery(await issueToken({emailVerified: null})))
+      .status).toBe(200);
+    expect((await mcpDiscovery(await issueToken({profile: false}))).status)
+      .toBe(200);
+    expect(provider.userInfoRequests()).toBe(0);
   });
 
   test("a token that names several audiences is accepted", async () => {
@@ -282,27 +339,40 @@ describe("generic OIDC MCP authorization", () => {
 
   async function issueToken(options: {
     readonly audience?: string | string[];
+    /** `null` leaves the claim out. */
+    readonly emailVerified?: boolean | null;
     readonly expiresAt?: number;
+    readonly extraClaims?: Readonly<Record<string, number | string>>;
     readonly idToken?: boolean;
     readonly issuer?: string;
     readonly profile?: boolean;
     readonly signingKey?: CryptoKey;
     readonly subject?: string | null;
+    /** The JOSE header `typ`; left out unless given. */
+    readonly type?: string;
   }): Promise<string> {
-    const claims = options.profile === false
-      ? {azp: "artifact-server", scope: "openid profile email"}
-      : {
-        azp: "artifact-server",
+    const claims: JWTPayload = {
+      azp: "artifact-server",
+      scope: "openid profile email",
+    };
+    if (options.profile !== false) {
+      Object.assign(claims, {
         email: userEmail,
-        email_verified: true,
         name: "Artifact Administrator",
         preferred_username: "administrator",
-        scope: "openid profile email",
-      };
-    const token = new SignJWT(
-      options.idToken === true ? {...claims, typ: "ID"} : claims,
-    )
-      .setProtectedHeader({alg: "RS256", kid: keyId})
+      });
+      if (options.emailVerified !== null) {
+        claims["email_verified"] = options.emailVerified ?? true;
+      }
+    }
+    if (options.extraClaims !== undefined) {
+      Object.assign(claims, options.extraClaims);
+    }
+    if (options.idToken === true) claims["typ"] = "ID";
+    const token = new SignJWT(claims)
+      .setProtectedHeader(options.type === undefined
+        ? {alg: "RS256", kid: keyId}
+        : {alg: "RS256", kid: keyId, typ: options.type})
       .setIssuer(options.issuer ?? issuer)
       .setAudience(options.audience ?? resource)
       .setIssuedAt()
@@ -311,6 +381,15 @@ describe("generic OIDC MCP authorization", () => {
       );
     if (options.subject !== null) token.setSubject(options.subject ?? subject);
     return token.sign(options.signingKey ?? privateKey);
+  }
+
+  /** Present one token per variant at once; each is judged on its own. */
+  async function discoveryStatuses(
+    variants: readonly Parameters<typeof issueToken>[0][],
+  ): Promise<readonly number[]> {
+    const tokens = await Promise.all(variants.map(issueToken));
+    const responses = await Promise.all(tokens.map(mcpDiscovery));
+    return responses.map((response) => response.status);
   }
 
   function mcpDiscovery(token: string | null): Promise<Response> {

@@ -76,8 +76,10 @@ export async function loadOidcAuthorizationServer(
     "userinfo endpoint",
     allowLocalHttp,
   );
-  // These two are served on to MCP clients, so a client must not be sent
-  // anywhere this server would have refused to go itself.
+  // The document is served back as the issuer publishes it, and an MCP client
+  // reads the same document from the issuer anyway. These two endpoints are
+  // still checked, because a client sends its registration and its tokens to
+  // them, and this server must not advertise one it would refuse to use.
   const registrationEndpoint = optionalEndpoint(
     document.registration_endpoint,
     "registration endpoint",

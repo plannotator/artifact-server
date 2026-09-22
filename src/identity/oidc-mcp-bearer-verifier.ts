@@ -3,6 +3,7 @@ import {
   customFetch,
   errors as joseErrors,
   jwtVerify,
+  type JWTHeaderParameters,
   type JWTPayload,
 } from "jose";
 import {Effect, Predicate, Redacted, Schema} from "effect";
@@ -20,6 +21,11 @@ import {requireOidcIssuer} from "./oidc-issuer.js";
 
 const defaultAlgorithms = ["RS256", "ES256"];
 const idTokenType = "ID";
+// OIDC defines these for ID tokens only; an access token has no use for them.
+const idTokenOnlyClaims = ["nonce", "at_hash", "c_hash"] as const;
+// RFC 9068 access tokens say at+jwt. Many issuers, Keycloak among them, still
+// say JWT or leave the header out, so those stay accepted too.
+const accessTokenTypes = new Set(["at+jwt", "jwt"]);
 const clockTolerance = "30s";
 const jwksCacheMilliseconds = 10 * 60 * 1_000;
 const jwksCooldownMilliseconds = 5 * 60 * 1_000;
@@ -149,10 +155,14 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
           clockTolerance,
           issuer: this.#issuer,
         });
-        return result.payload;
+        return result;
       },
       catch: (cause) => verificationFailure(cause),
-    }).pipe(Effect.flatMap(decodeClaims));
+    }).pipe(
+      Effect.flatMap(({payload, protectedHeader}) =>
+        decodeClaims(payload, protectedHeader)
+      ),
+    );
   }
 
   readonly #userInfoIdentity = Effect.fn("OidcMcpBearerVerifier.userInfo")(
@@ -220,7 +230,10 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
     return {
       displayName: displayName(claims, email),
       email,
-      emailVerified: claims.email_verified !== false,
+      // Unlike browser login, a missing claim is not a verified address: an
+      // access-token email may be a mutable profile field, and on first use it
+      // can link an admitted member or claim the bootstrap administrator.
+      emailVerified: claims.email_verified === true,
       provider: this.#provider,
       subject: claims.sub,
     };
@@ -229,14 +242,24 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
 
 function decodeClaims(
   payload: JWTPayload,
+  header: JWTHeaderParameters,
 ): Effect.Effect<AccessTokenClaims, AuthenticationRequired> {
+  // An ID token, logout token, or any other JWT from the same issuer is not a
+  // credential for this endpoint even when it names the same audience.
+  if (!isAccessTokenType(header.typ)) {
+    return Effect.fail(invalidToken("The JWT type is not an access token."));
+  }
+  if (idTokenOnlyClaims.some((claim) => claim in payload)) {
+    return Effect.fail(invalidToken(
+      "An ID token is not an Artifact Server MCP credential.",
+    ));
+  }
   return decodeAccessTokenClaims(payload).pipe(
     Effect.mapError(() => invalidToken(
       "The OIDC access token is missing required claims.",
     )),
     Effect.flatMap((claims) =>
-      // Keycloak marks ID tokens with typ ID, and an ID token is not a
-      // credential for this endpoint even when it names the same audience.
+      // Keycloak also marks its ID tokens with a payload typ of ID.
       claims.typ === idTokenType
         ? Effect.fail(invalidToken(
           "An ID token is not an Artifact Server MCP credential.",
@@ -244,6 +267,12 @@ function decodeClaims(
         : Effect.succeed(claims)
     ),
   );
+}
+
+/** Media types compare case-insensitively, and `application/` is optional. */
+function isAccessTokenType(typ: string | undefined): boolean {
+  if (typ === undefined) return true;
+  return accessTokenTypes.has(typ.toLowerCase().replace(/^application\//u, ""));
 }
 
 function emailOf(claims: ProfileClaims): string | null {

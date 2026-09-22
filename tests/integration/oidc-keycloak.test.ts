@@ -203,6 +203,10 @@ describe.sequential("Keycloak generic OIDC browser login", () => {
     expect(session.status).toBe(200);
     const principal = sessionResponseSchema.parse(await session.json()).principal;
 
+    // The real browser session is not an MCP credential.
+    const cookieOnly = await callMcp(application.baseUrl, null, applicationCookies);
+    expect(cookieOnly.status).toBe(401);
+
     const members = await fetch(`${application.baseUrl}/api/v1/members`, {
       headers: {Cookie: applicationCookies},
     });
@@ -329,12 +333,17 @@ async function requestPasswordToken(
     .parse(await response.json()).access_token;
 }
 
-function callMcp(baseUrl: string, token: string | null): Promise<Response> {
+function callMcp(
+  baseUrl: string,
+  token: string | null,
+  cookie?: string,
+): Promise<Response> {
   const headers = new Headers({
     Accept: "application/json, text/event-stream",
     "Content-Type": "application/json",
   });
   if (token !== null) headers.set("Authorization", `Bearer ${token}`);
+  if (cookie !== undefined) headers.set("Cookie", cookie);
   return fetch(`${baseUrl}/mcp`, {
     body: JSON.stringify({
       id: 1,
