@@ -108,7 +108,7 @@
     "@modelcontextprotocol/server": "2.0.0",
     "@workos-inc/node": "10.9.0",
     "commander": "15.0.0",
-    "effect": "4.0.0-rc.110",
+    "effect": "4.0.0-rc.115",
     "hono": "4.13.1",
     "isomorphic-git": "1.41.9",
     "jose": "6.2.9",
