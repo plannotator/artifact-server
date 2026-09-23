@@ -140,8 +140,20 @@ export function readableFileRange(
   });
 }
 
-/** Syncs a directory entry after an atomic installation or replacement. */
-export async function syncDirectory(directory: string): Promise<void> {
+/**
+ * Syncs a directory entry after an atomic installation or replacement.
+ *
+ * A directory fsync is a POSIX durability barrier. Windows cannot open a
+ * directory as a file handle, so the open or sync call throws EPERM there and
+ * no equivalent barrier exists. On Windows the rename itself is the strongest
+ * available guarantee, so the sync is skipped rather than failing every
+ * publication.
+ */
+export async function syncDirectory(
+  directory: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> {
+  if (platform === "win32") return;
   const handle = await open(directory, "r");
   try {
     await handle.sync();
