@@ -167,22 +167,39 @@ function macOsCredentialStore(
         label: "artifact-server-cli-profile",
       })),
     ),
+    // `security` takes the `-w` value only from argv or a terminal prompt,
+    // never from stdin, so the piped secret was stored as an empty password
+    // and every later read came back blank. `security -i` reads whole
+    // commands from stdin, which keeps the secret out of argv.
     write: (account, secret) => runCredentialProcess({
-      arguments: [
-        "add-generic-password",
-        "-a",
-        account,
-        "-s",
-        credentialService,
-        "-U",
-        "-w",
-      ],
+      arguments: ["-i"],
       environment,
       executable: "/usr/bin/security",
-      input: `${Redacted.value(secret)}\n`,
+      input: [
+        "add-generic-password",
+        "-a",
+        quoteForSecurity(account),
+        "-s",
+        quoteForSecurity(credentialService),
+        "-U",
+        "-w",
+        quoteForSecurity(Redacted.value(secret)),
+      ].join(" ") + "\n",
       operation: "write",
     }).pipe(Effect.asVoid),
   };
+}
+
+/**
+ * Quote one argument for `security -i`. Stored values are JSON of base64url
+ * or hex tokens and UUID accounts, so a single quote or newline never occurs;
+ * refuse rather than guess at the interactive tokenizer's escaping.
+ */
+function quoteForSecurity(value: string): string {
+  if (value.includes("'") || value.includes("\n")) {
+    throw new Error("A credential value cannot contain a single quote or newline.");
+  }
+  return `'${value}'`;
 }
 
 function linuxCredentialStore(
