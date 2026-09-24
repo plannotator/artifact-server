@@ -1,6 +1,6 @@
 {
   "name": "@plannotator/artifact-server-pi",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Pi coding-agent bridge for Artifact Server: receives annotation bundles as follow-up work and closes them through the comment API.",
   "type": "module",
   "keywords": [
