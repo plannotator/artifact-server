@@ -1,0 +1,71 @@
+{
+  "recorded_at": "2026-10-06T15:49:35.235193+00:00",
+  "tested_code_commit": "f00764363aa5c0d45fe6705c352db047c5fbe6da",
+  "node_version": "24.15.0",
+  "focused_browser": {
+    "status": "passed",
+    "tests": 3,
+    "evidence": "project/evidence/html-fragment-navigation-browser.json"
+  },
+  "regression_control": {
+    "status": "expected_failure_observed",
+    "baseline_commit": "5af28ac3e52228e7f1781270ead712148fb583cc",
+    "evidence": "project/evidence/html-fragment-navigation-regression.json"
+  },
+  "passed_checks": [
+    "release metadata",
+    "Oxlint with type checking and unchanged anti-slop rules",
+    "all pnpm typecheck targets",
+    "pnpm build",
+    "pnpm verify:site",
+    "conformance ledger validation",
+    "conformance test ID mapping"
+  ],
+  "canonical_gate": {
+    "command": "pnpm verify:iteration",
+    "status": "interrupted_after_test_failures",
+    "exit_code": 130,
+    "reason": "Stopped the broader run after five failures in unchanged CLI tests; no full-gate pass is claimed.",
+    "observed_failures": [
+      {
+        "file": "tests/cli/auth-profile-remote-publish.test.ts",
+        "tests": [
+          "CLI-002-B PUB-012-B: stores a verified profile outside the project and publishes through it after restart",
+          "CLI-002-F PUB-012-F: rejects an invalid credential without saving it and never sends one profile to another origin",
+          "completes browser PKCE, refresh, status, and revocation against real HTTP boundaries"
+        ]
+      },
+      {
+        "file": "tests/cli/lifecycle-cli.test.ts",
+        "tests": [
+          "foundation: initialization, configuration, and support diagnostics are stable and secret-free",
+          "foundation: compact serving withdraws readiness and integrity scans real committed bytes"
+        ]
+      }
+    ],
+    "remaining_stages_not_run": [
+      "remainder of pnpm check",
+      "full browser suite",
+      "AWS and GCP Pulumi verification",
+      "object storage verification",
+      "external storage runtime verification",
+      "coverage",
+      "local package verification",
+      "performance baselines",
+      "compact and external storage compose verification",
+      "Helm verification",
+      "OIDC verification"
+    ]
+  },
+  "isolated_cli_diagnostic": {
+    "command": "pnpm exec vitest run tests/cli/auth-profile-remote-publish.test.ts --testNamePattern 'stores a verified profile' --reporter=verbose",
+    "status": "failed",
+    "error": "Test timed out in 60000ms.",
+    "file": "tests/cli/auth-profile-remote-publish.test.ts:142"
+  },
+  "proof_gaps": [
+    "Firefox and WebKit browser evidence",
+    "team deployment evidence",
+    "successful complete pnpm verify:iteration run"
+  ]
+}

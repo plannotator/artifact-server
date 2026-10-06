@@ -1,3 +1,5 @@
+import { installFragmentLinks } from "./fragment-links.ts";
+
 /**
  * Multi-file artifacts reference their sub-resources relatively. The viewer
  * renders the entry document from a `srcdoc` sandbox, whose base URL is the
@@ -47,6 +49,9 @@ function withResolvedDocumentResources(html: string, baseHref: string): string {
       }
     }
   }
+  const fragmentLinks = parsed.createElement("script");
+  fragmentLinks.textContent = `(${installFragmentLinks.toString()})();`;
+  parsed.body.append(fragmentLinks);
   const doctype = doctypeTag.exec(html)?.[0] ?? "";
   return `${doctype}${parsed.documentElement.outerHTML}`;
 }

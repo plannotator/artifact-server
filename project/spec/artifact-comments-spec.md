@@ -311,6 +311,18 @@ version and commenting surface.
 The first shell slice adds no product-specific keyboard shortcuts; normal
 browser focus and button semantics remain intact.
 
+### HTML fragment navigation
+
+In Interact mode, ordinary same-frame fragment-only links in HTML previews
+scroll to an element ID or legacy named anchor within the rendered document.
+Encoded fragments and keyboard activation work; an empty fragment returns to
+the top. Missing or malformed targets cannot navigate to the injected resource
+base URL. Authored element and document click cancellation and Annotate mode
+retain ownership of their gestures. Modified clicks, downloads, and other browsing targets retain
+their authored behavior. This preview behavior changes scrolling and focus,
+without emulating URL hash changes or browser history. It preserves stored
+artifact bytes, relative resource resolution, and the opaque-origin sandbox.
+
 ### Review route resolution
 
 The project, artifact, and version named in a Review URL are authoritative. The

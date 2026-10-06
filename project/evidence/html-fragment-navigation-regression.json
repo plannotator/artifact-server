@@ -1,0 +1,18 @@
+{
+  "recorded_at": "2026-10-06T15:36:14.096Z",
+  "baseline_commit": "5af28ac3e52228e7f1781270ead712148fb583cc",
+  "node_version": "24.15.0",
+  "browser": "chromium",
+  "command": "pnpm exec playwright test tests/browser/review-fragment-anchors.spec.ts --grep CMT-022-B",
+  "expected_outcome": "The pre-fix production web build fails to scroll on the first nested fragment link.",
+  "observed_outcome": "failed",
+  "tests": [
+    {
+      "title": "CMT-022-B CMT-022-F: fragment links scroll within the sandbox and tolerate invalid targets without navigation",
+      "status": "unexpected",
+      "errors": [
+        "Error: Timeout 10000ms exceeded while waiting on the predicate\n\n  169 |   await expect.poll(() => preview.locator(selector).evaluate((element) =>\n  170 |     Math.abs(element.getBoundingClientRect().top)\n> 171 |   )).toBeLessThan(2);\n      |      ^\n  172 | }\n  173 |\n    at expectTargetAtTop (/root/Codes/artifact-server-anchor-fix/tests/browser/review-fragment-anchors.spec.ts:171:6)\n    at /root/Codes/artifact-server-anchor-fix/tests/browser/review-fragment-anchors.spec.ts:94:13"
+      ]
+    }
+  ]
+}

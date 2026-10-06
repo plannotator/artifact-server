@@ -2556,6 +2556,25 @@ requirements:
         run: project/evidence/browser.json
         recorded_at: "2026-09-03T16:09:11.243Z"
 
+  - id: CMT-022
+    kind: behavior
+    behavior: Ordinary same-frame fragment-only links in HTML Review previews scroll within the rendered document without navigating to the injected resource base or weakening sandbox isolation.
+    owner: artifact-comments
+    source: {file: artifact-comments-spec.md, anchor: html-fragment-navigation}
+    acceptance:
+      behavior: {id: CMT-022-B, description: "In Interact mode, activate nested, encoded, legacy named, and keyboard fragment links and observe the target within the same sandboxed document; empty and top fragments return to the document start with no navigation request."}
+      failure: {id: CMT-022-F, description: "Missing and malformed fragment targets cause no navigation or script error, authored element and document cancellation retains control, and Annotate mode can save a comment on a link without scrolling or weakening the opaque-origin sandbox."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local Chromium production-build evidence proves fragment scrolling, cancellation, annotation ownership, and retained sandbox isolation. Equivalent Firefox, WebKit, and team-deployment evidence remains unrecorded; URL hash and history emulation are outside this contract.
+    depends_on: [CMT-014, CMT-018]
+    evidence:
+      - deployment: local
+        tests: [CMT-022-B, CMT-022-F]
+        result: pass
+        run: project/evidence/html-fragment-navigation-browser.json
+        recorded_at: "2026-10-06T15:37:19.847Z"
+
   - id: ADM-001
     kind: behavior
     behavior: Artifact Server ships one canonical React application for Review and settings, plus the isolated Review frame; every former application route redirects to the equivalent canonical destination without serving or loading a legacy application bundle.
