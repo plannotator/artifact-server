@@ -155,6 +155,12 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(preview.locator("#review-native-action"))
         .toHaveAttribute("data-clicked", "true");
       await expect(reviewFrame.getByPlaceholder("Add a comment...")).toHaveCount(0);
+      await fixture.page.reload();
+      await expect(interactMode).toHaveAttribute("aria-pressed", "false");
+      await preview.locator("#review-native-action").click();
+      await expect(preview.locator("#review-native-action"))
+        .toHaveAttribute("data-clicked", "true");
+      await expect(reviewFrame.getByPlaceholder("Add a comment...")).toHaveCount(0);
       await interactMode.click();
       await expect(annotateMode).toHaveAttribute("aria-pressed", "true");
 
