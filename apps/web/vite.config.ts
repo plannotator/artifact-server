@@ -2,6 +2,8 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin, type ProxyOptions } from "vite";
 
+import {diagramSandboxPlugin} from "./diagram-sandbox-plugin.ts";
+
 export default defineConfig({
   build: {
     emptyOutDir: true,
@@ -16,7 +18,7 @@ export default defineConfig({
       },
     },
   },
-  plugins: [react(), tailwindcss(), documentRoutes()],
+  plugins: [react(), tailwindcss(), documentRoutes(), diagramSandboxPlugin()],
   resolve: {
     alias: {
       "@": new URL("./src", import.meta.url).pathname,

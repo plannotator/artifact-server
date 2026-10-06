@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ExternalLinkIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 
@@ -41,6 +41,7 @@ export function ReviewPreview({
   artifactName,
   isLight,
   onOpenRawArtifact,
+  onSourceViewChange,
   onAnnotateModeChange,
   onSelectAnnotation,
   onSubmitAnnotation,
@@ -58,6 +59,7 @@ export function ReviewPreview({
   readonly artifactName: string;
   readonly isLight: boolean;
   readonly onOpenRawArtifact: () => void;
+  readonly onSourceViewChange: (active: boolean) => void;
   readonly onAnnotateModeChange: (active: boolean) => void;
   readonly onSelectAnnotation: (threadId: string | null) => void;
   readonly onSubmitAnnotation: (
@@ -106,7 +108,7 @@ export function ReviewPreview({
   }
   const mediaType = mediaTypeEssence(entry.mediaType);
   const identity = `${version.version.id}:${entry.path}`;
-  if (mediaType === "text/html") {
+  if (mediaType === "text/html" || mediaType === "text/markdown") {
     return (
       <HtmlPreview
         actions={commonActions}
@@ -116,6 +118,8 @@ export function ReviewPreview({
         entry={entry}
         isLight={isLight}
         key={identity}
+        markdown={mediaType === "text/markdown"}
+        onSourceViewChange={onSourceViewChange}
         onAnnotateModeChange={onAnnotateModeChange}
         onSelectAnnotation={onSelectAnnotation}
         onSubmitAnnotation={onSubmitAnnotation}
@@ -192,6 +196,8 @@ function HtmlPreview({
   artifactId,
   entry,
   isLight,
+  markdown,
+  onSourceViewChange,
   onAnnotateModeChange,
   onSelectAnnotation,
   onSubmitAnnotation,
@@ -207,6 +213,8 @@ function HtmlPreview({
   readonly artifactId: string;
   readonly entry: PreviewEntry;
   readonly isLight: boolean;
+  readonly markdown: boolean;
+  readonly onSourceViewChange: (active: boolean) => void;
   readonly onAnnotateModeChange: (active: boolean) => void;
   readonly onSelectAnnotation: (threadId: string | null) => void;
   readonly onSubmitAnnotation: (
@@ -221,11 +229,24 @@ function HtmlPreview({
   readonly version: ArtifactVersion;
 }) {
   const [previewDocument, setPreviewDocument] = useState<PreviewDocument | null>(null);
+  const [sourceDocument, setSourceDocument] = useState<PreviewDocument | null>(null);
+  const [sourceContent, setSourceContent] = useState<string | null>(null);
+  const [sourceView, setSourceView] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [frameReady, setFrameReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
-  const initialisedRef = useRef(false);
+  const initialisedRef = useRef<PreviewDocument | null>(null);
+  const active = annotateModeActive && !sourceView;
+  useEffect(() => {
+    onSourceViewChange(markdown && sourceView);
+    return () => onSourceViewChange(false);
+  }, [markdown, onSourceViewChange, sourceView]);
+
+  const selectSourceView = (showSource: boolean): void => {
+    setSourceView(showSource);
+  };
 
   const postToFrame = useCallback((message: HostMessage): void => {
     const frame = frameRef.current?.contentWindow;
@@ -235,15 +256,29 @@ function HtmlPreview({
 
   useEffect(() => {
     let current = true;
+    setError(null);
+    setLoading(true);
+    setSourceDocument(null);
+    setSourceContent(null);
+    setPreviewDocument(null);
+    setFrameReady(false);
+    initialisedRef.current = null;
     void (async () => {
       try {
+        if (markdown && entry.size > 1024 * 1024) {
+          throw new Error("Markdown preview supports files up to 1 MiB. Download this file to read it.");
+        }
         const [html, resolvedBase] = await Promise.all([
           api.versionFile(
             projectId,
             artifactId,
             version.version.id,
             entry.path,
-          ),
+          ).then((content) => {
+            // Source stays readable even if obtaining a preview lease fails.
+            if (current) setSourceContent(content);
+            return content;
+          }),
           api.previewLease(projectId, artifactId, version.version.id).then(
             (lease) => {
               if (lease.versionId !== version.version.id) {
@@ -254,8 +289,8 @@ function HtmlPreview({
           ),
         ]);
         if (current) {
-          setPreviewDocument({
-            baseHref: documentBaseUrl(resolvedBase, entry.path),
+          setSourceDocument({
+            baseHref: resolvedBase,
             entryPath: entry.path,
             html,
           });
@@ -265,14 +300,50 @@ function HtmlPreview({
         setError(
           cause instanceof Error ? cause : new Error("Artifact preview failed."),
         );
-      } finally {
         if (current) setLoading(false);
       }
     })();
     return () => {
       current = false;
     };
-  }, [artifactId, entry.path, projectId, version.version.id]);
+  }, [artifactId, entry.path, entry.size, markdown, projectId, retry, version.version.id]);
+
+  useEffect(() => {
+    if (sourceDocument === null) return undefined;
+    if (!markdown) {
+      setPreviewDocument({...sourceDocument, baseHref: documentBaseUrl(sourceDocument.baseHref, entry.path)});
+      setLoading(false);
+      return undefined;
+    }
+    let current = true;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const {renderMarkdownDocument} = await import("./markdown-renderer.ts");
+        const html = await renderMarkdownDocument(sourceDocument.html, {
+          baseHref: sourceDocument.baseHref,
+          entryPath: entry.path,
+          isLight,
+          signal: controller.signal,
+          manifestPaths: version.manifest.entries.map((candidate) => candidate.path),
+        });
+        if (!current) return;
+        setPreviewDocument({...sourceDocument, baseHref: documentBaseUrl(sourceDocument.baseHref, entry.path), html});
+        setError(null);
+      } catch (cause) {
+        if (!current) return;
+        setFrameReady(false);
+        initialisedRef.current = null;
+        setError(cause instanceof Error ? cause : new Error("Markdown rendering failed."));
+      } finally {
+        if (current) setLoading(false);
+      }
+    })();
+    return () => {
+      current = false;
+      controller.abort();
+    };
+  }, [entry.path, isLight, markdown, sourceDocument, version.manifest.entries]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent<unknown>): void => {
@@ -294,9 +365,11 @@ function HtmlPreview({
         return;
       }
       if (message.type === "as-review-annotate-mode-request") {
+        if (sourceView) return;
         onAnnotateModeChange(message.active);
         return;
       }
+      if (sourceView) return;
       void (async () => {
         const saved = await onSubmitAnnotation(message.body, message.anchor, entry.path);
         if (!saved) {
@@ -318,15 +391,17 @@ function HtmlPreview({
     onSubmitAnnotation,
     onUnanchoredChange,
     postToFrame,
+    sourceView,
   ]);
 
   useEffect(() => {
-    if (!frameReady || previewDocument === null || initialisedRef.current) return;
-    initialisedRef.current = true;
+    if (!frameReady || previewDocument === null || initialisedRef.current === previewDocument) return;
+    if (!markdown && initialisedRef.current !== null) return;
+    initialisedRef.current = previewDocument;
     postToFrame({
-      annotateModeActive,
+      annotateModeActive: active,
       annotations: [...annotations],
-      baseHref: previewDocument.baseHref,
+      baseHref: markdown ? null : previewDocument.baseHref,
       entryPath: previewDocument.entryPath,
       html: previewDocument.html,
       isLight,
@@ -335,16 +410,17 @@ function HtmlPreview({
       type: "as-review-init",
       v: reviewProtocolVersion,
     });
-  }, [annotateModeActive, annotations, frameReady, isLight, postToFrame, previewDocument, readOnly]);
+    postToFrame({threadId: selectedThreadId, type: "as-review-focus", v: reviewProtocolVersion});
+  }, [active, annotations, frameReady, isLight, markdown, postToFrame, previewDocument, readOnly, selectedThreadId]);
 
   useEffect(() => {
     if (!initialisedRef.current) return;
     postToFrame({
-      active: annotateModeActive,
+      active,
       type: "as-review-annotate-mode",
       v: reviewProtocolVersion,
     });
-  }, [annotateModeActive, postToFrame]);
+  }, [active, postToFrame]);
 
   useEffect(() => {
     if (!initialisedRef.current) return undefined;
@@ -377,33 +453,115 @@ function HtmlPreview({
     });
   }, [postToFrame, selectedThreadId]);
 
-  if (loading) {
-    return (
-      <PreviewState
-        description={`Reading ${entry.path} from the selected version.`}
-        title="Loading preview"
-      />
-    );
-  }
-  if (error !== null) {
-    return (
-      <TerminalPreviewState
-        actions={actions}
-        description={error.message}
-        mediaType={entry.mediaType}
-        path={entry.path}
-        size={entry.size}
-        title="Preview unavailable"
-      />
-    );
-  }
-  return (
+  const preview = loading ? (
+    <PreviewState
+      description={`Reading ${entry.path} from the selected version.`}
+      title="Loading preview"
+    />
+  ) : error !== null ? (
+    <TerminalPreviewState
+      actions={actions}
+      description={error.message}
+      mediaType={entry.mediaType}
+      onRetry={() => setRetry((value) => value + 1)}
+      path={entry.path}
+      size={entry.size}
+      title="Preview unavailable"
+    />
+  ) : (
     <iframe
       className="as-artifact-frame"
       ref={frameRef}
       src="/review-frame"
       title={`${version.version.artifactId} version ${version.version.number}`}
     />
+  );
+  if (!markdown) return preview;
+  return (
+    <MarkdownViews
+      downloadUrl={actions.downloadUrl}
+      onViewChange={selectSourceView}
+      preview={preview}
+      source={sourceContent}
+      sourceView={sourceView}
+    />
+  );
+}
+
+function MarkdownViews({
+  downloadUrl,
+  onViewChange,
+  preview,
+  source,
+  sourceView,
+}: {
+  readonly downloadUrl: string | null;
+  readonly onViewChange: (sourceView: boolean) => void;
+  readonly preview: ReactNode;
+  readonly source: string | null;
+  readonly sourceView: boolean;
+}) {
+  const sourceTabRef = useRef<HTMLButtonElement | null>(null);
+  const previewTabRef = useRef<HTMLButtonElement | null>(null);
+  const onTabKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (source === null || !(event.target instanceof HTMLButtonElement)) return;
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const showSource = event.key === "Home" ? false : event.key === "End" ? true : !sourceView;
+    onViewChange(showSource);
+    (showSource ? sourceTabRef : previewTabRef).current?.focus();
+  };
+  return (
+    <div className="as-markdown-preview">
+      <div className="as-markdown-preview__toolbar">
+        <div aria-label="Markdown views" className="as-markdown-preview__tabs" onKeyDown={onTabKeyDown} role="tablist">
+          <button
+            aria-controls="markdown-preview-panel"
+            aria-selected={!sourceView}
+            id="markdown-preview-tab"
+            onClick={() => onViewChange(false)}
+            ref={previewTabRef}
+            role="tab"
+            tabIndex={sourceView ? -1 : 0}
+            type="button"
+          >
+            Preview
+          </button>
+          <button
+            aria-controls="markdown-source-panel"
+            aria-selected={sourceView}
+            disabled={source === null}
+            id="markdown-source-tab"
+            onClick={() => onViewChange(true)}
+            ref={sourceTabRef}
+            role="tab"
+            tabIndex={sourceView ? 0 : -1}
+            type="button"
+          >
+            Source
+          </button>
+        </div>
+        {downloadUrl === null ? null : <a download href={downloadUrl}>Download file</a>}
+      </div>
+      <div
+        aria-labelledby="markdown-preview-tab"
+        className="as-markdown-preview__panel"
+        hidden={sourceView}
+        id="markdown-preview-panel"
+        role="tabpanel"
+        tabIndex={0}
+      >
+        {preview}
+      </div>
+      <pre
+        aria-labelledby="markdown-source-tab"
+        className="as-markdown-preview__source"
+        hidden={!sourceView}
+        id="markdown-source-panel"
+        role="tabpanel"
+        tabIndex={0}
+      ><code>{source}</code></pre>
+    </div>
   );
 }
 

@@ -214,6 +214,15 @@ importers:
       clsx:
         specifier: 2.1.1
         version: 2.1.1
+      dompurify:
+        specifier: 3.4.13
+        version: 3.4.13
+      marked:
+        specifier: 17.0.6
+        version: 17.0.6
+      mermaid:
+        specifier: 11.16.1
+        version: 11.16.1
       motion:
         specifier: 12.43.0
         version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -223,6 +232,9 @@ importers:
       react-dom:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
+      shiki:
+        specifier: 4.4.3
+        version: 4.4.3
       tailwind-merge:
         specifier: 3.6.0
         version: 3.6.0
@@ -245,6 +257,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: 6.0.5
         version: 6.0.5(vite@8.2.1(@types/node@26.6.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0))
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
       shadcn:
         specifier: 4.17.0
         version: 4.17.0(typescript@6.0.3)

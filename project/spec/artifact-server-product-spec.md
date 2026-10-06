@@ -15,7 +15,7 @@ The first release supports both a direct local owner and a private team on one s
 | What does it publish? | Finished HTML, CSS, JavaScript, images, fonts, and other files needed by a client-side site, or one ordinary file such as an image, PDF, audio recording, video, text file, or ZIP archive. |
 | What does a user or agent select? | One actual file or one finished directory. Public API and MCP arguments do not contain raw HTML, CSS, JavaScript, Markdown, or base64-wrapped file contents. The publishing client handles the upload details. |
 | What does it execute? | Only code that a browser can run. Artifact Server does not install packages, compile source code, run Node.js or Python for an artifact, connect an artifact to a database, execute server functions, or perform server-side rendering. |
-| How are files displayed? | Artifact Server sends the correct HTTP headers and lets the browser handle formats it already understands. The review interface may present an exact-version image or video through native browser elements, but the first release has no custom document renderer, media decoder, converter, thumbnail service, ZIP extractor, Markdown renderer, or syntax-highlighting interface. |
+| How are files displayed? | Artifact Server sends the correct HTTP headers and lets the browser handle formats it already understands. The review interface may present an exact-version image or video through native browser elements, and renders declared Markdown entries on demand with formatted preview, original source, highlighted fenced code, diagrams, and review comments. It has no office/PDF renderer, media decoder, converter, thumbnail service, or ZIP extractor. |
 | How is work organized? | One installation represents one person, team, or company. It contains projects, and every artifact belongs to one project. A new installation creates a default project. There is no organization switcher or separate Artifact Store object. |
 | What is an artifact? | One published item in a project, with a stable ID, access setting, optional tags, current version, and immutable saved versions. |
 | Who can read it? | Exactly two settings: account required, or public link. On a standalone installation, account required means every person admitted to that one installation may read it. A public link opens only the current version; history and comparisons remain account-required. |
@@ -36,7 +36,8 @@ Artifact Server accepts a complete directory of finished client-side files or on
 | Image | Let the browser display it. |
 | PDF | Let the browser display or download it. |
 | Audio or video | Let the browser play it and support byte-range requests. |
-| Text, Markdown, JSON, and source code | Send the correct text type. No custom renderer or syntax highlighting. |
+| Markdown | Preserve the original file and render declared `text/markdown` entries on demand in Review, with Source and Preview views, highlighted code, Mermaid diagrams, and exact-version comments. |
+| Text, JSON, and source code | Send the correct text type. No standalone source-code viewer. |
 | ZIP, office document, or unknown file | Download it. |
 
 The server supports `GET`, `HEAD`, byte ranges where applicable, a stable `ETag`, an explicit media type, `X-Content-Type-Options: nosniff`, and a safe `Content-Disposition`. It does not transcode, inspect, repair, or execute uploaded media and documents.
@@ -571,7 +572,7 @@ These items can change implementation cost or hosting viability and must be reso
 - Custom PDF or office-document viewers.
 - Media conversion, adaptive streaming, thumbnails, or transcription.
 - ZIP extraction or archive browsing.
-- Markdown rendering or syntax-highlighting UI.
+- Server-side Markdown conversion, MDX execution, or a standalone source-code editing UI.
 - Image, PDF, audio, video, or archive comparison engines.
 - Review status, notifications, and workspace collaboration.
 - General-purpose source-code hosting.

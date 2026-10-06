@@ -565,6 +565,7 @@ function ArtifactReview({
   const [focusControlsCollapsed, setFocusControlsCollapsed] = useState(false);
   const [focusControlsHoverArmed, setFocusControlsHoverArmed] = useState(true);
   const [focusControlsInstant, setFocusControlsInstant] = useState(false);
+  const [markdownSourceViewActive, setMarkdownSourceViewActive] = useState(false);
   const [htmlAnnotateModeActive, setHtmlAnnotateModeActive] = useState(true);
   const [homeOpen, setHomeOpen] = useState(false);
   const focusCommentsButtonRef = useRef<HTMLButtonElement>(null);
@@ -1630,7 +1631,7 @@ function ArtifactReview({
                   inert={focusControlsCollapsed}
                   role="toolbar"
                 >
-                  {previewKind === "html" && canComment ? (
+                  {(previewKind === "html" || previewKind === "markdown") && !markdownSourceViewActive && canComment ? (
                     <button
                       aria-pressed={htmlAnnotateModeActive}
                       className="as-button as-focus-controls__button"
@@ -1757,7 +1758,7 @@ function ArtifactReview({
               <h1>{details?.artifact.name ?? selectedItem?.artifact.name ?? "Artifact Server"}</h1>
             </div>
             <div className="as-preview-header__actions">
-              {previewKind === "html" && canComment ? (
+              {(previewKind === "html" || previewKind === "markdown") && !markdownSourceViewActive && canComment ? (
                 <IconButton
                   active={htmlAnnotateModeActive}
                   label={htmlAnnotateModeActive
@@ -1838,6 +1839,7 @@ function ArtifactReview({
                 artifactName={details?.artifact.name ?? selectedItem?.artifact.name ?? "Artifact"}
                 isLight={theme === "dawn"}
                 onOpenRawArtifact={() => void openRawArtifact()}
+                onSourceViewChange={setMarkdownSourceViewActive}
                 onAnnotateModeChange={setHtmlAnnotateModeActive}
                 onSelectAnnotation={(threadId) => {
                   comments.selectThread(threadId);
@@ -2777,7 +2779,7 @@ function reviewHref(location: ReviewLocation): string {
 function reviewPreviewKind(
   version: ArtifactVersion | null,
   selectedPath: string | null,
-): "html" | "media" | "other" {
+): "html" | "markdown" | "media" | "other" {
   if (version === null) return "other";
   const path = selectedPath ?? version.manifest.entryPath;
   const mediaType = version.manifest.entries
@@ -2786,6 +2788,7 @@ function reviewPreviewKind(
     ?.trim()
     .toLowerCase();
   if (mediaType === "text/html") return "html";
+  if (mediaType === "text/markdown") return "markdown";
   if (mediaType?.startsWith("image/") || mediaType?.startsWith("video/")) {
     return "media";
   }

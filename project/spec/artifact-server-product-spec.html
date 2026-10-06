@@ -1836,8 +1836,8 @@
               <div class="feature-copy">
                 <p>
                   HTML opens as a website. Images, PDFs, audio, and video use the browser's normal
-                  controls. Text, JSON, Markdown, and source files open as plain text in the first
-                  release. ZIP archives and unknown file types download. Audio and video support
+                  controls. Text, JSON, and source files open as plain text. Markdown files retain
+                  their original bytes and have formatted Preview and literal Source views in Review. ZIP archives and unknown file types download. Audio and video support
                   byte-range requests so seeking works.
                 </p>
                 <p>
@@ -1849,7 +1849,9 @@
                 </p>
                 <p class="feature-note">
                   The first release does not convert media, generate thumbnails, extract ZIP files,
-                  render Markdown, highlight source code, or ship a custom PDF viewer. Supporting
+                  run server-side document conversion or ship a custom PDF viewer. Markdown
+                  rendering, fenced-code highlighting, and Mermaid diagrams run on demand in
+                  the browser and reuse exact-version review comments. Supporting
                   these file types adds routing, media-type, range-request, and download tests—not a
                   separate processing service.
                 </p>
@@ -3814,7 +3816,7 @@ artifact_delete</code></pre>
                 <li>A general-purpose Git service for arbitrary source-code repositories. Optional Git handoff exists only for Artifact Server artifacts.</li>
                 <li>Installing packages or turning source code into a finished application.</li>
                 <li>Code inside an artifact that must run on the server.</li>
-                <li>Media conversion, thumbnails, ZIP extraction, Markdown rendering, source-code highlighting, custom PDF viewing, or specialized binary comparisons in the first release.</li>
+                <li>Media conversion, thumbnails, ZIP extraction, server-side Markdown conversion, standalone source-code editing, custom PDF viewing, or specialized binary comparisons in the first release.</li>
                 <li>Fetching arbitrary source URLs from the server.</li>
                 <li>Add-ons that run inside Artifact Server.</li>
                 <li>A separate Artifact Server-managed member list for every project or artifact. Projects use installation membership. Plannotator may authorize a narrow delegated request before sending it.</li>

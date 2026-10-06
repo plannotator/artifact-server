@@ -4179,12 +4179,12 @@ requirements:
 
   - id: SCP-002
     kind: exclusion
-    behavior: The first release has no custom PDF or office viewer, media conversion, adaptive streaming, thumbnailing, transcription, ZIP browsing, Markdown renderer, syntax-highlighting interface, or binary-media comparison engine.
+    behavior: The first release has no custom PDF or office viewer, media conversion, adaptive streaming, thumbnailing, transcription, ZIP browsing, server-side Markdown conversion, standalone source-code editing interface, or binary-media comparison engine. On-demand browser Markdown rendering is supported.
     owner: product-core
     source: {file: artifact-server-product-spec.html, anchor: scope}
     acceptance:
       behavior: {id: SCP-002-B, description: "Open browser-supported media directly and download unsupported files using only generic content delivery."}
-      failure: {id: SCP-002-F, description: "Uploading a document, archive, image, audio, or video file cannot enqueue conversion, extraction, analysis, rendering, or preview work."}
+      failure: {id: SCP-002-F, description: "Uploading a document, archive, image, audio, or video file cannot enqueue server-side conversion, extraction, analysis, rendering, or preview work; browser Markdown rendering happens only when opened in Review."}
     deployments: *all
     status: specified
     depends_on: [PRD-002, CNT-001]
@@ -4871,3 +4871,45 @@ requirements:
         result: pass
         run: project/evidence/browser.json
         recorded_at: "2026-08-24T03:47:04.897Z"
+
+  - id: MDV-001
+    kind: behavior
+    behavior: Declared Markdown files have exact-version formatted Preview and original Source views.
+    owner: web-application
+    source: {file: markdown-preview-spec.md, anchor: conformance-requirements}
+    acceptance:
+      behavior: {id: MDV-001-B, description: "Open a text/markdown entry and observe GFM headings, tables and task lists, toggle original source, and download unchanged version bytes."}
+      failure: {id: MDV-001-F, description: "Raw HTML and unsafe URLs cannot execute, oversized input settles explicitly, and unknown MIME files are not sniffed into Markdown."}
+    deployments: *all
+    status: implementing
+    proof_gap: Native Markdown tests are being qualified locally; hosted deployment and full iteration evidence remain incomplete.
+    depends_on: [PRV-004, PRV-005]
+    evidence: []
+
+  - id: MDV-002
+    kind: behavior
+    behavior: Markdown fenced code is highlighted and Mermaid diagrams render on demand with bounded strict configuration.
+    owner: web-application
+    source: {file: markdown-preview-spec.md, anchor: conformance-requirements}
+    acceptance:
+      behavior: {id: MDV-002-B, description: "Render recognized code fences and a Mermaid diagram while retaining source content."}
+      failure: {id: MDV-002-F, description: "Invalid diagrams show readable fallback; hostile directives cannot relax security, inject active SVG or execute document scripts."}
+    deployments: *all
+    status: implementing
+    proof_gap: Native Markdown tests are being qualified locally; hosted deployment and full iteration evidence remain incomplete.
+    depends_on: [PRV-004, PRV-005]
+    evidence: []
+
+  - id: MDV-003
+    kind: behavior
+    behavior: Markdown resources and review comments belong to the selected immutable file and version.
+    owner: web-application
+    source: {file: markdown-preview-spec.md, anchor: conformance-requirements}
+    acceptance:
+      behavior: {id: MDV-003-B, description: "Resolve bundled relative assets within the version manifest and retain anchored comments on the rendered document."}
+      failure: {id: MDV-003-F, description: "Escaping or absent resource paths stay inert and abandoned renders cannot replace the current selection."}
+    deployments: *all
+    status: implementing
+    proof_gap: Native Markdown tests are being qualified locally; hosted deployment and full iteration evidence remain incomplete.
+    depends_on: [PRV-004, PRV-005]
+    evidence: []
