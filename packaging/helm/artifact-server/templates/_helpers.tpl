@@ -159,6 +159,8 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
   value: {{ .Values.configuration.readinessWithdrawalMilliseconds | quote }}
 - name: ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE
   value: {{ .Values.configuration.requestLogSampleRate | quote }}
+- name: ARTIFACT_SERVER_SESSION_LIFETIME_HOURS
+  value: {{ .Values.configuration.sessionLifetimeHours | quote }}
 - name: ARTIFACT_SERVER_S3_BUCKET
   value: {{ .Values.configuration.s3.bucket | quote }}
 - name: ARTIFACT_SERVER_S3_FORCE_PATH_STYLE

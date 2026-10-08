@@ -3,6 +3,7 @@ import {Effect, Layer, ManagedRuntime, Redacted} from "effect";
 import type {ApplicationRuntime} from "../../../src/application/application-runtime.js";
 import {ExpiredStagingCleanupService} from
   "../../../src/application/expired-staging-cleanup.js";
+import {maximumSessionLifetimeHours} from "../../../src/core/session-lifetime.js";
 import {SystemClock, SystemIdGenerator} from "../../../src/core/system.js";
 import {
   browserLoginKinds,
@@ -65,6 +66,7 @@ export interface WorkerEnvironment {
   readonly ARTIFACT_SERVER_QUALIFICATION_MODE?: "enabled";
   readonly ARTIFACT_SERVER_R2_BUCKET: R2Bucket;
   readonly ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE?: string | number;
+  readonly ARTIFACT_SERVER_SESSION_LIFETIME_HOURS?: string | number;
   readonly ARTIFACT_SERVER_WORKOS_API_KEY?: string;
   readonly ARTIFACT_SERVER_WORKOS_CLIENT_ID?: string;
   readonly ARTIFACT_SERVER_WORKOS_ISSUER?: string;
@@ -187,6 +189,7 @@ async function createCloudflareRuntime(
     localBootstrapCredential: null,
     protectBootstrapAdministrator: false,
     repository,
+    sessionLifetimeMilliseconds: sessionLifetimeMilliseconds(environment),
     staging,
   };
   if (gitHistory.provider !== null) {
@@ -521,6 +524,16 @@ function requestLogSampleRate(environment: WorkerEnvironment): number {
   return Number.isFinite(configured)
     ? Math.min(1, Math.max(0, configured))
     : defaultCompletedRequestLogSampleRate;
+}
+
+function sessionLifetimeMilliseconds(
+  environment: WorkerEnvironment,
+): number | undefined {
+  const hours = Number(environment.ARTIFACT_SERVER_SESSION_LIFETIME_HOURS);
+  return Number.isSafeInteger(hours) &&
+      hours >= 1 && hours <= maximumSessionLifetimeHours
+    ? hours * 60 * 60 * 1_000
+    : undefined;
 }
 
 const readyComponent = {

@@ -337,6 +337,7 @@ function configureExternalStorageStart(
         postgresMaxConnections: parsed.postgresMaxConnections,
         readinessWithdrawalMilliseconds: parsed.readinessWithdrawalMilliseconds,
         serviceVersion: productVersion,
+        sessionLifetimeMilliseconds: parsed.sessionLifetimeMilliseconds,
         shutdownDeadlineMilliseconds: parsed.shutdownDeadlineMilliseconds,
         stagingCleanupPolicy: parsed.stagingCleanupPolicy,
       };
@@ -409,6 +410,7 @@ async function startCompactServer(
     readinessWithdrawalMilliseconds:
       configuration.readinessWithdrawalMilliseconds,
     serviceVersion: productVersion,
+    sessionLifetimeMilliseconds: configuration.sessionLifetimeMilliseconds,
     shutdownDeadlineMilliseconds: configuration.shutdownDeadlineMilliseconds,
     stagingCleanupPolicy: configuration.stagingCleanupPolicy,
   };

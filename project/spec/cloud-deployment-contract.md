@@ -76,6 +76,7 @@ but every package must expose these names and meanings.
 | `otlpEndpoint` | no | HTTPS OTLP collector address |
 | `requestLogSampleRate` | no | Number from 0 through 1; default `0.01` |
 | `resourceTags` | no | String map merged with required Artifact Server management tags |
+| `sessionLifetimeHours` | no | Integer from 1 through 720; default `12` |
 
 The package rejects an unpinned image, equal application and content domains,
 an invalid capacity range, a public deployment without a DNS zone, and a
@@ -201,6 +202,7 @@ the application fail at startup.
 | `ARTIFACT_SERVER_HOST` | `0.0.0.0` inside the managed runtime |
 | `ARTIFACT_SERVER_PORT` | `8787` |
 | `ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE` | Shared input or `0.01` |
+| `ARTIFACT_SERVER_SESSION_LIFETIME_HOURS` | Shared input or `12` |
 | `ARTIFACT_SERVER_WORKOS_CLIENT_ID` | Hosted login only; shared WorkOS client input |
 | `ARTIFACT_SERVER_WORKOS_ISSUER` | Hosted login only; exact AuthKit issuer |
 | `ARTIFACT_SERVER_WORKOS_API_KEY_FILE` or `ARTIFACT_SERVER_WORKOS_API_KEY` | Hosted login only; provider secret reference |

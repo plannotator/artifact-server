@@ -109,6 +109,7 @@ export interface LocalRuntimeConfig {
   readonly runtimeLifecycle?: RuntimeLifecycle;
   readonly installationId?: string;
   readonly serviceVersion?: string;
+  readonly sessionLifetimeMilliseconds?: number;
   readonly stagingCleanupPolicy?: StagingCleanupPolicy;
   /** Overrides the compiled web bundle directory; used by tests. */
   readonly webAssetsRoot?: string;
@@ -236,6 +237,7 @@ export async function createLocalRuntime(
     protectBootstrapAdministrator:
       config.browserAccess.mode === browserAccessModes.localOwner,
     repository,
+    sessionLifetimeMilliseconds: config.sessionLifetimeMilliseconds,
     staging,
     stagingCleanupPolicy,
   };

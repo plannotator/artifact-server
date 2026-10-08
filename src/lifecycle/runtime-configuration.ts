@@ -5,6 +5,10 @@ import path from "node:path";
 
 import {Effect, Option, Redacted, Schema} from "effect";
 import {getDomain} from "tldts";
+import {
+  defaultSessionLifetimeHours,
+  maximumSessionLifetimeHours,
+} from "../core/session-lifetime.js";
 import {managedApiKeyCredentialPattern} from
   "../core/installation-identity.js";
 import {
@@ -96,6 +100,7 @@ export interface CompactRuntimeConfiguration {
   readonly linkRoots: readonly string[];
   readonly port: number;
   readonly readinessWithdrawalMilliseconds: number;
+  readonly sessionLifetimeMilliseconds: number;
   readonly shutdownDeadlineMilliseconds: number;
   readonly stagingCleanupPolicy: StagingCleanupPolicy;
 }
@@ -120,6 +125,7 @@ export interface ExternalStorageRuntimeConfiguration {
   readonly port: number;
   readonly postgresMaxConnections: number;
   readonly readinessWithdrawalMilliseconds: number;
+  readonly sessionLifetimeMilliseconds: number;
   readonly shutdownDeadlineMilliseconds: number;
   readonly stagingCleanupPolicy: StagingCleanupPolicy;
 }
@@ -253,6 +259,7 @@ export const parseCompactRuntimeConfiguration = Effect.fn(
       "ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS",
       1_000,
     ),
+    sessionLifetimeMilliseconds: yield* parseSessionLifetime(input.environment),
     shutdownDeadlineMilliseconds: yield* parseMilliseconds(
       input.environment,
       "ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS",
@@ -331,6 +338,7 @@ export const parseExternalStorageRuntimeConfiguration = Effect.fn(
       "ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS",
       1_000,
     ),
+    sessionLifetimeMilliseconds: yield* parseSessionLifetime(environment),
     shutdownDeadlineMilliseconds: yield* parseMilliseconds(
       environment,
       "ARTIFACT_SERVER_SHUTDOWN_DEADLINE_MS",
@@ -688,6 +696,25 @@ function parseMilliseconds(
     );
   }
   return Effect.succeed(milliseconds);
+}
+
+function parseSessionLifetime(
+  environment: NodeJS.ProcessEnv,
+): Effect.Effect<number, RuntimeConfigurationError> {
+  const field = "ARTIFACT_SERVER_SESSION_LIFETIME_HOURS";
+  const hours = Number(
+    environment[field] ?? String(defaultSessionLifetimeHours),
+  );
+  if (
+    !Number.isSafeInteger(hours) ||
+    hours < 1 || hours > maximumSessionLifetimeHours
+  ) {
+    return invalidValue(
+      field,
+      `${field} must be an integer from 1 through ${maximumSessionLifetimeHours}.`,
+    );
+  }
+  return Effect.succeed(hours * 60 * 60 * 1_000);
 }
 
 function parsePostgresMaxConnections(

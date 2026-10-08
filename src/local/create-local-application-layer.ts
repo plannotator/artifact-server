@@ -11,6 +11,7 @@ import {
   digestIdentitySecret,
   InstallationAccessService,
 } from "../application/installation-access.js";
+import {defaultSessionLifetimeHours} from "../core/session-lifetime.js";
 import {
   type InteractiveIdentityProvider,
   InteractiveLoginService,
@@ -179,6 +180,8 @@ export interface ApplicationAdapters {
     GitHistoryMirrorStore &
     PublicLinkInventoryStore &
     StagedUploadRepository;
+  /** Absolute lifetime of a browser application session. */
+  readonly sessionLifetimeMilliseconds?: number | undefined;
   readonly staging: StagingStore;
   readonly stagingCleanupPolicy?: {
     readonly concurrency: number;
@@ -881,7 +884,8 @@ export function createApplicationLayer(
       digest: digestIdentitySecret,
       issue: () => randomBase64Url(32),
     },
-    sessionLifetimeMilliseconds: 12 * 60 * 60 * 1_000,
+    sessionLifetimeMilliseconds: adapters.sessionLifetimeMilliseconds ??
+      defaultSessionLifetimeHours * 60 * 60 * 1_000,
   });
   const authenticationLayer = Layer.effect(
     AuthenticationService,

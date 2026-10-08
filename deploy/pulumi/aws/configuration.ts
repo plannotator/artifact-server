@@ -54,6 +54,11 @@ export function readAwsPulumiConfiguration(): ParsedAwsPulumiConfiguration {
   document = withOptional(document, "resourceTags", config.getObject("resourceTags"));
   document = withOptional(
     document,
+    "sessionLifetimeHours",
+    config.getNumber("sessionLifetimeHours"),
+  );
+  document = withOptional(
+    document,
     "tlsCertificateArn",
     config.get("tlsCertificateArn"),
   );

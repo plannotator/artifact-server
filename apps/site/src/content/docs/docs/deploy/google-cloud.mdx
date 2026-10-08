@@ -149,7 +149,7 @@ Production configuration requires these values:
 - `deletionProtection` is `true`.
 - `imageReference` contains one immutable SHA-256 digest.
 
-Optional configuration includes `otlpEndpoint`, `requestLogSampleRate`, and `resourceTags`. The request-log sample rate defaults to `0.01`.
+Optional configuration includes `otlpEndpoint`, `requestLogSampleRate`, `resourceTags`, and `sessionLifetimeHours`. The request-log sample rate defaults to `0.01`. Browser sessions last 12 hours unless `sessionLifetimeHours` sets 1 through 720.
 
 The GCP package accepts 0.25, 0.5, 1, 2, 4, or 8 CPUs. Memory must be 512 MiB through 32,768 MiB.
 

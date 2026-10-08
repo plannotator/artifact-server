@@ -765,6 +765,7 @@ function runtimeEnvironment(
     {name: "ARTIFACT_SERVER_ORIGIN", value: `https://${input.applicationDomain}`},
     {name: "ARTIFACT_SERVER_READINESS_WITHDRAWAL_MS", value: "1000"},
     {name: "ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE", value: String(input.requestLogSampleRate)},
+    {name: "ARTIFACT_SERVER_SESSION_LIFETIME_HOURS", value: String(input.sessionLifetimeHours)},
     {name: "ARTIFACT_SERVER_STAGING_CLEANUP_BATCH_SIZE", value: "100"},
     {name: "ARTIFACT_SERVER_STAGING_CLEANUP_CONCURRENCY", value: "4"},
     {name: "ARTIFACT_SERVER_STAGING_CLEANUP_SCHEDULE", value: "external"},

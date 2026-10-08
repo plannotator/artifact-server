@@ -32,6 +32,7 @@ export const validDeploymentInput = {
   resourceTags: {
     owner: "artifact-server-review",
   },
+  sessionLifetimeHours: 12,
   stage: "review-foundation",
   cloudflareAccountId: "abcdef0123456789abcdef0123456789",
   compatibilityDate: CLOUDFLARE_COMPATIBILITY_DATE,

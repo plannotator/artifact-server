@@ -1,6 +1,10 @@
 import {Effect, Schema, type Redacted} from "effect";
 import {getDomain} from "tldts";
 
+import {
+  defaultSessionLifetimeHours,
+  maximumSessionLifetimeHours,
+} from "../core/session-lifetime.ts";
 import {findUnsafeCloudDeploymentValue} from
   "./cloud-deployment-secret-safety.ts";
 
@@ -128,6 +132,11 @@ const sharedInputFields = {
   ).pipe(Schema.withDecodingDefaultKey(Effect.succeed(0.01))),
   resourceTags: resourceTags.pipe(
     Schema.withDecodingDefaultKey(Effect.succeed({})),
+  ),
+  sessionLifetimeHours: Schema.Int.check(
+    Schema.isBetween({minimum: 1, maximum: maximumSessionLifetimeHours}),
+  ).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(defaultSessionLifetimeHours)),
   ),
   workosApiKeySecretRef: Schema.optionalKey(providerResourceIdentifier),
   workosClientId: Schema.optionalKey(identifier),

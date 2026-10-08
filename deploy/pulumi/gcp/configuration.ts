@@ -53,6 +53,11 @@ export function readGcpPulumiConfiguration(
   document = withOptional(document, "resourceTags", config.getObject("resourceTags"));
   document = withOptional(
     document,
+    "sessionLifetimeHours",
+    config.getNumber("sessionLifetimeHours"),
+  );
+  document = withOptional(
+    document,
     "workosApiKeySecretRef",
     config.get("workosApiKeySecretRef"),
   );

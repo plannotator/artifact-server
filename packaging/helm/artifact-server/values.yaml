@@ -20,6 +20,7 @@ configuration:
   postgresPoolSize: 10
   requestLogSampleRate: 0.01
   readinessWithdrawalMilliseconds: 1000
+  sessionLifetimeHours: 12
   shutdownDeadlineMilliseconds: 10000
   s3:
     bucket: ""

@@ -32,6 +32,7 @@ describe("shared cloud deployment contract", () => {
       "cloudflare",
     ]);
     expect(parsed.every((input) => input.requestLogSampleRate === 0.01)).toBe(true);
+    expect(parsed.every((input) => input.sessionLifetimeHours === 12)).toBe(true);
     expect(parsed.every((input) => Object.keys(input.resourceTags).length === 0))
       .toBe(true);
   });
@@ -50,6 +51,14 @@ describe("shared cloud deployment contract", () => {
       contentDomain: "content.assets.internal",
       ingress: "private",
     });
+  });
+
+  test("accepts a session lifetime up to thirty days", async () => {
+    const parsed = await Effect.runPromise(parseCloudDeploymentInput(
+      cloudflareInput({sessionLifetimeHours: 720}),
+    ));
+
+    expect(parsed.sessionLifetimeHours).toBe(720);
   });
 
   test("accepts complete Cloudflare OIDC configuration", async () => {
@@ -153,6 +162,11 @@ describe("shared cloud deployment contract", () => {
       compatibilityDate: "2026-02-31",
     })],
     ["non-global Cloudflare region", cloudflareInput({region: "us-west-2"})],
+    ["zero-hour session lifetime", cloudflareInput({sessionLifetimeHours: 0})],
+    ["session lifetime beyond thirty days", cloudflareInput({
+      sessionLifetimeHours: 721,
+    })],
+    ["fractional session lifetime", cloudflareInput({sessionLifetimeHours: 1.5})],
   ])("rejects %s before a provider write", async (_name, input) => {
     const failure = await Effect.runPromise(
       parseCloudDeploymentInput(input).pipe(Effect.flip),

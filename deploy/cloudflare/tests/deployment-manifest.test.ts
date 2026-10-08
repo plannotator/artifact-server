@@ -26,6 +26,18 @@ describe("Cloudflare deployment manifest", () => {
       ARTIFACT_SERVER_CONTENT_DOMAIN: "artifact-content.example.net",
       ARTIFACT_SERVER_OBJECT_STORAGE_PROVIDER: "r2",
       ARTIFACT_SERVER_REQUEST_LOG_SAMPLE_RATE: 0.01,
+      ARTIFACT_SERVER_SESSION_LIFETIME_HOURS: 12,
+    });
+  });
+
+  it("passes the configured session lifetime to the worker", () => {
+    const manifest = buildCloudflareDeploymentManifest({
+      ...validDeploymentInput,
+      sessionLifetimeHours: 336,
+    });
+
+    expect(manifest.runtimeConfiguration).toMatchObject({
+      ARTIFACT_SERVER_SESSION_LIFETIME_HOURS: 336,
     });
   });
 

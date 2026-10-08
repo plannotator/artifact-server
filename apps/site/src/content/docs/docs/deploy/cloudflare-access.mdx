@@ -75,6 +75,8 @@ the value or paste it into an issue.
 
 Do not include `workosClientId`, `workosIssuer`, or `workosApiKeySecretRef` in the same deployment. One installation uses one browser-login provider.
 
+An Artifact Server browser session lasts 12 hours by default. To sign people in less often, set `sessionLifetimeHours` to an integer from 1 through 720. When the session ends, Artifact Server sends the browser back through Cloudflare Access. Access skips the login prompt while its own session is still valid, so set the Access application's session duration to the same length or longer.
+
 Run the normal Cloudflare lifecycle commands:
 
 ```sh
