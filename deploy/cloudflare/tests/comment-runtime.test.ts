@@ -376,6 +376,75 @@ describe("Cloudflare D1 comments", () => {
     expect(afterRestart.items[0]?.state).toBe("resolved");
   }, 120_000);
 
+  it("records owners, backfills them on upgrade, and hides restricted artifacts from other readers", async () => {
+    const ownerDirectory = await mkdtemp(
+      join(tmpdir(), "artifact-server-cloudflare-owner-"),
+    );
+    let ownerWorker = await startWorker(ownerDirectory);
+    try {
+      const kept = await publishArtifact(ownerWorker, "owner-kept-publish-0001");
+      const shared = await publishArtifact(ownerWorker, "owner-shared-publish-01");
+      const ownerOf = async (artifactId: string): Promise<string | null> => {
+        const response = await authenticatedFetch(
+          ownerWorker,
+          `${origin}/api/v1/artifacts/${artifactId}`,
+        );
+        expect(response.status).toBe(200);
+        return z.object({artifact: z.object({ownerPrincipalId: z.string().nullable()})})
+          .parse(await response.json()).artifact.ownerPrincipalId;
+      };
+      const owner = await ownerOf(kept.artifact.id);
+      expect(owner).not.toBeNull();
+      await ownerWorker.stop();
+
+      // An older D1 database has no owner column; the kept page was restricted
+      // by its owner, whom the API token is not.
+      const d1File = await findD1DatabaseFile(ownerDirectory);
+      const database = new DatabaseSync(d1File);
+      try {
+        database.exec(`
+          DROP INDEX artifacts_project_owner_active_created;
+          ALTER TABLE artifacts DROP COLUMN owner_principal_id;
+          UPDATE artifact_server_schema SET version = 9 WHERE component = 'runtime';
+        `);
+        database.prepare("UPDATE artifacts SET restricted = 1 WHERE id = ?")
+          .run(kept.artifact.id);
+      } finally {
+        database.close();
+      }
+
+      ownerWorker = await startWorker(ownerDirectory);
+      const listed = z.object({
+        artifacts: z.array(z.object({artifact: z.object({id: z.string()})})),
+      }).parse(await (await authenticatedFetch(
+        ownerWorker,
+        `${origin}/api/v1/artifacts`,
+      )).json());
+      expect(listed.artifacts.map(({artifact}) => artifact.id))
+        .toEqual([shared.artifact.id]);
+      const hidden = await authenticatedFetch(
+        ownerWorker,
+        `${origin}/api/v1/artifacts/${kept.artifact.id}`,
+      );
+      expect(hidden.status).toBe(404);
+      expect(failureSchema.parse(await hidden.json()).error.code)
+        .toBe("ARTIFACT_NOT_FOUND");
+      expect(await ownerOf(shared.artifact.id)).toBe(owner);
+
+      const upgraded = new DatabaseSync(d1File, {readOnly: true});
+      try {
+        expect(z.object({owner: z.string().nullable()}).parse(upgraded.prepare(
+          "SELECT owner_principal_id AS owner FROM artifacts WHERE id = ?",
+        ).get(kept.artifact.id)).owner).toBe(owner);
+      } finally {
+        upgraded.close();
+      }
+    } finally {
+      await ownerWorker.stop();
+      await rm(ownerDirectory, {force: true, recursive: true});
+    }
+  }, 120_000);
+
   it("upgrades a version 2 database in place and then accepts comments", async () => {
     const upgradeDirectory = await mkdtemp(
       join(tmpdir(), "artifact-server-cloudflare-upgrade-"),
@@ -497,7 +566,7 @@ describe("Cloudflare D1 comments", () => {
       try {
         expect(schemaVersionRowSchema.parse(upgraded.prepare(
           "SELECT version FROM artifact_server_schema WHERE component = 'runtime'",
-        ).get()).version).toBe(9);
+        ).get()).version).toBe(10);
         const columns = z.array(tableColumnRowSchema)
           .parse(upgraded.prepare("PRAGMA table_info(login_attempts)").all())
           .map(({name}) => name);

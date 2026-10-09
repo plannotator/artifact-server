@@ -160,7 +160,9 @@ export function ReviewShareControl({
         changed.warning ?? (
           selectedAccess === "public_link"
             ? "The current version can now be opened without signing in."
-            : "This artifact now requires an admitted account."
+            : selectedAccess === "restricted"
+              ? "Only you and installation administrators can now find or open this artifact."
+              : "Every signed-in member can now find and open this artifact."
         ),
       );
       setScreen("overview");
@@ -418,10 +420,18 @@ export function ReviewShareControl({
                 <fieldset>
                   <legend className="as-visually-hidden">Who can open this artifact</legend>
                   <ShareAccessOption
-                    checked={selectedAccess === "account_required"}
-                    description="An admitted installation account is required."
+                    checked={selectedAccess === "restricted"}
+                    description="Only you and installation administrators can find or open it. Other members do not see it in lists or search."
                     disabled={pending}
-                    label="Private"
+                    label="Only me"
+                    onChange={() => setSelectedAccess("restricted")}
+                    value="restricted"
+                  />
+                  <ShareAccessOption
+                    checked={selectedAccess === "account_required"}
+                    description="Every signed-in member of this installation can find and open it."
+                    disabled={pending}
+                    label="Signed-in members"
                     onChange={() => setSelectedAccess("account_required")}
                     value="account_required"
                   />
@@ -630,7 +640,9 @@ Project ID: ${details.artifact.projectId}
 Artifact ID: ${details.artifact.id}
 Version: ${selectedVersion.version.number}
 Version ID: ${selectedVersion.version.id}
-Access: ${details.artifact.accessSetting === "public_link" ? "public link" : "private"}
+Access: ${details.artifact.accessSetting === "public_link"
+  ? "public link"
+  : details.artifact.accessSetting === "restricted" ? "only me" : "signed-in members"}
 Review and comment: ${reviewLink}
 Raw exact version: ${selectedVersion.links.version}
 Moving latest link: ${details.links.artifact}

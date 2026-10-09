@@ -655,6 +655,30 @@ const addArtifactSearchName = Effect.gen(function*() {
   );
 });
 
+const addArtifactOwner = Effect.gen(function*() {
+  const sql = yield* SqlClient;
+  const statements = [
+    `ALTER TABLE artifacts
+      ADD COLUMN owner_principal_id TEXT,
+      ADD COLUMN restricted BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE idempotency_records
+      ADD COLUMN restricted BOOLEAN NOT NULL DEFAULT false`,
+    // The index comes first: the backfill queues events for the deferred
+    // current-version foreign key, and Postgres refuses CREATE INDEX on a
+    // table with pending trigger events in the same transaction.
+    `CREATE INDEX artifacts_project_owner_active_created
+      ON artifacts (installation_id, project_id, owner_principal_id, deleted_at, created_at, id)`,
+    // Version 1 is never deleted, so its publisher is the artifact's creator.
+    `UPDATE artifacts SET owner_principal_id = versions.publisher_principal_id
+      FROM versions
+      WHERE versions.installation_id = artifacts.installation_id
+        AND versions.project_id = artifacts.project_id
+        AND versions.artifact_id = artifacts.id
+        AND versions.number = 1`,
+  ] as const;
+  for (const statement of statements) yield* sql.unsafe(statement);
+});
+
 const migrationLoader = Migrator.fromRecord({
   "0001_initial_shared_schema": initialSchema,
   "0002_project_scoped_artifacts": addProjectScope,
@@ -667,10 +691,11 @@ const migrationLoader = Migrator.fromRecord({
   "0009_git_history_mirror": addGitHistoryMirror,
   "0010_agent_capabilities": widenRegisteredAgentKind,
   "0011_artifact_search_name": addArtifactSearchName,
+  "0012_artifact_owner": addArtifactOwner,
 });
 
 /** Schema revision required by this Artifact Server build. */
-export const requiredPostgresSchemaVersion = 11;
+export const requiredPostgresSchemaVersion = 12;
 
 /** Migration compatibility observed without changing Postgres. */
 export interface PostgresMigrationStatus {
@@ -758,6 +783,9 @@ export const readPostgresMigrationStatus = Effect.gen(function*() {
   }, {
     migration_id: 11,
     name: "artifact_search_name",
+  }, {
+    migration_id: 12,
+    name: "artifact_owner",
   }] as const;
   const observedRequiredHistory = rows.filter(
     (row) => row.migration_id <= requiredPostgresSchemaVersion,

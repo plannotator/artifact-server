@@ -8,7 +8,7 @@ import {defaultGitHistoryMaximumCopiedFiles} from
   "../../../src/git-history/git-history-capability.js";
 
 /** D1 schema revision required by the Cloudflare runtime. */
-export const requiredD1SchemaVersion = 9;
+export const requiredD1SchemaVersion = 10;
 
 /** SQL literal list of every action kind the ledger accepts. */
 const actionKindList = [
@@ -617,6 +617,7 @@ export async function migrateD1(
     await addGitHistoryMirrorColumnsIfMissing(database);
     await widenRegisteredAgentsIfNeeded(database);
     await addArtifactSearchNameIfMissing(database);
+    await addArtifactOwnerIfMissing(database);
   }
   await database.batch([
     database.prepare(`
@@ -636,6 +637,58 @@ export async function migrateD1(
       new Date(0).toISOString(),
     ),
   ]);
+}
+
+function hasColumn(
+  columns: {readonly results: readonly {name: string}[]},
+  name: string,
+): boolean {
+  return columns.results.some((column) => column.name === name);
+}
+
+/**
+ * Record artifact owners and the restricted flag, backfilling owners from the
+ * version 1 publisher. Kept out of the shared schema statements for the same
+ * reason as the dispatch marker: an index over a column an older database lacks
+ * would fail the whole schema batch.
+ */
+async function addArtifactOwnerIfMissing(database: D1Database): Promise<void> {
+  const artifactColumns = await database.prepare("PRAGMA table_info(artifacts)")
+    .all<{name: string}>();
+  const idempotencyColumns = await database
+    .prepare("PRAGMA table_info(idempotency_records)")
+    .all<{name: string}>();
+  const statements: D1PreparedStatement[] = [];
+  if (!hasColumn(artifactColumns, "owner_principal_id")) {
+    statements.push(database.prepare(
+      "ALTER TABLE artifacts ADD COLUMN owner_principal_id TEXT",
+    ));
+  }
+  if (!hasColumn(artifactColumns, "restricted")) {
+    statements.push(database.prepare(
+      "ALTER TABLE artifacts ADD COLUMN restricted INTEGER NOT NULL DEFAULT 0 CHECK (restricted IN (0, 1))",
+    ));
+  }
+  if (!hasColumn(idempotencyColumns, "restricted")) {
+    statements.push(database.prepare(
+      "ALTER TABLE idempotency_records ADD COLUMN restricted INTEGER NOT NULL DEFAULT 0 CHECK (restricted IN (0, 1))",
+    ));
+  }
+  statements.push(
+    database.prepare(`
+      UPDATE artifacts
+      SET owner_principal_id = (
+        SELECT versions.publisher_principal_id FROM versions
+        WHERE versions.artifact_id = artifacts.id AND versions.number = 1
+      )
+      WHERE owner_principal_id IS NULL
+    `),
+    database.prepare(`
+      CREATE INDEX IF NOT EXISTS artifacts_project_owner_active_created
+        ON artifacts (project_id, owner_principal_id, deleted_at, created_at, id)
+    `),
+  );
+  await database.batch(statements);
 }
 
 async function addArtifactSearchNameIfMissing(

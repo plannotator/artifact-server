@@ -73,7 +73,7 @@ const mediaTypesByExtension = new Map<string, string>([
 const positiveIntegerSchema = Schema.Int.check(Schema.isGreaterThan(0));
 const nonnegativeIntegerSchema = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const artifactSchema = Schema.Struct({
-  accessSetting: Schema.Literals(["account_required", "public_link"]),
+  accessSetting: Schema.Literals(["account_required", "public_link", "restricted"]),
   createdAt: Schema.String,
   currentVersionId: Schema.String,
   deletedAt: Schema.NullOr(Schema.String),

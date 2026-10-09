@@ -134,7 +134,7 @@ test.describe("Artifact Server frontend MVP", () => {
       const accessRow = fixture.page.locator(".as-inspector-row").filter({
         hasText: "access",
       });
-      await expect(accessRow.getByText("private", {exact: true})).toBeVisible();
+      await expect(accessRow.getByText("members", {exact: true})).toBeVisible();
       await expect(accessRow.getByText("Account required", {exact: true})).toHaveCount(0);
       const reviewFrame = fixture.page.frameLocator(".as-artifact-frame");
       const preview = reviewFrame.frameLocator("iframe");

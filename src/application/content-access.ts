@@ -6,6 +6,7 @@ import {
   Redacted,
 } from "effect";
 
+import {requireArtifactVisible} from "../core/artifact-visibility.js";
 import {
   ArtifactNotFound,
   type ArtifactRepositoryFailure,
@@ -246,6 +247,7 @@ function makeContentAccessService(
         new ArtifactNotFound({message: "The artifact does not exist."}),
       );
     }
+    yield* requireArtifactVisible(command.principal, current.artifact);
     yield* authorization.requireContentSession(
       command.principal,
       current.artifact,

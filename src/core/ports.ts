@@ -184,12 +184,20 @@ export interface DeleteArtifact {
   readonly projectId: string;
 }
 
+/** Restricted artifacts one reader may list: every one, those it owns, or none. */
+export type RestrictedArtifactScope =
+  | {readonly kind: "all"}
+  | {readonly kind: "none"}
+  | {readonly kind: "owned"; readonly principalId: string};
+
 /** Values used to read one bounded page of active artifacts. */
 export interface ListArtifacts {
   readonly comments: "all" | "with" | "without";
   readonly cursor: PageCursor | null;
   readonly limit: number;
   readonly projectId: string;
+  /** Which restricted artifacts the reader may see; others are filtered out. */
+  readonly restrictedScope: RestrictedArtifactScope;
   /** Normalized name-substring or exact-tag search, when supplied. */
   readonly search?: string | null;
   readonly sort: "comments" | "newest";
@@ -454,6 +462,8 @@ export interface CreateAgentDispatch {
   readonly installationId: string;
   readonly note: string | null;
   readonly projectId: string;
+  /** Threads of restricted artifacts outside this scope count as missing. */
+  readonly restrictedScope: RestrictedArtifactScope;
   readonly sender: CommentAuthor;
   readonly threadIds: readonly string[];
 }

@@ -20,24 +20,30 @@ import {
   ArtifactNotFound,
   type ArtifactMutationConflict,
   type ArtifactRepositoryFailure,
-  type AuthorizationDenied,
+  AuthorizationDenied,
   type IdempotencyConflict,
   type InvalidArtifactTags,
   type InvalidIdempotencyKey,
   InvalidPagination,
   VersionNotFound,
 } from "../core/errors.js";
+import {
+  mayChangeRestriction,
+  requireArtifactVisible,
+  restrictedArtifactScope,
+} from "../core/artifact-visibility.js";
 import type { Principal } from "../core/identity.js";
-import type {
-  AccessSetting,
-  ArtifactActionPage,
-  ArtifactDeletion,
-  ArtifactPage,
-  ArtifactRecord,
-  ArtifactState,
-  ArtifactVersion,
-  PageCursor,
-  VersionRecord,
+import {
+  accessSettings,
+  type AccessSetting,
+  type ArtifactActionPage,
+  type ArtifactDeletion,
+  type ArtifactPage,
+  type ArtifactRecord,
+  type ArtifactState,
+  type ArtifactVersion,
+  type PageCursor,
+  type VersionRecord,
 } from "../core/model.js";
 import type {
   ChangeArtifactAccessSetting,
@@ -342,6 +348,7 @@ function makeArtifactManagementService(
         command.projectId,
       );
       const artifact = yield* requireArtifact(project.id, command.artifactId);
+      yield* requireArtifactVisible(command.principal, artifact);
       yield* authorization.requireArtifactRead(command.principal);
       const current = yield* requireVersion(
         project.id,
@@ -372,6 +379,7 @@ function makeArtifactManagementService(
       if (artifact === null) {
         return yield* new ArtifactNotFound({message: "The artifact does not exist."});
       }
+      yield* requireArtifactVisible(command.principal, artifact);
       yield* authorization.requireArtifactRead(command.principal);
       if (version === null) {
         return yield* new VersionNotFound({
@@ -408,6 +416,7 @@ function makeArtifactManagementService(
       if (artifact === null) {
         return yield* new ArtifactNotFound({message: "The artifact does not exist."});
       }
+      yield* requireArtifactVisible(command.principal, artifact);
       yield* authorization.requireArtifactRead(command.principal);
       return versions;
     },
@@ -435,6 +444,7 @@ function makeArtifactManagementService(
         cursor: command.cursor,
         limit,
         projectId: project.id,
+        restrictedScope: restrictedArtifactScope(command.principal),
         search,
         sort,
         tags,
@@ -454,6 +464,7 @@ function makeArtifactManagementService(
       project.id,
       command.artifactId,
     );
+    yield* requireArtifactVisible(command.principal, artifact);
     yield* authorization.requireArtifactManagement(command.principal);
     return yield* dependencies.repository.listArtifactActions({
       artifactId: artifact.id,
@@ -470,6 +481,7 @@ function makeArtifactManagementService(
         command.projectId,
       );
       const artifact = yield* requireArtifact(project.id, command.artifactId);
+      yield* requireArtifactVisible(command.principal, artifact);
       yield* authorization.requireArtifactManagement(command.principal);
       yield* requireVersion(project.id, artifact.id, command.versionId);
       const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
@@ -502,7 +514,18 @@ function makeArtifactManagementService(
         command.projectId,
       );
       const artifact = yield* requireArtifact(project.id, command.artifactId);
+      yield* requireArtifactVisible(command.principal, artifact);
       yield* authorization.requireArtifactManagement(command.principal);
+      // Only the owner or an administrator moves an artifact to or from restricted.
+      if (
+        (artifact.accessSetting === accessSettings.restricted ||
+          command.accessSetting === accessSettings.restricted) &&
+        !mayChangeRestriction(command.principal, artifact)
+      ) {
+        return yield* new AuthorizationDenied({
+          message: "Only the owner or an administrator can change who sees this artifact.",
+        });
+      }
       const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
       const createdAt = DateTime.formatIso(yield* dependencies.clock.now);
       return yield* dependencies.repository.changeAccessSetting({
@@ -533,6 +556,7 @@ function makeArtifactManagementService(
         command.projectId,
       );
       const artifact = yield* requireArtifact(project.id, command.artifactId);
+      yield* requireArtifactVisible(command.principal, artifact);
       yield* authorization.requireArtifactManagement(command.principal);
       const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
       const tags = yield* parseArtifactTags(command.tags);
@@ -568,6 +592,7 @@ function makeArtifactManagementService(
         project.id,
         command.artifactId,
       );
+      yield* requireArtifactVisible(command.principal, artifact);
       yield* authorization.requireArtifactManagement(command.principal);
       const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
       const createdAt = DateTime.formatIso(yield* dependencies.clock.now);

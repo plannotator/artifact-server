@@ -131,6 +131,11 @@ import {
   publicLinkPageFromRows,
 } from "./public-link-inventory-row.js";
 import {
+  accessSettingSql,
+  restrictedScopeParameters,
+  storedAccessSetting,
+} from "./restricted-access-storage.js";
+import {
   gitHistoryCopyPolicyDigest,
   gitHistoryJobId,
   gitHistoryJobKinds,
@@ -146,6 +151,7 @@ import {defaultGitHistoryMaximumCopiedFiles} from
 const accessSettingSchema = z.enum([
   accessSettings.accountRequired,
   accessSettings.publicLink,
+  accessSettings.restricted,
 ]);
 const dispositionSchema = z.enum([
   fileDispositions.attachment,
@@ -225,6 +231,7 @@ const gitHistoryMappingRowSchema = z.object({
 const artifactRowSchema = z.object({
   accessSetting: accessSettingSchema,
   createdAt: z.string(),
+  ownerPrincipalId: z.string().nullable(),
   currentVersionId: z.string(),
   deletedAt: z.string().nullable(),
   id: z.string(),
@@ -250,6 +257,7 @@ const versionRowSchema = z.object({
 });
 const publishedRowSchema = z.object({
   accessSetting: accessSettingSchema,
+  ownerPrincipalId: z.string().nullable(),
   artifactCreatedAt: z.string(),
   artifactDeletedAt: z.string().nullable(),
   artifactId: z.string(),
@@ -1257,12 +1265,14 @@ export class PostgresArtifactRepository implements
           command.manifest.digest,
           command.createdAt,
         );
+        const stored = storedAccessSetting(command.accessSetting);
         yield* sql`INSERT INTO artifacts (
           installation_id, project_id, id, name, search_name, access_setting,
-          current_version_id, created_at, deleted_at
+          restricted, owner_principal_id, current_version_id, created_at, deleted_at
         ) VALUES (
           ${installationId}, ${command.projectId}, ${command.artifactId}, ${command.name},
-          ${normalizeArtifactSearchText(command.name)}, ${command.accessSetting}, NULL,
+          ${normalizeArtifactSearchText(command.name)}, ${stored.accessSetting},
+          ${stored.restricted}, ${command.principalId}, NULL,
           ${command.createdAt}, NULL
         )`;
         yield* this.#replaceTags(command.artifactId, command.tags);
@@ -1416,14 +1426,34 @@ export class PostgresArtifactRepository implements
       "change_access",
       command.accessSetting,
       null,
-      (sql) => sql`UPDATE artifacts
-        SET access_setting = ${command.accessSetting}
-        WHERE installation_id = ${this.#installationId}
-          AND project_id = ${command.projectId}
-          AND id = ${command.artifactId}
-          AND current_version_id = ${command.expectedCurrentVersionId}
-          AND deleted_at IS NULL
-        RETURNING id`,
+      (sql) => {
+        const installationId = this.#installationId;
+        const stored = storedAccessSetting(command.accessSetting);
+        const update = sql`UPDATE artifacts
+          SET access_setting = ${stored.accessSetting},
+            restricted = ${stored.restricted}
+          WHERE installation_id = ${installationId}
+            AND project_id = ${command.projectId}
+            AND id = ${command.artifactId}
+            AND current_version_id = ${command.expectedCurrentVersionId}
+            AND deleted_at IS NULL
+          RETURNING id, owner_principal_id AS "ownerPrincipalId"`;
+        if (!stored.restricted) return update;
+        // Content opened by anyone but the owner stops serving at once.
+        return update.pipe(Effect.tap(() => Effect.forEach(
+          ["content_sessions", "content_bootstraps"] as const,
+          (table) => sql.unsafe(
+            `DELETE FROM ${table}
+             WHERE installation_id = $1 AND project_id = $2 AND artifact_id = $3
+               AND principal_id IS DISTINCT FROM (
+                 SELECT owner_principal_id FROM artifacts
+                 WHERE installation_id = $1 AND project_id = $2 AND id = $3
+               )`,
+            [installationId, command.projectId, command.artifactId],
+          ),
+          {discard: true},
+        )));
+      },
     );
   }
 
@@ -1682,10 +1712,15 @@ export class PostgresArtifactRepository implements
             command.limit + 1,
           ];
       const limitPlaceholder = command.sort === "comments" ? "$8" : "$7";
+      // Appended after the limit so the existing placeholders keep their numbers.
+      queryParameters.push(...restrictedScopeParameters(command.restrictedScope));
+      const restrictedAllPlaceholder = `$${queryParameters.length - 1}`;
+      const restrictedOwnerPlaceholder = `$${queryParameters.length}`;
       const rows = yield* sql.unsafe<object>(
         `SELECT * FROM (
           SELECT id, project_id AS "projectId", name,
-            access_setting AS "accessSetting",
+            ${accessSettingSql("", "postgres")} AS "accessSetting",
+            owner_principal_id AS "ownerPrincipalId",
             current_version_id AS "currentVersionId",
             created_at AS "createdAt", deleted_at AS "deletedAt",
             (
@@ -1703,6 +1738,8 @@ export class PostgresArtifactRepository implements
           FROM artifacts
           WHERE installation_id = $1 AND project_id = $2
             AND deleted_at IS NULL
+            AND (NOT restricted OR ${restrictedAllPlaceholder}::int = 1
+              OR owner_principal_id = ${restrictedOwnerPlaceholder}::text)
             AND ($3::text IS NULL
               OR strpos(search_name, $3) > 0
               OR EXISTS (
@@ -1743,6 +1780,7 @@ export class PostgresArtifactRepository implements
           artifact.project_id AS "projectId",
           artifact.name AS "artifactName",
           artifact.access_setting AS "accessSetting",
+          artifact.owner_principal_id AS "ownerPrincipalId",
           artifact.current_version_id AS "currentVersionId",
           artifact.created_at AS "artifactCreatedAt",
           artifact.deleted_at AS "artifactDeletedAt",
@@ -1789,6 +1827,7 @@ export class PostgresArtifactRepository implements
         deletedAt: row.artifactDeletedAt,
         id: row.artifactId,
         name: row.artifactName,
+        ownerPrincipalId: row.ownerPrincipalId,
         projectId: row.projectId,
       })));
       return publicLinkPageFromRows(parsedRows, artifacts, command.limit);
@@ -1914,7 +1953,7 @@ export class PostgresArtifactRepository implements
     return this.#database.run(Effect.gen({self: this}, function*() {
       const sql = yield* SqlClient;
       const rows = yield* sql.unsafe<object>(
-        `SELECT a.access_setting AS "accessSetting", a.id AS "artifactId",
+        `SELECT ${accessSettingSql("a", "postgres")} AS "accessSetting", a.id AS "artifactId",
           a.project_id AS "projectId",
           v.content_token AS "contentToken", v.id AS "versionId",
           e.path, e.size, e.media_type AS "mediaType", e.sha256,
@@ -2996,15 +3035,23 @@ export class PostgresArtifactRepository implements
         // sends can never double-book a thread and a rejected bundle leaves
         // no partial markers behind.
         for (const threadId of command.threadIds) {
+          // A thread of a restricted artifact the sender cannot see counts as missing.
+          const [restrictedAll, restrictedOwner] =
+            restrictedScopeParameters(command.restrictedScope);
           const checked = yield* sql`SELECT
               thread.id AS "id",
               thread.state AS "state",
               thread.dispatch_id AS "dispatchId"
             FROM comment_threads thread
+            JOIN artifacts artifact
+              ON artifact.installation_id = thread.installation_id
+              AND artifact.id = thread.artifact_id
             WHERE thread.installation_id = ${installationId}
               AND thread.project_id = ${command.projectId}
               AND thread.id = ${threadId}
-            FOR UPDATE`;
+              AND (NOT artifact.restricted OR ${restrictedAll}::int = 1
+                OR artifact.owner_principal_id = ${restrictedOwner}::text)
+            FOR UPDATE OF thread`;
           const row = dispatchThreadCheckRowSchema.nullable().parse(
             checked[0] ?? null,
           );
@@ -3415,7 +3462,8 @@ export class PostgresArtifactRepository implements
       const sql = yield* SqlClient;
       const rows = yield* sql.unsafe<object>(
         `SELECT id, project_id AS "projectId", name,
-          access_setting AS "accessSetting",
+          ${accessSettingSql("", "postgres")} AS "accessSetting",
+          owner_principal_id AS "ownerPrincipalId",
           current_version_id AS "currentVersionId",
           created_at AS "createdAt", deleted_at AS "deletedAt"
          FROM artifacts
@@ -3570,7 +3618,8 @@ export class PostgresArtifactRepository implements
       const rows = yield* sql.unsafe<object>(
         `SELECT a.id AS "artifactId", a.name AS "artifactName",
           a.project_id AS "projectId",
-          a.access_setting AS "accessSetting",
+          ${accessSettingSql("a", "postgres")} AS "accessSetting",
+          a.owner_principal_id AS "ownerPrincipalId",
           a.current_version_id AS "currentVersionId",
           a.created_at AS "artifactCreatedAt", a.deleted_at AS "artifactDeletedAt",
           v.id AS "versionId", v.number AS "versionNumber",
@@ -3595,6 +3644,7 @@ export class PostgresArtifactRepository implements
           deletedAt: parsed.artifactDeletedAt,
           id: parsed.artifactId,
           name: parsed.artifactName,
+          ownerPrincipalId: parsed.ownerPrincipalId,
           projectId: parsed.projectId,
           tags: yield* this.#readTags(parsed.artifactId),
         },
@@ -3623,7 +3673,7 @@ export class PostgresArtifactRepository implements
     return Effect.gen({self: this}, function*() {
       const sql = yield* SqlClient;
       const rows = yield* sql.unsafe<object>(
-        `SELECT access_setting AS "accessSetting", artifact_id AS "artifactId",
+        `SELECT ${accessSettingSql("", "postgres")} AS "accessSetting", artifact_id AS "artifactId",
           input_digest AS "inputDigest", operation, tags_json AS "tagsJson",
           version_id AS "versionId"
          FROM idempotency_records
@@ -3868,14 +3918,18 @@ export class PostgresArtifactRepository implements
     const installationId = this.#installationId;
     return Effect.gen({self: this}, function*() {
       const sql = yield* SqlClient;
+      const stored = record.accessSetting === null
+        ? null
+        : storedAccessSetting(record.accessSetting);
       yield* sql`INSERT INTO idempotency_records (
         installation_id, project_id, idempotency_key, input_digest, artifact_id, version_id,
-        operation, access_setting, tags_json, created_at
+        operation, access_setting, restricted, tags_json, created_at
       ) VALUES (
         ${installationId}, ${record.projectId}, ${record.idempotencyKey},
         ${record.inputDigest},
         ${record.artifactId}, ${record.versionId}, ${record.operation},
-        ${record.accessSetting}, ${record.tagsJson}, ${record.createdAt}
+        ${stored?.accessSetting ?? null}, ${stored?.restricted ?? false},
+        ${record.tagsJson}, ${record.createdAt}
       )`;
     });
   }

@@ -33,6 +33,11 @@ import type {
 import {normalizeArtifactSearchText} from
   "../../../src/application/artifact-tags.js";
 import {
+  accessSettingSql,
+  restrictedScopeParameters,
+  storedAccessSetting,
+} from "../../../src/storage/restricted-access-storage.js";
+import {
   accessSettings,
   agentBeaconStates,
   agentDispatchStates,
@@ -140,6 +145,7 @@ import type {GitHistoryPurgeStore} from
 const accessSettingSchema = z.enum([
   accessSettings.accountRequired,
   accessSettings.publicLink,
+  accessSettings.restricted,
 ]);
 const dispositionSchema = z.enum([
   fileDispositions.attachment,
@@ -274,6 +280,7 @@ const gitHistoryMappingRowSchema = z.object({
 const artifactRowSchema = z.object({
   accessSetting: accessSettingSchema,
   createdAt: z.string(),
+  ownerPrincipalId: z.string().nullable(),
   currentVersionId: z.string(),
   deletedAt: z.string().nullable(),
   id: z.string(),
@@ -510,7 +517,8 @@ const versionContentRowSchema = z.object({
 
 const artifactSelect = `
   SELECT id, project_id AS projectId, name,
-    access_setting AS accessSetting,
+    ${accessSettingSql()} AS accessSetting,
+    owner_principal_id AS ownerPrincipalId,
     current_version_id AS currentVersionId,
     created_at AS createdAt, deleted_at AS deletedAt
   FROM artifacts
@@ -581,7 +589,7 @@ const commentReplyScope = `FROM comment_threads t
   JOIN comment_replies r ON r.thread_id = t.id AND r.id = ?
   WHERE t.id = ? AND t.project_id = ? AND t.artifact_id = ?`;
 const idempotencySelect = `
-  SELECT access_setting AS accessSetting, artifact_id AS artifactId,
+  SELECT ${accessSettingSql()} AS accessSetting, artifact_id AS artifactId,
     input_digest AS inputDigest, operation, tags_json AS tagsJson,
     version_id AS versionId
   FROM idempotency_records
@@ -935,8 +943,8 @@ export function createD1ArtifactRepository(
   ) => database.prepare(`
     INSERT INTO idempotency_records (
       project_id, idempotency_key, input_digest, artifact_id, version_id,
-      operation, access_setting, tags_json, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      operation, access_setting, restricted, tags_json, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     command.projectId,
     command.idempotencyKey,
@@ -944,7 +952,8 @@ export function createD1ArtifactRepository(
     command.artifactId,
     versionId,
     operation,
-    accessSetting,
+    accessSetting === null ? null : storedAccessSetting(accessSetting).accessSetting,
+    accessSetting !== null && storedAccessSetting(accessSetting).restricted ? 1 : 0,
     tagsJson,
     command.createdAt,
   );
@@ -1395,10 +1404,20 @@ export function createD1ArtifactRepository(
   ): Promise<void> => {
     if (command.threadIds.length === 0) return;
     const placeholders = command.threadIds.map(() => "?").join(", ");
+    // A thread of a restricted artifact the sender cannot see counts as missing.
     const result = await database.prepare(`
-      SELECT id, state, dispatch_id AS dispatchId FROM comment_threads
-      WHERE installation_id = ? AND project_id = ? AND id IN (${placeholders})
-    `).bind(command.installationId, command.projectId, ...command.threadIds)
+      SELECT thread.id, thread.state, thread.dispatch_id AS dispatchId
+      FROM comment_threads thread
+      JOIN artifacts artifact ON artifact.id = thread.artifact_id
+      WHERE thread.installation_id = ? AND thread.project_id = ?
+        AND thread.id IN (${placeholders})
+        AND (artifact.restricted = 0 OR ? = 1 OR artifact.owner_principal_id = ?)
+    `).bind(
+      command.installationId,
+      command.projectId,
+      ...command.threadIds,
+      ...restrictedScopeParameters(command.restrictedScope),
+    )
       .all<z.input<typeof dispatchThreadCheckRowSchema>>();
     const found = new Map<string, z.infer<typeof dispatchThreadCheckRowSchema>>();
     for (const row of result.results) {
@@ -2206,15 +2225,17 @@ export function createD1ArtifactRepository(
         await database.batch([
           database.prepare(`
             INSERT INTO artifacts (
-              id, project_id, name, search_name, access_setting,
-              current_version_id, created_at, deleted_at
-            ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL)
+              id, project_id, name, search_name, access_setting, restricted,
+              owner_principal_id, current_version_id, created_at, deleted_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL)
           `).bind(
             command.artifactId,
             command.projectId,
             command.name,
             normalizeArtifactSearchText(command.name),
-            command.accessSetting,
+            storedAccessSetting(command.accessSetting).accessSetting,
+            storedAccessSetting(command.accessSetting).restricted ? 1 : 0,
+            command.principalId,
             command.createdAt,
           ),
           ...versionStatements(command, 1),
@@ -2446,7 +2467,8 @@ export function createD1ArtifactRepository(
       const result = await database.prepare(`
         SELECT * FROM (
           SELECT id, project_id AS projectId, name,
-            access_setting AS accessSetting,
+            ${accessSettingSql()} AS accessSetting,
+            owner_principal_id AS ownerPrincipalId,
             current_version_id AS currentVersionId,
             created_at AS createdAt, deleted_at AS deletedAt,
             (
@@ -2461,6 +2483,7 @@ export function createD1ArtifactRepository(
             ) AS versionCount
           FROM artifacts
           WHERE project_id = ? AND deleted_at IS NULL
+            AND (restricted = 0 OR ? = 1 OR owner_principal_id = ?)
             AND (? IS NULL
               OR instr(search_name, ?) > 0
               OR EXISTS (
@@ -2478,6 +2501,7 @@ export function createD1ArtifactRepository(
         ORDER BY ${orderSql} LIMIT ?
       `).bind(
         command.projectId,
+        ...restrictedScopeParameters(command.restrictedScope),
         command.search ?? null,
         command.search ?? null,
         command.search ?? null,
@@ -2507,6 +2531,7 @@ export function createD1ArtifactRepository(
           artifact.project_id AS projectId,
           artifact.name AS artifactName,
           artifact.access_setting AS accessSetting,
+          artifact.owner_principal_id AS ownerPrincipalId,
           artifact.current_version_id AS currentVersionId,
           artifact.created_at AS artifactCreatedAt,
           artifact.deleted_at AS artifactDeletedAt,
@@ -2551,6 +2576,7 @@ export function createD1ArtifactRepository(
         deletedAt: row.artifactDeletedAt,
         id: row.artifactId,
         name: row.artifactName,
+        ownerPrincipalId: row.ownerPrincipalId,
         projectId: row.projectId,
         tags: await readTags(row.artifactId),
       })));
@@ -2579,7 +2605,7 @@ export function createD1ArtifactRepository(
     },
     findVersionContent: async (contentToken, requestedPath, fallback) => {
       const row = await database.prepare(`
-        SELECT a.access_setting AS accessSetting, a.id AS artifactId,
+        SELECT ${accessSettingSql("a")} AS accessSetting, a.id AS artifactId,
           a.project_id AS projectId, v.content_token AS contentToken,
           v.id AS versionId, e.path, e.size, e.media_type AS mediaType,
           e.sha256, e.disposition,
@@ -2632,16 +2658,32 @@ export function createD1ArtifactRepository(
       if (replay !== null) return replay;
       const artifact = await readArtifact(command.projectId, command.artifactId);
       assertCurrent(artifact, command.expectedCurrentVersionId);
+      const stored = storedAccessSetting(command.accessSetting);
+      // Content opened by anyone but the owner stops serving in the same batch.
+      const revocations = stored.restricted
+        ? ["content_sessions", "content_bootstraps"].map((table) => database.prepare(`
+          DELETE FROM ${table}
+          WHERE project_id = ? AND artifact_id = ?
+            AND (? IS NULL OR principal_id <> ?)
+        `).bind(
+          command.projectId,
+          command.artifactId,
+          artifact.ownerPrincipalId,
+          artifact.ownerPrincipalId,
+        ))
+        : [];
       return applyManagementMutation(command, artifactActionKinds.changeAccess, [
         database.prepare(`
-          UPDATE artifacts SET access_setting = ?
+          UPDATE artifacts SET access_setting = ?, restricted = ?
           WHERE project_id = ? AND id = ? AND current_version_id = ? AND deleted_at IS NULL
         `).bind(
-          command.accessSetting,
+          stored.accessSetting,
+          stored.restricted ? 1 : 0,
           command.projectId,
           command.artifactId,
           command.expectedCurrentVersionId,
         ),
+        ...revocations,
         actionStatement(command, command.expectedCurrentVersionId, artifactActionKinds.changeAccess),
         idempotencyStatement(
           command,
@@ -2653,8 +2695,8 @@ export function createD1ArtifactRepository(
           command,
           artifactActionKinds.changeAccess,
           command.expectedCurrentVersionId,
-          "a.deleted_at IS NULL AND a.access_setting = ?",
-          [command.accessSetting],
+          "a.deleted_at IS NULL AND a.access_setting = ? AND a.restricted = ?",
+          [stored.accessSetting, stored.restricted ? 1 : 0],
         ),
       ], () => artifactState(
           command.projectId,

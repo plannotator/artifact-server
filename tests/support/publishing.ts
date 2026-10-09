@@ -9,12 +9,13 @@ import { apiHeaders } from "./runtime-harness.js";
 
 const publishResponseSchema = z.object({
   artifact: z.object({
-    accessSetting: z.enum(["account_required", "public_link"]),
+    accessSetting: z.enum(["account_required", "public_link", "restricted"]),
     createdAt: z.string(),
     currentVersionId: z.string(),
     deletedAt: z.string().nullable(),
     id: z.string(),
     name: z.string(),
+    ownerPrincipalId: z.string().nullable(),
     projectId: z.string(),
     tags: z.array(z.string()),
   }),
@@ -63,7 +64,7 @@ export function parsePublishResponse(value: z.input<typeof publishResponseSchema
 }
 
 export interface PublishNewInput {
-  readonly accessSetting: "account_required" | "public_link";
+  readonly accessSetting: "account_required" | "public_link" | "restricted";
   readonly content: string;
   readonly idempotencyKey: string;
   readonly mediaType?: string;
@@ -225,7 +226,7 @@ export async function commitStagedUpload(
 
 const commitTargetSchema = z.discriminatedUnion("kind", [
   z.object({
-    accessSetting: z.enum(["account_required", "public_link"]),
+    accessSetting: z.enum(["account_required", "public_link", "restricted"]),
     kind: z.literal("new_artifact"),
     name: z.string(),
     tags: z.array(z.string()).optional(),

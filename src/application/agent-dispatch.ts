@@ -10,6 +10,7 @@ import {
   type ProjectManagementFailure,
   ProjectManagementService,
 } from "./project-management.js";
+import {restrictedArtifactScope} from "../core/artifact-visibility.js";
 import {
   AgentDispatchNotFound,
   AgentNotFound,
@@ -570,6 +571,7 @@ function makeAgentDispatchService(
         installationId: dependencies.installationId,
         note,
         projectId: project.id,
+        restrictedScope: restrictedArtifactScope(command.principal),
         sender: dispatchSender(command.principal),
         threadIds,
       });

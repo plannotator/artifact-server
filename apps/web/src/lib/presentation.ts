@@ -66,7 +66,10 @@ export function errorMessage(error: Error): string {
 }
 
 /** Converts an access-setting value into the product's visible term. */
-export function accessSettingLabel(value: "account_required" | "public_link"): string {
+export function accessSettingLabel(
+  value: "account_required" | "public_link" | "restricted",
+): string {
+  if (value === "restricted") return "Only me";
   return value === "account_required" ? "Account required" : "Public link";
 }
 

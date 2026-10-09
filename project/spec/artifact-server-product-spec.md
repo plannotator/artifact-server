@@ -18,7 +18,7 @@ The first release supports both a direct local owner and a private team on one s
 | How are files displayed? | Artifact Server sends the correct HTTP headers and lets the browser handle formats it already understands. The review interface may present an exact-version image or video through native browser elements, but the first release has no custom document renderer, media decoder, converter, thumbnail service, ZIP extractor, Markdown renderer, or syntax-highlighting interface. |
 | How is work organized? | One installation represents one person, team, or company. It contains projects, and every artifact belongs to one project. A new installation creates a default project. There is no organization switcher or separate Artifact Store object. |
 | What is an artifact? | One published item in a project, with a stable ID, access setting, optional tags, current version, and immutable saved versions. |
-| Who can read it? | Exactly two settings: account required, or public link. On a standalone installation, account required means every person admitted to that one installation may read it. A public link opens only the current version; history and comparisons remain account-required. |
+| Who can read it? | Three settings: account required, public link, or restricted. On a standalone installation, account required means every person admitted to that one installation may read it. A public link opens only the current version; history and comparisons remain account-required. Restricted limits the artifact to its owner and the installation's administrators. |
 | Who can change it? | Every admitted human member of the installation. A service principal can perform only the actions granted to its API key. |
 | How do agents use it? | Through MCP, the CLI, or the normal HTTP API. They share the same product operations and permissions. The `artifact-server` Agent Skill routes artifact work to the CLI or MCP and loads separate server-operation instructions only for explicit administrator work. |
 | How does an agent hear about feedback? | A person sends one comment thread or every open thread on a version to a connected agent. Sending is consumptive: the sent annotations leave the normal views, and they come back only if the bundle cannot be delivered. Agents connect outward and poll for work; Artifact Server never calls out to an agent. |
@@ -176,10 +176,11 @@ A separate registrable content domain is required for hosted and external-storag
 
 ## Access and mutation policy
 
-The two access settings control reading:
+The three access settings control reading:
 
-1. **Account required:** every admitted member of this standalone installation may read the artifact.
+1. **Account required:** every admitted member of this standalone installation may read the artifact. This is the default.
 2. **Public link:** no account is required. Anyone who can reach the server and has the link may read it.
+3. **Restricted:** only the artifact's owner, the person who created it, and the installation's administrators can find, read, or manage it. Other members and service principals see it nowhere, and a direct request answers as if it did not exist. Only the owner or an administrator can switch an artifact to or from restricted, and the switch ends other people's open content sessions at once. See [decision 0030](decisions/0030-artifact-owner-and-restricted-access.md).
 
 A public link removes sign-in. It does not open a firewall, create a tunnel, or put a private server on the internet. An administrator can disable public links for the installation.
 
@@ -189,7 +190,7 @@ The public link opens only the artifact's current version. Version lists, compar
 
 An installation administrator has one **Public links** screen that lists every active public-link artifact across all projects with bounded cursor pagination. Each row identifies the project, artifact, current version and save time, and public URL. The administrator can make one row or a selection of at most 100 rows account-required. Selection controls distinguish the visible page from all pages loaded so far and claim installation-wide selection only after the final page is loaded. Each item uses the ordinary visibility operation with the current version observed by the administrator, its own idempotency key, and the normal action record. A stale or failed item does not prevent other items from succeeding; the interface reports each failure and can retry it with the required current-version refresh. Successful items stop authorizing new public origin requests, while the interface continues to state that downloaded or externally cached copies cannot be recalled.
 
-The mutation policy is separate from the two read settings:
+The mutation policy is separate from the read settings. A restricted artifact narrows every row below to its owner and administrators:
 
 | Action | Admitted human member | Scoped service principal |
 | --- | --- | --- |

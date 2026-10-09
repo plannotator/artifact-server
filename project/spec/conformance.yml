@@ -1285,7 +1285,7 @@ requirements:
 
   - id: AUTH-002
     kind: behavior
-    behavior: Account required is the default read setting and permits every admitted standalone installation member to read the artifact.
+    behavior: Account required is the default read setting and permits every admitted standalone installation member to read the artifact; an artifact its owner or an administrator made restricted (AUTH-031) is readable only by its owner and administrators.
     owner: authorization
     source: {file: artifact-server-product-spec.html, anchor: sharing}
     acceptance:
@@ -1373,7 +1373,7 @@ requirements:
 
   - id: AUTH-008
     kind: security
-    behavior: Every admitted human member can manage artifacts in the installation's projects; service principals act only within explicit capabilities.
+    behavior: Every admitted human member can manage artifacts in the installation's projects, except restricted artifacts, which only their owner and administrators manage (AUTH-031); service principals act only within explicit capabilities.
     owner: authorization
     source: {file: artifact-server-product-spec.html, anchor: sharing}
     acceptance:
@@ -1708,6 +1708,34 @@ requirements:
     status: implementing
     proof_gap: The local tests prove current-member and stable local-owner refusal, last-administrator refusal, and deactivation by a replacement administrator while another administrator remains. The concurrent last-administrator race and the complete replicated-deployment matrix remain unproved.
     depends_on: [AUTH-001, AUTH-023, AUTH-025]
+    evidence: []
+
+  - id: AUTH-030
+    kind: behavior
+    behavior: Every artifact records its owner, the principal that committed its first version; artifacts that existed before the owner was recorded take the publisher of their version 1.
+    owner: authorization
+    source: {file: decisions/0030-artifact-owner-and-restricted-access.md, anchor: decision}
+    acceptance:
+      behavior: {id: AUTH-030-B, description: "Publish through the browser session, MCP OAuth, and a member-bound API key and observe each creator recorded as owner; upgrade a database without owners and observe every artifact backfilled from its version 1 publisher on every backend."}
+      failure: {id: AUTH-030-F, description: "Republishing, restoring, changing tags or access, and publishing through another member never change the recorded owner, and running the owner migration again never overwrites an owner that is already recorded."}
+    deployments: *all
+    status: implementing
+    proof_gap: AUTH-030-B and AUTH-030-F run against the local SQLite server; the Postgres and D1 runtime tests cover recorded owners and the upgrade backfill without deployment-specific evidence.
+    depends_on: [AUTH-001, AUTH-008]
+    evidence: []
+
+  - id: AUTH-031
+    kind: security
+    behavior: An opt-in restricted access setting limits one artifact to its owner and installation administrators on every surface, while account_required stays the default and account_required and public_link keep their behavior.
+    owner: authorization
+    source: {file: decisions/0030-artifact-owner-and-restricted-access.md, anchor: decision}
+    acceptance:
+      behavior: {id: AUTH-031-B, description: "The owner and an administrator list, search, read, open content, publish, restore, comment, dispatch, and change access of a restricted artifact through HTTP, MCP, and the web interface, and switching back to account_required restores member access."}
+      failure: {id: AUTH-031-F, description: "Other members and service principals, including keys with artifact:read or artifact:manage:any, cannot list, count, search, read, open, publish, restore, comment on, dispatch, obtain git-history credentials for, or change a restricted artifact; direct requests answer not found; content sessions minted before the switch stop serving; and only the owner or an administrator can switch to or from restricted."}
+    deployments: *all
+    status: implementing
+    proof_gap: AUTH-031-B and AUTH-031-F run against the local SQLite server; Postgres and D1 runtime tests cover the listing filter and not-found answers. The git-history credential refusal and the web share dialog have no dedicated test, and no deployment-specific evidence is recorded.
+    depends_on: [AUTH-002, AUTH-030, AUTH-008, SCP-008]
     evidence: []
 
   - id: SEC-001
@@ -4267,7 +4295,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: scope}
     acceptance:
       behavior: {id: SCP-008-B, description: "Confirm that admitted human members can read and manage artifacts in every project while service mutations require explicit capabilities."}
-      failure: {id: SCP-008-F, description: "A project or artifact cannot create an undocumented reader ACL or inherit Plannotator workspace membership."}
+      failure: {id: SCP-008-F, description: "A project or artifact cannot create an undocumented reader ACL or inherit Plannotator workspace membership; the only documented artifact reader rule is the opt-in restricted setting of AUTH-031 (owner and administrators)."}
     deployments: *all
     status: specified
     depends_on: [PRJ-003, AUTH-001, AUTH-006, PLN-004]

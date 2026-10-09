@@ -1,5 +1,6 @@
 import {Context, Effect, Layer} from "effect";
 
+import {canSeeArtifact} from "../core/artifact-visibility.js";
 import {
   ArtifactNotFound,
   type ArtifactRepositoryFailure,
@@ -115,6 +116,7 @@ function makeGitHistoryAccessService(
     );
     if (
       artifact === null || artifact.deletedAt !== null ||
+      !canSeeArtifact(command.principal, artifact) ||
       setting?.enabled !== true || coordinates?.status !== "provisioned" ||
       dependencies.provider === null
     ) {

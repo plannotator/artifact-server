@@ -517,6 +517,9 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
           "ALTER TABLE actions DROP COLUMN project_id CASCADE",
           "ALTER TABLE idempotency_records DROP COLUMN project_id CASCADE",
           "ALTER TABLE versions DROP COLUMN project_id CASCADE",
+          "ALTER TABLE idempotency_records DROP COLUMN restricted",
+          "ALTER TABLE artifacts DROP COLUMN restricted",
+          "ALTER TABLE artifacts DROP COLUMN owner_principal_id",
           "ALTER TABLE artifacts DROP COLUMN search_name",
           "ALTER TABLE artifacts DROP COLUMN project_id CASCADE",
           "ALTER TABLE login_attempts DROP COLUMN nonce",
@@ -2016,6 +2019,87 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     await server.stop();
   });
 
+  test("external-storage foundation: Postgres records owners and keeps restricted artifacts out of other readers' listings", async () => {
+    expect.hasAssertions();
+    const ownerIdentity = {
+      apiToken: managedTestKey("postgres-owner"),
+      installationId: `postgres-owner-${randomUUID()}`,
+    };
+    const server = await startInProcessExternalStorageServer(
+      environment,
+      ownerIdentity,
+    );
+    const [kept, shared] = await Promise.all([
+      publishNew(server.baseUrl, ownerIdentity.apiToken, {
+        content: "<p>kept</p>",
+        idempotencyKey: `owner-kept-${randomUUID()}`,
+        name: "Kept page",
+      }),
+      publishNew(server.baseUrl, ownerIdentity.apiToken, {
+        content: "<p>shared</p>",
+        idempotencyKey: `owner-shared-${randomUUID()}`,
+        name: "Shared page",
+      }),
+    ]);
+    const owner = managedTestPrincipal(ownerIdentity.apiToken).principalId;
+    const projectId = kept.body.artifact.projectId;
+    const database = await PostgresDatabase.open({
+      maxConnections: 2,
+      url: Redacted.make(environment.databaseUrl),
+    }, "validate");
+    try {
+      const repository = await PostgresArtifactRepository.open(
+        database,
+        ownerIdentity.installationId,
+      );
+      expect((await repository.findArtifact(projectId, kept.body.artifact.id))
+        ?.ownerPrincipalId).toBe(owner);
+
+      const restrict = {
+        accessSetting: "restricted",
+        artifactId: kept.body.artifact.id,
+        authorizedByPrincipalId: null,
+        createdAt: new Date().toISOString(),
+        expectedCurrentVersionId: kept.body.version.id,
+        idempotencyKey: `owner-restrict-${randomUUID()}`,
+        inputDigest: "owner-restrict",
+        principalId: owner,
+        projectId,
+      } as const;
+      expect((await repository.changeAccessSetting(restrict)).artifact.accessSetting)
+        .toBe("restricted");
+      const replayed = await repository.changeAccessSetting(restrict);
+      expect(replayed).toMatchObject({
+        artifact: {accessSetting: "restricted"},
+        replayed: true,
+      });
+
+      const listedFor = async (
+        restrictedScope: Parameters<typeof repository.listArtifacts>[0]["restrictedScope"],
+      ): Promise<readonly string[]> =>
+        (await repository.listArtifacts({
+          comments: "all",
+          cursor: null,
+          limit: 10,
+          projectId,
+          restrictedScope,
+          sort: "newest",
+          tags: [],
+        })).items.map(({name}) => name).toSorted();
+      expect(await listedFor({kind: "none"})).toEqual(["Shared page"]);
+      expect(await listedFor({kind: "owned", principalId: "member_someone_else"}))
+        .toEqual(["Shared page"]);
+      expect(await listedFor({kind: "owned", principalId: owner}))
+        .toEqual(["Kept page", "Shared page"]);
+      expect(await listedFor({kind: "all"})).toEqual(["Kept page", "Shared page"]);
+      expect((await repository.findArtifact(projectId, shared.body.artifact.id))
+        ?.accessSetting).toBe("public_link");
+    } finally {
+      await database.close();
+      await server.stop();
+    }
+  });
+
   test("external-storage foundation: Postgres serves the dispatch mailbox, lease reclaim, and consumptive comment listings", async () => {
     expect.hasAssertions();
     const dispatchIdentity = {
@@ -2123,6 +2207,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
         installationId: dispatchIdentity.installationId,
         note: "Fix both before the review.",
         projectId: defaultProjectId,
+        restrictedScope: {kind: "all"},
         sender,
         threadIds: [firstThreadId, secondThreadId],
       });
@@ -2141,6 +2226,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
         installationId: dispatchIdentity.installationId,
         note: "Fix both before the review.",
         projectId: defaultProjectId,
+        restrictedScope: {kind: "all"},
         sender,
         threadIds: [firstThreadId, secondThreadId],
       });
@@ -2176,6 +2262,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
         installationId: dispatchIdentity.installationId,
         note: null,
         projectId: defaultProjectId,
+        restrictedScope: {kind: "all"},
         sender,
         threadIds: [secondThreadId, thirdThreadId],
       })).rejects.toMatchObject({_tag: "InvalidDispatch"});
@@ -2239,6 +2326,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
         installationId: dispatchIdentity.installationId,
         note: null,
         projectId: defaultProjectId,
+        restrictedScope: {kind: "all"},
         sender,
         threadIds: [thirdThreadId],
       });
@@ -2399,6 +2487,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
         installationId: identity.installationId,
         note: null,
         projectId: defaultProjectId,
+        restrictedScope: {kind: "all"},
         sender,
         threadIds: [threadId],
       });

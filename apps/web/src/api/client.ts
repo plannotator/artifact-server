@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const accessSettingSchema = z.enum(["account_required", "public_link"]);
+const accessSettingSchema = z.enum(["account_required", "public_link", "restricted"]);
 const membershipRoleSchema = z.enum(["administrator", "member"]);
 const principalKindSchema = z.enum(["human", "service"]);
 const capabilitySchema = z.enum([
@@ -130,6 +130,7 @@ const projectGitHistoryEstimateSchema = z.object({
 const artifactSchema = z.object({
   accessSetting: accessSettingSchema,
   createdAt: z.string(),
+  ownerPrincipalId: z.string().nullable(),
   currentVersionId: z.string(),
   deletedAt: z.string().nullable(),
   id: z.string(),

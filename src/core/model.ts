@@ -5,6 +5,8 @@ import type {PrincipalKind} from "./identity.js";
 export const accessSettings = {
   accountRequired: "account_required",
   publicLink: "public_link",
+  /** Visible only to the artifact's owner and installation administrators. */
+  restricted: "restricted",
 } as const;
 
 export type AccessSetting = (typeof accessSettings)[keyof typeof accessSettings];
@@ -72,6 +74,8 @@ export interface ProjectRecord {
 export interface ArtifactRecord {
   readonly accessSetting: AccessSetting;
   readonly createdAt: string;
+  /** Principal that created the artifact; null only when no creator was recorded. */
+  readonly ownerPrincipalId: string | null;
   readonly currentVersionId: string;
   readonly deletedAt: string | null;
   readonly id: string;

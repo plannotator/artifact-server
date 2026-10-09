@@ -14,6 +14,7 @@ import {
   type ProjectManagementFailure,
   ProjectManagementService,
 } from "./project-management.js";
+import {requireArtifactVisible} from "../core/artifact-visibility.js";
 import {
   ArtifactNotFound,
   type ArtifactRepositoryFailure,
@@ -314,16 +315,21 @@ function makeArtifactCommentService(
   });
 
   const requireArtifact = Effect.fn("ArtifactCommentService.requireArtifact")(
-    function*(projectId: string, artifactId: string): Effect.fn.Return<
-      ArtifactRecord,
-      CommentRepositoryFailure
-    > {
+    function*(
+      principal: Principal,
+      projectId: string,
+      artifactId: string,
+    ): Effect.fn.Return<ArtifactRecord, CommentRepositoryFailure> {
       const artifact = yield* dependencies.repository.findArtifact(
         projectId,
         artifactId,
       );
-      if (artifact !== null) return artifact;
-      return yield* new ArtifactNotFound({message: "The artifact does not exist."});
+      if (artifact === null) {
+        return yield* new ArtifactNotFound({message: "The artifact does not exist."});
+      }
+      // Comments follow the artifact: a restricted one hides its threads too.
+      yield* requireArtifactVisible(principal, artifact);
+      return artifact;
     },
   );
 
@@ -517,7 +523,7 @@ function makeArtifactCommentService(
         command.projectId,
       );
       yield* authorization.requireCommentWrite(command.principal);
-      const artifact = yield* requireArtifact(project.id, command.artifactId);
+      const artifact = yield* requireArtifact(command.principal, project.id, command.artifactId);
       const requestedVersion = yield* requireVersion(
         project.id,
         artifact.id,
@@ -570,7 +576,7 @@ function makeArtifactCommentService(
         command.projectId,
       );
       yield* authorization.requireCommentRead(command.principal);
-      const artifact = yield* requireArtifact(project.id, command.artifactId);
+      const artifact = yield* requireArtifact(command.principal, project.id, command.artifactId);
       return yield* dependencies.repository.listThreads({
         artifactId: artifact.id,
         cursor: command.cursor,
@@ -593,7 +599,7 @@ function makeArtifactCommentService(
         command.projectId,
       );
       yield* authorization.requireCommentRead(command.principal);
-      const artifact = yield* requireArtifact(project.id, command.artifactId);
+      const artifact = yield* requireArtifact(command.principal, project.id, command.artifactId);
       const thread = yield* requireThread(
         project.id,
         artifact.id,
@@ -611,7 +617,7 @@ function makeArtifactCommentService(
         command.projectId,
       );
       yield* authorization.requireCommentWrite(command.principal);
-      const artifact = yield* requireArtifact(project.id, command.artifactId);
+      const artifact = yield* requireArtifact(command.principal, project.id, command.artifactId);
       const thread = yield* requireThread(
         project.id,
         artifact.id,
@@ -658,7 +664,7 @@ function makeArtifactCommentService(
         command.projectId,
       );
       yield* requireCommentDeletionAuthority(command.principal);
-      const artifact = yield* requireArtifact(project.id, command.artifactId);
+      const artifact = yield* requireArtifact(command.principal, project.id, command.artifactId);
       const thread = yield* requireThread(
         project.id,
         artifact.id,
@@ -686,7 +692,7 @@ function makeArtifactCommentService(
       // Bulk clear shares the dispatch-send rule: a direct human member, or
       // the artifact-management capability (spec §2).
       yield* authorization.requireDispatchSend(command.principal);
-      const artifact = yield* requireArtifact(project.id, command.artifactId);
+      const artifact = yield* requireArtifact(command.principal, project.id, command.artifactId);
       if (command.versionId !== null) {
         yield* requireVersion(project.id, artifact.id, command.versionId);
       }
@@ -710,7 +716,7 @@ function makeArtifactCommentService(
         command.projectId,
       );
       yield* authorization.requireCommentWrite(command.principal);
-      const artifact = yield* requireArtifact(project.id, command.artifactId);
+      const artifact = yield* requireArtifact(command.principal, project.id, command.artifactId);
       const thread = yield* requireThread(
         project.id,
         artifact.id,
@@ -739,7 +745,7 @@ function makeArtifactCommentService(
         command.projectId,
       );
       yield* authorization.requireCommentWrite(command.principal);
-      const artifact = yield* requireArtifact(project.id, command.artifactId);
+      const artifact = yield* requireArtifact(command.principal, project.id, command.artifactId);
       const thread = yield* requireThread(
         project.id,
         artifact.id,
@@ -769,7 +775,7 @@ function makeArtifactCommentService(
         command.projectId,
       );
       yield* requireCommentDeletionAuthority(command.principal);
-      const artifact = yield* requireArtifact(project.id, command.artifactId);
+      const artifact = yield* requireArtifact(command.principal, project.id, command.artifactId);
       const thread = yield* requireThread(
         project.id,
         artifact.id,

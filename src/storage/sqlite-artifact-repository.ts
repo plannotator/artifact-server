@@ -148,6 +148,11 @@ import {
   type GitRepositoryCoordinates,
 } from "../git-history/git-history-mirror.js";
 import {
+  accessSettingSql,
+  restrictedScopeParameters,
+  storedAccessSetting,
+} from "./restricted-access-storage.js";
+import {
   defaultGitHistoryMaximumCopiedFiles,
   type GitHistoryLimits,
 } from "../git-history/git-history-capability.js";
@@ -155,6 +160,7 @@ import {
 const accessSettingSchema = z.enum([
   accessSettings.accountRequired,
   accessSettings.publicLink,
+  accessSettings.restricted,
 ]);
 const dispositionSchema = z.enum([
   fileDispositions.attachment,
@@ -205,6 +211,7 @@ const publishedRowSchema = z.object({
   currentVersionId: z.string(),
   entryPath: z.string(),
   manifestDigest: z.string(),
+  ownerPrincipalId: z.string().nullable(),
   publisherPrincipalId: z.string(),
   projectId: z.string(),
   routingMode: routingModeSchema,
@@ -251,6 +258,7 @@ const artifactActionRowSchema = z.object({
 const artifactRowSchema = z.object({
   accessSetting: accessSettingSchema,
   createdAt: z.string(),
+  ownerPrincipalId: z.string().nullable(),
   currentVersionId: z.string(),
   deletedAt: z.string().nullable(),
   id: z.string(),
@@ -1319,17 +1327,19 @@ export class SqliteArtifactRepository implements
     this.#database
       .prepare(
         `INSERT INTO artifacts (
-          id, project_id, name, search_name, access_setting,
-          current_version_id, created_at, deleted_at,
+          id, project_id, name, search_name, access_setting, restricted,
+          owner_principal_id, current_version_id, created_at, deleted_at,
           source_path, source_fingerprint, source_status, source_verified_at
-        ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?)`,
       )
       .run(
         command.artifactId,
         command.projectId,
         command.name,
         normalizeArtifactSearchText(command.name),
-        command.accessSetting,
+        storedAccessSetting(command.accessSetting).accessSetting,
+        storedAccessSetting(command.accessSetting).restricted ? 1 : 0,
+        command.principalId,
         command.createdAt,
         binding === null ? null : binding.path,
         binding === null ? null : binding.fingerprint,
@@ -1589,20 +1599,25 @@ export class SqliteArtifactRepository implements
           artifact,
           command.expectedCurrentVersionId,
         );
+        const stored = storedAccessSetting(command.accessSetting);
         const update = this.#database
           .prepare(
             `UPDATE artifacts
-             SET access_setting = ?
+             SET access_setting = ?, restricted = ?
              WHERE project_id = ? AND id = ? AND current_version_id = ? AND deleted_at IS NULL`,
           )
           .run(
-            command.accessSetting,
+            stored.accessSetting,
+            stored.restricted ? 1 : 0,
             command.projectId,
             command.artifactId,
             command.expectedCurrentVersionId,
           );
         if (update.changes !== 1) {
           throw changedDuringManagement();
+        }
+        if (stored.restricted) {
+          this.#revokeContentAccessExceptOwner(artifact);
         }
         this.#insertAction(
           command.projectId,
@@ -1862,7 +1877,8 @@ export class SqliteArtifactRepository implements
               id,
               project_id AS projectId,
               name,
-              access_setting AS accessSetting,
+              ${accessSettingSql()} AS accessSetting,
+              owner_principal_id AS ownerPrincipalId,
               current_version_id AS currentVersionId,
               created_at AS createdAt,
               deleted_at AS deletedAt,
@@ -1879,6 +1895,7 @@ export class SqliteArtifactRepository implements
             FROM artifacts
             WHERE project_id = ?
               AND deleted_at IS NULL
+              AND (restricted = 0 OR ? = 1 OR owner_principal_id = ?)
               AND (
                 ? IS NULL
                 OR instr(search_name, ?) > 0
@@ -1903,6 +1920,7 @@ export class SqliteArtifactRepository implements
         )
         .all(
           command.projectId,
+          ...restrictedScopeParameters(command.restrictedScope),
           command.search ?? null,
           command.search ?? null,
           command.search ?? null,
@@ -1931,6 +1949,7 @@ export class SqliteArtifactRepository implements
             artifact.project_id AS projectId,
             artifact.name AS artifactName,
             artifact.access_setting AS accessSetting,
+            artifact.owner_principal_id AS ownerPrincipalId,
             artifact.current_version_id AS currentVersionId,
             artifact.created_at AS artifactCreatedAt,
             artifact.deleted_at AS artifactDeletedAt,
@@ -1977,6 +1996,7 @@ export class SqliteArtifactRepository implements
         deletedAt: row.artifactDeletedAt,
         id: row.artifactId,
         name: row.artifactName,
+        ownerPrincipalId: row.ownerPrincipalId,
         projectId: row.projectId,
       })));
       return publicLinkPageFromRows(parsedRows, artifacts, command.limit);
@@ -2114,7 +2134,7 @@ export class SqliteArtifactRepository implements
       const row = this.#database
         .prepare(
           `SELECT
-            a.access_setting AS accessSetting,
+            ${accessSettingSql("a")} AS accessSetting,
             a.id AS artifactId,
             a.project_id AS projectId,
             v.content_token AS contentToken,
@@ -2543,7 +2563,7 @@ export class SqliteArtifactRepository implements
     const row = this.#database
       .prepare(
         `SELECT
-          access_setting AS accessSetting,
+          ${accessSettingSql()} AS accessSetting,
           artifact_id AS artifactId,
           input_digest AS inputDigest,
           operation,
@@ -2581,7 +2601,7 @@ export class SqliteArtifactRepository implements
     const row = this.#database
       .prepare(
         `SELECT
-          access_setting AS accessSetting,
+          ${accessSettingSql()} AS accessSetting,
           artifact_id AS artifactId,
           input_digest AS inputDigest,
           operation,
@@ -2623,7 +2643,7 @@ export class SqliteArtifactRepository implements
     const row = this.#database
       .prepare(
         `SELECT
-          access_setting AS accessSetting,
+          ${accessSettingSql()} AS accessSetting,
           artifact_id AS artifactId,
           input_digest AS inputDigest,
           operation,
@@ -2658,7 +2678,8 @@ export class SqliteArtifactRepository implements
           id,
           project_id AS projectId,
           name,
-          access_setting AS accessSetting,
+          ${accessSettingSql()} AS accessSetting,
+          owner_principal_id AS ownerPrincipalId,
           current_version_id AS currentVersionId,
           created_at AS createdAt,
           deleted_at AS deletedAt
@@ -2680,7 +2701,8 @@ export class SqliteArtifactRepository implements
           id,
           project_id AS projectId,
           name,
-          access_setting AS accessSetting,
+          ${accessSettingSql()} AS accessSetting,
+          owner_principal_id AS ownerPrincipalId,
           current_version_id AS currentVersionId,
           created_at AS createdAt,
           deleted_at AS deletedAt
@@ -2865,7 +2887,7 @@ export class SqliteArtifactRepository implements
     const row = this.#database
       .prepare(
         `SELECT
-          access_setting AS accessSetting,
+          ${accessSettingSql()} AS accessSetting,
           artifact_id AS artifactId,
           input_digest AS inputDigest,
           operation,
@@ -2995,8 +3017,8 @@ export class SqliteArtifactRepository implements
       .prepare(
         `INSERT INTO idempotency_records (
           project_id, idempotency_key, input_digest, artifact_id, version_id,
-          operation, access_setting, tags_json, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          operation, access_setting, restricted, tags_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         projectId,
@@ -3005,7 +3027,12 @@ export class SqliteArtifactRepository implements
         artifactId,
         versionId,
         operation,
-        accessSetting,
+        accessSetting === null
+          ? null
+          : storedAccessSetting(accessSetting).accessSetting,
+        accessSetting !== null && storedAccessSetting(accessSetting).restricted
+          ? 1
+          : 0,
         tagsJson,
         createdAt,
       );
@@ -3871,17 +3898,22 @@ export class SqliteArtifactRepository implements
         // the same transaction that stamps the markers, so two concurrent
         // sends can never double-book a thread and a rejected bundle leaves
         // no partial markers behind.
+        // A thread of a restricted artifact the sender cannot see counts as missing.
         const checkThread = this.#database.prepare(
-          `SELECT id AS id, state AS state, dispatch_id AS dispatchId
-           FROM comment_threads
-           WHERE id = ? AND installation_id = ? AND project_id = ?`,
+          `SELECT thread.id AS id, thread.state AS state, thread.dispatch_id AS dispatchId
+           FROM comment_threads thread
+           JOIN artifacts artifact ON artifact.id = thread.artifact_id
+           WHERE thread.id = ? AND thread.installation_id = ? AND thread.project_id = ?
+             AND (artifact.restricted = 0 OR ? = 1 OR artifact.owner_principal_id = ?)`,
         );
+        const restrictedScope = restrictedScopeParameters(command.restrictedScope);
         for (const threadId of command.threadIds) {
           const row = dispatchThreadCheckRowSchema.nullable().parse(
             checkThread.get(
               threadId,
               command.installationId,
               command.projectId,
+              ...restrictedScope,
             ) ?? null,
           );
           if (row === null) {
@@ -4901,11 +4933,60 @@ export class SqliteArtifactRepository implements
     this.#widenRegisteredAgentsIfNeeded();
     this.#addSourceBindingColumnsIfMissing();
     this.#addGitHistoryMirrorTablesIfMissing();
+    this.#addArtifactOwnerIfMissing();
     this.#database.exec(`
       CREATE INDEX IF NOT EXISTS projects_active_created
         ON projects (archived_at, created_at, id);
     `);
     this.#database.exec(`PRAGMA user_version = ${requiredSqliteSchemaVersion};`);
+  }
+
+  /** End every content session and bootstrap of an artifact not held by its owner. */
+  #revokeContentAccessExceptOwner(artifact: ArtifactRecord): void {
+    for (const table of ["content_sessions", "content_bootstraps"] as const) {
+      this.#database
+        .prepare(
+          `DELETE FROM ${table}
+           WHERE project_id = ? AND artifact_id = ?
+             AND (? IS NULL OR principal_id <> ?)`,
+        )
+        .run(
+          artifact.projectId,
+          artifact.id,
+          artifact.ownerPrincipalId,
+          artifact.ownerPrincipalId,
+        );
+    }
+  }
+
+  /** Record artifact owners and the restricted flag, backfilling owners from version 1. */
+  #addArtifactOwnerIfMissing(): void {
+    const artifactColumns = this.#tableColumns("artifacts");
+    if (!artifactColumns.includes("owner_principal_id")) {
+      this.#database.exec(
+        "ALTER TABLE artifacts ADD COLUMN owner_principal_id TEXT",
+      );
+    }
+    if (!artifactColumns.includes("restricted")) {
+      this.#database.exec(
+        "ALTER TABLE artifacts ADD COLUMN restricted INTEGER NOT NULL DEFAULT 0 CHECK (restricted IN (0, 1))",
+      );
+    }
+    if (!this.#tableColumns("idempotency_records").includes("restricted")) {
+      this.#database.exec(
+        "ALTER TABLE idempotency_records ADD COLUMN restricted INTEGER NOT NULL DEFAULT 0 CHECK (restricted IN (0, 1))",
+      );
+    }
+    this.#database.exec(`
+      UPDATE artifacts
+      SET owner_principal_id = (
+        SELECT versions.publisher_principal_id FROM versions
+        WHERE versions.artifact_id = artifacts.id AND versions.number = 1
+      )
+      WHERE owner_principal_id IS NULL;
+      CREATE INDEX IF NOT EXISTS artifacts_project_owner_active_created
+        ON artifacts (project_id, owner_principal_id, deleted_at, created_at, id);
+    `);
   }
 
   #addArtifactSearchNameIfMissing(): void {
@@ -5585,7 +5666,8 @@ export class SqliteArtifactRepository implements
           a.id AS artifactId,
           a.project_id AS projectId,
           a.name AS artifactName,
-          a.access_setting AS accessSetting,
+          ${accessSettingSql("a")} AS accessSetting,
+          a.owner_principal_id AS ownerPrincipalId,
           a.current_version_id AS currentVersionId,
           a.created_at AS artifactCreatedAt,
           a.deleted_at AS artifactDeletedAt,
@@ -5610,6 +5692,7 @@ export class SqliteArtifactRepository implements
       deletedAt: parsed.artifactDeletedAt,
       id: parsed.artifactId,
       name: parsed.artifactName,
+      ownerPrincipalId: parsed.ownerPrincipalId,
       projectId: parsed.projectId,
       tags: this.#readTags(parsed.artifactId),
     };

@@ -2680,7 +2680,7 @@ function IconButton({
 function AccessPill({access}: {readonly access: ArtifactDetails["artifact"]["accessSetting"]}) {
   return (
     <span className="as-pill" data-access={access}>
-      {access === "public_link" ? "public" : "private"}
+      {access === "public_link" ? "public" : access === "restricted" ? "only me" : "members"}
     </span>
   );
 }

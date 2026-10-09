@@ -3,9 +3,13 @@ import { createHash } from "node:crypto";
 import { Context, DateTime, Effect, Layer, Schema } from "effect";
 
 import {
+  mayChangeRestriction,
+  requireArtifactVisible,
+} from "../core/artifact-visibility.js";
+import {
   ArtifactNotFound,
   type ArtifactRepositoryFailure,
-  type AuthorizationDenied,
+  AuthorizationDenied,
   type BlobStorageFailure,
   type IdempotencyConflict,
   InvalidArtifactName,
@@ -20,10 +24,11 @@ import {
   type UploadNotFound,
 } from "../core/errors.js";
 import type { Principal } from "../core/identity.js";
-import type {
-  AccessSetting,
-  CanonicalManifest,
-  PublishedVersion,
+import {
+  accessSettings,
+  type AccessSetting,
+  type CanonicalManifest,
+  type PublishedVersion,
 } from "../core/model.js";
 import type {
   BlobWrite,
@@ -220,6 +225,18 @@ function makePublishArtifactService(
     command: PublishPreparedNewArtifactCommand,
   ): Effect.fn.Return<PublishedVersion, PublishArtifactFailure> {
     yield* authorization.requireArtifactCreation(command.principal);
+    // The creator becomes the owner, so only a person can start one restricted:
+    // a service principal could never see what it created.
+    if (
+      command.accessSetting === accessSettings.restricted &&
+      !mayChangeRestriction(command.principal, {
+        ownerPrincipalId: command.principal.id,
+      })
+    ) {
+      return yield* new AuthorizationDenied({
+        message: "Only a person can publish an artifact that only they can see.",
+      });
+    }
     const name = yield* decodeArtifactName(command.name).pipe(
       Effect.mapError(() =>
         new InvalidArtifactName({
@@ -286,6 +303,7 @@ function makePublishArtifactService(
         new ArtifactNotFound({message: "The artifact does not exist."}),
       );
     }
+    yield* requireArtifactVisible(command.principal, current.artifact);
     yield* authorization.requireVersionPublication(
       command.principal,
     );
