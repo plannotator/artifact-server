@@ -71,8 +71,8 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if ne $hasOidcClient $hasOidcIssuer -}}
 {{- fail "identity.oidcClientId and identity.oidcIssuer must be configured together" -}}
 {{- end -}}
-{{- if and (not $hasOidcIssuer) (or (ne .Values.identity.oidcScopes "") (ne .Values.secret.keys.oidcClientSecret "")) -}}
-{{- fail "identity.oidcScopes and secret.keys.oidcClientSecret require identity.oidcClientId and identity.oidcIssuer" -}}
+{{- if and (not $hasOidcIssuer) (or (ne .Values.identity.oidcScopes "") (ne .Values.identity.oidcSubjectClaim "") (ne .Values.identity.oidcMcpAudience "") (ne .Values.identity.oidcMcpScopes "") (ne .Values.secret.keys.oidcClientSecret "")) -}}
+{{- fail "identity.oidcScopes, identity.oidcSubjectClaim, identity.oidcMcpAudience, identity.oidcMcpScopes, and secret.keys.oidcClientSecret require identity.oidcClientId and identity.oidcIssuer" -}}
 {{- end -}}
 {{- if and $hasOidcIssuer $hasWorkosIssuer -}}
 {{- fail "one installation has one browser-login provider: configure the identity.workos values or the identity.oidc values, not both" -}}
@@ -197,6 +197,18 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if .Values.identity.oidcScopes }}
 - name: ARTIFACT_SERVER_OIDC_SCOPES
   value: {{ .Values.identity.oidcScopes | quote }}
+{{- end }}
+{{- if .Values.identity.oidcSubjectClaim }}
+- name: ARTIFACT_SERVER_OIDC_SUBJECT_CLAIM
+  value: {{ .Values.identity.oidcSubjectClaim | quote }}
+{{- end }}
+{{- if .Values.identity.oidcMcpAudience }}
+- name: ARTIFACT_SERVER_OIDC_MCP_AUDIENCE
+  value: {{ .Values.identity.oidcMcpAudience | quote }}
+{{- end }}
+{{- if .Values.identity.oidcMcpScopes }}
+- name: ARTIFACT_SERVER_OIDC_MCP_SCOPES
+  value: {{ .Values.identity.oidcMcpScopes | quote }}
 {{- end }}
 {{- end }}
 {{- if .Values.identity.workosClientId }}

@@ -610,7 +610,10 @@ async function writeValues(
     identity: {
       oidcClientId: "helm-integration",
       oidcIssuer: "https://identity.example.test",
+      oidcMcpAudience: "",
+      oidcMcpScopes: "",
       oidcScopes: "openid email profile",
+      oidcSubjectClaim: "",
       workosClientId: "",
       workosIssuer: "",
     },

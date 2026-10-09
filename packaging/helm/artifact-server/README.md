@@ -141,6 +141,11 @@ who obtained it. Such a token must name `configuration.applicationOrigin`
 followed by `/mcp` in `aud`, which the provider produces from an audience mapper
 or an RFC 8707 resource indicator.
 
+`identity.oidcMcpAudience` replaces that audience for a provider that names
+something else, `identity.oidcMcpScopes` lists the scopes MCP clients must
+request, and `identity.oidcSubjectClaim` changes the claim that binds a person
+from `sub`. Microsoft Entra ID uses all three; see the deployment guide.
+
 One installation has one browser-login provider. The chart rejects values that
 configure neither provider or configure WorkOS and OIDC together.
 

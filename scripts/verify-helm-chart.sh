@@ -69,11 +69,17 @@ expect_render_failure "identity.oidcClientId and identity.oidcIssuer must be con
   "${artifactserver_values[@]}" \
   --set identity.oidcIssuer=
 
-expect_render_failure "identity.oidcScopes and secret.keys.oidcClientSecret require" \
+expect_render_failure "and secret.keys.oidcClientSecret require identity.oidcClientId and identity.oidcIssuer" \
   "${artifactserver_values[@]}" \
   --set identity.oidcClientId= \
   --set identity.oidcIssuer= \
   --set identity.oidcScopes="openid email profile"
+
+expect_render_failure "and secret.keys.oidcClientSecret require identity.oidcClientId and identity.oidcIssuer" \
+  "${artifactserver_values[@]}" \
+  --set identity.oidcClientId= \
+  --set identity.oidcIssuer= \
+  --set identity.oidcMcpAudience=00000000-0000-4000-8000-0000000000a1
 
 expect_render_failure "one installation has one browser-login provider" \
   "${artifactserver_values[@]}" \

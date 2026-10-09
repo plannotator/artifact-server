@@ -1710,6 +1710,20 @@ requirements:
     depends_on: [AUTH-001, AUTH-023, AUTH-025]
     evidence: []
 
+  - id: AUTH-029
+    kind: constraint
+    behavior: A generic OIDC installation may bind people by a configured subject claim on browser login and MCP alike, require one configured MCP audience instead of <origin>/mcp, and advertise the scopes MCP clients must request; an issuer that omits code_challenge_methods_supported is accepted while one that lists methods without S256 is refused.
+    owner: authorization
+    source: {file: decisions/0029-oidc-provider-claim-mapping.md, anchor: decision}
+    acceptance:
+      behavior: {id: AUTH-029-B, description: "Against an issuer shaped like Microsoft Entra ID, the protected-resource metadata advertises the configured scopes, browser login binds the configured claim, a changed sub keeps one membership, and an email-less access token naming the configured audience reaches MCP as the same member."}
+      failure: {id: AUTH-029-F, description: "A missing or blank subject claim fails browser login and MCP without members or sessions; tokens naming <origin>/mcp beside a configured audience and ID tokens sharing that audience are refused; a discovery document listing PKCE methods without S256 is refused; partial or malformed claim, audience, and scope configuration fails startup."}
+    deployments: [local, single_server, kubernetes, aws, gcp]
+    status: implementing
+    proof_gap: Local conformance tests drive a stub issuer shaped like Entra, and a manual run proved Claude Code browser approval against a real Entra tenant. Deployment-specific evidence and an automated real-Entra run are not recorded.
+    depends_on: [AUTH-019, AUTH-021, MCP-013]
+    evidence: []
+
   - id: SEC-001
     kind: security
     behavior: Published websites are treated as untrusted arbitrary browser JavaScript.
@@ -1964,7 +1978,7 @@ requirements:
 
   - id: MCP-013
     kind: behavior
-    behavior: Local mode connects through artifactserver connect and a stdio bridge without browser OAuth or a human-visible secret; self-hosted mode uses browser OAuth when compatible authorization is configured and otherwise uses administration-issued scoped API keys. A generic OIDC issuer is compatible authorization when it signs verifiable access-token JWTs, binds the exact <origin>/mcp audience, and offers a client registration path its clients can use; the installation registers that client and never runs an authorization server of its own.
+    behavior: Local mode connects through artifactserver connect and a stdio bridge without browser OAuth or a human-visible secret; self-hosted mode uses browser OAuth when compatible authorization is configured and otherwise uses administration-issued scoped API keys. A generic OIDC issuer is compatible authorization when it signs verifiable access-token JWTs, binds the exact <origin>/mcp audience or the one audience the installation configures, and offers a client registration path its clients can use; the installation registers that client and never runs an authorization server of its own.
     owner: mcp
     source: {file: artifact-server-product-spec.html, anchor: mcp}
     acceptance:

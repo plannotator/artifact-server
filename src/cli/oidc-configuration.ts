@@ -3,6 +3,7 @@ import {z} from "zod";
 
 import {defaultOidcScopes} from "../identity/oidc-identity-provider.js";
 import {requireOidcIssuer} from "../identity/oidc-issuer.js";
+import {requireOidcClaimName} from "../identity/oidc-subject.js";
 import {
   loadOptionalCredential,
   type LoadedSecret,
@@ -13,7 +14,12 @@ const oidcEnvironmentSchema = z.object({
   ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL: z.email().optional(),
   ARTIFACT_SERVER_OIDC_CLIENT_ID: z.string().min(1).optional(),
   ARTIFACT_SERVER_OIDC_ISSUER: z.string().min(1).optional(),
+  ARTIFACT_SERVER_OIDC_MCP_AUDIENCE: z.string().trim().regex(/^\S+$/u, {
+    message: "ARTIFACT_SERVER_OIDC_MCP_AUDIENCE must be one audience value.",
+  }).optional(),
+  ARTIFACT_SERVER_OIDC_MCP_SCOPES: z.string().trim().min(1).optional(),
   ARTIFACT_SERVER_OIDC_SCOPES: z.string().min(1).optional(),
+  ARTIFACT_SERVER_OIDC_SUBJECT_CLAIM: z.string().min(1).optional(),
   ARTIFACT_SERVER_ORIGIN: z.url().optional(),
 });
 
@@ -24,7 +30,10 @@ export interface OidcConfiguration {
   readonly clientId: string;
   readonly clientSecret: Redacted.Redacted | null;
   readonly issuer: string;
+  readonly mcpAudience?: string;
+  readonly mcpScopes?: string;
   readonly scopes: string;
+  readonly subjectClaim?: string;
 }
 
 /** Load all-or-nothing OIDC settings, including a file-backed client secret. */
@@ -41,7 +50,10 @@ export async function loadOidcConfiguration(
     clientSecret === null &&
     parsed.ARTIFACT_SERVER_OIDC_CLIENT_ID === undefined &&
     parsed.ARTIFACT_SERVER_OIDC_ISSUER === undefined &&
-    parsed.ARTIFACT_SERVER_OIDC_SCOPES === undefined
+    parsed.ARTIFACT_SERVER_OIDC_MCP_AUDIENCE === undefined &&
+    parsed.ARTIFACT_SERVER_OIDC_MCP_SCOPES === undefined &&
+    parsed.ARTIFACT_SERVER_OIDC_SCOPES === undefined &&
+    parsed.ARTIFACT_SERVER_OIDC_SUBJECT_CLAIM === undefined
   ) {
     return null;
   }
@@ -53,10 +65,10 @@ export async function loadOidcConfiguration(
   ];
   if (requiredValues.some((value) => value === undefined)) {
     throw new Error(
-      "Generic OIDC authentication requires ARTIFACT_SERVER_ORIGIN, ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL, ARTIFACT_SERVER_OIDC_ISSUER, and ARTIFACT_SERVER_OIDC_CLIENT_ID. ARTIFACT_SERVER_OIDC_CLIENT_SECRET or ARTIFACT_SERVER_OIDC_CLIENT_SECRET_FILE and ARTIFACT_SERVER_OIDC_SCOPES are optional.",
+      "Generic OIDC authentication requires ARTIFACT_SERVER_ORIGIN, ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL, ARTIFACT_SERVER_OIDC_ISSUER, and ARTIFACT_SERVER_OIDC_CLIENT_ID. ARTIFACT_SERVER_OIDC_CLIENT_SECRET or ARTIFACT_SERVER_OIDC_CLIENT_SECRET_FILE, ARTIFACT_SERVER_OIDC_SCOPES, ARTIFACT_SERVER_OIDC_SUBJECT_CLAIM, ARTIFACT_SERVER_OIDC_MCP_AUDIENCE, and ARTIFACT_SERVER_OIDC_MCP_SCOPES are optional.",
     );
   }
-  return {
+  let configuration: OidcConfiguration = {
     applicationOrigin: requireString(parsed.ARTIFACT_SERVER_ORIGIN),
     bootstrapAdministratorEmail: requireString(
       parsed.ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL,
@@ -69,6 +81,28 @@ export async function loadOidcConfiguration(
     ),
     scopes: parsed.ARTIFACT_SERVER_OIDC_SCOPES ?? defaultOidcScopes,
   };
+  if (parsed.ARTIFACT_SERVER_OIDC_SUBJECT_CLAIM !== undefined) {
+    configuration = {
+      ...configuration,
+      subjectClaim: requireOidcClaimName(
+        parsed.ARTIFACT_SERVER_OIDC_SUBJECT_CLAIM,
+        "ARTIFACT_SERVER_OIDC_SUBJECT_CLAIM",
+      ),
+    };
+  }
+  if (parsed.ARTIFACT_SERVER_OIDC_MCP_AUDIENCE !== undefined) {
+    configuration = {
+      ...configuration,
+      mcpAudience: parsed.ARTIFACT_SERVER_OIDC_MCP_AUDIENCE,
+    };
+  }
+  if (parsed.ARTIFACT_SERVER_OIDC_MCP_SCOPES !== undefined) {
+    configuration = {
+      ...configuration,
+      mcpScopes: parsed.ARTIFACT_SERVER_OIDC_MCP_SCOPES,
+    };
+  }
+  return configuration;
 }
 
 /**

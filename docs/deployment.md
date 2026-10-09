@@ -61,10 +61,11 @@ the client the agents use. Okta sets the audience on a custom authorization
 server. A provider that supports RFC 8707 resource indicators can bind it per
 request instead.
 
-Microsoft Entra ID cannot protect `/mcp` this way. Its v2.0 access tokens name
-the API's client ID in `aud`, not a URL, and its userinfo endpoint accepts only
-Microsoft Graph tokens. Entra installations keep browser login and use API keys
-for MCP.
+A provider that cannot bind the URL can name a different audience instead. Set
+`ARTIFACT_SERVER_OIDC_MCP_AUDIENCE` to the exact value its access tokens carry;
+it then replaces `<ARTIFACT_SERVER_ORIGIN>/mcp`. Set
+`ARTIFACT_SERVER_OIDC_MCP_SCOPES` to the scopes a client must request for such
+a token, and the server advertises them in its protected-resource metadata.
 
 On first use, the token or the issuer's userinfo response must carry the
 person's `email` with `email_verified: true`. A person who already signed in
@@ -90,6 +91,53 @@ or an ID-token claim such as `nonce` or `at_hash`.
 The server reads the issuer's discovery document once at startup. If the issuer
 cannot be reached then, the server logs a warning and starts with browser login
 and API keys only. MCP OAuth stays off until the next restart.
+
+### Use Microsoft Entra ID
+
+Entra ID works for browser login and for `/mcp` with one app registration that
+represents Artifact Server:
+
+1. Register a single-tenant web application. Add the redirect URI
+   `<ARTIFACT_SERVER_ORIGIN>/auth/callback`, create a client secret, and in the
+   manifest set `api.requestedAccessTokenVersion` to `2`
+   (`accessTokenAcceptedVersion` in the older manifest format).
+2. Under **Expose an API**, set the Application ID URI to exactly
+   `<ARTIFACT_SERVER_ORIGIN>/mcp` and add a delegated scope, for example
+   `access`. MCP clients send that URL as the RFC 8707 `resource` parameter, and
+   Entra refuses a `resource` that does not match the scope's application
+   (`AADSTS9010010`). An HTTPS Application ID URI must use a domain verified in
+   the tenant.
+3. Configure the issuer and the Entra-specific values:
+
+   ```sh
+   ARTIFACT_SERVER_OIDC_ISSUER=https://login.microsoftonline.com/<tenant-id>/v2.0
+   ARTIFACT_SERVER_OIDC_CLIENT_ID=<application-client-id>
+   ARTIFACT_SERVER_OIDC_CLIENT_SECRET_FILE=/run/secrets/oidc-client-secret
+   ARTIFACT_SERVER_OIDC_SUBJECT_CLAIM=oid
+   ARTIFACT_SERVER_OIDC_MCP_AUDIENCE=<application-client-id>
+   ARTIFACT_SERVER_OIDC_MCP_SCOPES=<ARTIFACT_SERVER_ORIGIN>/mcp/access
+   ```
+
+   Entra v2.0 access tokens always name the client ID in `aud`. Its `sub` differs
+   for every app registration, while `oid` identifies the person across the
+   tenant, so a later move to another registration keeps every membership.
+   Choose the subject claim before the first login: changing it later creates
+   new bindings.
+4. Entra offers no dynamic client registration. Give agents the client ID, and
+   add each client's loopback redirect URI to the app registration. For Claude
+   Code, for example:
+
+   ```sh
+   claude mcp add --transport http --client-id <application-client-id> \
+     --client-secret --callback-port 33418 artifact-server <ARTIFACT_SERVER_ORIGIN>/mcp
+   ```
+
+   with `http://localhost:33418/callback` registered as a web redirect URI.
+
+Entra access tokens carry no `email` and no `email_verified`, and its userinfo
+endpoint accepts only Microsoft Graph tokens. A person is therefore recognized
+on `/mcp` after signing in through the browser once; a first contact through
+MCP alone is refused by the admission rules above.
 
 ## Back up the installation
 

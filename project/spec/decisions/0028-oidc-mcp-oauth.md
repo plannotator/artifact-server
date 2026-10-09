@@ -49,6 +49,9 @@ admission gate, which still decides who may enter.
 
 ### The audience is the MCP URL, and nothing else
 
+> Amended by [0029](0029-oidc-provider-claim-mapping.md): an installation may
+> configure one different audience, which then replaces the MCP URL.
+
 `aud` must contain `<ARTIFACT_SERVER_ORIGIN>/mcp`, per the MCP specification,
 and there is no setting that accepts a different value. Membership in a
 multi-valued `aud` is enough: Keycloak names `account` beside the requested

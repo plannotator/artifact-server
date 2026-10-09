@@ -95,7 +95,11 @@ export async function loadOidcAuthorizationServer(
       "OIDC discovery does not support authorization code login.",
     );
   }
-  if (!document.code_challenge_methods_supported?.includes("S256")) {
+  // Microsoft Entra ID supports S256 but leaves this field out of discovery,
+  // so only an issuer that lists its methods without S256 is refused. Clients
+  // always send S256, and an issuer that cannot verify it fails the exchange.
+  const pkceMethods = document.code_challenge_methods_supported;
+  if (pkceMethods !== undefined && !pkceMethods.includes("S256")) {
     throw new Error("OIDC discovery does not advertise S256 PKCE.");
   }
   let metadata: OAuthMetadata = {

@@ -503,6 +503,8 @@ export interface ApiOAuthResourceConfiguration {
 export interface McpOAuthResourceConfiguration {
   readonly authorizationServerMetadata: OAuthMetadata;
   readonly resource: string;
+  /** Scopes a client must request at the issuer to obtain an MCP token. */
+  readonly scopesSupported?: readonly string[];
 }
 
 /** Machine-readable result of one declared runtime dependency probe. */
@@ -604,12 +606,18 @@ export function createHttpApp(
     const resourceServerUrl = new URL(
       dependencies.mcpOAuthResource.resource,
     );
-    const metadataOptions = {
+    let metadataOptions: Parameters<
+      typeof buildOAuthProtectedResourceMetadata
+    >[0] = {
       oauthMetadata:
         dependencies.mcpOAuthResource.authorizationServerMetadata,
       resourceName: "Artifact Server MCP",
       resourceServerUrl,
     };
+    const scopesSupported = dependencies.mcpOAuthResource.scopesSupported;
+    if (scopesSupported !== undefined) {
+      metadataOptions = {...metadataOptions, scopesSupported: [...scopesSupported]};
+    }
     const protectedMetadata = {
       ...buildOAuthProtectedResourceMetadata(metadataOptions),
       bearer_methods_supported: ["header"],

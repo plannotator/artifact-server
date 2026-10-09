@@ -71,6 +71,8 @@ export interface StubOidcClaims {
   issuer: string | null;
   name: string | null;
   nonce: string | null;
+  /** An Entra-style tenant-wide object ID, minted as `oid` when set. */
+  objectId: string | null;
   subject: string;
 }
 
@@ -94,6 +96,8 @@ export interface RunningStubOidcProvider {
   readonly defects: StubOidcDefects;
   readonly issuer: string;
   authorizationRequests(): readonly StubAuthorizationRequest[];
+  /** Sign an arbitrary JWT payload with this issuer's published key. */
+  signJwt(payload: JWTPayload): Promise<string>;
   stop(): Promise<void>;
   tokenRequests(): readonly StubTokenRequest[];
 }
@@ -140,6 +144,7 @@ export async function startStubOidcProvider(
     issuer: null,
     name: "Stub Administrator",
     nonce: null,
+    objectId: null,
     subject: "stub-oidc-subject-1",
   };
   const defects: StubOidcDefects = {
@@ -286,6 +291,9 @@ export async function startStubOidcProvider(
     clientId,
     defects,
     issuer,
+    signJwt: (payload) => new SignJWT(payload)
+      .setProtectedHeader({alg: signingAlgorithm, kid: signingKeyId})
+      .sign(signing.privateKey),
     stop: () => closeServer(server),
     tokenRequests: () => tokenRequests,
   };
@@ -319,6 +327,7 @@ function idTokenPayload(
   if (claims.familyName !== null) payload["family_name"] = claims.familyName;
   if (claims.givenName !== null) payload["given_name"] = claims.givenName;
   if (claims.name !== null) payload["name"] = claims.name;
+  if (claims.objectId !== null) payload["oid"] = claims.objectId;
   return payload;
 }
 

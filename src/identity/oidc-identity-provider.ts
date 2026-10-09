@@ -14,6 +14,11 @@ import {
   normalizeOidcIssuer,
   requireOidcIssuer,
 } from "./oidc-issuer.js";
+import {
+  defaultOidcSubjectClaim,
+  oidcSubjectOf,
+  requireOidcClaimName,
+} from "./oidc-subject.js";
 
 /** Scopes requested when a deployment does not configure its own. */
 export const defaultOidcScopes = "openid email profile";
@@ -70,6 +75,8 @@ export interface OidcIdentityProviderConfig {
   readonly issuer: string;
   readonly redirectUri: string;
   readonly scopes: string;
+  /** The ID-token claim that binds a person; `sub` when left out. */
+  readonly subjectClaim?: string;
 }
 
 /** Complete generic OIDC browser-login settings loaded by one deployment. */
@@ -79,6 +86,7 @@ export interface OidcBrowserLoginSettings {
   readonly clientSecret: Redacted.Redacted | null;
   readonly issuer: string;
   readonly scopes: string;
+  readonly subjectClaim?: string;
 }
 
 /** Generic OpenID Connect adapter for self-hosted browser login. */
@@ -90,6 +98,7 @@ export class OidcIdentityProvider implements InteractiveIdentityProvider {
   readonly #issuer: string;
   readonly #redirectUri: string;
   readonly #scopes: string;
+  readonly #subjectClaim: string;
   #discovered: OidcDiscovery | null = null;
   #keys: JWTVerifyGetKey | null = null;
 
@@ -101,6 +110,10 @@ export class OidcIdentityProvider implements InteractiveIdentityProvider {
     this.#issuer = requireOidcIssuer(config.issuer, "The OIDC issuer");
     this.#redirectUri = config.redirectUri;
     this.#scopes = config.scopes;
+    this.#subjectClaim = requireOidcClaimName(
+      config.subjectClaim ?? defaultOidcSubjectClaim,
+      "The OIDC subject claim",
+    );
   }
 
   readonly start = Effect.fn("OidcIdentityProvider.start")(
@@ -171,12 +184,22 @@ export class OidcIdentityProvider implements InteractiveIdentityProvider {
       if (nonce === null || claims.data.nonce !== nonce) {
         return yield* providerFailure();
       }
+      const subject = this.#subjectClaim === defaultOidcSubjectClaim
+        ? claims.data.sub
+        : oidcSubjectOf(payload, this.#subjectClaim);
+      if (subject === null) {
+        return yield* reportFailure(
+          "identity.oidc.subject_missing",
+          this.#issuer,
+          `the ID token carries no ${this.#subjectClaim} claim`,
+        );
+      }
       const identity: ExternalIdentity = {
         displayName: displayName(claims.data),
         email: claims.data.email,
         emailVerified: claims.data.email_verified !== false,
         provider: `oidc:${this.#issuer}`,
-        subject: claims.data.sub,
+        subject,
       };
       return identity;
     },
@@ -213,13 +236,17 @@ export class OidcIdentityProvider implements InteractiveIdentityProvider {
 export function createOidcIdentityProvider(
   settings: OidcBrowserLoginSettings,
 ): OidcIdentityProvider {
-  return new OidcIdentityProvider({
+  let config: OidcIdentityProviderConfig = {
     clientId: settings.clientId,
     clientSecret: settings.clientSecret,
     issuer: settings.issuer,
     redirectUri: new URL("/auth/callback", settings.applicationOrigin).toString(),
     scopes: settings.scopes,
-  });
+  };
+  if (settings.subjectClaim !== undefined) {
+    config = {...config, subjectClaim: settings.subjectClaim};
+  }
+  return new OidcIdentityProvider(config);
 }
 
 const loadDiscovery = Effect.fn("OidcIdentityProvider.loadDiscovery")(

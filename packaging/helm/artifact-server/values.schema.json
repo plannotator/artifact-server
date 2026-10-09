@@ -126,13 +126,16 @@
     "identity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["workosClientId", "workosIssuer", "oidcClientId", "oidcIssuer", "oidcScopes"],
+      "required": ["workosClientId", "workosIssuer", "oidcClientId", "oidcIssuer", "oidcScopes", "oidcSubjectClaim", "oidcMcpAudience", "oidcMcpScopes"],
       "properties": {
         "workosClientId": {"type": "string"},
         "workosIssuer": {"type": "string"},
         "oidcClientId": {"type": "string"},
         "oidcIssuer": {"type": "string"},
-        "oidcScopes": {"type": "string"}
+        "oidcScopes": {"type": "string"},
+        "oidcSubjectClaim": {"type": "string"},
+        "oidcMcpAudience": {"type": "string"},
+        "oidcMcpScopes": {"type": "string"}
       }
     },
     "serviceAccount": {

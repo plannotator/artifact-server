@@ -44,6 +44,9 @@ identity:
   oidcClientId: ""
   oidcIssuer: ""
   oidcScopes: ""
+  oidcSubjectClaim: ""
+  oidcMcpAudience: ""
+  oidcMcpScopes: ""
 
 serviceAccount:
   create: true

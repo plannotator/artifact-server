@@ -18,6 +18,11 @@ import {
 } from "../core/errors.js";
 import type {ExternalIdentity} from "../core/installation-identity.js";
 import {requireOidcIssuer} from "./oidc-issuer.js";
+import {
+  defaultOidcSubjectClaim,
+  oidcSubjectOf,
+  requireOidcClaimName,
+} from "./oidc-subject.js";
 
 const defaultAlgorithms = ["RS256", "ES256"];
 const idTokenType = "ID";
@@ -58,16 +63,22 @@ const userInfoClaims = Schema.Struct({
 const decodeAccessTokenClaims = Schema.decodeUnknownEffect(accessTokenClaims);
 const decodeUserInfoClaims = Schema.decodeUnknownEffect(userInfoClaims);
 
-type AccessTokenClaims = typeof accessTokenClaims.Type;
+type DecodedAccessTokenClaims = typeof accessTokenClaims.Type;
+type AccessTokenClaims = DecodedAccessTokenClaims & {
+  /** The value of the configured subject claim, which names the person. */
+  readonly subject: string;
+};
 type ProfileClaims = typeof userInfoClaims.Type;
 
 export interface OidcMcpBearerVerifierConfig {
   readonly algorithms?: readonly string[];
-  /** The exact MCP resource URL the issuer must bind into `aud`. */
+  /** The exact value the issuer must bind into `aud` for this MCP resource. */
   readonly audience: string;
   readonly fetch?: typeof globalThis.fetch;
   readonly issuer: string;
   readonly jwksUri: string;
+  /** The access-token claim that binds a person; `sub` when left out. */
+  readonly subjectClaim?: string;
   readonly userInfoEndpoint?: string | null;
 }
 
@@ -79,6 +90,7 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
   readonly #issuer: string;
   readonly #jwks: ReturnType<typeof createRemoteJWKSet>;
   readonly #provider: string;
+  readonly #subjectClaim: string;
   readonly #userInfoEndpoint: string | null;
 
   constructor(config: OidcMcpBearerVerifierConfig) {
@@ -90,6 +102,10 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
     // Browser login records the same provider name, so one person keeps one
     // membership whether they arrive through the interface or through MCP.
     this.#provider = `oidc:${this.#issuer}`;
+    this.#subjectClaim = requireOidcClaimName(
+      config.subjectClaim ?? defaultOidcSubjectClaim,
+      "The OIDC subject claim",
+    );
     this.#userInfoEndpoint = config.userInfoEndpoint ?? null;
     this.#jwks = createRemoteJWKSet(new URL(config.jwksUri), {
       cacheMaxAge: jwksCacheMilliseconds,
@@ -113,7 +129,7 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
         expiresAt: claims.exp,
         provider: this.#provider,
         scopes: tokenScopes(claims.scope),
-        subject: claims.sub,
+        subject: claims.subject,
       };
       return verified;
     },
@@ -129,14 +145,14 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
         return yield* invalidToken("The access token issuer is not supported.");
       }
       const claims = yield* this.#verifiedClaims(credential);
-      if (claims.sub !== verified.subject) {
+      if (claims.subject !== verified.subject) {
         return yield* invalidToken(
           "The access token names a different subject than the verified one.",
         );
       }
       const email = emailOf(claims);
-      if (email !== null) return this.#identityOf(claims, email);
-      return yield* this.#userInfoIdentity(credential, claims.sub);
+      if (email !== null) return this.#identityOf(claims, claims.subject, email);
+      return yield* this.#userInfoIdentity(credential, claims);
     },
   );
 
@@ -160,7 +176,18 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
       catch: (cause) => verificationFailure(cause),
     }).pipe(
       Effect.flatMap(({payload, protectedHeader}) =>
-        decodeClaims(payload, protectedHeader)
+        decodeClaims(payload, protectedHeader).pipe(
+          Effect.flatMap((claims) => {
+            const subject = this.#subjectClaim === defaultOidcSubjectClaim
+              ? claims.sub
+              : oidcSubjectOf(payload, this.#subjectClaim);
+            return subject === null
+              ? Effect.fail(invalidToken(
+                `The OIDC access token carries no ${this.#subjectClaim} claim.`,
+              ))
+              : Effect.succeed({...claims, subject});
+          }),
+        )
       ),
     );
   }
@@ -169,7 +196,7 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
     function*(
       this: OidcMcpBearerVerifier,
       credential: Redacted.Redacted,
-      subject: string,
+      claims: AccessTokenClaims,
     ) {
       const endpoint = this.#userInfoEndpoint;
       if (endpoint === null) {
@@ -211,7 +238,8 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
           "The OIDC userinfo endpoint returned an invalid profile.",
         )),
       );
-      if (profile.sub !== subject) {
+      // Userinfo answers with `sub`, whichever claim binds the person here.
+      if (profile.sub !== claims.sub) {
         return yield* providerUnavailable(
           "The OIDC userinfo endpoint returned a different subject.",
         );
@@ -222,11 +250,15 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
           "The OIDC profile for this access token carries no email address.",
         );
       }
-      return this.#identityOf(profile, email);
+      return this.#identityOf(profile, claims.subject, email);
     },
   );
 
-  #identityOf(claims: ProfileClaims, email: string): ExternalIdentity {
+  #identityOf(
+    claims: ProfileClaims,
+    subject: string,
+    email: string,
+  ): ExternalIdentity {
     return {
       displayName: displayName(claims, email),
       email,
@@ -235,7 +267,7 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
       // can link an admitted member or claim the bootstrap administrator.
       emailVerified: claims.email_verified === true,
       provider: this.#provider,
-      subject: claims.sub,
+      subject,
     };
   }
 }
@@ -243,7 +275,7 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
 function decodeClaims(
   payload: JWTPayload,
   header: JWTHeaderParameters,
-): Effect.Effect<AccessTokenClaims, AuthenticationRequired> {
+): Effect.Effect<DecodedAccessTokenClaims, AuthenticationRequired> {
   // An ID token, logout token, or any other JWT from the same issuer is not a
   // credential for this endpoint even when it names the same audience.
   if (!isAccessTokenType(header.typ)) {
