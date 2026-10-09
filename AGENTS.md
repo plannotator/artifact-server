@@ -40,3 +40,7 @@ guide does not cover, search through the source code in `node_modules/effect/src
 ## Before handing off work
 
 Run `pnpm verify:iteration`. Report any requirement that is still specified but not proved; do not mark it verified optimistically.
+
+## Environment schema
+
+`.env.schema` (Varlock, pinned to an exact version) declares every environment variable the server and its tooling read, without values, and marks credentials sensitive. Add or update its entry whenever you add, rename, or remove a variable; `pnpm env:check` (part of `pnpm check` and CI) validates it, and `pnpm secrets:scan` flags any sensitive value from your local environment that appears in tracked files.

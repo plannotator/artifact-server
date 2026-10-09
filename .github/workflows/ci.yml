@@ -64,6 +64,10 @@ jobs:
         run: pnpm check:ci
       - name: Lint
         run: pnpm lint
+      - name: Validate environment schema
+        run: pnpm env:check
+        env:
+          VARLOCK_TELEMETRY_DISABLED: "true"
       - name: Typecheck
         run: pnpm typecheck
       - name: Build application

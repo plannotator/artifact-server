@@ -35,7 +35,7 @@
     "build": "pnpm --filter @artifact-server/web build && tsc -p tsconfig.build.json",
     "build:site": "pnpm --filter @artifact-server/site build",
     "capture:web": "pnpm build && tsx tests/browser/capture-frontend-mvp.ts",
-    "check": "pnpm check:release-version && pnpm lint && pnpm typecheck && pnpm build && pnpm verify:site && pnpm test && pnpm conformance:validate && pnpm conformance:tests && pnpm check:cloudflare",
+    "check": "pnpm check:release-version && pnpm lint && pnpm env:check && pnpm typecheck && pnpm build && pnpm verify:site && pnpm test && pnpm conformance:validate && pnpm conformance:tests && pnpm check:cloudflare",
     "check:ci": "node scripts/check-ci-full-gate.mjs",
     "check:cloudflare": "pnpm --filter @artifact-server/cloudflare-deployment check",
     "check:cloudflare:prebuilt": "pnpm --dir deploy/cloudflare lint && pnpm --dir deploy/cloudflare typecheck && pnpm --dir deploy/cloudflare exec vitest run",
@@ -93,7 +93,9 @@
     "verify:helm": "pnpm test:helm-static && pnpm test:helm",
     "verify:aws-s3": "bash scripts/run-aws-s3-probe.sh",
     "verify:oci-image": "pnpm test:oci-image",
-    "verify:object-storage": "pnpm test:storage-s3 && pnpm test:storage-native-cloud"
+    "verify:object-storage": "pnpm test:storage-s3 && pnpm test:storage-native-cloud",
+    "env:check": "varlock load",
+    "secrets:scan": "varlock scan"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1109.0",
@@ -132,6 +134,7 @@
     "oxlint-tsgolint": "7.0.2001",
     "tsx": "4.23.12",
     "typescript": "7.0.2",
+    "varlock": "1.21.1",
     "vitest": "4.1.10"
   },
   "license": "AGPL-3.0-only"
