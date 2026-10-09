@@ -20,7 +20,7 @@ Each remote deployment needs these boundaries:
 1. Configure one HTTPS application origin.
 2. Configure a separate wildcard content domain.
 3. Configure WorkOS or one generic OIDC provider.
-4. Admit team members through Artifact Server.
+4. Admit team members through Artifact Server, or enable OIDC automatic admission.
 5. Store service credentials outside source control.
 6. Back up the database and artifact files.
 7. Pin release deployments to an immutable image digest.
@@ -38,6 +38,32 @@ External-storage deployments use PostgreSQL and object storage. These deployment
 Local-owner access works only on an exact loopback origin. Do not use it for remote access.
 
 Remote deployments use WorkOS or a generic OIDC provider. Network access and application authorization remain separate controls.
+
+### Admit members through OIDC browser login
+
+By default, a successful identity-provider login still requires an active Artifact
+Server membership. For an issuer that already restricts who may sign in, such as
+Dex with a corporate-domain filter, set `ARTIFACT_SERVER_OIDC_AUTO_ADMIT=true` to
+admit new browser users as normal members after OIDC token validation succeeds.
+The switch accepts exactly `true` or `false` and defaults to `false`.
+
+Leave `ARTIFACT_SERVER_OIDC_ALLOWED_EMAIL_DOMAINS` unset or empty to trust the
+configured issuer's access restrictions. To restrict new registrations further,
+set a comma-separated list such as `example.com,example.org`. Domains are trimmed
+and lowercased, then matched against the complete email domain: `example.com`
+does not accept `sub.example.com`, `otherexample.com`, or wildcard entries.
+
+The domain list applies only to new automatic registrations. Explicitly admitted
+members keep their roles and can sign in outside that list. A deactivated member
+cannot regain access by changing the email attached to the same issuer and subject.
+The first member still must be the configured bootstrap administrator; automatic
+admission does not replace that bootstrap step or grant administrator privileges.
+An explicitly unverified email remains denied. WorkOS, local-owner login, and MCP
+bearer authentication keep their existing admission rules.
+
+Both policy variables require a complete OIDC configuration, even when automatic
+admission is disabled. Invalid switch values or malformed domain lists fail startup.
+For Helm, use `identity.oidcAutoAdmit` and `identity.oidcAllowedEmailDomains`.
 
 ### Use a generic OIDC issuer for MCP
 

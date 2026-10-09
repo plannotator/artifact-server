@@ -10,6 +10,7 @@ import {
 import {
   digestIdentitySecret,
   InstallationAccessService,
+  type InstallationAccessDependencies,
 } from "../application/installation-access.js";
 import {
   type InteractiveIdentityProvider,
@@ -125,6 +126,7 @@ import type {
   StagingStore,
 } from "../core/ports.js";
 import type {IdentityRepository} from "../core/identity-ports.js";
+import type {ExternalIdentityAdmissionPolicy} from "../core/installation-identity.js";
 import type { ManifestEntry } from "../core/model.js";
 import {randomBase64Url} from "../core/random.js";
 import { FileVerificationError } from "../storage/verified-file.js";
@@ -145,6 +147,7 @@ export interface ApplicationAdapters {
   readonly apiToken: Redacted.Redacted | null;
   readonly blobs: BlobStore;
   readonly bootstrapAdministratorEmail: string;
+  readonly externalIdentityAdmissionPolicy?: ExternalIdentityAdmissionPolicy;
   readonly clock: Clock;
   readonly externalApiBearerVerifier: BearerCredentialVerifier | null;
   readonly externalMcpBearerVerifier: BearerCredentialVerifier | null;
@@ -757,7 +760,7 @@ export function createApplicationLayer(
     membershipRole: membershipRoles.member,
   };
   const identityRepository = adapters.identityRepository;
-  const identityLayer = InstallationAccessService.layer({
+  const identityDependencies: InstallationAccessDependencies = {
     bootstrapAdministratorEmail: adapters.bootstrapAdministratorEmail,
     clock: adapters.clock,
     ids: {
@@ -811,6 +814,14 @@ export function createApplicationLayer(
       findActiveMemberByEmail: (installationId, email) => identityEffect(
         "findActiveMemberByEmail",
         () => identityRepository.findActiveMemberByEmail(installationId, email),
+      ),
+      findMemberByEmail: (installationId, email) => identityEffect(
+        "findMemberByEmail",
+        () => identityRepository.findMemberByEmail(installationId, email),
+      ),
+      findMemberByExternalIdentity: (installationId, provider, subject) => identityEffect(
+        "findMemberByExternalIdentity",
+        () => identityRepository.findMemberByExternalIdentity(installationId, provider, subject),
       ),
       findActiveMemberByExternalIdentity: (
         installationId,
@@ -882,7 +893,11 @@ export function createApplicationLayer(
       issue: () => randomBase64Url(32),
     },
     sessionLifetimeMilliseconds: 12 * 60 * 60 * 1_000,
-  });
+  };
+  if (adapters.externalIdentityAdmissionPolicy !== undefined) {
+    Object.assign(identityDependencies, {externalIdentityAdmissionPolicy: adapters.externalIdentityAdmissionPolicy});
+  }
+  const identityLayer = InstallationAccessService.layer(identityDependencies);
   const authenticationLayer = Layer.effect(
     AuthenticationService,
     InstallationAccessService.use((installationAccess) => {

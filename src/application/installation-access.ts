@@ -22,6 +22,7 @@ import type {
 import {
   type ApplicationSession,
   type ExternalIdentity,
+  type ExternalIdentityAdmissionPolicy,
   type InstallationMember,
   type IssuedApplicationSession,
   type IssuedManagedApiKey,
@@ -101,6 +102,15 @@ export interface InstallationIdentityRepository {
     installationId: string,
     email: string,
   ) => Effect.Effect<InstallationMember | null, IdentityRepositoryFailure>;
+  readonly findMemberByEmail: (
+    installationId: string,
+    email: string,
+  ) => Effect.Effect<InstallationMember | null, IdentityRepositoryFailure>;
+  readonly findMemberByExternalIdentity: (
+    installationId: string,
+    provider: string,
+    subject: string,
+  ) => Effect.Effect<InstallationMember | null, IdentityRepositoryFailure>;
   readonly findActiveMemberByExternalIdentity: (
     installationId: string,
     provider: string,
@@ -171,6 +181,7 @@ export interface InstallationAccessDependencies {
    */
   readonly authenticationCache?: AuthenticationCachePolicy | null;
   readonly bootstrapAdministratorEmail: string;
+  readonly externalIdentityAdmissionPolicy?: ExternalIdentityAdmissionPolicy;
   readonly clock: {readonly now: () => Date};
   readonly ids: IdentityIdProvider;
   readonly installationId: string;
@@ -435,29 +446,44 @@ function makeInstallationAccessService(
   const completeExternalIdentity = Effect.fn(
     "InstallationAccessService.completeExternalIdentity",
   )(function*(identity: ExternalIdentity) {
-    const member = yield* resolveExternalMember(identity);
+    const member = yield* resolveExternalMember(identity, true);
     return yield* issueSession(member);
   });
 
   const resolveExternalMember = Effect.fn(
     "InstallationAccessService.resolveExternalMember",
-  )(function*(identity: ExternalIdentity) {
+  )(function*(identity: ExternalIdentity, browserLogin = false) {
     if (!identity.emailVerified) {
       return yield* Effect.fail(new IdentityAdmissionDenied({
         message: "The login provider did not verify the email address.",
       }));
     }
     const email = yield* normalizeEmail(identity.email);
-    let member = yield* dependencies.repository.findActiveMemberByExternalIdentity(
-      dependencies.installationId,
-      identity.provider,
-      identity.subject,
-    );
-    if (member === null) {
-      member = yield* dependencies.repository.findActiveMemberByEmail(
-        dependencies.installationId,
-        email,
+    const policy = browserLogin &&
+        dependencies.externalIdentityAdmissionPolicy?.provider === identity.provider
+      ? dependencies.externalIdentityAdmissionPolicy
+      : null;
+    let member = yield* policy === null
+      ? dependencies.repository.findActiveMemberByExternalIdentity(
+        dependencies.installationId, identity.provider, identity.subject,
+      )
+      : dependencies.repository.findMemberByExternalIdentity(
+        dependencies.installationId, identity.provider, identity.subject,
       );
+    if (member !== null && member.status !== memberStatuses.active) {
+      return yield* Effect.fail(new IdentityAdmissionDenied({
+        message: "This person has not been admitted to the Artifact Server.",
+      }));
+    }
+    if (member === null) {
+      member = yield* policy === null
+        ? dependencies.repository.findActiveMemberByEmail(dependencies.installationId, email)
+        : dependencies.repository.findMemberByEmail(dependencies.installationId, email);
+    }
+    if (member !== null && member.status !== memberStatuses.active) {
+      return yield* Effect.fail(new IdentityAdmissionDenied({
+        message: "This person has not been admitted to the Artifact Server.",
+      }));
     }
     if (member === null) {
       const hasMembers = yield* dependencies.repository.hasMembers(
@@ -466,22 +492,38 @@ function makeInstallationAccessService(
       const bootstrapAdministratorEmail = yield* normalizeEmail(
         dependencies.bootstrapAdministratorEmail,
       );
-      if (
-        hasMembers ||
-        email !== bootstrapAdministratorEmail
-      ) {
+      const bootstrap = !hasMembers && email === bootstrapAdministratorEmail;
+      if (!bootstrap && (
+        policy === null || !hasMembers ||
+        (policy.allowedEmailDomains.length > 0 &&
+          !policy.allowedEmailDomains.includes(email.slice(email.lastIndexOf("@") + 1)))
+      )) {
         return yield* Effect.fail(new IdentityAdmissionDenied({
           message: "This person has not been admitted to the Artifact Server.",
         }));
       }
-      member = yield* dependencies.repository.admitMember({
+      const admission = dependencies.repository.admitMember({
         createdAt: dependencies.clock.now().toISOString(),
         displayName: identity.displayName,
         email,
         id: dependencies.ids.memberId(),
         installationId: dependencies.installationId,
-        role: membershipRoles.administrator,
+        role: bootstrap ? membershipRoles.administrator : membershipRoles.member,
       });
+      member = yield* bootstrap || policy === null ? admission : admission.pipe(
+        Effect.catchTag("IdentityConflict", (conflict) => Effect.gen(function*() {
+          const admitted = yield* dependencies.repository.findMemberByEmail(
+            dependencies.installationId, email,
+          );
+          if (admitted === null) return yield* Effect.fail(conflict);
+          if (admitted.status !== memberStatuses.active) {
+            return yield* Effect.fail(new IdentityAdmissionDenied({
+              message: "This person has not been admitted to the Artifact Server.",
+            }));
+          }
+          return admitted;
+        })),
+      );
     }
     yield* dependencies.repository.bindExternalIdentity({
       boundAt: dependencies.clock.now().toISOString(),

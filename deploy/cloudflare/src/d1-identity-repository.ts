@@ -419,6 +419,29 @@ export function createD1IdentityRepository(
 
     findMember,
 
+    findMemberByEmail: async (installationId, email) => {
+      const row = await database.prepare(`${memberSelect}
+        WHERE installation_id = ? AND email = ?
+      `).bind(installationId, email)
+        .first<z.input<typeof memberRowSchema>>();
+      return row === null ? null : memberRowSchema.parse(row);
+    },
+
+    findMemberByExternalIdentity: async (installationId, provider, subject) => {
+      const row = await database.prepare(`
+        SELECT member.id, member.installation_id AS installationId,
+          member.email, member.display_name AS displayName, member.role,
+          member.status, member.created_at AS createdAt,
+          member.updated_at AS updatedAt
+        FROM external_identities AS external
+        JOIN installation_members AS member ON member.id = external.member_id
+        WHERE member.installation_id = ? AND external.provider = ?
+          AND external.subject = ?
+      `).bind(installationId, provider, subject)
+        .first<z.input<typeof memberRowSchema>>();
+      return row === null ? null : memberRowSchema.parse(row);
+    },
+
     hasMembers: async (installationId) => {
       const row = await database.prepare(`
         SELECT EXISTS(

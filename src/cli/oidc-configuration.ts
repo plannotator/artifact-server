@@ -1,6 +1,9 @@
 import {type Redacted, Schema} from "effect";
 import {z} from "zod";
 
+import type {ExternalIdentityAdmissionPolicy} from
+  "../core/installation-identity.js";
+import {parseOidcAdmissionPolicy} from "../identity/oidc-admission-policy.js";
 import {defaultOidcScopes} from "../identity/oidc-identity-provider.js";
 import {requireOidcIssuer} from "../identity/oidc-issuer.js";
 import {
@@ -11,6 +14,8 @@ import {runCliEffect} from "./run-cli-effect.js";
 
 const oidcEnvironmentSchema = z.object({
   ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL: z.email().optional(),
+  ARTIFACT_SERVER_OIDC_AUTO_ADMIT: z.string().optional(),
+  ARTIFACT_SERVER_OIDC_ALLOWED_EMAIL_DOMAINS: z.string().optional(),
   ARTIFACT_SERVER_OIDC_CLIENT_ID: z.string().min(1).optional(),
   ARTIFACT_SERVER_OIDC_ISSUER: z.string().min(1).optional(),
   ARTIFACT_SERVER_OIDC_SCOPES: z.string().min(1).optional(),
@@ -23,6 +28,7 @@ export interface OidcConfiguration {
   readonly bootstrapAdministratorEmail: string;
   readonly clientId: string;
   readonly clientSecret: Redacted.Redacted | null;
+  readonly externalIdentityAdmissionPolicy?: ExternalIdentityAdmissionPolicy;
   readonly issuer: string;
   readonly scopes: string;
 }
@@ -41,7 +47,9 @@ export async function loadOidcConfiguration(
     clientSecret === null &&
     parsed.ARTIFACT_SERVER_OIDC_CLIENT_ID === undefined &&
     parsed.ARTIFACT_SERVER_OIDC_ISSUER === undefined &&
-    parsed.ARTIFACT_SERVER_OIDC_SCOPES === undefined
+    parsed.ARTIFACT_SERVER_OIDC_SCOPES === undefined &&
+    parsed.ARTIFACT_SERVER_OIDC_AUTO_ADMIT === undefined &&
+    parsed.ARTIFACT_SERVER_OIDC_ALLOWED_EMAIL_DOMAINS === undefined
   ) {
     return null;
   }
@@ -56,18 +64,28 @@ export async function loadOidcConfiguration(
       "Generic OIDC authentication requires ARTIFACT_SERVER_ORIGIN, ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL, ARTIFACT_SERVER_OIDC_ISSUER, and ARTIFACT_SERVER_OIDC_CLIENT_ID. ARTIFACT_SERVER_OIDC_CLIENT_SECRET or ARTIFACT_SERVER_OIDC_CLIENT_SECRET_FILE and ARTIFACT_SERVER_OIDC_SCOPES are optional.",
     );
   }
-  return {
+  const issuer = requireOidcIssuer(
+    requireString(parsed.ARTIFACT_SERVER_OIDC_ISSUER),
+    "ARTIFACT_SERVER_OIDC_ISSUER",
+  );
+  const policy = parseOidcAdmissionPolicy(
+    issuer,
+    parsed.ARTIFACT_SERVER_OIDC_AUTO_ADMIT,
+    parsed.ARTIFACT_SERVER_OIDC_ALLOWED_EMAIL_DOMAINS,
+  );
+  const configuration: OidcConfiguration = {
     applicationOrigin: requireString(parsed.ARTIFACT_SERVER_ORIGIN),
     bootstrapAdministratorEmail: requireString(
       parsed.ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL,
     ),
     clientId: requireString(parsed.ARTIFACT_SERVER_OIDC_CLIENT_ID),
     clientSecret: credentialOrNull(clientSecret),
-    issuer: requireOidcIssuer(
-      requireString(parsed.ARTIFACT_SERVER_OIDC_ISSUER),
-      "ARTIFACT_SERVER_OIDC_ISSUER",
-    ),
+    issuer,
     scopes: parsed.ARTIFACT_SERVER_OIDC_SCOPES ?? defaultOidcScopes,
+  };
+  return policy === null ? configuration : {
+    ...configuration,
+    externalIdentityAdmissionPolicy: policy,
   };
 }
 
@@ -97,7 +115,11 @@ function hasBrowserLoginVariable(
   prefix: string,
 ): boolean {
   return Object.entries(environment).some(([name, value]) =>
-    name.startsWith(prefix) && value !== undefined && value.trim() !== ""
+    name.startsWith(prefix) && value !== undefined && (
+      value.trim() !== "" ||
+      name === "ARTIFACT_SERVER_OIDC_AUTO_ADMIT" ||
+      name === "ARTIFACT_SERVER_OIDC_ALLOWED_EMAIL_DOMAINS"
+    )
   );
 }
 

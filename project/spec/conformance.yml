@@ -1,6 +1,6 @@
 version: 1
 product: Artifact Server
-updated: "2026-08-26"
+updated: "2026-10-09"
 evidence_root: "../.."
 
 source:
@@ -1561,7 +1561,7 @@ requirements:
     source: {file: oidc-interactive-login-spec.md, anchor: conformance}
     acceptance:
       behavior: {id: AUTH-019-B, description: "Sign in against a real stub OIDC provider; an admitted member gets a session, the bootstrap administrator is admitted on first contact, display name and issuer-qualified binding are recorded, and a second login reuses the binding."}
-      failure: {id: AUTH-019-F, description: "An unadmitted verified identity, an unverified email, and a missing email are refused without creating members or sessions."}
+      failure: {id: AUTH-019-F, description: "With automatic admission disabled, an unadmitted verified identity, an unverified email, and a missing email are refused without creating members or sessions."}
     deployments: *all
     status: behavior_verified
     depends_on: [AUTH-001, AUTH-010]
@@ -1709,6 +1709,25 @@ requirements:
     proof_gap: The local tests prove current-member and stable local-owner refusal, last-administrator refusal, and deactivation by a replacement administrator while another administrator remains. The concurrent last-administrator race and the complete replicated-deployment matrix remain unproved.
     depends_on: [AUTH-001, AUTH-023, AUTH-025]
     evidence: []
+
+  - id: AUTH-029
+    kind: behavior
+    behavior: An installation may opt into normal-member admission only after validated browser OIDC login against its configured issuer, with an optional exact email-domain registration list, while preserving first-administrator bootstrap, existing roles, and deactivation.
+    owner: authorization
+    source: {file: oidc-auto-admission-spec.md, anchor: conformance}
+    acceptance:
+      behavior: {id: AUTH-029-B, description: "An eligible unknown browser user receives a normal member session, repeat and simultaneous logins reuse one member and binding, exact domains match after normalization, and bootstrap administrators and explicitly admitted users retain their roles and admission rules."}
+      failure: {id: AUTH-029-F, description: "Default-disabled admission, malformed policy configuration, disallowed email domains, another issuer, explicitly unverified email, invalid tokens, and inactive email or subject matches refuse access without creating a member or session; changed email cannot evade deactivation or installation/issuer scope."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local browser, configuration, repository, bearer, and WorkOS boundaries pass; complete packaged deployment verification and issuer-specific production login remain to be recorded.
+    depends_on: [AUTH-001, AUTH-019, AUTH-020, AUTH-021, AUTH-027]
+    evidence:
+      - deployment: local
+        tests: [AUTH-029-B, AUTH-029-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-10-09T19:11:51.885780+00:00"
 
   - id: SEC-001
     kind: security

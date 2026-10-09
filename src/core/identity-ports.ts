@@ -77,6 +77,17 @@ export interface IdentityRepository {
     installationId: string,
     memberId: string,
   ): Promise<InstallationMember | null>;
+  /** Find an admitted email, including inactive members. */
+  findMemberByEmail(
+    installationId: string,
+    email: string,
+  ): Promise<InstallationMember | null>;
+  /** Find a bound subject, including inactive members. */
+  findMemberByExternalIdentity(
+    installationId: string,
+    provider: string,
+    subject: string,
+  ): Promise<InstallationMember | null>;
   hasMembers(installationId: string): Promise<boolean>;
   listApiKeys(installationId: string): Promise<readonly ManagedApiKey[]>;
   listMembers(installationId: string): Promise<readonly InstallationMember[]>;

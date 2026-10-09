@@ -153,3 +153,14 @@ repositories.
 This is the strictest reading of the claim, and it refuses logins from
 mainstream identity providers that never send it. The recorded decision above
 takes the industry-standard posture instead.
+
+## October 9, 2026: Optional browser admission
+
+[OIDC automatic browser admission](../oidc-auto-admission-spec.md) extends the
+original explicit-admission decision with an opt-in policy for installations
+whose configured issuer already controls membership eligibility. The default
+remains explicit admission. The policy admits new browser users as normal
+members, may restrict new registrations to exact email domains, and preserves
+bootstrap administration, existing roles, and inactive-identity refusal. It does
+not extend WorkOS, local-owner, or MCP bearer admission. Directory sync, SCIM,
+role/group mapping, and administrator promotion remain excluded.

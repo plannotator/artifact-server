@@ -26,6 +26,7 @@ import type {
   McpOAuthResourceConfiguration,
 } from "../../src/http/create-http-app.js";
 import type {Clock} from "../../src/core/ports.js";
+import type {ExternalIdentityAdmissionPolicy} from "../../src/core/installation-identity.js";
 import {localOwnerBrowserAccess} from "../../src/core/browser-access.js";
 import type {BrowserAccess} from "../../src/core/browser-access.js";
 import {defaultCompletedRequestLogSampleRate} from
@@ -93,6 +94,7 @@ export async function startTestServer(
     readonly externalApiBearerVerifier?: BearerCredentialVerifier;
     readonly externalMcpBearerVerifier?: BearerCredentialVerifier;
     readonly externalMcpOAuthVerifier?: ExternalMcpBearerVerifier;
+    readonly externalIdentityAdmissionPolicy?: ExternalIdentityAdmissionPolicy;
     readonly gitHistory?: NodeGitHistoryConfiguration;
     readonly gitHistoryHealthProbe?: GitHistoryProviderHealthProbe;
     readonly gitHistoryProvider?: GitHistoryProvider;
@@ -121,6 +123,9 @@ export async function startTestServer(
     port: options.port ?? 0,
   };
   let config: LocalServerConfig = baseConfig;
+  if (options.externalIdentityAdmissionPolicy !== undefined) {
+    config = {...config, externalIdentityAdmissionPolicy: options.externalIdentityAdmissionPolicy};
+  }
   if (options.applicationOrigin !== undefined) {
     config = {...config, applicationOrigin: options.applicationOrigin};
   }

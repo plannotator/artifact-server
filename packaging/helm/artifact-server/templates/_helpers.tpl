@@ -74,6 +74,9 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if and (not $hasOidcIssuer) (or (ne .Values.identity.oidcScopes "") (ne .Values.secret.keys.oidcClientSecret "")) -}}
 {{- fail "identity.oidcScopes and secret.keys.oidcClientSecret require identity.oidcClientId and identity.oidcIssuer" -}}
 {{- end -}}
+{{- if and (not $hasOidcIssuer) (or .Values.identity.oidcAutoAdmit (gt (len .Values.identity.oidcAllowedEmailDomains) 0)) -}}
+{{- fail "identity.oidcAutoAdmit and identity.oidcAllowedEmailDomains require identity.oidcClientId and identity.oidcIssuer" -}}
+{{- end -}}
 {{- if and $hasOidcIssuer $hasWorkosIssuer -}}
 {{- fail "one installation has one browser-login provider: configure the identity.workos values or the identity.oidc values, not both" -}}
 {{- end -}}
@@ -186,6 +189,10 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
   value: /run/secrets/artifact-server/s3-secret-access-key
 {{- end }}
 {{- if .Values.identity.oidcIssuer }}
+- name: ARTIFACT_SERVER_OIDC_AUTO_ADMIT
+  value: {{ .Values.identity.oidcAutoAdmit | quote }}
+- name: ARTIFACT_SERVER_OIDC_ALLOWED_EMAIL_DOMAINS
+  value: {{ join "," .Values.identity.oidcAllowedEmailDomains | quote }}
 {{- if .Values.secret.keys.oidcClientSecret }}
 - name: ARTIFACT_SERVER_OIDC_CLIENT_SECRET_FILE
   value: /run/secrets/artifact-server/oidc-client-secret

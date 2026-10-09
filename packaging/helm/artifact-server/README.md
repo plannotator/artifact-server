@@ -135,6 +135,34 @@ the chart mounts it as a file. `identity.oidcScopes` overrides the default
 `openid email profile`. The chart rejects a partial OIDC configuration, and an
 OIDC client secret or scope list without an issuer and client.
 
+Browser login requires an active membership by default. To let the configured
+issuer admit new users as normal members after token validation, enable
+`identity.oidcAutoAdmit` (default `false`). Leave
+`identity.oidcAllowedEmailDomains` at its default empty list to trust the issuer's
+access restrictions, or provide exact email domains for new registrations:
+
+```yaml
+identity:
+  oidcIssuer: https://idp.example.com/realms/main
+  oidcClientId: artifact-server
+  oidcAutoAdmit: true
+  oidcAllowedEmailDomains:
+    - example.com
+    - example.org
+```
+
+Domains are matched case-insensitively against the complete email domain; wildcards
+and implicit subdomain matches are unsupported. The chart rejects enabled
+automatic admission or a nonempty domain list without an OIDC issuer and client.
+The rendered variables are `ARTIFACT_SERVER_OIDC_AUTO_ADMIT` and
+`ARTIFACT_SERVER_OIDC_ALLOWED_EMAIL_DOMAINS`.
+
+Bootstrap the configured first administrator before other users sign in. Existing
+members keep their roles and may sign in outside the registration domain list;
+deactivated identities stay denied even when their provider email changes.
+Automatic admission applies only to OIDC browser login and grants no administrator
+role. MCP bearer authentication and WorkOS admission keep their existing rules.
+
 The same issuer also protects the MCP endpoint: agents may present an end-user
 access token instead of an API key, and the server binds each call to the person
 who obtained it. Such a token must name `configuration.applicationOrigin`

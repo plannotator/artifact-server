@@ -44,6 +44,8 @@ identity:
   oidcClientId: ""
   oidcIssuer: ""
   oidcScopes: ""
+  oidcAutoAdmit: false
+  oidcAllowedEmailDomains: []
 
 serviceAccount:
   create: true

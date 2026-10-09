@@ -8,6 +8,7 @@ import type {
 import type {InteractiveIdentityProvider} from "../application/interactive-login.js";
 import type {Clock} from "../core/ports.js";
 import type {BrowserAccess} from "../core/browser-access.js";
+import type {ExternalIdentityAdmissionPolicy} from "../core/installation-identity.js";
 import {SystemClock, SystemIdGenerator} from "../core/system.js";
 import {createHttpApp} from "../http/create-http-app.js";
 import type {
@@ -70,6 +71,7 @@ export interface ExternalStorageRuntimeConfig {
   readonly apiOAuthResource?: ApiOAuthResourceConfiguration;
   readonly applicationOrigin?: string;
   readonly bootstrapAdministratorEmail: string;
+  readonly externalIdentityAdmissionPolicy?: ExternalIdentityAdmissionPolicy;
   readonly browserAccess: Extract<BrowserAccess, {readonly mode: "private_team"}>;
   readonly clock?: Clock;
   readonly completedRequestLogSampleRate?: number;
@@ -178,6 +180,9 @@ export async function createExternalStorageRuntime(
       staging,
       stagingCleanupPolicy,
     };
+    if (config.externalIdentityAdmissionPolicy !== undefined) {
+      Object.assign(applicationAdapters, {externalIdentityAdmissionPolicy: config.externalIdentityAdmissionPolicy});
+    }
     if (gitHistoryProvider !== null) {
       Object.assign(applicationAdapters, {gitHistoryProvider});
     }

@@ -212,6 +212,45 @@ export class PostgresIdentityRepository implements BootstrapManagedApiKeyReposit
     }));
   }
 
+  async findMemberByEmail(
+    installationId: string,
+    email: string,
+  ): Promise<InstallationMember | null> {
+    this.#assertInstallationScope(installationId);
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(memberSelect(
+        "WHERE installation_id = $1 AND email = $2",
+      ), [installationId, email]);
+      return memberRowSchema.nullable().parse(rows[0] ?? null);
+    }));
+  }
+
+  async findMemberByExternalIdentity(
+    installationId: string,
+    provider: string,
+    subject: string,
+  ): Promise<InstallationMember | null> {
+    this.#assertInstallationScope(installationId);
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql.unsafe<object>(
+        `SELECT member.id, member.installation_id AS "installationId",
+          member.email, member.display_name AS "displayName", member.role,
+          member.status, member.created_at AS "createdAt",
+          member.updated_at AS "updatedAt"
+         FROM external_identities AS external
+         JOIN installation_members AS member
+           ON member.installation_id = external.installation_id
+          AND member.id = external.member_id
+         WHERE member.installation_id = $1 AND external.provider = $2
+           AND external.subject = $3`,
+        [installationId, provider, subject],
+      );
+      return memberRowSchema.nullable().parse(rows[0] ?? null);
+    }));
+  }
+
   async bindExternalIdentity(command: BindExternalIdentityRecord): Promise<void> {
     const installationId = this.#installationId;
     const existingMember = await this.findMember(

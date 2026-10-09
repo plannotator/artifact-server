@@ -39,6 +39,12 @@ export interface ExternalIdentity {
   readonly subject: string;
 }
 
+/** Optional automatic admission for one interactive identity provider. */
+export interface ExternalIdentityAdmissionPolicy {
+  readonly allowedEmailDomains: readonly string[];
+  readonly provider: string;
+}
+
 /** One server-side browser session after its opaque credential is verified. */
 export interface ApplicationSession {
   readonly createdAt: string;

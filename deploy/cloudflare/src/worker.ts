@@ -45,6 +45,8 @@ import {
 } from "../../../src/identity/oidc-identity-provider.js";
 import {createWorkOsHostedAuthentication} from
   "../../../src/identity/workos-hosted-authentication.js";
+import {parseOidcAdmissionPolicy} from
+  "../../../src/identity/oidc-admission-policy.js";
 
 /** Bindings and variables the deployed Artifact Server worker reads. */
 export interface WorkerEnvironment {
@@ -57,6 +59,8 @@ export interface WorkerEnvironment {
   readonly ARTIFACT_SERVER_CLOUDFLARE_ARTIFACTS_NAMESPACE?: string;
   readonly ARTIFACT_SERVER_D1_DATABASE: D1Database;
   readonly ARTIFACT_SERVER_INSTALLATION_ID: string;
+  readonly ARTIFACT_SERVER_OIDC_AUTO_ADMIT?: string;
+  readonly ARTIFACT_SERVER_OIDC_ALLOWED_EMAIL_DOMAINS?: string;
   readonly ARTIFACT_SERVER_OIDC_CLIENT_ID?: string;
   readonly ARTIFACT_SERVER_OIDC_CLIENT_SECRET?: string;
   readonly ARTIFACT_SERVER_OIDC_ISSUER?: string;
@@ -142,6 +146,13 @@ async function createCloudflareRuntime(
   environment: WorkerEnvironment,
 ): Promise<CloudflareRuntime> {
   validateEnvironment(environment);
+  const oidcIdentityProvider = oidcAuthentication(environment);
+  const admissionPolicy = oidcIdentityProvider === null ? null :
+    parseOidcAdmissionPolicy(
+      requireEnvironmentValue(environment.ARTIFACT_SERVER_OIDC_ISSUER),
+      environment.ARTIFACT_SERVER_OIDC_AUTO_ADMIT,
+      environment.ARTIFACT_SERVER_OIDC_ALLOWED_EMAIL_DOMAINS,
+    );
   await migrateD1(
     environment.ARTIFACT_SERVER_D1_DATABASE,
     environment.ARTIFACT_SERVER_INSTALLATION_ID,
@@ -158,7 +169,6 @@ async function createCloudflareRuntime(
     environment.ARTIFACT_SERVER_INSTALLATION_ID,
   );
   const gitHistory = await initializeGitHistory(environment, repository, blobs);
-  const oidcIdentityProvider = oidcAuthentication(environment);
   const hostedAuthentication = await workOsAuthentication(environment);
   const browserAccess = hostedAuthentication !== null
     ? privateTeamBrowserAccess(browserLoginKinds.workOs)
@@ -189,6 +199,11 @@ async function createCloudflareRuntime(
     repository,
     staging,
   };
+  if (admissionPolicy !== null) {
+    Object.assign(applicationAdapters, {
+      externalIdentityAdmissionPolicy: admissionPolicy,
+    });
+  }
   if (gitHistory.provider !== null) {
     Object.assign(applicationAdapters, {gitHistoryProvider: gitHistory.provider});
   }
@@ -347,6 +362,8 @@ function oidcValues(
   environment: WorkerEnvironment,
 ): readonly (string | undefined)[] {
   return [
+    environment.ARTIFACT_SERVER_OIDC_AUTO_ADMIT,
+    environment.ARTIFACT_SERVER_OIDC_ALLOWED_EMAIL_DOMAINS,
     environment.ARTIFACT_SERVER_OIDC_CLIENT_ID,
     environment.ARTIFACT_SERVER_OIDC_CLIENT_SECRET,
     environment.ARTIFACT_SERVER_OIDC_ISSUER,

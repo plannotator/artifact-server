@@ -40,6 +40,7 @@ import type {GitHistoryProviderHealthProbe} from
   "../../src/git-history/git-history-provider-health.js";
 import {managedApiKeyCredentialPattern} from
   "../../src/core/installation-identity.js";
+import type {ExternalIdentityAdmissionPolicy} from "../../src/core/installation-identity.js";
 import {
   browserLoginKinds,
   privateTeamBrowserAccess,
@@ -1024,6 +1025,70 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       )).toHaveLength(1);
     } finally {
       await database.close();
+    }
+  });
+
+  test("AUTH-029: OIDC admission converges across Postgres replicas and refuses inactive subjects", async () => {
+    const previousClaims = {...oidcProvider.claims};
+    const identity = {
+      apiToken: managedTestKey("oidc-auto-admission"),
+      installationId: "external-storage-oidc-auto-admission",
+      autoAdmit: true,
+    };
+    const [first, second] = await Promise.all([
+      startExternalStorageProcess(environment, identity),
+      startInProcessExternalStorageServer(environment, identity, {
+        externalIdentityAdmissionPolicy: {provider: `oidc:${oidcProvider.issuer}`, allowedEmailDomains: []},
+      }),
+    ]);
+    try {
+      oidcProvider.claims.email = oidcAdministratorEmail;
+      oidcProvider.claims.subject = "postgres-admission-administrator";
+      oidcProvider.claims.emailVerified = true;
+      const administrator = await oidcBrowserLogin(first.baseUrl);
+      expect(administrator.status).toBe(303);
+      const adminCookies = applicationCookies(administrator.headers.getSetCookie());
+      oidcProvider.claims.email = "member@ackstorm.com";
+      oidcProvider.claims.subject = "postgres-admission-member";
+      const responses = await Promise.all(Array.from({length: 12}, (_, index) =>
+        oidcBrowserLogin(index % 2 === 0 ? first.baseUrl : second.baseUrl)
+      ));
+      expect(responses.map((response) => response.status)).toEqual(Array(12).fill(303));
+      const members = await Promise.all(responses.map(async (response) => {
+        const session = await fetch(`${second.baseUrl}/api/v1/session`, {
+          headers: {Cookie: applicationCookies(response.headers.getSetCookie()).header},
+        });
+        expect(session.status).toBe(200);
+        return z.object({principal: z.object({id: z.string(), membershipRole: z.literal("member")})})
+          .parse(await session.json()).principal;
+      }));
+      expect(members.every((member) => member.id === members[0]?.id)).toBe(true);
+      const member = members[0];
+      if (member === undefined) throw new Error("No member was admitted.");
+      const listed = await fetch(`${first.baseUrl}/api/v1/members`, {headers: {Cookie: adminCookies.header}});
+      expect(z.object({members: z.array(z.object({id: z.string()}))}).parse(await listed.json()).members)
+        .toHaveLength(2);
+      const deactivated = await fetch(`${first.baseUrl}/api/v1/members/${member.id}/deactivate`, {
+        headers: browserMutationHeaders("https://artifacts.example.com", adminCookies), method: "POST",
+      });
+      expect(deactivated.status).toBe(200);
+      oidcProvider.claims.email = "changed@ackstorm.com";
+      const denied = await oidcBrowserLogin(second.baseUrl);
+      expect(denied.status).toBe(403);
+      expect(denied.headers.getSetCookie()).toEqual([]);
+      const database = await PostgresDatabase.open({maxConnections: 2, url: Redacted.make(environment.databaseUrl)}, "validate");
+      try {
+        const repository = new PostgresIdentityRepository(database, identity.installationId);
+        expect(await repository.findMemberByEmail(identity.installationId, "member@ackstorm.com"))
+          .toMatchObject({id: member.id, status: "inactive"});
+        expect(await repository.findMemberByExternalIdentity(identity.installationId, `oidc:${oidcProvider.issuer}`, "postgres-admission-member"))
+          .toMatchObject({id: member.id, status: "inactive"});
+        expect(await repository.listMembers(identity.installationId)).toHaveLength(2);
+      } finally {
+        await database.close();
+      }
+    } finally {
+      Object.assign(oidcProvider.claims, previousClaims);
     }
   });
 
@@ -2572,6 +2637,7 @@ function startExternalStorageProcess(
     readonly apiToken: string;
     readonly installationId: string;
     readonly storageBucket?: string;
+    readonly autoAdmit?: boolean;
   },
 ): Promise<ExternalStorageProcess> {
   const child = spawn(
@@ -2581,6 +2647,7 @@ function startExternalStorageProcess(
       cwd: repositoryRoot,
       env: {
         ...process.env,
+        ARTIFACT_SERVER_OIDC_AUTO_ADMIT: identity.autoAdmit === true ? "true" : "false",
         ARTIFACT_SERVER_API_TOKEN: identity.apiToken,
         ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL: oidcAdministratorEmail,
         ARTIFACT_SERVER_CONTENT_DOMAIN: "content.example.net",
@@ -2631,6 +2698,7 @@ async function startInProcessExternalStorageServer(
   options: {
     readonly gitHistory?: NodeGitHistoryConfiguration;
     readonly gitHistoryHealthProbe?: GitHistoryProviderHealthProbe;
+    readonly externalIdentityAdmissionPolicy?: ExternalIdentityAdmissionPolicy;
   } = {},
 ): Promise<InProcessExternalStorageServer> {
   const server = await startExternalStorageServer({

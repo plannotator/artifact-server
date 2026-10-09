@@ -11,7 +11,7 @@ Self-hosted Artifact Server browser login today supports exactly one identity pr
 
 The sibling Workspaces product already ships this: its self-host default is `AUTH_MODE=oidc` against any OpenID Connect provider, with WorkOS reserved for the hosted Cloudflare flavor (`SELF-HOST.md:83` refuses `AUTH_MODE=workos` in self-host). This spec brings Artifact Server to parity by adding a second, generic OIDC implementation of the existing provider port, deliberately mirroring Workspaces' configuration vocabulary, flow, and validation rules so the two products describe OIDC the same way.
 
-Nothing else about identity changes. The port stays as it is; sessions, CSRF, admission, members, API keys, and the deployment token are untouched. OIDC only answers "who is this person"; explicit member admission still decides "may they enter."
+Nothing else about identity changes in this original specification. The port stays as it is; sessions, CSRF, admission, members, API keys, and the deployment token are untouched. OIDC only answers "who is this person"; explicit member admission remains the default. [OIDC automatic browser admission](./oidc-auto-admission-spec.md) adds an optional issuer-scoped registration policy.
 
 ## 2. Goal and non-goals
 
@@ -23,6 +23,10 @@ Nothing else about identity changes. The port stays as it is; sessions, CSRF, ad
 | RP-initiated logout is **deferred** (open decision 3). | **Refresh tokens / offline_access.** Artifact Server sessions are server-side with their own lifetime; the id_token is used once at login. |
 
 API keys, the deployment token, local browser login (`/auth/local`), and content sessions are unaffected.
+
+The original provisioning exclusion above is extended only by the optional
+[OIDC automatic browser-admission policy](./oidc-auto-admission-spec.md).
+Directory sync, SCIM, and role/group mapping remain outside its scope.
 
 ## 3. Configuration
 
@@ -81,7 +85,7 @@ Flow, matching Workspaces' `providers/oidc.ts` decision for decision:
 - No id_token is accepted from any issuer other than the configured one; the JWKS is fetched only from the discovered `jwks_uri` under the issuer's validated origin rules; `alg` is whatever the JWKS key advertises via jose's verification (no `alg: none`, jose refuses it structurally).
 - HTTPS-only endpoints except explicit local-development hosts (section 3 rule).
 - Logged: provider name, issuer, and cause on discovery/exchange failure. Never logged: authorization codes, tokens, verifiers, client secret, id_token contents, email addresses at failure paths (match the existing generic `IdentityProviderFailure` message discipline).
-- Admission unchanged and last: a verified OIDC identity that is not an admitted active member (or the bootstrap administrator on first contact, `installation-access.ts:417-440`) is refused with `IdentityAdmissionDenied`.
+- Admission remains last: by default, a verified OIDC identity that is not an admitted active member (or the bootstrap administrator on first contact, `installation-access.ts:417-440`) is refused with `IdentityAdmissionDenied`. The optional [automatic-admission policy](./oidc-auto-admission-spec.md) can admit an eligible new browser user as a normal member after the same validation.
 
 ## 6. Deployment surface
 
@@ -101,7 +105,7 @@ Module `authorization`, three new requirements in the existing ledger style (sou
 
 | ID | Kind | Behavior (short) | -B acceptance | -F acceptance |
 | --- | --- | --- | --- | --- |
-| AUTH-019 | behavior | A deployment configured with a generic OIDC issuer completes browser login through discovery, auth-code with PKCE and nonce, id_token verification, and normal admission, on every deployment kind. | Sign in against a real stub OIDC provider; an admitted member gets a session, the bootstrap administrator is admitted on first contact, display name and issuer-qualified binding are recorded, and a second login reuses the binding. | An unadmitted verified identity, an unverified email, and a missing email are refused without creating members or sessions. |
+| AUTH-019 | behavior | A deployment configured with a generic OIDC issuer completes browser login through discovery, auth-code with PKCE and nonce, id_token verification, and normal admission, on every deployment kind. | Sign in against a real stub OIDC provider; an admitted member gets a session, the bootstrap administrator is admitted on first contact, display name and issuer-qualified binding are recorded, and a second login reuses the binding. | With automatic admission disabled, an unadmitted verified identity, an unverified email, and a missing email are refused without creating members or sessions. |
 | AUTH-020 | security | The OIDC callback fails closed on every token-validation defect. | Valid logins succeed under a 30-second clock skew. | Wrong signature, wrong issuer, wrong audience, expired token, replayed or unknown state, expired attempt, and wrong nonce are each refused; no session or member is created; codes and tokens never appear in logs. |
 | AUTH-021 | constraint | OIDC configuration is all-or-nothing, mutually exclusive with WorkOS, and issuer/endpoint URLs obey the HTTPS rules. | A complete OIDC configuration boots and reports `interactiveIdentityProvider: "oidc"`; absence of both providers keeps login unavailable while keys still work. | Partial OIDC configuration, WorkOS-plus-OIDC together, a non-HTTPS non-local issuer, and discovery documents with a mismatched issuer or credentialed/fragmented endpoint URLs each fail startup or login without weakening the running server. |
 

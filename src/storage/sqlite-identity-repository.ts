@@ -251,6 +251,50 @@ export class SqliteIdentityRepository implements BootstrapManagedApiKeyRepositor
     return row === undefined ? null : memberRowSchema.parse(row);
   }
 
+  async findMemberByEmail(
+    installationId: string,
+    email: string,
+  ): Promise<InstallationMember | null> {
+    const row = this.#database.prepare(`
+      SELECT
+        id,
+        installation_id AS installationId,
+        email,
+        display_name AS displayName,
+        role,
+        status,
+        created_at AS createdAt,
+        updated_at AS updatedAt
+      FROM installation_members
+      WHERE installation_id = ? AND email = ?
+    `).get(installationId, email);
+    return row === undefined ? null : memberRowSchema.parse(row);
+  }
+
+  async findMemberByExternalIdentity(
+    installationId: string,
+    provider: string,
+    subject: string,
+  ): Promise<InstallationMember | null> {
+    const row = this.#database.prepare(`
+      SELECT
+        member.id,
+        member.installation_id AS installationId,
+        member.email,
+        member.display_name AS displayName,
+        member.role,
+        member.status,
+        member.created_at AS createdAt,
+        member.updated_at AS updatedAt
+      FROM external_identities AS external
+      JOIN installation_members AS member ON member.id = external.member_id
+      WHERE
+        member.installation_id = ? AND external.provider = ? AND
+        external.subject = ?
+    `).get(installationId, provider, subject);
+    return row === undefined ? null : memberRowSchema.parse(row);
+  }
+
   async bindExternalIdentity(command: BindExternalIdentityRecord): Promise<void> {
     try {
       const result = this.#database.prepare(`

@@ -427,22 +427,29 @@ async function startCompactServer(
   return startLocalServer(serverConfig);
 }
 
-type OidcServerAuthentication =
+type OidcServerAuthentication = (
   | OidcHostedAuthentication
-  | Pick<OidcHostedAuthentication, "interactiveIdentityProvider">;
+  | Pick<OidcHostedAuthentication, "interactiveIdentityProvider">
+) & Pick<OidcConfiguration, "externalIdentityAdmissionPolicy">;
 
 /** MCP OAuth needs the issuer at startup; browser login must survive it being down. */
 async function oidcAuthenticationOrBrowserOnly(
   oidc: OidcConfiguration,
 ): Promise<OidcServerAuthentication> {
+  const admission = oidc.externalIdentityAdmissionPolicy === undefined
+    ? {}
+    : {externalIdentityAdmissionPolicy: oidc.externalIdentityAdmissionPolicy};
   try {
-    return await createOidcHostedAuthentication(oidc);
+    return {...await createOidcHostedAuthentication(oidc), ...admission};
   } catch (cause) {
     const reason = cause instanceof Error ? cause.message : "the request failed";
     process.stderr.write(
       `OIDC configuration warning (discovery_failed): MCP OAuth stays off for ${oidc.issuer}: ${reason}\n`,
     );
-    return {interactiveIdentityProvider: createOidcIdentityProvider(oidc)};
+    return {
+      interactiveIdentityProvider: createOidcIdentityProvider(oidc),
+      ...admission,
+    };
   }
 }
 
