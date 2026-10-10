@@ -80,6 +80,7 @@ const artifactSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   projectId: Schema.String,
+  reviewMode: Schema.Literals(["annotate", "interact"]),
   tags: Schema.Array(Schema.String),
 });
 const versionSchema = Schema.Struct({
@@ -189,6 +190,7 @@ export type FilePublicationTarget =
     readonly accessSetting: "account_required" | "public_link";
     readonly kind: "new_artifact";
     readonly name?: string;
+    readonly reviewMode?: "annotate" | "interact";
     readonly tags: readonly string[];
   }
   | {
@@ -263,6 +265,7 @@ type CommitPublicationTarget =
     readonly accessSetting: "account_required" | "public_link";
     readonly kind: "new_artifact";
     readonly name: string;
+    readonly reviewMode?: "annotate" | "interact";
     readonly tags: readonly string[];
   }
   | {
@@ -385,14 +388,14 @@ function effectiveCommitTarget(
   target: FilePublicationTarget,
   defaultName: string,
 ): CommitPublicationTarget {
-  return target.kind === "new_artifact"
-    ? {
-      accessSetting: target.accessSetting,
-      kind: target.kind,
-      name: target.name ?? defaultName,
-      tags: target.tags,
-    }
-    : target;
+  if (target.kind !== "new_artifact") return target;
+  const resolved = {
+    accessSetting: target.accessSetting,
+    kind: target.kind,
+    name: target.name ?? defaultName,
+    tags: target.tags,
+  };
+  return target.reviewMode === "interact" ? {...resolved, reviewMode: target.reviewMode} : resolved;
 }
 
 /** Infer a deterministic browser media type from one file name. */

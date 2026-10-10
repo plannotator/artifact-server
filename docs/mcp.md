@@ -55,6 +55,8 @@ An agent uses this sequence:
 
 When the agent publishes a new version, it first reads the current version ID. It sends that ID as `expectedCurrentVersionId`.
 
+For a new artifact, `artifact_commit_upload` accepts `target.reviewMode` as `annotate` (the default) or `interact`. Use `interact` for an HTML prototype that should accept clicks immediately. A new version keeps the existing artifact default. To change that default later, use `artifact_set_review_mode` with `artifactId`, `reviewMode`, `expectedCurrentVersionId`, an `idempotencyKey`, and an optional `projectId`. See [Review mode](./review-mode.md) for link overrides and the HTTP equivalent.
+
 ## Use the publication result
 
 Every successful publication returns structured data and a short text summary.
@@ -88,7 +90,7 @@ opens its raw immutable content. Agents should hand people the Review URL.
 | Projects | `project_list`, `project_create`, `project_rename`, `project_archive`, `project_unarchive` |
 | Artifacts | `artifact_list`, `artifact_get`, `artifact_open`, `artifact_version_list`, `artifact_diff` |
 | Publication | `artifact_create_upload`, `artifact_commit_upload` |
-| Management | `artifact_set_visibility`, `artifact_set_tags`, `artifact_restore_version`, `artifact_delete` |
+| Management | `artifact_set_visibility`, `artifact_set_tags`, `artifact_set_review_mode`, `artifact_restore_version`, `artifact_delete` |
 | Comments | `comment_list`, `comment_get`, `comment_create`, `comment_reply`, `comment_update`, `comment_resolve`, `comment_delete` |
 | Git history planning | `project_git_history_status`, `project_git_history_estimate` |
 

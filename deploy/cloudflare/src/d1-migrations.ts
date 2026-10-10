@@ -8,13 +8,14 @@ import {defaultGitHistoryMaximumCopiedFiles} from
   "../../../src/git-history/git-history-capability.js";
 
 /** D1 schema revision required by the Cloudflare runtime. */
-export const requiredD1SchemaVersion = 9;
+export const requiredD1SchemaVersion = 10;
 
 /** SQL literal list of every action kind the ledger accepts. */
 const actionKindList = [
   "'publish'",
   "'restore'",
   "'change_access'",
+  "'change_review_mode'",
   "'change_tags'",
   "'delete'",
   "'comment_create'",
@@ -45,6 +46,7 @@ const schemaSql = `
     name TEXT NOT NULL,
     search_name TEXT NOT NULL,
     access_setting TEXT NOT NULL CHECK (access_setting IN ('account_required', 'public_link')),
+    review_mode TEXT NOT NULL DEFAULT 'annotate' CHECK (review_mode IN ('annotate', 'interact')),
     current_version_id TEXT,
     created_at TEXT NOT NULL,
     deleted_at TEXT
@@ -86,9 +88,10 @@ const schemaSql = `
     input_digest TEXT NOT NULL,
     artifact_id TEXT NOT NULL REFERENCES artifacts(id),
     version_id TEXT NOT NULL REFERENCES versions(id),
-    operation TEXT NOT NULL CHECK (operation IN ('publish', 'restore', 'change_access', 'change_tags', 'delete')),
+    operation TEXT NOT NULL CHECK (operation IN ('publish', 'restore', 'change_access', 'change_review_mode', 'change_tags', 'delete')),
     access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
     tags_json TEXT,
+    review_mode TEXT NOT NULL DEFAULT 'annotate' CHECK (review_mode IN ('annotate', 'interact')),
     created_at TEXT NOT NULL,
     PRIMARY KEY (project_id, idempotency_key)
   );
@@ -617,6 +620,7 @@ export async function migrateD1(
     await addGitHistoryMirrorColumnsIfMissing(database);
     await widenRegisteredAgentsIfNeeded(database);
     await addArtifactSearchNameIfMissing(database);
+    await addArtifactReviewModeIfMissing(database);
   }
   await database.batch([
     database.prepare(`
@@ -778,4 +782,54 @@ async function widenRegisteredAgentsIfNeeded(
     widenRegisteredAgentsStatements.map((statement) =>
       database.prepare(statement)),
   );
+}
+
+/** Upgrade saved artifact defaults and retry snapshots in one atomic batch. */
+async function addArtifactReviewModeIfMissing(database: D1Database): Promise<void> {
+  const artifactColumns = await database.prepare("PRAGMA table_info(artifacts)").all<{name: string}>();
+  const idempotencyColumns = await database.prepare("PRAGMA table_info(idempotency_records)").all<{name: string}>();
+  const hasArtifactMode = artifactColumns.results.some((column) => column.name === "review_mode");
+  const hasSavedMode = idempotencyColumns.results.some((column) => column.name === "review_mode");
+  if (hasArtifactMode && hasSavedMode) return;
+  const savedMode = hasSavedMode ? "review_mode" : "'annotate'";
+  const statements = [
+    ...(hasArtifactMode ? [] : ["ALTER TABLE artifacts ADD COLUMN review_mode TEXT NOT NULL DEFAULT 'annotate' CHECK (review_mode IN ('annotate', 'interact'))"]),
+    `CREATE TABLE idempotency_records_review_mode (
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      idempotency_key TEXT NOT NULL,
+      input_digest TEXT NOT NULL,
+      artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+      version_id TEXT NOT NULL REFERENCES versions(id),
+      operation TEXT NOT NULL CHECK (operation IN ('publish', 'restore', 'change_access', 'change_review_mode', 'change_tags', 'delete')),
+      access_setting TEXT CHECK (access_setting IS NULL OR access_setting IN ('account_required', 'public_link')),
+      tags_json TEXT,
+      review_mode TEXT NOT NULL DEFAULT 'annotate' CHECK (review_mode IN ('annotate', 'interact')),
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (project_id, idempotency_key)
+    )`,
+    `INSERT INTO idempotency_records_review_mode
+      SELECT project_id, idempotency_key, input_digest, artifact_id, version_id,
+        operation, access_setting, tags_json, ${savedMode}, created_at
+      FROM idempotency_records`,
+    "DROP TABLE idempotency_records",
+    "ALTER TABLE idempotency_records_review_mode RENAME TO idempotency_records",
+    `CREATE TABLE actions_review_mode (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+      version_id TEXT NOT NULL REFERENCES versions(id),
+      action TEXT NOT NULL CHECK (action IN (${actionKindList})),
+      principal_id TEXT NOT NULL,
+      authorized_by_principal_id TEXT,
+      idempotency_key TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE (project_id, idempotency_key)
+    )`,
+    `INSERT INTO actions_review_mode SELECT id, project_id, artifact_id, version_id,
+      action, principal_id, authorized_by_principal_id, idempotency_key, created_at FROM actions`,
+    "DROP TABLE actions",
+    "ALTER TABLE actions_review_mode RENAME TO actions",
+    "CREATE INDEX actions_artifact_created ON actions(project_id, artifact_id, created_at DESC, id DESC)",
+  ];
+  await database.batch(statements.map((statement) => database.prepare(statement)));
 }

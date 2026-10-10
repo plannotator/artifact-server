@@ -234,11 +234,24 @@ describe("authenticated CLI profiles and remote publication", () => {
           "--profile-data",
           profileData,
           "--public",
+          "--review-mode",
+          "interact",
         ],
         environment,
       );
       expect(firstPublication.exitCode).toBe(0);
       const firstResult = publicationSchema.parse(JSON.parse(firstPublication.stdout));
+      expect(JSON.parse(firstPublication.stdout)).toMatchObject({artifact: {reviewMode: "interact"}});
+      const invalidMode = await runCli(["publish", fixture, "--review-mode", "INTERACT"], environment);
+      expect(invalidMode.exitCode).not.toBe(0);
+      expect(invalidMode.stderr).toContain("Allowed choices are annotate, interact");
+      const versionMode = await runCli([
+        "publish", fixture, "--profile", "team", "--profile-data", profileData,
+        "--artifact", firstResult.artifact.id, "--expected-version", firstResult.version.id,
+        "--review-mode", "interact",
+      ], environment);
+      expect(versionMode.exitCode).not.toBe(0);
+      expect(versionMode.stderr).toContain("--review-mode apply only when creating a new artifact");
       expect(await fetchLoopbackContent(firstResult.links.version).then((response) =>
         response.text()
       ))

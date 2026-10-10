@@ -605,7 +605,8 @@ test.describe("Artifact Server frontend MVP", () => {
         .analyze();
       expect(accessibility.violations).toEqual([]);
 
-      await fixture.page.getByRole("button", {name: /^Interact mode:/u}).click();
+      await expect(fixture.page.getByRole("button", {name: /^Annotate mode:/u}))
+        .toHaveAttribute("aria-pressed", "true");
       await preview.locator("#review-theme-target").click();
       const themedCommentPopover = reviewFrame.locator('[data-comment-popover="true"]');
       await expect(themedCommentPopover).toBeVisible();

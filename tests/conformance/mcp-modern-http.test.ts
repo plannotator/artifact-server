@@ -202,6 +202,7 @@ describe("modern MCP HTTP", () => {
       "artifact_create_upload",
       "artifact_commit_upload",
       "artifact_set_visibility",
+      "artifact_set_review_mode",
       "artifact_set_tags",
       "artifact_restore_version",
       "artifact_delete",
@@ -416,6 +417,7 @@ describe("modern MCP HTTP", () => {
         accessSetting: "account_required",
         kind: "new_artifact",
         name: "MCP publication proof",
+        reviewMode: "interact",
         tags: ["MCP", "Proof"],
       },
       uploadId: upload.uploadId,
@@ -446,6 +448,26 @@ describe("modern MCP HTTP", () => {
     );
     expect(replay.replayed).toBe(true);
     expect(replay.version.id).toBe(committed.version.id);
+
+    const modeArguments = {
+      artifactId: committed.artifact.id,
+      expectedCurrentVersionId: committed.version.id,
+      idempotencyKey: "mcp-review-mode-update-001",
+      reviewMode: "annotate",
+    };
+    expect(commitResult.structuredContent).toMatchObject({artifact: {reviewMode: "interact"}});
+    const changedMode = await callTool(server, installation.apiToken, {
+      arguments: modeArguments,
+      name: "artifact_set_review_mode",
+    });
+    expect(changedMode.isError).not.toBe(true);
+    expect(changedMode.structuredContent).toMatchObject({
+      artifact: {reviewMode: "annotate"}, replayed: false, version: {id: committed.version.id},
+    });
+    expect((await callTool(server, installation.apiToken, {
+      arguments: modeArguments,
+      name: "artifact_set_review_mode",
+    })).structuredContent).toMatchObject({artifact: {reviewMode: "annotate"}, replayed: true});
 
     const detailsResult = await callTool(server, installation.apiToken, {
       arguments: {artifactId: committed.artifact.id},

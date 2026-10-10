@@ -655,6 +655,26 @@ const addArtifactSearchName = Effect.gen(function*() {
   );
 });
 
+const addArtifactReviewMode = Effect.gen(function*() {
+  const sql = yield* SqlClient;
+  yield* sql.unsafe(`ALTER TABLE artifacts ADD COLUMN review_mode TEXT NOT NULL
+    DEFAULT 'annotate' CHECK (review_mode IN ('annotate', 'interact'))`);
+  yield* sql.unsafe(`ALTER TABLE idempotency_records ADD COLUMN review_mode TEXT NOT NULL
+    DEFAULT 'annotate' CHECK (review_mode IN ('annotate', 'interact'))`);
+  yield* sql.unsafe(`ALTER TABLE idempotency_records
+    DROP CONSTRAINT idempotency_records_operation_check,
+    ADD CONSTRAINT idempotency_records_operation_check CHECK (operation IN (
+      'publish', 'restore', 'change_access', 'change_review_mode', 'change_tags', 'delete'
+    ))`);
+  yield* sql.unsafe(`ALTER TABLE actions
+    DROP CONSTRAINT actions_action_check,
+    ADD CONSTRAINT actions_action_check CHECK (action IN (
+      'publish', 'restore', 'change_access', 'change_review_mode', 'change_tags', 'delete',
+      'comment_create', 'comment_reply', 'comment_update', 'comment_resolve',
+      'comment_reopen', 'comment_delete'
+    ))`);
+});
+
 const migrationLoader = Migrator.fromRecord({
   "0001_initial_shared_schema": initialSchema,
   "0002_project_scoped_artifacts": addProjectScope,
@@ -667,10 +687,11 @@ const migrationLoader = Migrator.fromRecord({
   "0009_git_history_mirror": addGitHistoryMirror,
   "0010_agent_capabilities": widenRegisteredAgentKind,
   "0011_artifact_search_name": addArtifactSearchName,
+  "0012_artifact_review_mode": addArtifactReviewMode,
 });
 
 /** Schema revision required by this Artifact Server build. */
-export const requiredPostgresSchemaVersion = 11;
+export const requiredPostgresSchemaVersion = 12;
 
 /** Migration compatibility observed without changing Postgres. */
 export interface PostgresMigrationStatus {
@@ -758,6 +779,9 @@ export const readPostgresMigrationStatus = Effect.gen(function*() {
   }, {
     migration_id: 11,
     name: "artifact_search_name",
+  }, {
+    migration_id: 12,
+    name: "artifact_review_mode",
   }] as const;
   const observedRequiredHistory = rows.filter(
     (row) => row.migration_id <= requiredPostgresSchemaVersion,

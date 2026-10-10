@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const accessSettingSchema = z.enum(["account_required", "public_link"]);
+const reviewModeSchema = z.enum(["annotate", "interact"]);
 const membershipRoleSchema = z.enum(["administrator", "member"]);
 const principalKindSchema = z.enum(["human", "service"]);
 const capabilitySchema = z.enum([
@@ -135,6 +136,7 @@ const artifactSchema = z.object({
   id: z.string(),
   name: z.string(),
   projectId: z.string(),
+  reviewMode: reviewModeSchema.default("annotate"),
   tags: z.array(z.string()),
 });
 
@@ -189,6 +191,7 @@ const apiErrorBodySchema = z.object({
 const noContentStatuses = new Set([204, 205]);
 
 export type AccessSetting = z.infer<typeof accessSettingSchema>;
+export type ReviewMode = z.infer<typeof reviewModeSchema>;
 export type DeploymentCapabilities = z.infer<typeof deploymentCapabilitiesSchema>;
 export type SourceFreshness = z.infer<typeof sourceFreshnessSchema>;
 export type SourceBinding = z.infer<typeof sourceBindingSchema>;
@@ -295,6 +298,7 @@ export interface ArtifactAction {
   readonly action:
     | "capture"
     | "change_access"
+    | "change_review_mode"
     | "change_tags"
     | "comment_create"
     | "comment_delete"
@@ -394,6 +398,7 @@ const actionSchema: z.ZodType<ArtifactAction> = z.object({
   action: z.enum([
     "capture",
     "change_access",
+    "change_review_mode",
     "change_tags",
     "comment_create",
     "comment_delete",

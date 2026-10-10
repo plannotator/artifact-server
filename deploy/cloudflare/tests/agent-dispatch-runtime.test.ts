@@ -502,7 +502,7 @@ describe("Cloudflare D1 agent dispatch", () => {
       try {
         expect(schemaVersionRowSchema.parse(upgraded.prepare(
           "SELECT version FROM artifact_server_schema WHERE component = 'runtime'",
-        ).get()).version).toBe(9);
+        ).get()).version).toBe(10);
         expect(z.array(tableColumnRowSchema)
           .parse(upgraded.prepare("PRAGMA table_info(comment_threads)").all())
           .map(({name}) => name)).toContain("dispatch_id");

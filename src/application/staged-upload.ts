@@ -17,6 +17,7 @@ import {
   uploadStatuses,
   type AccessSetting,
   type PublishedVersion,
+  type ReviewMode,
   type RoutingMode,
   type StagedUpload,
 } from "../core/model.js";
@@ -71,6 +72,7 @@ export type CommitStagedUploadTarget =
     readonly accessSetting: AccessSetting;
     readonly kind: "new_artifact";
     readonly name: string;
+    readonly reviewMode?: ReviewMode;
     readonly tags?: readonly string[];
   }
   | {
@@ -397,6 +399,7 @@ function makeStagedUploadService(
             projectId: project.id,
             source,
             tags: command.target.tags ?? [],
+            reviewMode: command.target.reviewMode ?? "annotate",
             }));
         case "new_version":
           return yield* expirePublicationAtDeadline(signal,

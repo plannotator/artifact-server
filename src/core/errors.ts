@@ -358,6 +358,7 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
       "assertPublicationSourceReady",
       "cancelAgentDispatch",
       "changeAccessSetting",
+      "changeReviewMode",
       "changeTags",
       "claimAgentDispatch",
       "clearCommentThreads",

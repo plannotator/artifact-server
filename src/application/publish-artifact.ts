@@ -24,6 +24,7 @@ import type {
   AccessSetting,
   CanonicalManifest,
   PublishedVersion,
+  ReviewMode,
 } from "../core/model.js";
 import type {
   BlobWrite,
@@ -60,6 +61,7 @@ export interface PublishPreparedNewArtifactCommand {
   readonly name: string;
   readonly principal: Principal;
   readonly projectId: string;
+  readonly reviewMode?: ReviewMode;
   readonly source: PublicationSource;
   readonly tags?: readonly string[];
 }
@@ -229,12 +231,14 @@ function makePublishArtifactService(
     );
     const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
     const tags = yield* parseArtifactTags(command.tags ?? []);
+    const reviewMode = command.reviewMode ?? "annotate";
     const inputDigest = newArtifactInputDigest({
       accessSetting: command.accessSetting,
       manifest: command.manifest,
       name,
       principalId: command.principal.id,
       projectId: command.projectId,
+      reviewMode,
       tags,
     });
     const replayed = yield* dependencies.repository.findIdempotentPublication(
@@ -267,6 +271,7 @@ function makePublishArtifactService(
       projectId: command.projectId,
       authorizedByPrincipalId: command.principal.authorizedByPrincipalId,
       source: command.source,
+      reviewMode,
       tags,
       versionId: dependencies.ids.versionId(),
     });
@@ -342,6 +347,7 @@ interface NewArtifactDigestInput {
   readonly name: string;
   readonly principalId: string;
   readonly projectId: string;
+  readonly reviewMode: ReviewMode;
   readonly tags: readonly string[];
 }
 
@@ -354,14 +360,17 @@ interface ArtifactVersionDigestInput {
 }
 
 function newArtifactInputDigest(input: NewArtifactDigestInput): string {
-  const canonicalInput = JSON.stringify({
+  const value = {
     accessSetting: input.accessSetting,
     manifestDigest: input.manifest.digest,
     name: input.name,
     principalId: input.principalId,
     projectId: input.projectId,
     tags: input.tags,
-  });
+  };
+  const canonicalInput = JSON.stringify(input.reviewMode === "annotate"
+    ? value
+    : {...value, reviewMode: input.reviewMode});
   return createHash("sha256").update(canonicalInput).digest("hex");
 }
 

@@ -9,10 +9,18 @@ export const accessSettings = {
 
 export type AccessSetting = (typeof accessSettings)[keyof typeof accessSettings];
 
+export const reviewModes = {
+  annotate: "annotate",
+  interact: "interact",
+} as const;
+
+export type ReviewMode = (typeof reviewModes)[keyof typeof reviewModes];
+
 /** Artifact mutation kinds persisted in the standalone action history. */
 export const artifactActionKinds = {
   capture: "capture",
   changeAccess: "change_access",
+  changeReviewMode: "change_review_mode",
   changeTags: "change_tags",
   commentCreate: "comment_create",
   commentDelete: "comment_delete",
@@ -70,6 +78,7 @@ export interface ProjectRecord {
 }
 
 export interface ArtifactRecord {
+  readonly reviewMode: ReviewMode;
   readonly accessSetting: AccessSetting;
   readonly createdAt: string;
   readonly currentVersionId: string;

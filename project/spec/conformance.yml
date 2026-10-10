@@ -408,6 +408,25 @@ requirements:
     depends_on: [ART-002, ART-009, CMT-001]
     evidence: []
 
+  - id: ART-012
+    kind: behavior
+    behavior: Each artifact has an Annotate or Interact default Review mode, initialized to Annotate for legacy artifacts and mutable without changing any immutable version or file bytes.
+    owner: artifact-core
+    source: {file: artifact-review-mode-spec.md, anchor: conformance}
+    acceptance:
+      behavior: {id: ART-012-B, description: "Create artifacts with default and explicit Review modes, preserve the stored choice through reads and versions, change it through management with normal action attribution, and replay an exact retry without duplicating the action."}
+      failure: {id: ART-012-F, description: "Reject invalid modes, unauthorized changes, stale expected current-version IDs, and conflicting idempotency retries without changing metadata, version identity, current pointer, bytes, or action history."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local publication, management, persistence, and upgrade tests pass; equivalent live deployment evidence remains unrecorded.
+    depends_on: [ART-001, ART-004, AUTH-008, PUB-006, PUB-008, AUD-001]
+    evidence:
+      - deployment: local
+        tests: [ART-012-B, ART-012-F]
+        result: pass
+        run: project/evidence/artifact-review-mode.json
+        recorded_at: "2026-10-10T04:56:30.471Z"
+
   - id: MAN-001
     kind: behavior
     behavior: A canonical manifest contains a sorted list of normalized paths, fingerprints, sizes, media types, disposition, entry file, routing mode, and serving metadata.
@@ -4871,3 +4890,22 @@ requirements:
         result: pass
         run: project/evidence/browser.json
         recorded_at: "2026-08-24T03:47:04.897Z"
+
+  - id: PRV-006
+    kind: behavior
+    behavior: HTML Review starts from a valid URL mode override or the artifact default, permits real clicks in Interact, preserves link overrides in navigation and browser history, and retains manual mode changes during data refresh and version loading.
+    owner: web-application
+    source: {file: artifact-review-mode-spec.md, anchor: conformance}
+    acceptance:
+      behavior: {id: PRV-006-B, description: "Open an HTML artifact with its stored default and both valid link overrides, interact with the actual frame, and preserve overrides through artifact, version, file, focus, and back/forward navigation."}
+      failure: {id: PRV-006-F, description: "Ignore an invalid link mode, preserve a manual toggle or Escape choice during data refresh and version loading, and keep Annotate as the legacy fallback without changing sandboxing or access."}
+    deployments: *all
+    status: behavior_verified
+    proof_gap: Local browser precedence, frame interaction, navigation, history, and manual-choice tests pass; equivalent live deployment evidence remains unrecorded.
+    depends_on: [ART-012, PRV-004, CMT-013]
+    evidence:
+      - deployment: local
+        tests: [PRV-006-B, PRV-006-F]
+        result: pass
+        run: project/evidence/artifact-review-mode-browser.json
+        recorded_at: "2026-10-10T04:55:20.061Z"

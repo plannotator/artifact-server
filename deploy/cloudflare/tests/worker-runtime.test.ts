@@ -1,7 +1,8 @@
 import {createHash} from "node:crypto";
-import {mkdtemp, rm} from "node:fs/promises";
+import {mkdtemp, readdir, rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
+import {DatabaseSync} from "node:sqlite";
 
 import {z} from "zod";
 import {unstable_dev, type Unstable_DevWorker} from "wrangler";
@@ -18,7 +19,7 @@ const uploadPlanSchema = z.object({
   })).length(1),
 });
 const publicationSchema = z.object({
-  artifact: z.object({id: z.string()}),
+  artifact: z.object({id: z.string(), reviewMode: z.enum(["annotate", "interact"])}),
   links: z.object({artifact: z.url(), version: z.url()}),
   version: z.object({id: z.string(), number: z.number().int().positive()}),
 });
@@ -62,6 +63,96 @@ afterAll(async () => {
 });
 
 describe("Cloudflare Worker runtime", () => {
+  it("ART-012: a populated older D1 schema upgrades saved artifacts and retries to annotate", async () => {
+    const source = "<h1>Pre-feature D1 artifact</h1>";
+    const upload = await stageFile(source);
+    const publicationInput = {target: {accessSetting: "public_link", kind: "new_artifact", name: "Older D1 artifact"}};
+    const publish = () => worker.fetch(upload.commitUrl, {
+      body: JSON.stringify(publicationInput),
+      headers: {...authenticatedJsonHeaders(), "Idempotency-Key": "cloudflare-review-mode-upgrade"},
+      method: "POST",
+    });
+    const committed = await publish();
+    expect(committed.status).toBe(201);
+    const publication = publicationSchema.parse(await committed.json());
+    await worker.stop();
+    let downgraded = false;
+    const files = await readdir(persistPath, {recursive: true});
+    for (const filename of files.filter((file) => file.endsWith(".sqlite"))) {
+      const database = new DatabaseSync(join(persistPath, filename));
+      try {
+        const table = database.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'artifacts'").get();
+        if (table === undefined) continue;
+        database.exec("ALTER TABLE artifacts DROP COLUMN review_mode; ALTER TABLE idempotency_records DROP COLUMN review_mode; UPDATE artifact_server_schema SET version = 9 WHERE component = 'runtime';");
+        for (const tableName of ["idempotency_records", "actions"]) {
+          const schema = z.object({sql: z.string()}).parse(database.prepare(
+            "SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = ?",
+          ).get(tableName));
+          const indexes = z.array(z.object({sql: z.string()})).parse(database.prepare(
+            "SELECT sql FROM sqlite_schema WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+          ).all(tableName));
+          const legacySchema = schema.sql
+            .replace(`CREATE TABLE ${tableName}`, `CREATE TABLE ${tableName}_legacy`)
+            .replace("'change_review_mode', ", "");
+          expect(legacySchema).not.toContain("change_review_mode");
+          database.exec(`${legacySchema}; INSERT INTO ${tableName}_legacy SELECT * FROM ${tableName}; DROP TABLE ${tableName}; ALTER TABLE ${tableName}_legacy RENAME TO ${tableName};`);
+          for (const index of indexes) database.exec(index.sql);
+        }
+        downgraded = true;
+      } finally {database.close();}
+    }
+    expect(downgraded).toBe(true);
+    worker = await startWorker(persistPath);
+    const replay = await publish();
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({artifact: {reviewMode: "annotate"}, replayed: true, version: publication.version});
+    const content = await worker.fetch(publication.links.version);
+    expect(await content.text()).toBe(source);
+  }, 30_000);
+
+  it("ART-012: review mode and historical mutation replay survive D1 restart without changing content", async () => {
+    const source = "<h1>Immutable review content</h1>";
+    const upload = await stageFile(source);
+    const committed = await worker.fetch(upload.commitUrl, {
+      body: JSON.stringify({target: {
+        accessSetting: "public_link", kind: "new_artifact", name: "Interact review", reviewMode: "interact",
+      }}),
+      headers: {...authenticatedJsonHeaders(), "Idempotency-Key": "cloudflare-review-mode-publish"},
+      method: "POST",
+    });
+    expect(committed.status).toBe(201);
+    const publication = publicationSchema.parse(await committed.json());
+    expect(publication.artifact.reviewMode).toBe("interact");
+    const changeMode = (reviewMode: "annotate" | "interact", key: string) => worker.fetch(
+      `${origin}/api/v1/artifacts/${publication.artifact.id}/review-mode`,
+      {
+        body: JSON.stringify({expectedCurrentVersionId: publication.version.id, reviewMode}),
+        headers: {...authenticatedJsonHeaders(), "Idempotency-Key": key},
+        method: "PATCH",
+      },
+    );
+    expect((await changeMode("annotate", "cloudflare-review-mode-first")).status).toBe(200);
+    expect((await changeMode("interact", "cloudflare-review-mode-second")).status).toBe(200);
+    await worker.stop();
+    worker = await startWorker(persistPath);
+    const replay = await changeMode("annotate", "cloudflare-review-mode-first");
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({artifact: {reviewMode: "annotate"}, replayed: true, version: publication.version});
+    const details = await worker.fetch(`${origin}/api/v1/artifacts/${publication.artifact.id}`, {
+      headers: {Authorization: `Bearer ${apiToken}`},
+    });
+    expect(details.status).toBe(200);
+    expect(await details.json()).toMatchObject({artifact: {reviewMode: "interact"}, current: {version: publication.version}});
+    const content = await worker.fetch(publication.links.version);
+    expect(content.status).toBe(200);
+    expect(await content.text()).toBe(source);
+    const actions = await worker.fetch(`${origin}/api/v1/artifacts/${publication.artifact.id}/actions`, {
+      headers: {Authorization: `Bearer ${apiToken}`},
+    });
+    expect(actionListSchema.parse(await actions.json()).actions.map(({action}) => action).toSorted())
+      .toEqual(["change_review_mode", "change_review_mode", "publish"]);
+  }, 30_000);
+
   it("serves the management application only from its configured origin", async () => {
     const shell = await worker.fetch(`${origin}/review?project=prj_default`);
     const shellHtml = await shell.text();

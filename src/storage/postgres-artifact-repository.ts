@@ -24,6 +24,7 @@ import {
 } from "../core/errors.js";
 import {
   accessSettings,
+  reviewModes,
   agentBeaconStates,
   agentDispatchStates,
   artifactActionKinds,
@@ -73,6 +74,7 @@ import type {
   ArtifactRepository,
   CancelAgentDispatch,
   ChangeArtifactAccessSetting,
+  ChangeArtifactReviewMode,
   ChangeArtifactTags,
   ClearCommentThreads,
   CommentRepository,
@@ -147,6 +149,7 @@ const accessSettingSchema = z.enum([
   accessSettings.accountRequired,
   accessSettings.publicLink,
 ]);
+const reviewModeSchema = z.enum([reviewModes.annotate, reviewModes.interact]);
 const dispositionSchema = z.enum([
   fileDispositions.attachment,
   fileDispositions.inline,
@@ -158,6 +161,7 @@ const uploadStatusSchema = z.enum([
 ]);
 const artifactActionKindSchema = z.enum([
   artifactActionKinds.changeAccess,
+  artifactActionKinds.changeReviewMode,
   artifactActionKinds.changeTags,
   artifactActionKinds.commentCreate,
   artifactActionKinds.commentDelete,
@@ -223,6 +227,7 @@ const gitHistoryMappingRowSchema = z.object({
   versionId: z.string(),
 });
 const artifactRowSchema = z.object({
+  reviewMode: reviewModeSchema,
   accessSetting: accessSettingSchema,
   createdAt: z.string(),
   currentVersionId: z.string(),
@@ -249,6 +254,7 @@ const versionRowSchema = z.object({
   routingMode: routingModeSchema,
 });
 const publishedRowSchema = z.object({
+  reviewMode: reviewModeSchema,
   accessSetting: accessSettingSchema,
   artifactCreatedAt: z.string(),
   artifactDeletedAt: z.string().nullable(),
@@ -286,11 +292,13 @@ const versionContentRowSchema = z.object({
   versionId: z.string(),
 });
 const idempotencyRowSchema = z.object({
+  reviewMode: reviewModeSchema,
   accessSetting: accessSettingSchema.nullable(),
   artifactId: z.string(),
   inputDigest: z.string(),
   operation: z.enum([
     "change_access",
+    "change_review_mode",
     "change_tags",
     "delete",
     "publish",
@@ -1258,11 +1266,11 @@ export class PostgresArtifactRepository implements
           command.createdAt,
         );
         yield* sql`INSERT INTO artifacts (
-          installation_id, project_id, id, name, search_name, access_setting,
+          installation_id, project_id, id, name, search_name, access_setting, review_mode,
           current_version_id, created_at, deleted_at
         ) VALUES (
           ${installationId}, ${command.projectId}, ${command.artifactId}, ${command.name},
-          ${normalizeArtifactSearchText(command.name)}, ${command.accessSetting}, NULL,
+          ${normalizeArtifactSearchText(command.name)}, ${command.accessSetting}, ${command.reviewMode ?? reviewModes.annotate}, NULL,
           ${command.createdAt}, NULL
         )`;
         yield* this.#replaceTags(command.artifactId, command.tags);
@@ -1424,6 +1432,26 @@ export class PostgresArtifactRepository implements
           AND current_version_id = ${command.expectedCurrentVersionId}
           AND deleted_at IS NULL
         RETURNING id`,
+    );
+  }
+
+  async changeReviewMode(
+    command: ChangeArtifactReviewMode,
+  ): Promise<ArtifactState> {
+    return this.#managementTransaction(
+      command,
+      "change_review_mode",
+      null,
+      null,
+      (sql) => sql`UPDATE artifacts
+        SET review_mode = ${command.reviewMode}
+        WHERE installation_id = ${this.#installationId}
+          AND project_id = ${command.projectId}
+          AND id = ${command.artifactId}
+          AND current_version_id = ${command.expectedCurrentVersionId}
+          AND deleted_at IS NULL
+        RETURNING id`,
+      command.reviewMode,
     );
   }
 
@@ -1685,7 +1713,7 @@ export class PostgresArtifactRepository implements
       const rows = yield* sql.unsafe<object>(
         `SELECT * FROM (
           SELECT id, project_id AS "projectId", name,
-            access_setting AS "accessSetting",
+            review_mode AS "reviewMode", access_setting AS "accessSetting",
             current_version_id AS "currentVersionId",
             created_at AS "createdAt", deleted_at AS "deletedAt",
             (
@@ -1742,7 +1770,7 @@ export class PostgresArtifactRepository implements
           artifact.id AS "artifactId",
           artifact.project_id AS "projectId",
           artifact.name AS "artifactName",
-          artifact.access_setting AS "accessSetting",
+          artifact.review_mode AS "reviewMode", artifact.access_setting AS "accessSetting",
           artifact.current_version_id AS "currentVersionId",
           artifact.created_at AS "artifactCreatedAt",
           artifact.deleted_at AS "artifactDeletedAt",
@@ -1784,6 +1812,7 @@ export class PostgresArtifactRepository implements
       const parsedRows = z.array(publicLinkInventoryRowSchema).parse(rows);
       const artifacts = yield* this.#withTagsForArtifacts(parsedRows.map((row) => ({
         accessSetting: row.accessSetting,
+        reviewMode: row.reviewMode,
         createdAt: row.artifactCreatedAt,
         currentVersionId: row.currentVersionId,
         deletedAt: row.artifactDeletedAt,
@@ -1914,7 +1943,7 @@ export class PostgresArtifactRepository implements
     return this.#database.run(Effect.gen({self: this}, function*() {
       const sql = yield* SqlClient;
       const rows = yield* sql.unsafe<object>(
-        `SELECT a.access_setting AS "accessSetting", a.id AS "artifactId",
+        `SELECT a.review_mode AS "reviewMode", a.access_setting AS "accessSetting", a.id AS "artifactId",
           a.project_id AS "projectId",
           v.content_token AS "contentToken", v.id AS "versionId",
           e.path, e.size, e.media_type AS "mediaType", e.sha256,
@@ -3286,11 +3315,12 @@ export class PostgresArtifactRepository implements
   }
 
   #managementTransaction(
-    command: ChangeArtifactAccessSetting,
-    operation: "change_access",
-    accessSetting: ArtifactRecord["accessSetting"],
+    command: ChangeArtifactAccessSetting | ChangeArtifactReviewMode,
+    operation: "change_access" | "change_review_mode",
+    accessSetting: ArtifactRecord["accessSetting"] | null,
     tagsJson: string | null,
     mutate: (sql: SqlClient) => Effect.Effect<readonly object[], unknown>,
+    reviewMode: ArtifactRecord["reviewMode"] | null = null,
   ): Promise<ArtifactState> {
     const installationId = this.#installationId;
     return this.#database.run(Effect.gen({self: this}, function*() {
@@ -3323,7 +3353,7 @@ export class PostgresArtifactRepository implements
           command.expectedCurrentVersionId,
         );
         yield* this.#insertIdempotency({
-          accessSetting,
+          accessSetting: accessSetting ?? artifact.accessSetting,
           artifactId: command.artifactId,
           createdAt: command.createdAt,
           idempotencyKey: command.idempotencyKey,
@@ -3337,8 +3367,10 @@ export class PostgresArtifactRepository implements
           command.projectId,
           command.artifactId,
           command.expectedCurrentVersionId,
-          accessSetting,
+          accessSetting ?? artifact.accessSetting,
           false,
+          null,
+          reviewMode,
         );
       }));
     }));
@@ -3415,7 +3447,7 @@ export class PostgresArtifactRepository implements
       const sql = yield* SqlClient;
       const rows = yield* sql.unsafe<object>(
         `SELECT id, project_id AS "projectId", name,
-          access_setting AS "accessSetting",
+          review_mode AS "reviewMode", access_setting AS "accessSetting",
           current_version_id AS "currentVersionId",
           created_at AS "createdAt", deleted_at AS "deletedAt"
          FROM artifacts
@@ -3570,7 +3602,7 @@ export class PostgresArtifactRepository implements
       const rows = yield* sql.unsafe<object>(
         `SELECT a.id AS "artifactId", a.name AS "artifactName",
           a.project_id AS "projectId",
-          a.access_setting AS "accessSetting",
+          a.review_mode AS "reviewMode", a.access_setting AS "accessSetting",
           a.current_version_id AS "currentVersionId",
           a.created_at AS "artifactCreatedAt", a.deleted_at AS "artifactDeletedAt",
           v.id AS "versionId", v.number AS "versionNumber",
@@ -3590,6 +3622,7 @@ export class PostgresArtifactRepository implements
       return {
         artifact: {
           accessSetting: parsed.accessSetting,
+          reviewMode: parsed.reviewMode,
           createdAt: parsed.artifactCreatedAt,
           currentVersionId: parsed.currentVersionId,
           deletedAt: parsed.artifactDeletedAt,
@@ -3623,7 +3656,7 @@ export class PostgresArtifactRepository implements
     return Effect.gen({self: this}, function*() {
       const sql = yield* SqlClient;
       const rows = yield* sql.unsafe<object>(
-        `SELECT access_setting AS "accessSetting", artifact_id AS "artifactId",
+        `SELECT review_mode AS "reviewMode", access_setting AS "accessSetting", artifact_id AS "artifactId",
           input_digest AS "inputDigest", operation, tags_json AS "tagsJson",
           version_id AS "versionId"
          FROM idempotency_records
@@ -3648,13 +3681,14 @@ export class PostgresArtifactRepository implements
           message: "The idempotency key was already used with different input.",
         });
       }
-      return yield* this.#readPublishedVersion(projectId, parsed.versionId, true);
+      const published = yield* this.#readPublishedVersion(projectId, parsed.versionId, true);
+      return {...published, artifact: {...published.artifact, reviewMode: parsed.reviewMode}};
     });
   }
 
   #findIdempotentManagementResult(
     projectId: string,
-    operation: "change_access" | "restore",
+    operation: "change_access" | "change_review_mode" | "restore",
     idempotencyKey: string,
     inputDigest: string,
   ): Effect.Effect<ArtifactState | null, unknown, SqlClient> {
@@ -3676,6 +3710,8 @@ export class PostgresArtifactRepository implements
         parsed.versionId,
         parsed.accessSetting,
         true,
+        null,
+        parsed.reviewMode,
       );
     });
   }
@@ -3707,6 +3743,7 @@ export class PostgresArtifactRepository implements
         parsed.accessSetting,
         true,
         tags,
+        parsed.reviewMode,
       );
     });
   }
@@ -3735,6 +3772,7 @@ export class PostgresArtifactRepository implements
     accessSetting: ArtifactRecord["accessSetting"],
     replayed: boolean,
     tags: readonly string[] | null = null,
+    reviewMode: ArtifactRecord["reviewMode"] | null = null,
   ): Effect.Effect<ArtifactState, unknown, SqlClient> {
     return Effect.gen({self: this}, function*() {
       const artifact = yield* this.#readArtifact(projectId, artifactId, false);
@@ -3752,6 +3790,7 @@ export class PostgresArtifactRepository implements
           accessSetting,
           currentVersionId: versionId,
           tags: tags ?? artifact.tags,
+          reviewMode: reviewMode ?? artifact.reviewMode,
         },
         replayed,
         version,
@@ -3870,12 +3909,14 @@ export class PostgresArtifactRepository implements
       const sql = yield* SqlClient;
       yield* sql`INSERT INTO idempotency_records (
         installation_id, project_id, idempotency_key, input_digest, artifact_id, version_id,
-        operation, access_setting, tags_json, created_at
+        operation, access_setting, tags_json, created_at, review_mode
       ) VALUES (
         ${installationId}, ${record.projectId}, ${record.idempotencyKey},
         ${record.inputDigest},
         ${record.artifactId}, ${record.versionId}, ${record.operation},
-        ${record.accessSetting}, ${record.tagsJson}, ${record.createdAt}
+        ${record.accessSetting}, ${record.tagsJson}, ${record.createdAt},
+        (SELECT review_mode FROM artifacts WHERE installation_id = ${installationId}
+          AND project_id = ${record.projectId} AND id = ${record.artifactId})
       )`;
     });
   }

@@ -51,6 +51,7 @@ import {
   type ArtifactPage,
   type ArtifactVersion,
   type Project,
+  type ReviewMode,
   type Session,
   type Version,
 } from "@/api/client";
@@ -142,6 +143,7 @@ interface ReviewDownload {
 
 interface ReviewLocation {
   readonly artifactId: string | null;
+  readonly mode: ReviewMode | null;
   readonly path: string | null;
   readonly projectId: string | null;
   readonly versionId: string | null;
@@ -533,6 +535,8 @@ function ArtifactReview({
   const [selectedPath, setSelectedPath] = useState<string | null>(
     initialLocation.path,
   );
+  const [modeOverride, setModeOverride] = useState(initialLocation.mode);
+  const [reviewModeRestoration, setReviewModeRestoration] = useState(0);
   const [query, setQuery] = useState("");
   const searchQuery = useDeferredValue(query.trim());
   const [catalogCommentFilter, setCatalogCommentFilter] = useState<CatalogCommentFilter>("all");
@@ -565,7 +569,37 @@ function ArtifactReview({
   const [focusControlsCollapsed, setFocusControlsCollapsed] = useState(false);
   const [focusControlsHoverArmed, setFocusControlsHoverArmed] = useState(true);
   const [focusControlsInstant, setFocusControlsInstant] = useState(false);
-  const [htmlAnnotateModeActive, setHtmlAnnotateModeActive] = useState(true);
+  const [htmlAnnotateModeActive, setHtmlAnnotateModeActive] = useState(
+    initialLocation.mode !== "interact",
+  );
+  // History restores the URL's mode; refreshing details preserves manual choices.
+  const reviewModeContext = `${projectId}:${selectedArtifactId}:${modeOverride}:${reviewModeRestoration}`;
+  const reviewModeInitializationRef = useRef({
+    context: reviewModeContext,
+    initialized: initialLocation.mode !== null,
+  });
+  const changeHtmlAnnotateMode = useCallback((
+    active: boolean | ((current: boolean) => boolean),
+  ): void => {
+    reviewModeInitializationRef.current.initialized = true;
+    setHtmlAnnotateModeActive(active);
+  }, []);
+  useEffect(() => {
+    const initialization = reviewModeInitializationRef.current;
+    if (initialization.context !== reviewModeContext) {
+      initialization.context = reviewModeContext;
+      initialization.initialized = modeOverride !== null;
+      setHtmlAnnotateModeActive(modeOverride !== "interact");
+    }
+    if (
+      !initialization.initialized
+      && details?.artifact.id === selectedArtifactId
+      && details.artifact.projectId === projectId
+    ) {
+      initialization.initialized = true;
+      setHtmlAnnotateModeActive(details.artifact.reviewMode !== "interact");
+    }
+  }, [details, modeOverride, projectId, reviewModeContext, selectedArtifactId]);
   const [homeOpen, setHomeOpen] = useState(false);
   const focusCommentsButtonRef = useRef<HTMLButtonElement>(null);
   const focusControlsRestoreRef = useRef<HTMLButtonElement>(null);
@@ -888,6 +922,7 @@ function ArtifactReview({
   useEffect(() => {
     const href = reviewHref({
       artifactId: selectedArtifactId,
+      mode: modeOverride,
       path: selectedPath,
       projectId,
       versionId: selectedVersionId,
@@ -895,7 +930,7 @@ function ArtifactReview({
     });
     window.history.replaceState(null, "", href);
     window.sessionStorage.setItem("artifact-review-return-url", href);
-  }, [focusMode, projectId, selectedArtifactId, selectedPath, selectedVersionId]);
+  }, [focusMode, modeOverride, projectId, selectedArtifactId, selectedPath, selectedVersionId]);
 
   useEffect(() => {
     const restoreLocation = (): void => {
@@ -906,6 +941,8 @@ function ArtifactReview({
         setProjectId(restored.projectId);
       }
       setSelectedArtifactId(restored.artifactId);
+      setModeOverride(restored.mode);
+      setReviewModeRestoration((restoration) => restoration + 1);
       setSelectedVersionId(restored.versionId);
       setSelectedPath(restored.path);
       setFocusMode(restored.view === "focus");
@@ -990,6 +1027,7 @@ function ArtifactReview({
   const selectManifestPath = (path: string): void => {
     window.history.pushState(null, "", reviewHref({
       artifactId: selectedArtifactId,
+      mode: modeOverride,
       path,
       projectId,
       versionId: selectedVersionId,
@@ -1148,6 +1186,7 @@ function ArtifactReview({
   const enterFocusMode = useCallback((): void => {
     window.history.pushState(null, "", reviewHref({
       artifactId: selectedArtifactId,
+      mode: modeOverride,
       path: selectedPath,
       projectId,
       versionId: selectedVersionId,
@@ -1156,10 +1195,11 @@ function ArtifactReview({
     setFocusCommentsOpen(false);
     setFocusControlsCollapsed(false);
     setFocusMode(true);
-  }, [projectId, selectedArtifactId, selectedPath, selectedVersionId]);
+  }, [modeOverride, projectId, selectedArtifactId, selectedPath, selectedVersionId]);
   const exitFocusMode = useCallback((): void => {
     window.history.pushState(null, "", reviewHref({
       artifactId: selectedArtifactId,
+      mode: modeOverride,
       path: selectedPath,
       projectId,
       versionId: selectedVersionId,
@@ -1168,7 +1208,7 @@ function ArtifactReview({
     setFocusCommentsOpen(false);
     setFocusControlsCollapsed(false);
     setFocusMode(false);
-  }, [projectId, selectedArtifactId, selectedPath, selectedVersionId]);
+  }, [modeOverride, projectId, selectedArtifactId, selectedPath, selectedVersionId]);
   useEffect(() => {
     const handleReviewShortcut = (event: KeyboardEvent): void => {
       if (homeOpen || reviewShortcutBlocked(event)) return;
@@ -1180,7 +1220,7 @@ function ArtifactReview({
           setFocusCommentsOpen(false);
         } else if (htmlAnnotateModeActive) {
           event.preventDefault();
-          setHtmlAnnotateModeActive(false);
+          changeHtmlAnnotateMode(false);
         } else if (focusMode) {
           event.preventDefault();
           exitFocusMode();
@@ -1226,6 +1266,7 @@ function ArtifactReview({
     return () => window.removeEventListener("keydown", handleReviewShortcut);
   }, [
     catalogItems,
+    changeHtmlAnnotateMode,
     enterFocusMode,
     exitFocusMode,
     focusCommentsOpen,
@@ -1635,7 +1676,7 @@ function ArtifactReview({
                       aria-pressed={htmlAnnotateModeActive}
                       className="as-button as-focus-controls__button"
                       data-active={htmlAnnotateModeActive}
-                      onClick={() => setHtmlAnnotateModeActive((active) => !active)}
+                      onClick={() => changeHtmlAnnotateMode((active) => !active)}
                       title={htmlAnnotateModeActive
                         ? "Annotate mode: click an element or select text to comment. Press Escape to interact."
                         : "Interact mode: links and controls work normally. Select text or turn annotation mode back on to comment."}
@@ -1763,7 +1804,7 @@ function ArtifactReview({
                   label={htmlAnnotateModeActive
                     ? "Annotate mode: click an element or select text to comment. Press Escape to interact."
                     : "Interact mode: links and controls work normally. Select text or turn annotation mode back on to comment."}
-                  onClick={() => setHtmlAnnotateModeActive((active) => !active)}
+                  onClick={() => changeHtmlAnnotateMode((active) => !active)}
                 >
                   <HugeiconsIcon icon={Edit02Icon} strokeWidth={1.8} />
                 </IconButton>
@@ -1838,7 +1879,7 @@ function ArtifactReview({
                 artifactName={details?.artifact.name ?? selectedItem?.artifact.name ?? "Artifact"}
                 isLight={theme === "dawn"}
                 onOpenRawArtifact={() => void openRawArtifact()}
-                onAnnotateModeChange={setHtmlAnnotateModeActive}
+                onAnnotateModeChange={changeHtmlAnnotateMode}
                 onSelectAnnotation={(threadId) => {
                   comments.selectThread(threadId);
                   if (threadId !== null) {
@@ -2753,8 +2794,10 @@ function readInitialInspectorOpen(): boolean {
 
 function readReviewLocation(): ReviewLocation {
   const search = new URLSearchParams(window.location.search);
+  const mode = search.get("mode");
   return {
     artifactId: search.get("artifact"),
+    mode: mode === "annotate" || mode === "interact" ? mode : null,
     path: search.get("path"),
     projectId: search.get("project"),
     versionId: search.get("version"),
@@ -2768,6 +2811,7 @@ function reviewHref(location: ReviewLocation): string {
     search.set("project", location.projectId);
   }
   if (location.artifactId !== null) search.set("artifact", location.artifactId);
+  if (location.mode !== null) search.set("mode", location.mode);
   if (location.versionId !== null) search.set("version", location.versionId);
   if (location.path !== null) search.set("path", location.path);
   if (location.view !== null) search.set("view", location.view);

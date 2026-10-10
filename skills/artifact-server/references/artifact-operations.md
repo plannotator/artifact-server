@@ -20,7 +20,7 @@ The publish command always returns structured JSON. Do not add a `--json` flag.
 artifactserver publish "<path>" --profile "<profile>" --server "<origin>" --project "<project-id>" --name "<name>"
 ```
 
-Optional creation flags are repeatable `--tag`, `--public`, and `--entry`. Account-required access is the default.
+Optional creation flags are repeatable `--tag`, `--public`, `--entry`, and `--review-mode annotate|interact`. Account-required access and Annotate mode are the defaults. Select Interact when the user wants an HTML prototype to accept clicks immediately. `--review-mode` cannot be combined with `--artifact`; a new version preserves the artifact default.
 
 ### Publish a new version
 
@@ -50,6 +50,7 @@ Call `artifact_get` immediately before a write to obtain the current version ID.
 
 - `artifact_set_visibility`: set `account_required` or `public_link` without changing file bytes.
 - `artifact_set_tags`: replace the complete tag set. Preserve existing tags the user did not ask to remove.
+- `artifact_set_review_mode`: set the artifact's default to `annotate` or `interact` without creating a version or changing file bytes. A valid `mode=annotate` or `mode=interact` parameter on the Review URL overrides this default for that link.
 - `artifact_restore_version`: make an existing saved version current. This restores an artifact version; it does not restore a server backup. When the user identifies the target relatively, such as "the older of the latest two," run `artifact_version_list` again immediately before the restore and confirm that the chosen version still has that relationship to the current version. An optimistic current-version guard alone does not preserve a relative description.
 - `artifact_delete`: use only for an explicit request to delete one artifact. Repeat the artifact name, server, and project before the destructive call. This does not delete the installation.
 

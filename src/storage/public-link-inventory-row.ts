@@ -3,12 +3,14 @@ import {z} from "zod";
 import type {PublicLinkInventoryPage} from "../application/public-link-administration.js";
 import {
   accessSettings,
+  reviewModes,
   routingModes,
   type ArtifactRecord,
 } from "../core/model.js";
 
 /** Validates the joined row shape used by public-link inventory queries. */
 export const publicLinkInventoryRowSchema = z.object({
+  reviewMode: z.enum([reviewModes.annotate, reviewModes.interact]),
   accessSetting: z.enum([
     accessSettings.accountRequired,
     accessSettings.publicLink,

@@ -11,7 +11,10 @@ Publish one finished file or a complete directory:
 ```sh
 artifactserver publish ./report.pdf
 artifactserver publish ./dist --public --name "Product prototype" --tag prototype
+artifactserver publish ./dist --name "Interactive prototype" --review-mode interact
 ```
+
+New artifacts open in Annotate mode by default. Use `--review-mode interact` to let people click and use an HTML prototype immediately, or `--review-mode annotate` to select the default explicitly. The option applies only when creating an artifact; combining it with `--artifact` is rejected. Later versions preserve the artifact's default. See [Review mode](./review-mode.md) for changing an existing default and sharing a link with a mode override.
 
 Publication returns JSON with three browser links:
 

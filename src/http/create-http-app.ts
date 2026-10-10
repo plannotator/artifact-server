@@ -192,6 +192,7 @@ const commitUploadSchema = z.object({
       accessSetting: accessSettingSchema.default(accessSettings.accountRequired),
       kind: z.literal("new_artifact"),
       name: z.string().min(1).max(200),
+      reviewMode: z.enum(["annotate", "interact"]).default("annotate"),
       tags: artifactTagsSchema,
     }).strict(),
     z.object({
@@ -242,6 +243,10 @@ const changeTagsSchema = z.object({
   expectedCurrentVersionId: z.string().min(1).max(200),
   tags: artifactTagsSchema,
 });
+const changeReviewModeSchema = z.object({
+  expectedCurrentVersionId: z.string().min(1).max(200),
+  reviewMode: z.enum(["annotate", "interact"]),
+}).strict();
 const comparisonQuerySchema = z.object({
   fromVersionId: z.string().min(1).max(200),
   toVersionId: z.string().min(1).max(200),
@@ -2113,6 +2118,30 @@ export function createHttpApp(
         responseApplicationUrl(context, dependencies),
         dependencies.contentDomain,
         state,
+      ));
+    },
+  );
+
+  app.patch(
+    "/api/v1/artifacts/:artifactId/review-mode",
+    boundedJsonBody,
+    async (context) => {
+      const body = changeReviewModeSchema.parse(await context.req.json());
+      const state = await runHttpApplicationEffect(
+        context,
+        dependencies,
+        ArtifactManagementService.use((management) =>
+          management.changeReviewMode({
+            ...body,
+            artifactId: context.req.param("artifactId"),
+            idempotencyKey: requiredIdempotencyKey(context.req.header("idempotency-key")),
+            principal: context.get("principal"),
+            projectId: requestedProjectId(context),
+          })
+        ),
+      );
+      return context.json(artifactStateResponse(
+        responseApplicationUrl(context, dependencies), dependencies.contentDomain, state,
       ));
     },
   );

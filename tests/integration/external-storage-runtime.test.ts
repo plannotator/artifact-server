@@ -330,6 +330,102 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
     }
   });
 
+  test("ART-012: populated PostgreSQL schema upgrades artifacts and historical retries to annotate", async () => {
+    const identity = {apiToken: managedTestKey("postgres-review-upgrade"), installationId: "postgres-review-upgrade"};
+    let server = await startInProcessExternalStorageServer(environment, identity);
+    const content = "<h1>Pre-feature PostgreSQL artifact</h1>";
+    const upload = await stageExternalStorageFile(server.baseUrl, identity.apiToken, content);
+    const publicationInput = {target: {accessSetting: "public_link", kind: "new_artifact", name: "Older PostgreSQL artifact"}};
+    const publish = () => fetch(new URL(new URL(upload.commitUrl).pathname, server.baseUrl), {
+      body: JSON.stringify(publicationInput),
+      headers: mutationHeaders(identity.apiToken, "postgres-review-mode-upgrade"),
+      method: "POST",
+    });
+    const committed = await publish();
+    expect(committed.status).toBe(201);
+    const publication = publishResponseSchema.parse(await committed.json());
+    await server.stop();
+    const database = await PostgresDatabase.inspect({
+      applicationName: "artifact-server-review-mode-upgrade-test",
+      maxConnections: 1,
+      url: Redacted.make(environment.databaseUrl, {label: "test-database-url"}),
+    });
+    try {
+      await database.run(Effect.gen(function*() {
+        const sql = yield* SqlClient;
+        yield* sql.withTransaction(Effect.gen(function*() {
+          yield* sql.unsafe("ALTER TABLE artifacts DROP COLUMN review_mode");
+          yield* sql.unsafe("ALTER TABLE idempotency_records DROP COLUMN review_mode");
+          yield* sql.unsafe(`ALTER TABLE idempotency_records
+            DROP CONSTRAINT idempotency_records_operation_check,
+            ADD CONSTRAINT idempotency_records_operation_check CHECK (operation IN (
+              'publish', 'restore', 'change_access', 'change_tags', 'delete'
+            ))`);
+          yield* sql.unsafe(`ALTER TABLE actions
+            DROP CONSTRAINT actions_action_check,
+            ADD CONSTRAINT actions_action_check CHECK (action IN (
+              'publish', 'restore', 'change_access', 'change_tags', 'delete',
+              'comment_create', 'comment_reply', 'comment_update', 'comment_resolve',
+              'comment_reopen', 'comment_delete'
+            ))`);
+          yield* sql.unsafe("DELETE FROM artifact_server_postgres_migrations WHERE migration_id = 12");
+        }));
+      }));
+    } finally {await database.close();}
+    const applied = await runExternalCli(["migrate", "apply"], {
+      ARTIFACT_SERVER_DATABASE_URL: environment.databaseUrl,
+      ARTIFACT_SERVER_INSTALLATION_ID: identity.installationId,
+    });
+    expect(applied.exitCode).toBe(0);
+    server = await startInProcessExternalStorageServer(environment, identity);
+    const replay = await publish();
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({artifact: {reviewMode: "annotate"}, replayed: true, version: publication.version});
+    expect(await (await fetchContentThroughServer(server.baseUrl, publication.links.version)).text()).toBe(content);
+  });
+
+  test("ART-012: PostgreSQL review mode persists across replicas and replays its original state", async () => {
+    const identity = {apiToken: managedTestKey("postgres-review-mode"), installationId: "postgres-review-mode"};
+    let firstServer = await startInProcessExternalStorageServer(environment, identity);
+    const secondServer = await startInProcessExternalStorageServer(environment, identity);
+    const content = "<button>Immutable interactive artifact</button>";
+    const upload = await stageExternalStorageFile(firstServer.baseUrl, identity.apiToken, content);
+    const committed = await fetch(upload.commitUrl, {
+      body: JSON.stringify({target: {
+        accessSetting: "public_link", kind: "new_artifact", name: "Review mode", reviewMode: "interact",
+      }}),
+      headers: mutationHeaders(identity.apiToken, "postgres-review-mode-publish"),
+      method: "POST",
+    });
+    expect(committed.status).toBe(201);
+    const publication = publishResponseSchema.extend({artifact: z.object({id: z.string(), reviewMode: z.enum(["annotate", "interact"])})})
+      .parse(await committed.json());
+    expect(publication.artifact.reviewMode).toBe("interact");
+    const changeMode = (baseUrl: string, reviewMode: "annotate" | "interact", key: string) => mutateArtifact(
+      baseUrl, identity.apiToken, `/api/v1/artifacts/${publication.artifact.id}/review-mode`, "PATCH", key,
+      {expectedCurrentVersionId: publication.version.id, reviewMode},
+    );
+    const firstChanges = await Promise.all([
+      changeMode(firstServer.baseUrl, "annotate", "postgres-review-mode-first"),
+      changeMode(secondServer.baseUrl, "annotate", "postgres-review-mode-first"),
+    ]);
+    expect(firstChanges.map(({status}) => status)).toEqual([200, 200]);
+    expect((await changeMode(secondServer.baseUrl, "interact", "postgres-review-mode-second")).status).toBe(200);
+    await firstServer.stop();
+    firstServer = await startInProcessExternalStorageServer(environment, identity);
+    const replay = await changeMode(firstServer.baseUrl, "annotate", "postgres-review-mode-first");
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({artifact: {reviewMode: "annotate"}, replayed: true, version: publication.version});
+    const details = await authenticatedFetch(firstServer.baseUrl, identity.apiToken, `/api/v1/artifacts/${publication.artifact.id}`);
+    expect(await details.json()).toMatchObject({artifact: {reviewMode: "interact"}, current: {version: publication.version}});
+    const savedContent = await fetchContentThroughServer(firstServer.baseUrl, publication.links.version);
+    expect(savedContent.status).toBe(200);
+    expect(await savedContent.text()).toBe(content);
+    const actions = await authenticatedFetch(firstServer.baseUrl, identity.apiToken, `/api/v1/artifacts/${publication.artifact.id}/actions`);
+    expect(z.object({actions: z.array(z.object({action: z.string()}))}).parse(await actions.json())
+      .actions.map(({action}) => action).toSorted()).toEqual(["change_review_mode", "change_review_mode", "publish"]);
+  });
+
   test("GIT-010 GIT-013 foundation: Postgres enables Git history and preserves provider identity", async () => {
     const identity = {
       apiToken: managedTestKey("postgres-git-history"),
@@ -516,8 +612,10 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
           "ALTER TABLE staged_uploads DROP COLUMN project_id CASCADE",
           "ALTER TABLE actions DROP COLUMN project_id CASCADE",
           "ALTER TABLE idempotency_records DROP COLUMN project_id CASCADE",
+          "ALTER TABLE idempotency_records DROP COLUMN review_mode",
           "ALTER TABLE versions DROP COLUMN project_id CASCADE",
           "ALTER TABLE artifacts DROP COLUMN search_name",
+          "ALTER TABLE artifacts DROP COLUMN review_mode",
           "ALTER TABLE artifacts DROP COLUMN project_id CASCADE",
           "ALTER TABLE login_attempts DROP COLUMN nonce",
           "DROP TABLE comment_replies",
@@ -3033,6 +3131,7 @@ function patchCommentThread(
 }
 
 type ArtifactMutationBody =
+  | {readonly expectedCurrentVersionId: string; readonly reviewMode: "annotate" | "interact"}
   | {readonly expectedCurrentVersionId: string}
   | {
     readonly accessSetting: "account_required" | "public_link";

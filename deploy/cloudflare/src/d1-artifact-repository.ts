@@ -34,6 +34,7 @@ import {normalizeArtifactSearchText} from
   "../../../src/application/artifact-tags.js";
 import {
   accessSettings,
+  reviewModes,
   agentBeaconStates,
   agentDispatchStates,
   artifactActionKinds,
@@ -80,6 +81,7 @@ import type {
   ArtifactRepository,
   CancelAgentDispatch,
   ChangeArtifactAccessSetting,
+  ChangeArtifactReviewMode,
   ChangeArtifactTags,
   ClearCommentThreads,
   CommentRepository,
@@ -141,6 +143,7 @@ const accessSettingSchema = z.enum([
   accessSettings.accountRequired,
   accessSettings.publicLink,
 ]);
+const reviewModeSchema = z.enum([reviewModes.annotate, reviewModes.interact]);
 const dispositionSchema = z.enum([
   fileDispositions.attachment,
   fileDispositions.inline,
@@ -153,6 +156,7 @@ const uploadStatusSchema = z.enum([
 ]);
 const actionSchema = z.enum([
   artifactActionKinds.changeAccess,
+  artifactActionKinds.changeReviewMode,
   artifactActionKinds.changeTags,
   artifactActionKinds.commentCreate,
   artifactActionKinds.commentDelete,
@@ -272,6 +276,7 @@ const gitHistoryMappingRowSchema = z.object({
   versionId: z.string(),
 });
 const artifactRowSchema = z.object({
+  reviewMode: reviewModeSchema,
   accessSetting: accessSettingSchema,
   createdAt: z.string(),
   currentVersionId: z.string(),
@@ -305,6 +310,7 @@ const entryRowSchema = z.object({
   size: z.number().int().nonnegative(),
 });
 const idempotencyRowSchema = z.object({
+  reviewMode: reviewModeSchema,
   accessSetting: accessSettingSchema.nullable(),
   artifactId: z.string(),
   inputDigest: z.string(),
@@ -510,7 +516,7 @@ const versionContentRowSchema = z.object({
 
 const artifactSelect = `
   SELECT id, project_id AS projectId, name,
-    access_setting AS accessSetting,
+    review_mode AS reviewMode, access_setting AS accessSetting,
     current_version_id AS currentVersionId,
     created_at AS createdAt, deleted_at AS deletedAt
   FROM artifacts
@@ -581,7 +587,7 @@ const commentReplyScope = `FROM comment_threads t
   JOIN comment_replies r ON r.thread_id = t.id AND r.id = ?
   WHERE t.id = ? AND t.project_id = ? AND t.artifact_id = ?`;
 const idempotencySelect = `
-  SELECT access_setting AS accessSetting, artifact_id AS artifactId,
+  SELECT review_mode AS reviewMode, access_setting AS accessSetting, artifact_id AS artifactId,
     input_digest AS inputDigest, operation, tags_json AS tagsJson,
     version_id AS versionId
   FROM idempotency_records
@@ -764,7 +770,8 @@ export function createD1ArtifactRepository(
         message: "The idempotency key was already used with different input.",
       });
     }
-    return readPublishedVersion(projectId, record.versionId, true);
+    const published = await readPublishedVersion(projectId, record.versionId, true);
+    return {...published, artifact: {...published.artifact, reviewMode: record.reviewMode}};
   };
   const readStagedUploadOrNull = async (
     projectId: string,
@@ -855,6 +862,7 @@ export function createD1ArtifactRepository(
     replayed: boolean,
     accessSetting?: ArtifactRecord["accessSetting"],
     tags?: readonly string[],
+    reviewMode?: ArtifactRecord["reviewMode"],
   ): Promise<ArtifactState> => {
     const artifact = await readArtifact(projectId, artifactId);
     const version = await readVersionOrNull(projectId, versionId, artifactId);
@@ -865,6 +873,7 @@ export function createD1ArtifactRepository(
         accessSetting: accessSetting ?? artifact.accessSetting,
         currentVersionId: versionId,
         tags: tags ?? artifact.tags,
+        reviewMode: reviewMode ?? artifact.reviewMode,
       },
       replayed,
       version,
@@ -935,8 +944,8 @@ export function createD1ArtifactRepository(
   ) => database.prepare(`
     INSERT INTO idempotency_records (
       project_id, idempotency_key, input_digest, artifact_id, version_id,
-      operation, access_setting, tags_json, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      operation, access_setting, tags_json, created_at, review_mode
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT review_mode FROM artifacts WHERE id = ?))
   `).bind(
     command.projectId,
     command.idempotencyKey,
@@ -947,6 +956,7 @@ export function createD1ArtifactRepository(
     accessSetting,
     tagsJson,
     command.createdAt,
+    command.artifactId,
   );
   const mutationGuardStatements = (
     id: string,
@@ -1085,7 +1095,7 @@ export function createD1ArtifactRepository(
   );
   const managementReplay = async (
     command: {readonly idempotencyKey: string; readonly inputDigest: string; readonly projectId: string},
-    operation: typeof artifactActionKinds.changeAccess | typeof artifactActionKinds.changeTags |
+    operation: typeof artifactActionKinds.changeReviewMode | typeof artifactActionKinds.changeAccess | typeof artifactActionKinds.changeTags |
       typeof artifactActionKinds.restore,
   ): Promise<ArtifactState | null> => {
     const record = await readIdempotency(command.projectId, command.idempotencyKey);
@@ -1103,6 +1113,7 @@ export function createD1ArtifactRepository(
       true,
       record.accessSetting ?? undefined,
       tags,
+      record.reviewMode,
     );
   };
   const applyManagementMutation = async (
@@ -1111,7 +1122,7 @@ export function createD1ArtifactRepository(
       readonly inputDigest: string;
       readonly projectId: string;
     },
-    operation: typeof artifactActionKinds.changeAccess |
+    operation: typeof artifactActionKinds.changeReviewMode | typeof artifactActionKinds.changeAccess |
       typeof artifactActionKinds.changeTags |
       typeof artifactActionKinds.restore,
     statements: D1PreparedStatement[],
@@ -2206,15 +2217,16 @@ export function createD1ArtifactRepository(
         await database.batch([
           database.prepare(`
             INSERT INTO artifacts (
-              id, project_id, name, search_name, access_setting,
+              id, project_id, name, search_name, access_setting, review_mode,
               current_version_id, created_at, deleted_at
-            ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL)
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, NULL)
           `).bind(
             command.artifactId,
             command.projectId,
             command.name,
             normalizeArtifactSearchText(command.name),
             command.accessSetting,
+            command.reviewMode ?? reviewModes.annotate,
             command.createdAt,
           ),
           ...versionStatements(command, 1),
@@ -2446,7 +2458,7 @@ export function createD1ArtifactRepository(
       const result = await database.prepare(`
         SELECT * FROM (
           SELECT id, project_id AS projectId, name,
-            access_setting AS accessSetting,
+            review_mode AS reviewMode, access_setting AS accessSetting,
             current_version_id AS currentVersionId,
             created_at AS createdAt, deleted_at AS deletedAt,
             (
@@ -2506,7 +2518,7 @@ export function createD1ArtifactRepository(
           artifact.id AS artifactId,
           artifact.project_id AS projectId,
           artifact.name AS artifactName,
-          artifact.access_setting AS accessSetting,
+          artifact.review_mode AS reviewMode, artifact.access_setting AS accessSetting,
           artifact.current_version_id AS currentVersionId,
           artifact.created_at AS artifactCreatedAt,
           artifact.deleted_at AS artifactDeletedAt,
@@ -2546,6 +2558,7 @@ export function createD1ArtifactRepository(
       );
       const artifacts = await Promise.all(parsedRows.map(async (row) => ({
         accessSetting: row.accessSetting,
+        reviewMode: row.reviewMode,
         createdAt: row.artifactCreatedAt,
         currentVersionId: row.currentVersionId,
         deletedAt: row.artifactDeletedAt,
@@ -2579,7 +2592,7 @@ export function createD1ArtifactRepository(
     },
     findVersionContent: async (contentToken, requestedPath, fallback) => {
       const row = await database.prepare(`
-        SELECT a.access_setting AS accessSetting, a.id AS artifactId,
+        SELECT a.review_mode AS reviewMode, a.access_setting AS accessSetting, a.id AS artifactId,
           a.project_id AS projectId, v.content_token AS contentToken,
           v.id AS versionId, e.path, e.size, e.media_type AS mediaType,
           e.sha256, e.disposition,
@@ -2662,6 +2675,45 @@ export function createD1ArtifactRepository(
           command.expectedCurrentVersionId,
           false,
           command.accessSetting,
+        ));
+    },
+    changeReviewMode: async (command: ChangeArtifactReviewMode) => {
+      const replay = await managementReplay(command, artifactActionKinds.changeReviewMode);
+      if (replay !== null) return replay;
+      const artifact = await readArtifact(command.projectId, command.artifactId);
+      assertCurrent(artifact, command.expectedCurrentVersionId);
+      return applyManagementMutation(command, artifactActionKinds.changeReviewMode, [
+        database.prepare(`
+          UPDATE artifacts SET review_mode = ?
+          WHERE project_id = ? AND id = ? AND current_version_id = ? AND deleted_at IS NULL
+        `).bind(
+          command.reviewMode,
+          command.projectId,
+          command.artifactId,
+          command.expectedCurrentVersionId,
+        ),
+        actionStatement(command, command.expectedCurrentVersionId, artifactActionKinds.changeReviewMode),
+        idempotencyStatement(
+          command,
+          command.expectedCurrentVersionId,
+          artifactActionKinds.changeReviewMode,
+          artifact.accessSetting,
+        ),
+        ...managementGuardStatements(
+          command,
+          artifactActionKinds.changeReviewMode,
+          command.expectedCurrentVersionId,
+          "a.deleted_at IS NULL AND a.review_mode = ?",
+          [command.reviewMode],
+        ),
+      ], () => artifactState(
+          command.projectId,
+          command.artifactId,
+          command.expectedCurrentVersionId,
+          false,
+          artifact.accessSetting,
+          undefined,
+          command.reviewMode,
         ));
     },
     changeTags: async (command: ChangeArtifactTags) => {

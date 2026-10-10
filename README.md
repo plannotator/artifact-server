@@ -143,6 +143,8 @@ Open the printed URL. You can also download the portable Node.js package from th
 
 Most artifacts are published by an agent through the [Artifact Server Skill](./skills/artifact-server/SKILL.md) or [MCP](./docs/mcp.md). For direct access, use the `artifactserver` CLI to publish files and directories, connect to remote servers, and create new versions. [Read the CLI guide](./docs/cli.md).
 
+HTML prototypes can open in Interact mode so people can use them immediately. Set `--review-mode interact` when creating an artifact, or share a Review link with `mode=interact`. Annotate remains the default, and reviewers can switch modes at any time. [Read about Review mode](./docs/review-mode.md).
+
 ## Security model
 
 Artifact Server serves untrusted artifact content from isolated version hosts, separate from the trusted application origin used for authentication, review, comments, API, and MCP. Private content uses version-scoped browser sessions, and untrusted paths cannot select storage locations.

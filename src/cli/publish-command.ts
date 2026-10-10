@@ -30,6 +30,7 @@ interface PublishOptions {
   readonly profile?: string;
   readonly profileData: string;
   readonly routing: "spa" | "static";
+  readonly reviewMode?: "annotate" | "interact";
   readonly server?: string;
   readonly tag: readonly string[];
   readonly tokenFile?: string;
@@ -73,6 +74,10 @@ export function configurePublishCommand(
         .default("static"),
     )
     .addOption(new Option("--name <name>", "name for a new artifact"))
+    .addOption(
+      new Option("--review-mode <mode>", "initial HTML review mode for a new artifact")
+        .choices(["annotate", "interact"]),
+    )
     .addOption(new Option("--public", "allow the link to open without sign-in").default(false))
     .addOption(
       new Option("--tag <tag>", "tag for a new artifact; repeat for more tags")
@@ -142,9 +147,9 @@ function publicationCommand(
         routingMode: options.routing,
       };
   if (options.artifact !== undefined && options.expectedVersion !== undefined) {
-    if (options.name !== undefined || options.public || options.tag.length > 0) {
+    if (options.name !== undefined || options.public || options.tag.length > 0 || options.reviewMode !== undefined) {
       throw new Error(
-        "--name, --public, and --tag apply only when creating a new artifact.",
+        "--name, --public, --tag, and --review-mode apply only when creating a new artifact.",
       );
     }
     return withEntryPath({
@@ -157,7 +162,7 @@ function publicationCommand(
     }, options.entry);
   }
 
-  const target = options.name === undefined
+  const initialTarget = options.name === undefined
     ? {
       accessSetting: options.public ? "public_link" as const : "account_required" as const,
       kind: "new_artifact" as const,
@@ -169,6 +174,9 @@ function publicationCommand(
       name: options.name,
       tags: options.tag,
     };
+  const target = options.reviewMode === undefined
+    ? initialTarget
+    : {...initialTarget, reviewMode: options.reviewMode};
   return withEntryPath({
     ...common,
     target,

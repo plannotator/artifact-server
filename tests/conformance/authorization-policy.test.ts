@@ -188,6 +188,7 @@ function artifactFixture(): ArtifactRecord {
     id: "artifact-1",
     name: "Authorization fixture",
     projectId: "prj_default",
+    reviewMode: "annotate",
     tags: [],
   };
 }
