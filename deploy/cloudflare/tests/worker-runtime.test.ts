@@ -62,6 +62,45 @@ afterAll(async () => {
 });
 
 describe("Cloudflare Worker runtime", () => {
+  it("publishes through MCP with an upload grant on D1", async () => {
+    const bytes = new TextEncoder().encode("<h1>D1 grant</h1>");
+    const plan = await mcpTool("artifact_create_upload", {
+      entryPath: "index.html",
+      files: [{
+        mediaType: "text/html",
+        path: "index.html",
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        size: bytes.byteLength,
+      }],
+    }, z.object({
+      files: z.array(z.object({uploadUrl: z.string()})).length(1),
+      uploadGrant: z.object({token: z.string().startsWith("as_upg_")}),
+      uploadId: z.string(),
+    }));
+    const file = plan.files[0];
+    if (file === undefined) throw new Error("The upload plan is empty.");
+    const planned = new URL(file.uploadUrl);
+    const uploadUrl = `${origin}${planned.pathname}${planned.search}`;
+    const putWithGrant = () => worker.fetch(uploadUrl, {
+      body: bytes,
+      headers: {Authorization: `Bearer ${plan.uploadGrant.token}`},
+      method: "PUT",
+    });
+
+    expect((await putWithGrant()).status).toBe(200);
+    const committed = await mcpTool("artifact_commit_upload", {
+      idempotencyKey: "d1-upload-grant-commit",
+      target: {
+        accessSetting: "account_required",
+        kind: "new_artifact",
+        name: "D1 grant",
+      },
+      uploadId: plan.uploadId,
+    }, z.object({links: z.object({review: z.url()}).loose()}).loose());
+    expect(new URL(committed.links.review).pathname).toBe("/review");
+    expect((await putWithGrant()).status).toBe(409);
+  }, 60_000);
+
   it("serves the management application only from its configured origin", async () => {
     const shell = await worker.fetch(`${origin}/review?project=prj_default`);
     const shellHtml = await shell.text();
@@ -321,4 +360,61 @@ function authenticatedJsonHeaders() {
     Authorization: `Bearer ${apiToken}`,
     "Content-Type": "application/json",
   };
+}
+
+interface McpParameters {
+  readonly [key: string]: McpParameterValue;
+}
+
+type McpParameterValue =
+  | boolean
+  | number
+  | string
+  | null
+  | readonly McpParameterValue[]
+  | McpParameters;
+
+async function mcpTool<T>(
+  name: string,
+  parameters: McpParameters,
+  schema: z.ZodType<T>,
+): Promise<T> {
+  const protocolVersion = "2026-07-28";
+  const response = await worker.fetch(`${origin}/mcp`, {
+    body: JSON.stringify({
+      id: crypto.randomUUID(),
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        _meta: {
+          "io.modelcontextprotocol/clientCapabilities": {},
+          "io.modelcontextprotocol/clientInfo": {
+            name: "artifact-server-cloudflare-test",
+            version: "1",
+          },
+          "io.modelcontextprotocol/protocolVersion": protocolVersion,
+        },
+        arguments: parameters,
+        name,
+      },
+    }),
+    headers: {
+      Accept: "application/json, text/event-stream",
+      Authorization: `Bearer ${apiToken}`,
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": protocolVersion,
+      "Mcp-Method": "tools/call",
+      "Mcp-Name": name,
+    },
+    method: "POST",
+  });
+  expect(response.status).toBe(200);
+  const result = z.object({
+    result: z.object({
+      isError: z.boolean().optional(),
+      structuredContent: z.unknown(),
+    }).loose(),
+  }).parse(await response.json()).result;
+  expect(result.isError).not.toBe(true);
+  return schema.parse(result.structuredContent);
 }

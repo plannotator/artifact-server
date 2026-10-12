@@ -8,7 +8,7 @@ import {defaultGitHistoryMaximumCopiedFiles} from
   "../../../src/git-history/git-history-capability.js";
 
 /** D1 schema revision required by the Cloudflare runtime. */
-export const requiredD1SchemaVersion = 9;
+export const requiredD1SchemaVersion = 10;
 
 /** SQL literal list of every action kind the ledger accepts. */
 const actionKindList = [
@@ -115,7 +115,8 @@ const schemaSql = `
     routing_mode TEXT NOT NULL CHECK (routing_mode IN ('static', 'spa')),
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
-    committed_version_id TEXT REFERENCES versions(id)
+    committed_version_id TEXT REFERENCES versions(id),
+    grant_digest TEXT
   );
 
   CREATE TABLE IF NOT EXISTS staged_upload_files (
@@ -617,6 +618,7 @@ export async function migrateD1(
     await addGitHistoryMirrorColumnsIfMissing(database);
     await widenRegisteredAgentsIfNeeded(database);
     await addArtifactSearchNameIfMissing(database);
+    await addStagedUploadGrantIfMissing(database);
   }
   await database.batch([
     database.prepare(`
@@ -636,6 +638,16 @@ export async function migrateD1(
       new Date(0).toISOString(),
     ),
   ]);
+}
+
+/** Give staged uploads a nullable grant digest; older uploads keep none. */
+async function addStagedUploadGrantIfMissing(database: D1Database): Promise<void> {
+  const columns = await database.prepare("PRAGMA table_info(staged_uploads)")
+    .all<{name: string}>();
+  if (columns.results.some((column) => column.name === "grant_digest")) return;
+  await database.prepare(
+    "ALTER TABLE staged_uploads ADD COLUMN grant_digest TEXT",
+  ).run();
 }
 
 async function addArtifactSearchNameIfMissing(

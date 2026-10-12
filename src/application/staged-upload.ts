@@ -1,7 +1,8 @@
-import { Context, DateTime, Effect, Layer } from "effect";
+import { Context, DateTime, Effect, Layer, type Redacted } from "effect";
 
 import {
   type ArtifactRepositoryFailure,
+  AuthenticationRequired,
   type AuthorizationDenied,
   StagingStorageFailure,
   type ProjectArchived,
@@ -26,8 +27,10 @@ import type {
   IdGenerator,
   OpenedStagedFile,
   StagedFileWrite,
+  StagedUploadGrantRecord,
   StoredBlob,
 } from "../core/ports.js";
+import { uploadGrantDigestsEqual } from "../core/upload-grant.js";
 import type { DeclaredManifestFile } from "../manifest/create-manifest.js";
 import {
   type PublicationFileSource,
@@ -65,6 +68,30 @@ export interface UploadStagedFileCommand {
   readonly uploadId: string;
 }
 
+/** Input for streaming one file into a staged upload with its upload grant. */
+export interface UploadStagedFileWithGrantCommand {
+  readonly body: ReadableStream<Uint8Array>;
+  readonly grant: Redacted.Redacted;
+  readonly projectId: string | null;
+  readonly storageToken: string;
+  readonly uploadId: string;
+}
+
+/** A staged upload together with the grant that may append its files. */
+export interface CreatedStagedUploadWithGrant {
+  readonly grant: Redacted.Redacted;
+  readonly upload: StagedUpload;
+}
+
+/** Issues upload grants and digests presented ones; only digests are stored. */
+export interface UploadGrantSecretProvider {
+  readonly digest: (token: Redacted.Redacted) => string;
+  readonly issue: () => {
+    readonly digest: string;
+    readonly token: Redacted.Redacted;
+  };
+}
+
 /** Publication target selected when committing a staged upload. */
 export type CommitStagedUploadTarget =
   | {
@@ -98,6 +125,9 @@ export interface StagedUploadRepositoryPort {
     uploadId: string,
     principalId: string,
   ): Effect.Effect<StagedUpload | null, ArtifactRepositoryFailure>;
+  findStagedUploadGrant(
+    uploadId: string,
+  ): Effect.Effect<StagedUploadGrantRecord | null, ArtifactRepositoryFailure>;
   markStagedFileUploaded(
     projectId: string,
     uploadId: string,
@@ -142,12 +172,14 @@ export interface StagingStoragePort {
 export interface StagedUploadDependencies {
   readonly clock: ApplicationClock;
   readonly ids: IdGenerator;
+  readonly secrets: UploadGrantSecretProvider;
   readonly staging: StagingStoragePort;
   readonly uploads: StagedUploadRepositoryPort;
 }
 
 /** Expected failures produced by the staged upload application service. */
 export type StagedUploadFailure =
+  | AuthenticationRequired
   | ManifestFailure
   | UploadNotFound
   | UploadClosed
@@ -168,8 +200,14 @@ interface StagedUploadOperations {
   readonly createUpload: (
     command: CreateStagedUploadCommand,
   ) => Effect.Effect<StagedUpload, StagedUploadFailure>;
+  readonly createUploadWithGrant: (
+    command: CreateStagedUploadCommand,
+  ) => Effect.Effect<CreatedStagedUploadWithGrant, StagedUploadFailure>;
   readonly uploadFile: (
     command: UploadStagedFileCommand,
+  ) => Effect.Effect<StagedUpload, StagedUploadFailure>;
+  readonly uploadFileWithGrant: (
+    command: UploadStagedFileWithGrantCommand,
   ) => Effect.Effect<StagedUpload, StagedUploadFailure>;
 }
 
@@ -225,9 +263,10 @@ function makeStagedUploadService(
     },
   );
 
-  const createUpload = Effect.fn("StagedUploadService.createUpload")(
+  const create = Effect.fn("StagedUploadService.create")(
     function*(
     command: CreateStagedUploadCommand,
+    grantDigest: string | null,
   ): Effect.fn.Return<StagedUpload, StagedUploadFailure> {
       yield* authorization.requirePublicationPreparation(command.principal);
       const project = yield* projects.resolveActiveProject({
@@ -249,11 +288,71 @@ function makeStagedUploadService(
           entry,
           storageToken: dependencies.ids.stagedFileToken(),
         })),
+        grantDigest,
         id: dependencies.ids.uploadId(),
         manifest,
         principalId: command.principal.id,
         projectId: project.id,
       });
+    },
+  );
+
+  const createUpload = Effect.fn("StagedUploadService.createUpload")(
+    function*(
+    command: CreateStagedUploadCommand,
+  ): Effect.fn.Return<StagedUpload, StagedUploadFailure> {
+      return yield* create(command, null);
+    },
+  );
+
+  const createUploadWithGrant = Effect.fn(
+    "StagedUploadService.createUploadWithGrant",
+  )(function*(
+    command: CreateStagedUploadCommand,
+  ): Effect.fn.Return<CreatedStagedUploadWithGrant, StagedUploadFailure> {
+    const issued = dependencies.secrets.issue();
+    const upload = yield* create(command, issued.digest);
+    return {grant: issued.token, upload};
+  });
+
+  const storeFile = Effect.fn("StagedUploadService.storeFile")(
+    function*(
+    upload: StagedUpload,
+    principalId: string,
+    projectId: string,
+    storageToken: string,
+    body: ReadableStream<Uint8Array>,
+  ): Effect.fn.Return<StagedUpload, StagedUploadFailure> {
+      const uploadStartedAt = yield* dependencies.clock.now;
+      yield* ensureUploadAcceptsFiles(upload, uploadStartedAt);
+      const file = upload.files.find(
+        (candidate) => candidate.storageToken === storageToken,
+      );
+      if (file === undefined) {
+        return yield* new UploadFileNotFound({
+          message: "The staged upload file does not exist.",
+        });
+      }
+
+      const signal = abortSignalUntil(upload.expiresAt, uploadStartedAt);
+      yield* dependencies.staging.put({
+        body,
+        sha256: file.entry.sha256,
+        signal,
+        size: file.entry.size,
+        storageToken: file.storageToken,
+        uploadId: upload.id,
+      }).pipe(Effect.catch((error) => Effect.fail(signal.aborted
+        ? new UploadExpired({message: "The staged upload has expired."})
+        : error)));
+      const uploadedAt = DateTime.formatIso(yield* dependencies.clock.now);
+      return yield* dependencies.uploads.markStagedFileUploaded(
+        projectId,
+        upload.id,
+        principalId,
+        file.storageToken,
+        uploadedAt,
+      );
     },
   );
 
@@ -271,38 +370,52 @@ function makeStagedUploadService(
         command.uploadId,
         command.principal.id,
       );
-      const uploadStartedAt = yield* dependencies.clock.now;
-      yield* ensureUploadAcceptsFiles(upload, uploadStartedAt);
-      const file = upload.files.find(
-        (candidate) => candidate.storageToken === command.storageToken,
-      );
-      if (file === undefined) {
-        return yield* new UploadFileNotFound({
-          message: "The staged upload file does not exist.",
-        });
-      }
-
-      const signal = abortSignalUntil(upload.expiresAt, uploadStartedAt);
-      yield* dependencies.staging.put({
-        body: command.body,
-        sha256: file.entry.sha256,
-        signal,
-        size: file.entry.size,
-        storageToken: file.storageToken,
-        uploadId: upload.id,
-      }).pipe(Effect.catch((error) => Effect.fail(signal.aborted
-        ? new UploadExpired({message: "The staged upload has expired."})
-        : error)));
-      const uploadedAt = DateTime.formatIso(yield* dependencies.clock.now);
-      return yield* dependencies.uploads.markStagedFileUploaded(
-        project.id,
-        upload.id,
+      return yield* storeFile(
+        upload,
         command.principal.id,
-        file.storageToken,
-        uploadedAt,
+        project.id,
+        command.storageToken,
+        command.body,
       );
     },
   );
+
+  const uploadFileWithGrant = Effect.fn(
+    "StagedUploadService.uploadFileWithGrant",
+  )(function*(
+    command: UploadStagedFileWithGrantCommand,
+  ): Effect.fn.Return<StagedUpload, StagedUploadFailure> {
+    // Permission was checked when the grant was issued and is checked again
+    // at commit; the grant itself only lets the declared bytes in.
+    const record = yield* dependencies.uploads.findStagedUploadGrant(
+      command.uploadId,
+    );
+    if (
+      record === null
+      || record.grantDigest === null
+      || !uploadGrantDigestsEqual(
+        dependencies.secrets.digest(command.grant),
+        record.grantDigest,
+      )
+      || (command.projectId !== null && command.projectId !== record.projectId)
+    ) {
+      return yield* new AuthenticationRequired({
+        message: "A valid upload grant is required.",
+      });
+    }
+    const upload = yield* requiredUpload(
+      record.projectId,
+      command.uploadId,
+      record.principalId,
+    );
+    return yield* storeFile(
+      upload,
+      record.principalId,
+      record.projectId,
+      command.storageToken,
+      command.body,
+    );
+  });
 
   const publicationSource = (
     upload: StagedUpload,
@@ -419,7 +532,13 @@ function makeStagedUploadService(
     },
   );
 
-  return StagedUploadService.of({commitUpload, createUpload, uploadFile});
+  return StagedUploadService.of({
+    commitUpload,
+    createUpload,
+    createUploadWithGrant,
+    uploadFile,
+    uploadFileWithGrant,
+  });
 }
 
 function abortSignalUntil(expiresAt: string, now: DateTime.Utc): AbortSignal {

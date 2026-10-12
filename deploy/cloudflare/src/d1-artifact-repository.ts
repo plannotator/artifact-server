@@ -164,6 +164,11 @@ const actionSchema = z.enum([
   artifactActionKinds.publish,
   artifactActionKinds.restore,
 ]);
+const stagedUploadGrantRowSchema = z.object({
+  grantDigest: z.string().nullable(),
+  principalId: z.string(),
+  projectId: z.string(),
+});
 const projectRowSchema = z.object({
   archivedAt: z.string().nullable(),
   createdAt: z.string(),
@@ -2116,8 +2121,9 @@ export function createD1ArtifactRepository(
         database.prepare(`
           INSERT INTO staged_uploads (
             id, project_id, principal_id, status, manifest_digest, entry_path,
-            routing_mode, created_at, expires_at, committed_version_id
-          ) VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, NULL)
+            routing_mode, created_at, expires_at, committed_version_id,
+            grant_digest
+          ) VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, NULL, ?)
         `).bind(
           command.id,
           command.projectId,
@@ -2127,6 +2133,7 @@ export function createD1ArtifactRepository(
           command.manifest.routingMode,
           command.createdAt,
           command.expiresAt,
+          command.grantDigest,
         ),
         // `uploaded_at` stays out of the column list so it defaults to NULL:
         // every bound column costs part of the per-statement budget.
@@ -2153,6 +2160,14 @@ export function createD1ArtifactRepository(
       return upload;
     },
     findStagedUpload: readStagedUploadOrNull,
+    findStagedUploadGrant: async (uploadId: string) => {
+      const row = await database.prepare(`
+        SELECT grant_digest AS grantDigest, principal_id AS principalId,
+          project_id AS projectId
+        FROM staged_uploads WHERE id = ?
+      `).bind(uploadId).first();
+      return stagedUploadGrantRowSchema.nullable().parse(row ?? null);
+    },
     markStagedFileUploaded: async (
       projectId,
       uploadId,

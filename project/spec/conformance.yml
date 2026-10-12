@@ -511,7 +511,7 @@ requirements:
     source: {file: artifact-server-product-spec.html, anchor: architecture}
     acceptance:
       behavior: {id: PUB-001-B, description: "Create an upload and verify its principal, installation, unique staging location, and expiration."}
-      failure: {id: PUB-001-F, description: "Another principal or installation cannot read, append, commit, or renew the staged upload."}
+      failure: {id: PUB-001-F, description: "Another principal or installation cannot read, append, commit, or renew the staged upload; only a holder of that upload's grant may append its declared files (PUB-014)."}
     deployments: *all
     status: behavior_verified
     depends_on: [AUTH-008]
@@ -749,6 +749,19 @@ requirements:
         run: project/evidence/browser.json
         recorded_at: "2026-08-25T17:52:50.473Z"
 
+  - id: PUB-014
+    kind: behavior
+    behavior: An MCP upload plan carries a short-lived upload grant that authorizes only that upload's file uploads, so a client without an Artifact Server API key can publish through MCP.
+    owner: publishing
+    source: {file: decisions/0031-upload-grants-for-mcp-uploads.md, anchor: decision}
+    acceptance:
+      behavior: {id: PUB-014-B, description: "An MCP client whose credential /api/ refuses uploads every planned file with the returned grant, in parallel, and commits through MCP; the grant never appears in logs."}
+      failure: {id: PUB-014-F, description: "The grant is refused on another upload, another route, another method, a changed path, the wrong project, and when altered; after commit and after expiry it is refused with the upload's own error; the MCP credential itself is still refused on /api/."}
+    deployments: *all
+    status: implementing
+    proof_gap: PUB-014-B and PUB-014-F run against the local SQLite server; Postgres and D1 runtime tests cover grant storage and a D1 publish through MCP. No deployment-specific evidence is recorded.
+    depends_on: [PUB-001, PUB-002, MCP-013]
+    evidence: []
   - id: CLI-001
     kind: security
     behavior: The Artifact Server CLI keeps profiles by exact server origin and account; remote interactive login uses browser authorization and operating-system credential storage, local mode uses private user-only state without visible secrets, and CI uses scoped service credentials from its secret manager.

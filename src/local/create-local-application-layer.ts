@@ -127,6 +127,7 @@ import type {
 import type {IdentityRepository} from "../core/identity-ports.js";
 import type { ManifestEntry } from "../core/model.js";
 import {randomBase64Url} from "../core/random.js";
+import {uploadGrantPrefix} from "../core/upload-grant.js";
 import { FileVerificationError } from "../storage/verified-file.js";
 import {defaultStagingCleanupPolicy} from
   "../lifecycle/staging-cleanup.js";
@@ -282,6 +283,17 @@ export function createApplicationLayer(
   const stagedDependencies: StagedUploadDependencies = {
     clock,
     ids: adapters.ids,
+    secrets: {
+      digest: (token) =>
+        createHash("sha256").update(Redacted.value(token)).digest("hex"),
+      issue: () => {
+        const token = `${uploadGrantPrefix}${randomBase64Url(32)}`;
+        return {
+          digest: createHash("sha256").update(token).digest("hex"),
+          token: Redacted.make(token, {label: "upload-grant"}),
+        };
+      },
+    },
     staging: {
       open: (uploadId, storageToken) =>
         Effect.tryPromise({
@@ -327,6 +339,11 @@ export function createApplicationLayer(
               principalId,
             ),
           catch: (cause) => repositoryFailure("findStagedUpload", cause),
+        }),
+      findStagedUploadGrant: (uploadId) =>
+        Effect.tryPromise({
+          try: () => adapters.repository.findStagedUploadGrant(uploadId),
+          catch: (cause) => repositoryFailure("findStagedUploadGrant", cause),
         }),
       listExpiredStagedUploads: (expiredBefore, limit) =>
         Effect.tryPromise({

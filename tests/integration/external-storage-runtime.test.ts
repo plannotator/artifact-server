@@ -34,6 +34,7 @@ import {requiredPostgresSchemaVersion} from
 import {PostgresArtifactRepository} from "../../src/storage/postgres-artifact-repository.js";
 import {PostgresIdentityRepository} from "../../src/storage/postgres-identity-repository.js";
 import {defaultProjectId} from "../../src/core/model.js";
+import {createManifest} from "../../src/manifest/create-manifest.js";
 import type {NodeGitHistoryConfiguration} from
   "../../src/git-history/node-git-history-configuration.js";
 import type {GitHistoryProviderHealthProbe} from
@@ -517,6 +518,7 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
           "ALTER TABLE actions DROP COLUMN project_id CASCADE",
           "ALTER TABLE idempotency_records DROP COLUMN project_id CASCADE",
           "ALTER TABLE versions DROP COLUMN project_id CASCADE",
+          "ALTER TABLE staged_uploads DROP COLUMN grant_digest",
           "ALTER TABLE artifacts DROP COLUMN search_name",
           "ALTER TABLE artifacts DROP COLUMN project_id CASCADE",
           "ALTER TABLE login_attempts DROP COLUMN nonce",
@@ -2014,6 +2016,62 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
       `/api/v1/artifacts/${artifactId}/comments/${thread.thread.id}`,
     )).status).toBe(404);
     await server.stop();
+  });
+
+  test("external-storage foundation: Postgres stores staged upload grant digests per installation", async () => {
+    expect.hasAssertions();
+    const identity = {
+      apiToken: managedTestKey("postgres-upload-grant"),
+      installationId: `postgres-upload-grant-${randomUUID()}`,
+    };
+    const server = await startInProcessExternalStorageServer(environment, identity);
+    const database = await PostgresDatabase.open({
+      maxConnections: 2,
+      url: Redacted.make(environment.databaseUrl),
+    }, "validate");
+    try {
+      const repository = await PostgresArtifactRepository.open(
+        database,
+        identity.installationId,
+      );
+      const other = await PostgresArtifactRepository.open(
+        database,
+        `postgres-upload-grant-other-${randomUUID()}`,
+      );
+      const manifest = createManifest({
+        entryPath: "index.html",
+        files: [{
+          mediaType: "text/html",
+          path: "index.html",
+          sha256: "b".repeat(64),
+          size: 4,
+        }],
+        routingMode: "static",
+      });
+      const uploadId = `upl_${randomUUID()}`;
+      await repository.createStagedUpload({
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        files: manifest.entries.map((entry) => ({
+          entry,
+          storageToken: randomUUID().replaceAll("-", ""),
+        })),
+        grantDigest: "c".repeat(64),
+        id: uploadId,
+        manifest,
+        principalId: "member_owner",
+        projectId: defaultProjectId,
+      });
+      expect(await repository.findStagedUploadGrant(uploadId)).toEqual({
+        grantDigest: "c".repeat(64),
+        principalId: "member_owner",
+        projectId: defaultProjectId,
+      });
+      expect(await other.findStagedUploadGrant(uploadId)).toBeNull();
+    } finally {
+      await database.close();
+      await server.stop();
+    }
   });
 
   test("external-storage foundation: Postgres serves the dispatch mailbox, lease reclaim, and consumptive comment listings", async () => {

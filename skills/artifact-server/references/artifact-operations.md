@@ -59,7 +59,7 @@ Project creation, rename, archive, or unarchive are ordinary product actions but
 
 Do not use MCP upload tools when the files exist on the user's machine and the CLI is available. The CLI provides the one-step authenticated experience.
 
-Use `artifact_create_upload` and `artifact_commit_upload` only when the current agent environment can actually read the file bytes and execute the returned authenticated HTTP uploads. Call `artifact_capabilities` first. Never place file bytes, base64, or a local path in MCP arguments, and never expose the MCP bearer credential to the model or output.
+Use `artifact_create_upload` and `artifact_commit_upload` only when the current agent environment can actually read the file bytes and execute the returned HTTP uploads. Call `artifact_capabilities` first. Upload each file with `Authorization: Bearer <uploadGrant.token>` from the upload plan; the grant works only for that upload and expires with it. Never place file bytes, base64, or a local path in MCP arguments, and never expose the MCP bearer credential to the model or output.
 
 ## Final result
 

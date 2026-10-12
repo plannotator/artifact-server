@@ -376,6 +376,44 @@ describe("Cloudflare D1 comments", () => {
     expect(afterRestart.items[0]?.state).toBe("resolved");
   }, 120_000);
 
+  it("adds the staged upload grant column to a revision 9 database", async () => {
+    const grantDirectory = await mkdtemp(
+      join(tmpdir(), "artifact-server-cloudflare-grant-"),
+    );
+    let grantWorker = await startWorker(grantDirectory);
+    try {
+      expect((await authenticatedFetch(grantWorker, `${origin}/api/v1/artifacts`)).status)
+        .toBe(200);
+      await grantWorker.stop();
+      const d1File = await findD1DatabaseFile(grantDirectory);
+      const database = new DatabaseSync(d1File);
+      try {
+        database.exec(`
+          ALTER TABLE staged_uploads DROP COLUMN grant_digest;
+          UPDATE artifact_server_schema SET version = 9 WHERE component = 'runtime';
+        `);
+      } finally {
+        database.close();
+      }
+
+      grantWorker = await startWorker(grantDirectory);
+      expect((await authenticatedFetch(grantWorker, `${origin}/api/v1/artifacts`)).status)
+        .toBe(200);
+      const upgraded = new DatabaseSync(d1File, {readOnly: true});
+      try {
+        const columns = z.array(z.object({name: z.string()})).parse(
+          upgraded.prepare("PRAGMA table_info(staged_uploads)").all(),
+        );
+        expect(columns.map(({name}) => name)).toContain("grant_digest");
+      } finally {
+        upgraded.close();
+      }
+    } finally {
+      await grantWorker.stop();
+      await rm(grantDirectory, {force: true, recursive: true});
+    }
+  }, 120_000);
+
   it("upgrades a version 2 database in place and then accepts comments", async () => {
     const upgradeDirectory = await mkdtemp(
       join(tmpdir(), "artifact-server-cloudflare-upgrade-"),
@@ -497,7 +535,7 @@ describe("Cloudflare D1 comments", () => {
       try {
         expect(schemaVersionRowSchema.parse(upgraded.prepare(
           "SELECT version FROM artifact_server_schema WHERE component = 'runtime'",
-        ).get()).version).toBe(9);
+        ).get()).version).toBe(10);
         const columns = z.array(tableColumnRowSchema)
           .parse(upgraded.prepare("PRAGMA table_info(login_attempts)").all())
           .map(({name}) => name);

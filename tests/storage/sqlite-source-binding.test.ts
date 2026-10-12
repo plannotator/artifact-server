@@ -259,6 +259,7 @@ async function stageUpload(
     createdAt,
     expiresAt: "2026-12-31T00:00:00.000Z",
     files,
+    grantDigest: null,
     id: uploadId,
     manifest,
     principalId,

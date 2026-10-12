@@ -104,6 +104,7 @@ import type {
   RenameProject,
   RestoreArtifactVersion,
   SetProjectArchive,
+  StagedUploadGrantRecord,
   StagedUploadRepository,
   UpdateCommentReply,
   UpdateCommentThread,
@@ -340,6 +341,11 @@ const stagedUploadFileRowSchema = z.object({
   size: nonnegativeIntegerSchema,
   storageToken: z.string(),
   uploadedAt: z.string().nullable(),
+});
+const stagedUploadGrantRowSchema = z.object({
+  grantDigest: z.string().nullable(),
+  principalId: z.string(),
+  projectId: z.string(),
 });
 const expiredStagedUploadRowSchema = z.object({
   id: z.string(),
@@ -2109,13 +2115,14 @@ export class PostgresArtifactRepository implements
         yield* this.#assertProjectActive(command.projectId);
         yield* sql`INSERT INTO staged_uploads (
           installation_id, project_id, id, principal_id, status, manifest_digest,
-          entry_path, routing_mode, created_at, expires_at, committed_version_id
+          entry_path, routing_mode, created_at, expires_at, committed_version_id,
+          grant_digest
         ) VALUES (
           ${installationId}, ${command.projectId}, ${command.id},
           ${command.principalId}, 'open',
           ${command.manifest.digest}, ${command.manifest.entryPath},
           ${command.manifest.routingMode}, ${command.createdAt},
-          ${command.expiresAt}, NULL
+          ${command.expiresAt}, NULL, ${command.grantDigest}
         )`;
         for (const file of command.files) {
           yield* sql`INSERT INTO staged_upload_files (
@@ -2146,6 +2153,20 @@ export class PostgresArtifactRepository implements
       uploadId,
       principalId,
     ));
+  }
+
+  async findStagedUploadGrant(
+    uploadId: string,
+  ): Promise<StagedUploadGrantRecord | null> {
+    const installationId = this.#installationId;
+    return this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      const rows = yield* sql`SELECT grant_digest AS "grantDigest",
+          principal_id AS "principalId", project_id AS "projectId"
+        FROM staged_uploads
+        WHERE installation_id = ${installationId} AND id = ${uploadId}`;
+      return stagedUploadGrantRowSchema.nullable().parse(rows[0] ?? null);
+    }));
   }
 
   async listExpiredStagedUploads(

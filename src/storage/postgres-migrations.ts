@@ -635,6 +635,11 @@ const widenRegisteredAgentKind = Effect.gen(function*() {
   for (const statement of statements) yield* sql.unsafe(statement);
 });
 
+const addStagedUploadGrant = Effect.gen(function*() {
+  const sql = yield* SqlClient;
+  yield* sql.unsafe("ALTER TABLE staged_uploads ADD COLUMN grant_digest TEXT");
+});
+
 const addArtifactSearchName = Effect.gen(function*() {
   const sql = yield* SqlClient;
   yield* sql.unsafe("ALTER TABLE artifacts ADD COLUMN search_name TEXT");
@@ -667,10 +672,11 @@ const migrationLoader = Migrator.fromRecord({
   "0009_git_history_mirror": addGitHistoryMirror,
   "0010_agent_capabilities": widenRegisteredAgentKind,
   "0011_artifact_search_name": addArtifactSearchName,
+  "0012_staged_upload_grant": addStagedUploadGrant,
 });
 
 /** Schema revision required by this Artifact Server build. */
-export const requiredPostgresSchemaVersion = 11;
+export const requiredPostgresSchemaVersion = 12;
 
 /** Migration compatibility observed without changing Postgres. */
 export interface PostgresMigrationStatus {
@@ -758,6 +764,9 @@ export const readPostgresMigrationStatus = Effect.gen(function*() {
   }, {
     migration_id: 11,
     name: "artifact_search_name",
+  }, {
+    migration_id: 12,
+    name: "staged_upload_grant",
   }] as const;
   const observedRequiredHistory = rows.filter(
     (row) => row.migration_id <= requiredPostgresSchemaVersion,

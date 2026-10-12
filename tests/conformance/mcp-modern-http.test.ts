@@ -48,7 +48,7 @@ const toolCallResultSchema = z.object({
 });
 const uploadPlanSchema = z.object({
   authorization: z.object({
-    credential: z.literal("reuse_the_mcp_bearer_credential"),
+    credential: z.literal("upload_grant"),
     scheme: z.literal("Bearer"),
   }),
   method: z.literal("PUT"),
@@ -59,6 +59,11 @@ const uploadPlanSchema = z.object({
 const createUploadResultSchema = z.object({
   files: z.array(uploadPlanSchema).min(1),
   manifestDigest: z.string(),
+  uploadGrant: z.object({
+    expiresAt: z.string(),
+    scheme: z.literal("Bearer"),
+    token: z.string().startsWith("as_upg_"),
+  }),
   uploadId: z.string(),
 });
 const sourceBindingResultSchema = z.object({
@@ -403,6 +408,7 @@ describe("modern MCP HTTP", () => {
     const filePlan = upload.files[0];
     if (filePlan === undefined) throw new Error("The MCP upload plan has no file.");
 
+    // An API key still authorizes the file PUT; the grant is not the only way.
     const uploaded = await fetch(filePlan.uploadUrl, {
       body: bytes,
       headers: {Authorization: `Bearer ${installation.apiToken}`},
@@ -555,7 +561,6 @@ describe("modern MCP HTTP", () => {
     );
     await uploadMcpFiles(
       updatedUpload,
-      installation.apiToken,
       new Map([
         ["assets/data.bin", assetBytes],
         ["index.html", indexBytes],
@@ -1062,9 +1067,9 @@ function declaredMcpFile(
 
 async function uploadMcpFiles(
   upload: z.infer<typeof createUploadResultSchema>,
-  token: string,
   files: ReadonlyMap<string, Uint8Array>,
 ): Promise<void> {
+  const token = upload.uploadGrant.token;
   await Promise.all(upload.files.map(async (plan) => {
     const bytes = files.get(plan.path);
     if (bytes === undefined) {

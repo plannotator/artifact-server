@@ -587,6 +587,8 @@ export interface CreateStagedUpload {
     readonly entry: CanonicalManifest["entries"][number];
     readonly storageToken: string;
   }[];
+  /** SHA-256 of the upload grant, or null when no grant was issued. */
+  readonly grantDigest: string | null;
   readonly id: string;
   readonly manifest: CanonicalManifest;
   readonly principalId: string;
@@ -686,6 +688,13 @@ export interface ContentSessionRepository {
   ): Promise<ContentSessionRecord | null>;
 }
 
+/** Who owns a staged upload and which grant, if any, may append its files. */
+export interface StagedUploadGrantRecord {
+  readonly grantDigest: string | null;
+  readonly principalId: string;
+  readonly projectId: string;
+}
+
 export interface StagedUploadRepository {
   createStagedUpload(command: CreateStagedUpload): Promise<StagedUpload>;
   findStagedUpload(
@@ -693,6 +702,7 @@ export interface StagedUploadRepository {
     uploadId: string,
     principalId: string,
   ): Promise<StagedUpload | null>;
+  findStagedUploadGrant(uploadId: string): Promise<StagedUploadGrantRecord | null>;
   markStagedFileUploaded(
     projectId: string,
     uploadId: string,

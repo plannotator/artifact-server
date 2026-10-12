@@ -116,6 +116,7 @@ import {
   type VersionRecord,
 } from "../core/model.js";
 import type { BlobStore } from "../core/ports.js";
+import { isUploadGrantToken } from "../core/upload-grant.js";
 import {
   disabledGitHistoryCapability,
   fixedGitHistoryCapabilityReader,
@@ -206,6 +207,9 @@ const contentTokenSchema = z
   .min(16)
   .max(100)
   .regex(/^[A-Za-z0-9_-]+$/u);
+/** The only route an upload grant opens: one file of one staged upload. */
+const uploadFileRoutePattern = /^\/api\/v1\/uploads\/[^/]+\/files\/[^/]+$/u;
+
 const bearerSchema = z
   .string()
   .regex(/^Bearer [A-Za-z0-9._~-]+$/u)
@@ -465,6 +469,7 @@ interface HttpEnvironment {
     readonly requestSpan: Tracer.Span;
     readonly sessionCsrfDigest: string | null;
     readonly sessionToken: string | null;
+    readonly uploadGrant: string | null;
   };
 }
 
@@ -806,6 +811,22 @@ export function createHttpApp(
           message: "A valid Artifact Server API key is required.",
         });
       }
+      if (isUploadGrantToken(parsed.data)) {
+        if (
+          context.req.method !== "PUT"
+          || !uploadFileRoutePattern.test(context.req.path)
+        ) {
+          throw new AuthenticationRequired({
+            message: "A valid upload grant is required.",
+          });
+        }
+        // No principal: the file route checks the grant against its upload.
+        context.set("authenticationMethod", "bearer");
+        context.set("sessionCsrfDigest", null);
+        context.set("sessionToken", null);
+        context.set("uploadGrant", parsed.data);
+        return next();
+      }
       const principal = await runHttpApplicationEffect(
         context,
         dependencies,
@@ -819,6 +840,7 @@ export function createHttpApp(
       context.set("principal", principal);
       context.set("sessionCsrfDigest", null);
       context.set("sessionToken", null);
+      context.set("uploadGrant", null);
       return next();
     }
 
@@ -844,6 +866,7 @@ export function createHttpApp(
     context.set("principal", authenticated.principal);
     context.set("sessionCsrfDigest", authenticated.csrfDigest);
     context.set("sessionToken", parsedSession.data);
+    context.set("uploadGrant", null);
     if (isUnsafeMethod(context.req.method)) {
       requireBrowserMutationSecurity(context, dependencies);
     }
@@ -2191,17 +2214,26 @@ export function createHttpApp(
 
   app.put("/api/v1/uploads/:uploadId/files/:storageToken", async (context) => {
     const body = context.req.raw.body ?? emptyByteStream();
+    const grant = context.get("uploadGrant");
     const upload = await runHttpApplicationEffect(
       context,
       dependencies,
       StagedUploadService.use((stagedUploads) =>
-        stagedUploads.uploadFile({
-          body,
-          principal: context.get("principal"),
-          projectId: requestedProjectId(context),
-          storageToken: context.req.param("storageToken"),
-          uploadId: context.req.param("uploadId"),
-        })
+        grant === null
+          ? stagedUploads.uploadFile({
+            body,
+            principal: context.get("principal"),
+            projectId: requestedProjectId(context),
+            storageToken: context.req.param("storageToken"),
+            uploadId: context.req.param("uploadId"),
+          })
+          : stagedUploads.uploadFileWithGrant({
+            body,
+            grant: Redacted.make(grant, {label: "upload-grant"}),
+            projectId: requestedProjectId(context),
+            storageToken: context.req.param("storageToken"),
+            uploadId: context.req.param("uploadId"),
+          })
       ),
     );
     const file = upload.files.find(

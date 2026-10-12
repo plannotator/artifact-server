@@ -1190,7 +1190,7 @@ export function createArtifactMcpServer(
     {
       title: "Begin a file upload",
       description:
-        "Begin publishing actual files. Supply relative paths, byte sizes, SHA-256 fingerprints, media types, and the entry file. Upload each file to its returned URL, then call artifact_commit_upload. Do not send file bytes through MCP.",
+        "Begin publishing actual files. Supply relative paths, byte sizes, SHA-256 fingerprints, media types, and the entry file. PUT each file's exact bytes to its returned uploadUrl with the header Authorization: Bearer <uploadGrant.token>, then call artifact_commit_upload. The upload grant works only for this upload's files and expires with it; never print it or repeat it in chat. Do not send file bytes through MCP.",
       inputSchema: z.object({
         entryPath: z.string().min(1).max(1_024),
         files: z.array(declaredFileSchema).min(1).max(maximumDeclaredFiles),
@@ -1205,7 +1205,7 @@ export function createArtifactMcpServer(
         expiresAt: z.string(),
         files: z.array(z.object({
           authorization: z.object({
-            credential: z.literal("reuse_the_mcp_bearer_credential"),
+            credential: z.literal("upload_grant"),
             scheme: z.literal("Bearer"),
           }).strict(),
           method: z.literal("PUT"),
@@ -1215,15 +1215,20 @@ export function createArtifactMcpServer(
         }).strict()),
         manifestDigest: z.string(),
         projectId: z.string(),
+        uploadGrant: z.object({
+          expiresAt: z.string(),
+          scheme: z.literal("Bearer"),
+          token: z.string(),
+        }).strict(),
         uploadId: z.string(),
       }).strict(),
       annotations: additiveWriteAnnotations,
     },
     async ({entryPath, files, projectId, routingMode}) => toolResult(async () => {
-      const upload = await runMcpApplicationEffect(
+      const created = await runMcpApplicationEffect(
         dependencies,
         StagedUploadService.use((uploads) =>
-          uploads.createUpload({
+          uploads.createUploadWithGrant({
             entryPath,
             files,
             principal: identity.principal,
@@ -1232,7 +1237,7 @@ export function createArtifactMcpServer(
           })
         ),
       );
-      return uploadPlan(applicationUrl, upload);
+      return uploadPlan(applicationUrl, created.upload, created.grant);
     }),
   );
 
@@ -2324,7 +2329,7 @@ function agentInstructions(mode: "local" | "remote"): string {
     "Artifact Server stores actual files as immutable versions. It does not accept inline HTML, CSS, JavaScript, base64, or invented file contents through MCP.",
     "Start with artifact_capabilities when you do not know this installation's limits.",
     "Artifacts belong to projects. Omit projectId only when the installation has one active project; otherwise call project_list and choose explicitly.",
-    "For publishing, inspect the selected file or finished directory on the client, compute each relative path, byte length, media type, and SHA-256 fingerprint, call artifact_create_upload, PUT the exact bytes to every returned uploadUrl using the same bearer credential, then call artifact_commit_upload.",
+    "For publishing, inspect the selected file or finished directory on the client, compute each relative path, byte length, media type, and SHA-256 fingerprint, call artifact_create_upload, PUT the exact bytes to every returned uploadUrl with Authorization: Bearer <uploadGrant.token>, then call artifact_commit_upload. The upload grant works only for that upload; never print it or repeat it in chat.",
     "After publishing, always give the user links.review first so they can see the exact version full screen and comment. Mention links.version second when the raw artifact is useful. Do not put content bootstrap URLs or credentials in chat.",
     "When publishing a new version, first call artifact_get and pass its current version ID as expectedCurrentVersionId. On conflict, inspect the new current version before retrying.",
     "Use a stable application idempotency key when retrying the same mutation. Use a new key only for an intentional new operation.",
@@ -2367,7 +2372,7 @@ function capabilities(
       workflow: [
         "Inspect one actual file or finished directory on the client.",
         "Call artifact_create_upload with portable file metadata.",
-        "Upload each exact file to its returned uploadUrl.",
+        "Upload each exact file to its returned uploadUrl with Authorization: Bearer <uploadGrant.token>.",
         "Call artifact_commit_upload with an idempotency key and optimistic version when updating.",
         "Inspect the returned immutable version and browser links.",
       ],
@@ -2386,6 +2391,7 @@ function capabilities(
 function uploadPlan(
   applicationUrl: URL,
   upload: StagedUpload,
+  grant: Redacted.Redacted,
 ) {
   return {
     commit: {
@@ -2395,7 +2401,7 @@ function uploadPlan(
     expiresAt: upload.expiresAt,
     files: upload.files.map((file) => ({
       authorization: {
-        credential: "reuse_the_mcp_bearer_credential" as const,
+        credential: "upload_grant" as const,
         scheme: "Bearer" as const,
       },
       method: "PUT" as const,
@@ -2408,6 +2414,11 @@ function uploadPlan(
     })),
     manifestDigest: upload.manifest.digest,
     projectId: upload.projectId,
+    uploadGrant: {
+      expiresAt: upload.expiresAt,
+      scheme: "Bearer" as const,
+      token: Redacted.value(grant),
+    },
     uploadId: upload.id,
   };
 }
