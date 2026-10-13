@@ -16,7 +16,7 @@
     "verify": "pnpm typecheck && pnpm test:evidence"
   },
   "dependencies": {
-    "@pulumi/gcp": "9.34.1",
+    "@pulumi/gcp": "10.0.0",
     "@pulumi/pulumi": "3.257.0",
     "@pulumi/random": "4.21.1",
     "effect": "4.0.0-rc.115"
