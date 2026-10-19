@@ -79,7 +79,7 @@ jobs:
       - name: Verify GCP Pulumi project
         run: pnpm test:gcp-pulumi
       - name: Upload compiled application
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pr-compiled-${{ github.run_id }}-${{ github.run_attempt }}
           path: dist/
@@ -155,7 +155,7 @@ jobs:
         run: pnpm test:web:prebuilt
       - name: Upload browser diagnostics
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pr-browser-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/browser/
@@ -342,7 +342,7 @@ jobs:
         run: pnpm test:oidc
 
       - name: Upload full-gate evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: full-gate-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
