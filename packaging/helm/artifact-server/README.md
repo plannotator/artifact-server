@@ -104,7 +104,9 @@ The Service is private `ClusterIP`. Choose one routing path:
 Both `artifacts.example.com` and `*.content.example.net` route to the same
 Service. An enabled Ingress requires the application origin to have no path or
 explicit port. The two hosts remain separate registrable domains for browser
-isolation.
+isolation. A private-network installation that accepts same-site artifact
+content can set `configuration.allowSameSiteContent: true`; see the
+[deployment guide](../../../docs/deployment.md).
 
 ## Workload identity
 

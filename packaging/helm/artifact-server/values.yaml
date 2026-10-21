@@ -16,6 +16,7 @@ configuration:
   bootstrapAdministratorEmail: ""
   applicationOrigin: ""
   contentDomain: ""
+  allowSameSiteContent: false
   postgresConnectionBudget: 22
   postgresPoolSize: 10
   requestLogSampleRate: 0.01

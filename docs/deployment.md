@@ -27,6 +27,8 @@ Each remote deployment needs these boundaries:
 
 The application origin serves Artifact Server, its API, and its MCP endpoint. The content domain serves untrusted artifact files.
 
+The server refuses to start when both use the same registrable domain, because artifact JavaScript would then be same-site with the application. A private-network installation that accepts this risk can set `ARTIFACT_SERVER_ALLOW_SAME_SITE_CONTENT=true`. Artifact JavaScript can then set cookies for, and send same-site requests to, the application and every other host on that domain.
+
 ## Select storage
 
 Compact Compose uses one SQLite database and one file volume. Run only one application process with this data layer.
