@@ -73,6 +73,7 @@
         "bootstrapAdministratorEmail": {"type": "string", "format": "email"},
         "applicationOrigin": {"type": "string", "pattern": "^https://[^/\\s]+$"},
         "contentDomain": {"type": "string", "pattern": "^[A-Za-z0-9.-]+$"},
+        "allowSameSiteContent": {"type": "boolean"},
         "postgresConnectionBudget": {"type": "integer", "minimum": 1, "maximum": 100000},
         "postgresPoolSize": {"type": "integer", "minimum": 1, "maximum": 100},
         "requestLogSampleRate": {"type": "number", "minimum": 0, "maximum": 1},

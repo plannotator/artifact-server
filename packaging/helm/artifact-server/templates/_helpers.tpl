@@ -139,6 +139,8 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
 {{- define "artifact-server.runtimeEnvironment" -}}
+- name: ARTIFACT_SERVER_ALLOW_SAME_SITE_CONTENT
+  value: {{ .Values.configuration.allowSameSiteContent | quote }}
 - name: ARTIFACT_SERVER_API_TOKEN_FILE
   value: /run/secrets/artifact-server/api-token
 - name: ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL

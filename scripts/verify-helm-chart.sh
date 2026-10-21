@@ -35,6 +35,12 @@ helm template artifact-server "$artifactserver_chart" \
   --set ingress.applicationTlsSecretName=artifact-server-application-tls \
   --set ingress.contentTlsSecretName=artifact-server-content-tls >/dev/null
 
+helm template artifact-server "$artifactserver_chart" \
+  --kube-version 1.36.0 \
+  "${artifactserver_values[@]}" \
+  --set configuration.contentDomain=content.artifacts.example.test \
+  --set configuration.allowSameSiteContent=true >/dev/null
+
 expect_render_failure() {
   local artifactserver_expected=$1
   shift

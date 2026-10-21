@@ -64,6 +64,7 @@ const postgresUrlSchema = Schema.String.check(
   Schema.isPattern(/^postgres(?:ql)?:\/\/[^\s]+$/u),
 );
 const linkedFilesModeSchema = Schema.Literals(["off", "on"]);
+const allowSameSiteContentSchema = Schema.Literals(["false", "true"]);
 const urlStringSchema = Schema.String.check(
   Schema.isPattern(/^https?:\/\/[^\s]+$/u),
 );
@@ -232,7 +233,11 @@ export const parseCompactRuntimeConfiguration = Effect.fn(
     input.environment["ARTIFACT_SERVER_CONTENT_DOMAIN"],
     hostnameSchema,
   );
-  yield* assertBrowserIsolation(applicationOrigin, contentDomain);
+  yield* assertBrowserIsolation(
+    applicationOrigin,
+    contentDomain,
+    yield* parseAllowSameSiteContent(input.environment),
+  );
   yield* ensureWritableDirectory(layout.dataDirectory);
   return {
     apiToken,
@@ -284,7 +289,11 @@ export const parseExternalStorageRuntimeConfiguration = Effect.fn(
     environment["ARTIFACT_SERVER_CONTENT_DOMAIN"],
     hostnameSchema,
   );
-  yield* assertBrowserIsolation(applicationOrigin, contentDomain);
+  yield* assertBrowserIsolation(
+    applicationOrigin,
+    contentDomain,
+    yield* parseAllowSameSiteContent(environment),
+  );
   yield* assertLinkedFilesAreLocalOnly(yield* parseLinkedFilesMode(environment));
   const configuredObjectStorage = yield* parseObjectStorage(environment);
   const apiToken = yield* readSecret(
@@ -832,9 +841,20 @@ function assertHttpsServiceUrl(
   return Effect.void;
 }
 
+function parseAllowSameSiteContent(
+  environment: NodeJS.ProcessEnv,
+): Effect.Effect<boolean, RuntimeConfigurationError> {
+  return parseRequiredEnvironment(
+    "ARTIFACT_SERVER_ALLOW_SAME_SITE_CONTENT",
+    environment["ARTIFACT_SERVER_ALLOW_SAME_SITE_CONTENT"] ?? "false",
+    allowSameSiteContentSchema,
+  ).pipe(Effect.map((value) => value === "true"));
+}
+
 function assertBrowserIsolation(
   applicationOrigin: string,
   contentDomain: string,
+  allowSameSiteContent: boolean,
 ): Effect.Effect<void, RuntimeConfigurationError> {
   let origin: URL;
   try {
@@ -863,6 +883,8 @@ function assertBrowserIsolation(
       "invalid_origin",
     );
   }
+  // Operators of private networks can accept same-site artifact content.
+  if (allowSameSiteContent) return Effect.void;
   const applicationDomain = getDomain(origin.hostname, {allowPrivateDomains: true});
   const publishedDomain = getDomain(contentDomain, {allowPrivateDomains: true});
   if (
