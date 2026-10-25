@@ -447,6 +447,7 @@ export class IdentityRepositoryFailure extends Schema.TaggedError<IdentityReposi
       "revokeApiKey",
       "revokeApplicationSession",
       "rotateApiKey",
+      "setMemberRole",
     ]),
   },
 ) {}

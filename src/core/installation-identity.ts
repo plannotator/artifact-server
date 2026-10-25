@@ -35,6 +35,8 @@ export interface ExternalIdentity {
   readonly displayName: string;
   readonly email: string;
   readonly emailVerified: boolean;
+  /** Issuer group names, or null when the provider did not report any. */
+  readonly groups: readonly string[] | null;
   readonly provider: string;
   readonly subject: string;
 }

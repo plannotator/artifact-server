@@ -339,6 +339,26 @@ export class SqliteIdentityRepository implements BootstrapManagedApiKeyRepositor
     }
   }
 
+  async setMemberRole(
+    installationId: string,
+    memberId: string,
+    role: InstallationMember["role"],
+    updatedAt: string,
+  ): Promise<InstallationMember> {
+    const result = this.#database.prepare(`
+      UPDATE installation_members
+      SET role = ?, status = ?, updated_at = ?
+      WHERE installation_id = ? AND id = ?
+    `).run(role, memberStatuses.active, updatedAt, installationId, memberId);
+    const member = result.changes === 1
+      ? this.#findMember(installationId, memberId)
+      : null;
+    if (member === null) {
+      throw new IdentityNotFound({message: "The member does not exist."});
+    }
+    return member;
+  }
+
   async createApplicationSession(
     command: CreateApplicationSessionRecord,
   ): Promise<ApplicationSession> {

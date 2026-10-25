@@ -519,6 +519,22 @@ export function createD1IdentityRepository(
       }
       return withoutSecretDigest(replacement);
     },
+
+    setMemberRole: async (installationId, memberId, role, updatedAt) => {
+      const result = await database.prepare(`
+        UPDATE installation_members
+        SET role = ?, status = ?, updated_at = ?
+        WHERE installation_id = ? AND id = ?
+      `).bind(role, memberStatuses.active, updatedAt, installationId, memberId)
+        .run();
+      const member = result.meta.changes === 1
+        ? await findMember(installationId, memberId)
+        : null;
+      if (member === null) {
+        throw new IdentityNotFound({message: "The member does not exist."});
+      }
+      return member;
+    },
   };
 }
 

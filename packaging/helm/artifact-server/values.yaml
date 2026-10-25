@@ -37,6 +37,7 @@ secret:
     s3SecretAccessKey: ""
     workosApiKey: ""
     oidcClientSecret: ""
+    # oidcDirectoryClientSecret: oidc-directory-client-secret
 
 identity:
   workosClientId: ""
@@ -44,6 +45,18 @@ identity:
   oidcClientId: ""
   oidcIssuer: ""
   oidcScopes: ""
+  # Opt-in issuer group roles, unset by default so admission stays manual.
+  # Either list admits people from the issuer's groups claim and sets their
+  # role on every sign-in. Group names match exactly.
+  # oidcGroupsClaim: groups
+  # oidcMemberGroups: [artifact-users]
+  # oidcAdministratorGroups: [artifact-admins]
+  # Opt-in Keycloak directory sync, which admits group members before they
+  # first sign in and needs the group roles above. Setting the client ID
+  # enables the directorySync CronJob; secret.keys.oidcDirectoryClientSecret
+  # must name its client secret.
+  # oidcDirectoryProvider: keycloak
+  # oidcDirectoryClientId: artifact-server-directory
 
 serviceAccount:
   create: true
@@ -124,6 +137,13 @@ cleanup:
   settleDelayMilliseconds: 300000
   activeDeadlineSeconds: 300
   backoffLimit: 1
+
+# Runs `maintenance sync-directory --once` when identity.oidcDirectoryClientId
+# is set.
+directorySync:
+  schedule: "*/10 * * * *"
+  activeDeadlineSeconds: 300
+  backoffLimit: 0
 
 ingress:
   enabled: false

@@ -118,7 +118,8 @@
             "s3AccessKeyId": {"type": "string"},
             "s3SecretAccessKey": {"type": "string"},
             "workosApiKey": {"type": "string"},
-            "oidcClientSecret": {"type": "string"}
+            "oidcClientSecret": {"type": "string"},
+            "oidcDirectoryClientSecret": {"type": "string"}
           }
         }
       }
@@ -132,7 +133,20 @@
         "workosIssuer": {"type": "string"},
         "oidcClientId": {"type": "string"},
         "oidcIssuer": {"type": "string"},
-        "oidcScopes": {"type": "string"}
+        "oidcScopes": {"type": "string"},
+        "oidcGroupsClaim": {"type": "string"},
+        "oidcMemberGroups": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[^,]*[^,\\s][^,]*$"}
+        },
+        "oidcAdministratorGroups": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[^,]*[^,\\s][^,]*$"}
+        },
+        "oidcDirectoryProvider": {"enum": ["keycloak"]},
+        "oidcDirectoryClientId": {"type": "string"}
       }
     },
     "serviceAccount": {
@@ -224,6 +238,16 @@
         "batchSize": {"type": "integer", "minimum": 1, "maximum": 1000},
         "concurrency": {"type": "integer", "minimum": 1, "maximum": 32},
         "settleDelayMilliseconds": {"type": "integer", "minimum": 1000, "maximum": 86400000},
+        "activeDeadlineSeconds": {"type": "integer", "minimum": 10, "maximum": 3600},
+        "backoffLimit": {"type": "integer", "minimum": 0, "maximum": 10}
+      }
+    },
+    "directorySync": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schedule", "activeDeadlineSeconds", "backoffLimit"],
+      "properties": {
+        "schedule": {"type": "string", "minLength": 1},
         "activeDeadlineSeconds": {"type": "integer", "minimum": 10, "maximum": 3600},
         "backoffLimit": {"type": "integer", "minimum": 0, "maximum": 10}
       }

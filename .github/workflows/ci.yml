@@ -10,12 +10,9 @@ on:
         type: string
   pull_request:
     branches: [main]
-  merge_group:
-    types: [checks_requested]
   push:
-    branches: [main]
-  schedule:
-    - cron: "17 9 * * *"
+    tags:
+      - '**'
   workflow_dispatch:
     inputs:
       tier:

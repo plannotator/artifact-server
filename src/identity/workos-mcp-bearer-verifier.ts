@@ -212,6 +212,7 @@ function workOsExternalIdentity(
         .join(" ") || user.email,
     email: user.email,
     emailVerified: user.email_verified,
+    groups: null,
     provider: workOsProviderName,
     subject: user.id,
   };

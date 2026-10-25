@@ -67,6 +67,10 @@ export interface StubOidcClaims {
   expiresInSeconds: number;
   familyName: string | null;
   givenName: string | null;
+  /** Group names, or a malformed bare string; null leaves the claim out. */
+  groups: readonly string[] | string | null;
+  /** The claim that carries `groups`. */
+  groupsClaim: string;
   issuedAtSkewSeconds: number;
   issuer: string | null;
   name: string | null;
@@ -136,6 +140,8 @@ export async function startStubOidcProvider(
     expiresInSeconds: 300,
     familyName: null,
     givenName: null,
+    groups: null,
+    groupsClaim: "groups",
     issuedAtSkewSeconds: 0,
     issuer: null,
     name: "Stub Administrator",
@@ -318,6 +324,7 @@ function idTokenPayload(
   }
   if (claims.familyName !== null) payload["family_name"] = claims.familyName;
   if (claims.givenName !== null) payload["given_name"] = claims.givenName;
+  if (claims.groups !== null) payload[claims.groupsClaim] = claims.groups;
   if (claims.name !== null) payload["name"] = claims.name;
   return payload;
 }

@@ -25,6 +25,7 @@ spec:
           restartPolicy: Never
           serviceAccountName: {{ include "artifact-server.serviceAccountName" . }}
           automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+          enableServiceLinks: false
           securityContext:
             {{- toYaml .Values.podSecurityContext | nindent 12 }}
           {{- with .Values.imagePullSecrets }}

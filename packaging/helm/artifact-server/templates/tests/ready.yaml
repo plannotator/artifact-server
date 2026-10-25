@@ -12,6 +12,7 @@ metadata:
 spec:
   restartPolicy: Never
   automountServiceAccountToken: false
+  enableServiceLinks: false
   securityContext:
     {{- toYaml .Values.podSecurityContext | nindent 4 }}
   containers:

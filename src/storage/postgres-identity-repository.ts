@@ -295,6 +295,38 @@ export class PostgresIdentityRepository implements BootstrapManagedApiKeyReposit
     }));
   }
 
+  async setMemberRole(
+    installationId: string,
+    memberId: string,
+    role: InstallationMember["role"],
+    updatedAt: string,
+  ): Promise<InstallationMember> {
+    this.#assertInstallationScope(installationId);
+    const member = await this.#database.run(Effect.gen(function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen(function*() {
+        // Serialize with deactivation, which counts administrators under it.
+        yield* sql`SELECT pg_advisory_xact_lock(
+          hashtextextended(${`artifact-server:member-policy:${installationId}`}, 0)
+        )`;
+        const rows = yield* sql.unsafe<object>(
+          `UPDATE installation_members
+           SET role = $1, status = $2, updated_at = $3
+           WHERE installation_id = $4 AND id = $5
+           RETURNING id, installation_id AS "installationId", email,
+             display_name AS "displayName", role, status,
+             created_at AS "createdAt", updated_at AS "updatedAt"`,
+          [role, memberStatuses.active, updatedAt, installationId, memberId],
+        );
+        return memberRowSchema.nullable().parse(rows[0] ?? null);
+      }));
+    }));
+    if (member === null) {
+      throw new IdentityNotFound({message: "The member does not exist."});
+    }
+    return member;
+  }
+
   async createApplicationSession(
     command: CreateApplicationSessionRecord,
   ): Promise<ApplicationSession> {

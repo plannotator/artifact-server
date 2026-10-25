@@ -51,6 +51,10 @@ import {
   startStubOidcProvider,
   type RunningStubOidcProvider,
 } from "../support/stub-oidc-provider.js";
+import {
+  keycloakUser,
+  startStubKeycloak,
+} from "../support/stub-keycloak-directory.js";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const externalStorageCli = path.join(repositoryRoot, "dist/cli/main.js");
@@ -1023,6 +1027,149 @@ describe.sequential("external-storage Postgres and S3 runtime", () => {
         member.role === "administrator" && member.status === "active"
       )).toHaveLength(1);
     } finally {
+      await database.close();
+    }
+  });
+
+  test("external-storage foundation: Postgres sets member roles and the directory sync CLI reconciles members", async () => {
+    const database = await PostgresDatabase.open({
+      maxConnections: 2,
+      url: Redacted.make(environment.databaseUrl),
+    }, "validate");
+    const keycloak = await startStubKeycloak();
+    const roleInstallation = `member-role-${randomUUID()}`;
+    const syncInstallation = `directory-sync-${randomUUID()}`;
+    try {
+      await PostgresArtifactRepository.open(database, roleInstallation);
+      const roles = new PostgresIdentityRepository(database, roleInstallation);
+      await roles.admitMember({
+        createdAt: "2026-10-12T10:00:00.000Z",
+        displayName: "Manual Member",
+        email: "manual@example.test",
+        id: "manual-member",
+        installationId: roleInstallation,
+        role: "member",
+      });
+      await expect(roles.setMemberRole(
+        roleInstallation,
+        "manual-member",
+        "administrator",
+        "2026-10-12T10:01:00.000Z",
+      )).resolves.toMatchObject({role: "administrator", status: "active"});
+      // The last administrator stays; group policy demotes before it removes.
+      await expect(roles.deactivateMember(
+        roleInstallation,
+        "manual-member",
+        "2026-10-12T10:02:00.000Z",
+      )).rejects.toMatchObject({_tag: "IdentityConflict"});
+      await roles.setMemberRole(
+        roleInstallation,
+        "manual-member",
+        "member",
+        "2026-10-12T10:03:00.000Z",
+      );
+      await roles.deactivateMember(
+        roleInstallation,
+        "manual-member",
+        "2026-10-12T10:04:00.000Z",
+      );
+      await expect(roles.setMemberRole(
+        roleInstallation,
+        "manual-member",
+        "administrator",
+        "2026-10-12T10:05:00.000Z",
+      )).resolves.toMatchObject({role: "administrator", status: "active"});
+      await expect(roles.setMemberRole(
+        roleInstallation,
+        "absent-member",
+        "member",
+        "2026-10-12T10:06:00.000Z",
+      )).rejects.toMatchObject({_tag: "IdentityNotFound"});
+
+      // The sync runs through the compiled CLI against a fresh installation.
+      const syncEnvironment = {
+        ARTIFACT_SERVER_API_TOKEN: managedTestKey(syncInstallation),
+        ARTIFACT_SERVER_BOOTSTRAP_ADMIN_EMAIL: oidcAdministratorEmail,
+        ARTIFACT_SERVER_CONTENT_DOMAIN: "content.example.net",
+        ARTIFACT_SERVER_DATABASE_URL: environment.databaseUrl,
+        ARTIFACT_SERVER_INSTALLATION_ID: syncInstallation,
+        ARTIFACT_SERVER_OIDC_ADMINISTRATOR_GROUPS: "artifact-admins",
+        ARTIFACT_SERVER_OIDC_CLIENT_ID: "external-storage-integration",
+        ARTIFACT_SERVER_OIDC_DIRECTORY_CLIENT_ID: keycloak.clientId,
+        ARTIFACT_SERVER_OIDC_DIRECTORY_CLIENT_SECRET: keycloak.clientSecret,
+        ARTIFACT_SERVER_OIDC_DIRECTORY_PROVIDER: "keycloak",
+        ARTIFACT_SERVER_OIDC_ISSUER: keycloak.issuer,
+        ARTIFACT_SERVER_OIDC_MEMBER_GROUPS: "artifact-users",
+        ARTIFACT_SERVER_ORIGIN: "https://artifacts.example.com",
+        ARTIFACT_SERVER_S3_ACCESS_KEY_ID: environment.accessKey,
+        ARTIFACT_SERVER_S3_BUCKET: bucket,
+        ARTIFACT_SERVER_S3_ENDPOINT: environment.endpoint,
+        ARTIFACT_SERVER_S3_FORCE_PATH_STYLE: "true",
+        ARTIFACT_SERVER_S3_REGION: region,
+        ARTIFACT_SERVER_S3_SECRET_ACCESS_KEY: environment.secretKey,
+      };
+      const sync = async () => {
+        const result = await runExternalCli([
+          "maintenance",
+          "sync-directory",
+          "--once",
+          "--mode",
+          "external-storage",
+        ], syncEnvironment);
+        if (result.exitCode !== 0) {
+          return {failure: result.output};
+        }
+        return {report: z.record(z.string(), z.number())
+          .parse(JSON.parse(result.output.split("\n").at(-1) ?? ""))};
+      };
+      const synced = new PostgresIdentityRepository(database, syncInstallation);
+      const members = async () =>
+        (await synced.listMembers(syncInstallation))
+          .map(({email, role, status}) => ({email, role, status}))
+          .toSorted((left, right) => left.email.localeCompare(right.email));
+
+      keycloak.groups.set("artifact-admins", [keycloakUser("ada")]);
+      keycloak.groups.set("artifact-users", [
+        keycloakUser("bob"),
+        keycloakUser("carol", {emailVerified: false}),
+      ]);
+      expect(await sync()).toEqual({report: {
+        groups: 2,
+        directoryUsers: 3,
+        admitted: 2,
+        reactivated: 0,
+        roleChanged: 0,
+        deactivated: 0,
+        unchanged: 0,
+        skipped: 1,
+      }});
+
+      keycloak.groups.set("artifact-admins", [keycloakUser("bob")]);
+      keycloak.groups.set("artifact-users", [keycloakUser("ada")]);
+      expect(await sync()).toMatchObject({report: {roleChanged: 2}});
+      expect(await members()).toEqual([
+        {email: "ada@example.test", role: "member", status: "active"},
+        {email: "bob@example.test", role: "administrator", status: "active"},
+      ]);
+
+      // The last administrator leaves with the group, then returns restored.
+      keycloak.groups.set("artifact-admins", []);
+      expect(await sync()).toMatchObject({report: {deactivated: 1}});
+      keycloak.groups.set("artifact-admins", [keycloakUser("bob")]);
+      expect(await sync()).toMatchObject({report: {reactivated: 1}});
+      expect(await members()).toEqual([
+        {email: "ada@example.test", role: "member", status: "active"},
+        {email: "bob@example.test", role: "administrator", status: "active"},
+      ]);
+
+      keycloak.groups.delete("artifact-users");
+      const refused = await sync();
+      expect(refused).toEqual({failure: expect.stringContaining(
+        "The Keycloak group artifact-users does not exist.",
+      )});
+      expect(await members()).toHaveLength(2);
+    } finally {
+      await keycloak.stop();
       await database.close();
     }
   });

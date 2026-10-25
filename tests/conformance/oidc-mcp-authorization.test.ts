@@ -1,4 +1,6 @@
 import {createServer, type Server} from "node:http";
+import path from "node:path";
+import {DatabaseSync} from "node:sqlite";
 
 import {
   CLIENT_CAPABILITIES_META_KEY,
@@ -15,6 +17,7 @@ import {
 } from "jose";
 import {Effect, Predicate, Redacted} from "effect";
 import {afterEach, beforeEach, describe, expect, test} from "vitest";
+import {z} from "zod";
 
 import {createOidcHostedAuthentication} from
   "../../src/identity/oidc-hosted-authentication.js";
@@ -37,6 +40,14 @@ const realmPath = "/realms/artifact";
 const resource = "https://staging.artifactserver.test/mcp";
 const subject = "9f1d2c3b-0000-4000-8000-artifactserver";
 const userEmail = "administrator@example.test";
+const administratorGroup = "artifact-admins";
+const memberGroup = "artifact-users";
+const memberRowSchema = z.object({
+  email: z.string(),
+  id: z.string(),
+  role: z.string(),
+  status: z.string(),
+});
 
 describe("generic OIDC MCP authorization", () => {
   let installation: TestInstallation;
@@ -337,12 +348,144 @@ describe("generic OIDC MCP authorization", () => {
       issueToken({idToken: true}))).rejects.toThrow("ID token is not");
   });
 
+  test("without group roles a groups claim, even a malformed one, changes nothing", async () => {
+    expect.hasAssertions();
+    expect((await mcpDiscovery(await issueToken({groups: ["unrelated"]})))
+      .status).toBe(200);
+    expect((await mcpDiscovery(await issueToken({groups: "not-a-list"})))
+      .status).toBe(200);
+    expect(members(installation)).toEqual([expect.objectContaining({
+      email: userEmail,
+      role: "administrator",
+      status: "active",
+    })]);
+  });
+
+  describe("with issuer group roles", () => {
+    beforeEach(async () => {
+      // Replace the plain server before anyone has signed in.
+      await server.stop();
+      const authorizationServer = await loadOidcAuthorizationServer(issuer);
+      server = await startTestServer(installation, {
+        bootstrapAdministratorEmail: userEmail,
+        externalMcpOAuthVerifier: new OidcMcpBearerVerifier({
+          audience: resource,
+          groupsClaim: "groups",
+          issuer,
+          jwksUri: authorizationServer.jwksUri,
+          userInfoEndpoint: authorizationServer.userInfoEndpoint,
+        }),
+        groupRolePolicy: {
+          administratorGroups: [administratorGroup],
+          memberGroups: [memberGroup],
+        },
+        mcpOAuthResource: {
+          authorizationServerMetadata: authorizationServer.metadata,
+          resource,
+        },
+      });
+    });
+
+    test("groups admit a member or an administrator and every later token re-applies them", async () => {
+      expect.hasAssertions();
+      expect((await mcpDiscovery(await issueToken({groups: [memberGroup]})))
+        .status).toBe(200);
+      const [admitted] = members(installation);
+      expect(admitted).toMatchObject({role: "member", status: "active"});
+
+      // Promotion and demotion follow the groups of each presented token.
+      expect((await mcpDiscovery(await issueToken({
+        groups: [memberGroup, administratorGroup],
+      }))).status).toBe(200);
+      expect(members(installation)).toEqual([
+        {...admitted, role: "administrator"},
+      ]);
+      expect((await mcpDiscovery(await issueToken({groups: [memberGroup]})))
+        .status).toBe(200);
+      expect(members(installation)).toEqual([{...admitted, role: "member"}]);
+    });
+
+    test("a person in no admitted group is refused and their membership deactivated", async () => {
+      expect.hasAssertions();
+      expect((await mcpDiscovery(await issueToken({
+        groups: [administratorGroup],
+      }))).status).toBe(200);
+      const [admitted] = members(installation);
+      expect(admitted).toMatchObject({role: "administrator", status: "active"});
+
+      // Group names compare exactly, so a differently cased group is no group.
+      expect((await mcpDiscovery(await issueToken({
+        groups: ["Artifact-Admins", "unrelated"],
+      }))).status).toBe(401);
+      // The last administrator leaves too: the issuer decides who administers.
+      expect(members(installation)).toEqual([
+        {...admitted, role: "member", status: "inactive"},
+      ]);
+      expect((await mcpDiscovery(await issueToken({}))).status).toBe(401);
+
+      // Returning to a group restores the same member rather than a new one.
+      expect((await mcpDiscovery(await issueToken({groups: [memberGroup]})))
+        .status).toBe(200);
+      expect(members(installation)).toEqual([
+        {...admitted, role: "member", status: "active"},
+      ]);
+    });
+
+    test("the bootstrap email admits no one outside the groups", async () => {
+      expect.hasAssertions();
+      // Without a policy this verified bootstrap email would become the first
+      // administrator of the empty installation.
+      expect((await mcpDiscovery(await issueToken({}))).status).toBe(401);
+      expect((await mcpDiscovery(await issueToken({groups: []}))).status)
+        .toBe(401);
+      expect(members(installation)).toEqual([]);
+      // Verified email is still required before any group counts.
+      expect((await mcpDiscovery(await issueToken({
+        emailVerified: false,
+        groups: [administratorGroup],
+      }))).status).toBe(401);
+      expect(members(installation)).toEqual([]);
+    });
+
+    test("a malformed groups claim is refused as a provider failure", async () => {
+      expect.hasAssertions();
+      expect((await mcpDiscovery(await issueToken({groups: administratorGroup})))
+        .status).toBe(500);
+      expect((await mcpDiscovery(await issueToken({
+        groups: [administratorGroup, 7],
+      }))).status).toBe(500);
+      expect(members(installation)).toEqual([]);
+    });
+
+    test("a lean token takes its groups from userinfo on every call", async () => {
+      expect.hasAssertions();
+      provider.setUserInfoGroups([administratorGroup]);
+      expect((await mcpDiscovery(await issueToken({profile: false}))).status)
+        .toBe(200);
+      expect(members(installation)).toEqual([
+        expect.objectContaining({role: "administrator", status: "active"}),
+      ]);
+      provider.setUserInfoGroups(null);
+      // With userinfo silent, the token's own claim decides.
+      expect((await mcpDiscovery(await issueToken({
+        groups: [memberGroup],
+        profile: false,
+      }))).status).toBe(200);
+      expect(members(installation)).toEqual([
+        expect.objectContaining({role: "member", status: "active"}),
+      ]);
+      expect(provider.userInfoRequests()).toBe(2);
+    });
+  });
+
   async function issueToken(options: {
     readonly audience?: string | string[];
     /** `null` leaves the claim out. */
     readonly emailVerified?: boolean | null;
     readonly expiresAt?: number;
     readonly extraClaims?: Readonly<Record<string, number | string>>;
+    /** The `groups` claim, malformed shapes included; left out unless given. */
+    readonly groups?: readonly (number | string)[] | string;
     readonly idToken?: boolean;
     readonly issuer?: string;
     readonly profile?: boolean;
@@ -368,6 +511,7 @@ describe("generic OIDC MCP authorization", () => {
     if (options.extraClaims !== undefined) {
       Object.assign(claims, options.extraClaims);
     }
+    if (options.groups !== undefined) claims["groups"] = options.groups;
     if (options.idToken === true) claims["typ"] = "ID";
     const token = new SignJWT(claims)
       .setProtectedHeader(options.type === undefined
@@ -430,10 +574,28 @@ function verifiedSubject(
   );
 }
 
+function members(
+  installation: TestInstallation,
+): readonly z.infer<typeof memberRowSchema>[] {
+  const database = new DatabaseSync(
+    path.join(installation.dataDirectory, "artifact-server.db"),
+    {readOnly: true},
+  );
+  try {
+    return database
+      .prepare("SELECT id, email, role, status FROM installation_members ORDER BY created_at")
+      .all()
+      .map((row) => memberRowSchema.parse(row));
+  } finally {
+    database.close();
+  }
+}
+
 interface ProviderBoundary {
   readonly issuer: string;
   close(): Promise<void>;
   setKeysStatus(status: number): void;
+  setUserInfoGroups(groups: readonly string[] | null): void;
   setUserInfoStatus(status: number): void;
   userInfoRequests(): number;
 }
@@ -442,6 +604,7 @@ async function startProviderBoundary(options: {
   readonly jwk: JWK;
 }): Promise<ProviderBoundary> {
   let keysStatus = 200;
+  let userInfoGroups: readonly string[] | null = null;
   let userInfoRequestCount = 0;
   let userInfoStatus = 200;
   let issuer = "";
@@ -474,13 +637,15 @@ async function startProviderBoundary(options: {
         return;
       }
       response.setHeader("Content-Type", "application/json");
-      response.end(JSON.stringify({
+      const profile: JWTPayload = {
         email: userEmail,
         email_verified: true,
         family_name: "Administrator",
         given_name: "Artifact",
         sub: subject,
-      }));
+      };
+      if (userInfoGroups !== null) profile["groups"] = userInfoGroups;
+      response.end(JSON.stringify(profile));
       return;
     }
     response.statusCode = 404;
@@ -497,6 +662,9 @@ async function startProviderBoundary(options: {
     issuer,
     setKeysStatus: (status) => {
       keysStatus = status;
+    },
+    setUserInfoGroups: (groups) => {
+      userInfoGroups = groups;
     },
     setUserInfoStatus: (status) => {
       userInfoStatus = status;

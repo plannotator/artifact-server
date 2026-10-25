@@ -35,6 +35,37 @@ helm template artifact-server "$artifactserver_chart" \
   --set ingress.applicationTlsSecretName=artifact-server-application-tls \
   --set ingress.contentTlsSecretName=artifact-server-content-tls >/dev/null
 
+artifactserver_group_roles=$(helm template artifact-server "$artifactserver_chart" \
+  --kube-version 1.36.0 \
+  "${artifactserver_values[@]}" \
+  --set 'identity.oidcMemberGroups={artifact-users,engineering}' \
+  --set 'identity.oidcAdministratorGroups={artifact-admins}')
+if [[ "$artifactserver_group_roles" != *'value: "artifact-users,engineering"'* ||
+  "$artifactserver_group_roles" != *'value: "artifact-admins"'* ]]; then
+  echo "Helm did not render the OIDC group-role settings." >&2
+  exit 1
+fi
+
+artifactserver_directory_sync=$(helm template artifact-server "$artifactserver_chart" \
+  --kube-version 1.36.0 \
+  "${artifactserver_values[@]}" \
+  --set identity.oidcIssuer=https://idp.example.test/realms/main \
+  --set 'identity.oidcMemberGroups={artifact-users}' \
+  --set identity.oidcDirectoryClientId=artifact-server-directory \
+  --set secret.keys.oidcDirectoryClientSecret=oidc-directory-client-secret \
+  --set configuration.postgresConnectionBudget=23)
+if [[ "$artifactserver_directory_sync" != *"name: artifact-server-sync-directory"* ||
+  "$artifactserver_directory_sync" != *"- sync-directory"* ||
+  "$artifactserver_directory_sync" != *"path: oidc-directory-client-secret"* ]]; then
+  echo "Helm did not render the directory sync CronJob." >&2
+  exit 1
+fi
+if [[ "$(helm template artifact-server "$artifactserver_chart" --kube-version 1.36.0 \
+  "${artifactserver_values[@]}")" == *"sync-directory"* ]]; then
+  echo "Helm rendered a directory sync CronJob without a directory client." >&2
+  exit 1
+fi
+
 expect_render_failure() {
   local artifactserver_expected=$1
   shift
@@ -74,6 +105,37 @@ expect_render_failure "identity.oidcScopes and secret.keys.oidcClientSecret requ
   --set identity.oidcClientId= \
   --set identity.oidcIssuer= \
   --set identity.oidcScopes="openid email profile"
+
+expect_render_failure "identity.oidcAdministratorGroups require identity.oidcClientId and identity.oidcIssuer" \
+  "${artifactserver_values[@]}" \
+  --set identity.oidcClientId= \
+  --set identity.oidcIssuer= \
+  --set 'identity.oidcAdministratorGroups={artifact-admins}'
+
+expect_render_failure "identity.oidcGroupsClaim requires identity.oidcMemberGroups or identity.oidcAdministratorGroups" \
+  "${artifactserver_values[@]}" \
+  --set identity.oidcGroupsClaim=groups
+
+expect_render_failure "does not match pattern" \
+  "${artifactserver_values[@]}" \
+  --set 'identity.oidcMemberGroups={artifact-users\,engineering}'
+
+expect_render_failure "secret.keys.oidcDirectoryClientSecret require identity.oidcClientId, identity.oidcIssuer, and identity.oidcMemberGroups" \
+  "${artifactserver_values[@]}" \
+  --set identity.oidcDirectoryClientId=artifact-server-directory \
+  --set secret.keys.oidcDirectoryClientSecret=oidc-directory-client-secret
+
+expect_render_failure "identity.oidcDirectoryClientId and secret.keys.oidcDirectoryClientSecret must be configured together" \
+  "${artifactserver_values[@]}" \
+  --set 'identity.oidcMemberGroups={artifact-users}' \
+  --set identity.oidcDirectoryClientId=artifact-server-directory \
+  --set configuration.postgresConnectionBudget=23
+
+expect_render_failure "for 2 replicas and the enabled migration, cleanup, and directory sync Jobs" \
+  "${artifactserver_values[@]}" \
+  --set 'identity.oidcMemberGroups={artifact-users}' \
+  --set identity.oidcDirectoryClientId=artifact-server-directory \
+  --set secret.keys.oidcDirectoryClientSecret=oidc-directory-client-secret
 
 expect_render_failure "one installation has one browser-login provider" \
   "${artifactserver_values[@]}" \

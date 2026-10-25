@@ -421,6 +421,7 @@ describe("installation identity and access", () => {
       displayName: "Team administrator",
       email: "administrator@example.test",
       emailVerified: true,
+      groups: null,
       provider: "test-oidc",
       subject: "team-administrator",
     });
@@ -470,6 +471,7 @@ describe("installation identity and access", () => {
       displayName: "Team administrator",
       email: "administrator@example.test",
       emailVerified: true,
+      groups: null,
       provider: "test-oidc",
       subject: "team-administrator",
     });
@@ -662,6 +664,7 @@ describe("installation identity and access", () => {
       displayName: "Michael Ramos",
       email: "ramos@plannotator.ai",
       emailVerified: true,
+      groups: null,
       provider: "test-workos",
       subject: "workos-user-ramos",
     });
@@ -835,6 +838,7 @@ describe("installation identity and access", () => {
       displayName: "Malformed identity",
       email: "not-an-email-address",
       emailVerified: true,
+      groups: null,
       provider: "test-workos",
       subject: "workos-user-malformed",
     });

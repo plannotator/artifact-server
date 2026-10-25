@@ -124,6 +124,7 @@ import type {
   StagedUploadRepository,
   StagingStore,
 } from "../core/ports.js";
+import type {GroupRolePolicy} from "../core/group-role-policy.js";
 import type {IdentityRepository} from "../core/identity-ports.js";
 import type { ManifestEntry } from "../core/model.js";
 import {randomBase64Url} from "../core/random.js";
@@ -149,6 +150,8 @@ export interface ApplicationAdapters {
   readonly externalApiBearerVerifier: BearerCredentialVerifier | null;
   readonly externalMcpBearerVerifier: BearerCredentialVerifier | null;
   readonly externalMcpOAuthVerifier: ExternalMcpBearerVerifier | null;
+  /** Issuer groups that admit people and set their role; absent keeps admission manual. */
+  readonly groupRolePolicy?: GroupRolePolicy | null;
   /**
    * Agent-dispatch persistence. Every backend implements the dispatch tables,
    * so omitting the slot is a compile error rather than a runtime failure.
@@ -760,6 +763,7 @@ export function createApplicationLayer(
   const identityLayer = InstallationAccessService.layer({
     bootstrapAdministratorEmail: adapters.bootstrapAdministratorEmail,
     clock: adapters.clock,
+    groupRolePolicy: adapters.groupRolePolicy ?? null,
     ids: {
       apiKeyId: () => `key_${randomUUID()}`,
       memberId: () => `member_${randomUUID()}`,
@@ -876,6 +880,16 @@ export function createApplicationLayer(
             revokedAt,
           ),
         ),
+      setMemberRole: (installationId, memberId, role, updatedAt) =>
+        identityEffectWithNotFound(
+          "setMemberRole",
+          () => identityRepository.setMemberRole(
+            installationId,
+            memberId,
+            role,
+            updatedAt,
+          ),
+        ),
     },
     secrets: {
       digest: digestIdentitySecret,
@@ -942,6 +956,8 @@ export function createApplicationLayer(
           }));
         }
         const verified = yield* verifier.verify(credential);
+        // Under an issuer group policy this answers null, so every token's
+        // groups are evaluated again and a removed group takes effect at once.
         let principal = yield* installationAccess.authenticateExternalSubject(
           verified.provider,
           verified.subject,

@@ -96,6 +96,16 @@ export interface IdentityRepository {
     replacement: StoredManagedApiKey,
     revokedAt: string,
   ): Promise<ManagedApiKey>;
+  /**
+   * Give one existing member a role and make it active. Issuer group policy is
+   * authoritative here, so this does not keep a last administrator in place.
+   */
+  setMemberRole(
+    installationId: string,
+    memberId: string,
+    role: InstallationMember["role"],
+    updatedAt: string,
+  ): Promise<InstallationMember>;
 }
 
 /** Atomic first-key operation required by private-team composition roots. */

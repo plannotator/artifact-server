@@ -17,6 +17,7 @@ import {
   IdentityProviderFailure,
 } from "../core/errors.js";
 import type {ExternalIdentity} from "../core/installation-identity.js";
+import {readOidcGroupsClaim} from "./oidc-groups-claim.js";
 import {requireOidcIssuer} from "./oidc-issuer.js";
 
 const defaultAlgorithms = ["RS256", "ES256"];
@@ -61,11 +62,19 @@ const decodeUserInfoClaims = Schema.decodeUnknownEffect(userInfoClaims);
 type AccessTokenClaims = typeof accessTokenClaims.Type;
 type ProfileClaims = typeof userInfoClaims.Type;
 
+/** Decoded access-token claims beside the verified payload they came from. */
+interface VerifiedAccessToken {
+  readonly claims: AccessTokenClaims;
+  readonly payload: JWTPayload;
+}
+
 export interface OidcMcpBearerVerifierConfig {
   readonly algorithms?: readonly string[];
   /** The exact MCP resource URL the issuer must bind into `aud`. */
   readonly audience: string;
   readonly fetch?: typeof globalThis.fetch;
+  /** Claim that lists the person's groups; null reads none. */
+  readonly groupsClaim?: string | null;
   readonly issuer: string;
   readonly jwksUri: string;
   readonly userInfoEndpoint?: string | null;
@@ -76,6 +85,7 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
   readonly #algorithms: string[];
   readonly #audience: string;
   readonly #fetch: typeof globalThis.fetch;
+  readonly #groupsClaim: string | null;
   readonly #issuer: string;
   readonly #jwks: ReturnType<typeof createRemoteJWKSet>;
   readonly #provider: string;
@@ -86,6 +96,7 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
     this.#audience = config.audience;
     const providerFetch = config.fetch ?? globalThis.fetch;
     this.#fetch = (input, init) => providerFetch(input, init);
+    this.#groupsClaim = config.groupsClaim ?? null;
     this.#issuer = requireOidcIssuer(config.issuer, "The OIDC issuer");
     // Browser login records the same provider name, so one person keeps one
     // membership whether they arrive through the interface or through MCP.
@@ -107,7 +118,7 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
 
   readonly verify = Effect.fn("OidcMcpBearerVerifier.verify")(
     function*(this: OidcMcpBearerVerifier, credential: Redacted.Redacted) {
-      const claims = yield* this.#verifiedClaims(credential);
+      const {claims} = yield* this.#verifiedToken(credential);
       const verified: VerifiedExternalMcpBearer = {
         clientId: claims.client_id ?? claims.azp ?? null,
         expiresAt: claims.exp,
@@ -128,23 +139,24 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
       if (verified.provider !== this.#provider) {
         return yield* invalidToken("The access token issuer is not supported.");
       }
-      const claims = yield* this.#verifiedClaims(credential);
+      const {claims, payload} = yield* this.#verifiedToken(credential);
       if (claims.sub !== verified.subject) {
         return yield* invalidToken(
           "The access token names a different subject than the verified one.",
         );
       }
+      const groups = yield* readOidcGroupsClaim(payload, this.#groupsClaim);
       const email = emailOf(claims);
-      if (email !== null) return this.#identityOf(claims, email);
-      return yield* this.#userInfoIdentity(credential, claims.sub);
+      if (email !== null) return this.#identityOf(claims, email, groups);
+      return yield* this.#userInfoIdentity(credential, claims.sub, groups);
     },
   );
 
   /** Verify signature, issuer, audience, and expiry, then read the claims. */
-  #verifiedClaims(
+  #verifiedToken(
     credential: Redacted.Redacted,
   ): Effect.Effect<
-    AccessTokenClaims,
+    VerifiedAccessToken,
     AuthenticationRequired | IdentityProviderFailure
   > {
     return Effect.tryPromise({
@@ -160,7 +172,9 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
       catch: (cause) => verificationFailure(cause),
     }).pipe(
       Effect.flatMap(({payload, protectedHeader}) =>
-        decodeClaims(payload, protectedHeader)
+        decodeClaims(payload, protectedHeader).pipe(
+          Effect.map((claims): VerifiedAccessToken => ({claims, payload})),
+        )
       ),
     );
   }
@@ -170,6 +184,7 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
       this: OidcMcpBearerVerifier,
       credential: Redacted.Redacted,
       subject: string,
+      tokenGroups: readonly string[] | null,
     ) {
       const endpoint = this.#userInfoEndpoint;
       if (endpoint === null) {
@@ -222,11 +237,18 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
           "The OIDC profile for this access token carries no email address.",
         );
       }
-      return this.#identityOf(profile, email);
+      // The profile answers for groups when it reports them; a lean token's
+      // own claim stands otherwise.
+      const groups = yield* readOidcGroupsClaim(body, this.#groupsClaim);
+      return this.#identityOf(profile, email, groups ?? tokenGroups);
     },
   );
 
-  #identityOf(claims: ProfileClaims, email: string): ExternalIdentity {
+  #identityOf(
+    claims: ProfileClaims,
+    email: string,
+    groups: readonly string[] | null,
+  ): ExternalIdentity {
     return {
       displayName: displayName(claims, email),
       email,
@@ -234,6 +256,7 @@ export class OidcMcpBearerVerifier implements ExternalMcpBearerVerifier {
       // access-token email may be a mutable profile field, and on first use it
       // can link an admitted member or claim the bootstrap administrator.
       emailVerified: claims.email_verified === true,
+      groups,
       provider: this.#provider,
       subject: claims.sub,
     };

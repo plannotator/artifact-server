@@ -3,12 +3,9 @@ name: Security Scanning
 on:
   pull_request:
     branches: [main]
-  merge_group:
-    types: [checks_requested]
   push:
-    branches: [main]
-  schedule:
-    - cron: "23 10 * * 1"
+    tags:
+      - '**'
   workflow_dispatch:
 
 permissions:

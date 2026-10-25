@@ -32,6 +32,10 @@ import {
   type StoredManagedApiKey,
 } from "../core/installation-identity.js";
 import {
+  type GroupRolePolicy,
+  groupMembershipRole,
+} from "../core/group-role-policy.js";
+import {
   isHumanAdministrator,
   membershipRoles,
   principalCapabilities,
@@ -147,6 +151,15 @@ export interface InstallationIdentityRepository {
     ManagedApiKey,
     IdentityConflict | IdentityNotFound | IdentityRepositoryFailure
   >;
+  readonly setMemberRole: (
+    installationId: string,
+    memberId: string,
+    role: MembershipRole,
+    updatedAt: string,
+  ) => Effect.Effect<
+    InstallationMember,
+    IdentityNotFound | IdentityRepositoryFailure
+  >;
 }
 
 export interface IdentitySecretProvider {
@@ -172,6 +185,12 @@ export interface InstallationAccessDependencies {
   readonly authenticationCache?: AuthenticationCachePolicy | null;
   readonly bootstrapAdministratorEmail: string;
   readonly clock: {readonly now: () => Date};
+  /**
+   * Issuer groups that admit external identities and set their role. When
+   * present it replaces manual admission and the bootstrap-email rule for
+   * external identities; omit it or pass `null` to keep both.
+   */
+  readonly groupRolePolicy?: GroupRolePolicy | null;
   readonly ids: IdentityIdProvider;
   readonly installationId: string;
   readonly localBootstrapCredential: Redacted.Redacted | null;
@@ -188,6 +207,23 @@ export interface AdmitMemberCommand {
   readonly email: string;
   readonly principal: Principal;
   readonly role: MembershipRole;
+}
+
+/** One person a member directory says should be an active member. */
+export interface DirectoryMemberEntry {
+  readonly displayName: string;
+  /** Already normalized with {@link normalizeMemberEmail}. */
+  readonly email: string;
+  readonly role: MembershipRole;
+}
+
+/** What one directory reconciliation changed. */
+export interface DirectoryReconciliation {
+  readonly admitted: number;
+  readonly deactivated: number;
+  readonly reactivated: number;
+  readonly roleChanged: number;
+  readonly unchanged: number;
 }
 
 export interface IssueApiKeyCommand {
@@ -220,6 +256,10 @@ export interface InstallationAccessOperations {
     Principal,
     IdentityAdmissionDenied | IdentityConflict | IdentityRepositoryFailure
   >;
+  /**
+   * Recognize an already-bound external subject without its profile. Answers
+   * null under an issuer group policy, whose groups must be read every time.
+   */
   readonly authenticateExternalSubject: (
     provider: string,
     subject: string,
@@ -280,6 +320,18 @@ export interface InstallationAccessOperations {
     IssuedApplicationSession,
     IdentityConflict | IdentityRepositoryFailure
   >;
+  /**
+   * Make the installation's human members exactly the given directory entries:
+   * admit, restore, or re-role each entry, and deactivate every other active
+   * member. Only an installation with issuer group roles may do this, and an
+   * empty entry list is refused so a failed read can never empty it.
+   */
+  readonly reconcileDirectoryMembers: (
+    entries: readonly DirectoryMemberEntry[],
+  ) => Effect.Effect<
+    DirectoryReconciliation,
+    IdentityConflict | IdentityRepositoryFailure
+  >;
   readonly revokeApiKey: (
     principal: Principal,
     keyId: string,
@@ -327,6 +379,13 @@ function makeInstallationAccessService(
     : new AuthenticationCache<Principal>(cachePolicy);
   const cacheKey = (digest: string): string =>
     `${dependencies.installationId}:${digest}`;
+  // Session entries are keyed by token digest, not member, so the rare
+  // membership mutations clear the whole cache instead of indexing it.
+  const clearAuthenticationCaches = (): void => {
+    sessionCache?.clear();
+    apiKeyCache?.clear();
+  };
+  const groupRolePolicy = dependencies.groupRolePolicy ?? null;
 
   const issueSession = Effect.fn(
     "InstallationAccessService.issueSession",
@@ -439,6 +498,178 @@ function makeInstallationAccessService(
     return yield* issueSession(member);
   });
 
+  /**
+   * Deactivate one member the issuer no longer admits. Deactivation keeps a
+   * last administrator in place; the issuer has already taken that role away,
+   * so demote before deactivating.
+   */
+  const deactivateRemovedMember = Effect.fn(
+    "InstallationAccessService.deactivateRemovedMember",
+  )(function*(member: InstallationMember, now: string) {
+    if (member.role !== membershipRoles.member) {
+      yield* dependencies.repository.setMemberRole(
+        dependencies.installationId,
+        member.id,
+        membershipRoles.member,
+        now,
+      );
+    }
+    yield* dependencies.repository.deactivateMember(
+      dependencies.installationId,
+      member.id,
+      now,
+    );
+  });
+
+  const reconcileDirectoryMembers = Effect.fn(
+    "InstallationAccessService.reconcileDirectoryMembers",
+  )(function*(entries: readonly DirectoryMemberEntry[]) {
+    if (groupRolePolicy === null) {
+      return yield* Effect.fail(new IdentityConflict({
+        message: "Directory sync requires issuer group roles.",
+      }));
+    }
+    if (entries.length === 0) {
+      return yield* Effect.fail(new IdentityConflict({
+        message: "Directory sync refuses an empty directory.",
+      }));
+    }
+    const desired = new Map<string, DirectoryMemberEntry>();
+    for (const entry of entries) {
+      if (normalizeMemberEmail(entry.email) !== entry.email) {
+        return yield* Effect.fail(new IdentityConflict({
+          message: "Directory entries must carry normalized email addresses.",
+        }));
+      }
+      desired.set(entry.email, entry);
+    }
+    const now = dependencies.clock.now().toISOString();
+    const members = yield* dependencies.repository.listMembers(
+      dependencies.installationId,
+    );
+    const byEmail = new Map(members.map((member) => [member.email, member]));
+    let admitted = 0;
+    let reactivated = 0;
+    let roleChanged = 0;
+    let unchanged = 0;
+    // Admissions and promotions first, so removals never run ahead of them.
+    for (const entry of [...desired.values()].toSorted((left, right) =>
+      left.email.localeCompare(right.email)
+    )) {
+      const member = byEmail.get(entry.email);
+      if (member === undefined) {
+        yield* dependencies.repository.admitMember({
+          createdAt: now,
+          displayName: entry.displayName,
+          email: entry.email,
+          id: dependencies.ids.memberId(),
+          installationId: dependencies.installationId,
+          role: entry.role,
+        });
+        admitted += 1;
+      } else if (member.status !== memberStatuses.active) {
+        yield* dependencies.repository.setMemberRole(
+          dependencies.installationId,
+          member.id,
+          entry.role,
+          now,
+        );
+        reactivated += 1;
+      } else if (member.role !== entry.role) {
+        yield* dependencies.repository.setMemberRole(
+          dependencies.installationId,
+          member.id,
+          entry.role,
+          now,
+        );
+        roleChanged += 1;
+      } else {
+        unchanged += 1;
+      }
+    }
+    let deactivated = 0;
+    for (const member of members) {
+      if (member.status !== memberStatuses.active || desired.has(member.email)) {
+        continue;
+      }
+      yield* deactivateRemovedMember(member, now);
+      deactivated += 1;
+    }
+    if (roleChanged + deactivated > 0) clearAuthenticationCaches();
+    const reconciliation: DirectoryReconciliation = {
+      admitted,
+      deactivated,
+      reactivated,
+      roleChanged,
+      unchanged,
+    };
+    return reconciliation;
+  }, Effect.catchTag("IdentityNotFound", () =>
+    Effect.fail(new IdentityConflict({
+      message: "A member changed while the directory was applied.",
+    }))));
+
+  /**
+   * Make the member's state match the role its issuer groups grant: admit or
+   * restore it, change its role, or deactivate it and refuse admission.
+   */
+  const applyGroupRole = Effect.fn(
+    "InstallationAccessService.applyGroupRole",
+  )(function*(
+    policy: GroupRolePolicy,
+    identity: ExternalIdentity,
+    email: string,
+    member: InstallationMember | null,
+  ) {
+    const role = groupMembershipRole(policy, identity.groups);
+    const now = dependencies.clock.now().toISOString();
+    if (role === null) {
+      if (member !== null) {
+        yield* deactivateRemovedMember(member, now);
+        clearAuthenticationCaches();
+      }
+      return yield* Effect.fail(new IdentityAdmissionDenied({
+        message: "This person is not in a group admitted to the Artifact Server.",
+      }));
+    }
+    if (member !== null) {
+      if (member.role === role) return member;
+      const changed = yield* dependencies.repository.setMemberRole(
+        dependencies.installationId,
+        member.id,
+        role,
+        now,
+      );
+      clearAuthenticationCaches();
+      return changed;
+    }
+    // A member deactivated earlier keeps its email, so restore that member
+    // rather than admitting a second one under the same address.
+    const members = yield* dependencies.repository.listMembers(
+      dependencies.installationId,
+    );
+    const previous = members.find((candidate) => candidate.email === email);
+    if (previous !== undefined) {
+      return yield* dependencies.repository.setMemberRole(
+        dependencies.installationId,
+        previous.id,
+        role,
+        now,
+      );
+    }
+    return yield* dependencies.repository.admitMember({
+      createdAt: now,
+      displayName: identity.displayName,
+      email,
+      id: dependencies.ids.memberId(),
+      installationId: dependencies.installationId,
+      role,
+    });
+  }, Effect.catchTag("IdentityNotFound", () =>
+    Effect.fail(new IdentityConflict({
+      message: "The member changed while its groups were applied.",
+    }))));
+
   const resolveExternalMember = Effect.fn(
     "InstallationAccessService.resolveExternalMember",
   )(function*(identity: ExternalIdentity) {
@@ -459,7 +690,14 @@ function makeInstallationAccessService(
         email,
       );
     }
-    if (member === null) {
+    if (groupRolePolicy !== null) {
+      member = yield* applyGroupRole(
+        groupRolePolicy,
+        identity,
+        email,
+        member,
+      );
+    } else if (member === null) {
       const hasMembers = yield* dependencies.repository.hasMembers(
         dependencies.installationId,
       );
@@ -502,6 +740,7 @@ function makeInstallationAccessService(
   const authenticateExternalSubject = Effect.fn(
     "InstallationAccessService.authenticateExternalSubject",
   )(function*(provider: string, subject: string) {
+    if (groupRolePolicy !== null) return null;
     const member = yield* dependencies.repository.findActiveMemberByExternalIdentity(
       dependencies.installationId,
       provider,
@@ -636,10 +875,7 @@ function makeInstallationAccessService(
       memberId,
       dependencies.clock.now().toISOString(),
     );
-    // Session entries are keyed by token digest, not member, so this rare
-    // administrative mutation clears the whole cache instead of indexing it.
-    sessionCache?.clear();
-    apiKeyCache?.clear();
+    clearAuthenticationCaches();
     return member;
   });
 
@@ -775,6 +1011,7 @@ function makeInstallationAccessService(
     listApiKeys,
     listMembers,
     loginWithLocalBrowserToken,
+    reconcileDirectoryMembers,
     revokeApiKey,
     revokeSession,
     rotateApiKey,
@@ -811,13 +1048,19 @@ function invalidApiKey(): Effect.Effect<never, AuthenticationRequired> {
   }));
 }
 
+/** The stored form of one member email, or null when it is not an address. */
+export function normalizeMemberEmail(value: string): string | null {
+  const normalized = value.trim().toLocaleLowerCase("en-US");
+  return normalized.length < 3 || normalized.length > 320 ||
+      !normalized.includes("@")
+    ? null
+    : normalized;
+}
+
 const normalizeEmail = Effect.fn("InstallationAccessService.normalizeEmail")(
   function*(value: string): Effect.fn.Return<string, IdentityConflict> {
-    const normalized = value.trim().toLocaleLowerCase("en-US");
-    if (
-      normalized.length < 3 || normalized.length > 320 ||
-      !normalized.includes("@")
-    ) {
+    const normalized = normalizeMemberEmail(value);
+    if (normalized === null) {
       return yield* new IdentityConflict({
         message: "A valid email address is required.",
       });

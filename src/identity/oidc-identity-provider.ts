@@ -8,6 +8,7 @@ import type {
 } from "../application/interactive-login.js";
 import {IdentityProviderFailure} from "../core/errors.js";
 import type {ExternalIdentity} from "../core/installation-identity.js";
+import {type OidcGroupRoles, readOidcGroupsClaim} from "./oidc-groups-claim.js";
 import {
   isLocalOidcIssuer,
   normalizeOidcEndpoint,
@@ -67,6 +68,8 @@ export interface OidcIdentityProviderConfig {
   readonly clientId: string;
   readonly clientSecret: Redacted.Redacted | null;
   readonly fetch?: typeof globalThis.fetch;
+  /** ID-token claim that lists the person's groups; null reads none. */
+  readonly groupsClaim?: string | null;
   readonly issuer: string;
   readonly redirectUri: string;
   readonly scopes: string;
@@ -77,6 +80,7 @@ export interface OidcBrowserLoginSettings {
   readonly applicationOrigin: string;
   readonly clientId: string;
   readonly clientSecret: Redacted.Redacted | null;
+  readonly groupRoles?: OidcGroupRoles | null;
   readonly issuer: string;
   readonly scopes: string;
 }
@@ -87,6 +91,7 @@ export class OidcIdentityProvider implements InteractiveIdentityProvider {
   readonly #clientId: string;
   readonly #clientSecret: Redacted.Redacted | null;
   readonly #fetch: typeof globalThis.fetch;
+  readonly #groupsClaim: string | null;
   readonly #issuer: string;
   readonly #redirectUri: string;
   readonly #scopes: string;
@@ -98,6 +103,7 @@ export class OidcIdentityProvider implements InteractiveIdentityProvider {
     this.#clientSecret = config.clientSecret;
     const providerFetch = config.fetch ?? globalThis.fetch;
     this.#fetch = (input, init) => providerFetch(input, init);
+    this.#groupsClaim = config.groupsClaim ?? null;
     this.#issuer = requireOidcIssuer(config.issuer, "The OIDC issuer");
     this.#redirectUri = config.redirectUri;
     this.#scopes = config.scopes;
@@ -171,10 +177,20 @@ export class OidcIdentityProvider implements InteractiveIdentityProvider {
       if (nonce === null || claims.data.nonce !== nonce) {
         return yield* providerFailure();
       }
+      const groups = yield* readOidcGroupsClaim(payload, this.#groupsClaim).pipe(
+        Effect.catch((failure) =>
+          reportFailure(
+            "identity.oidc.groups_claim_invalid",
+            this.#issuer,
+            failure.message,
+          )
+        ),
+      );
       const identity: ExternalIdentity = {
         displayName: displayName(claims.data),
         email: claims.data.email,
         emailVerified: claims.data.email_verified !== false,
+        groups,
         provider: `oidc:${this.#issuer}`,
         subject: claims.data.sub,
       };
@@ -216,6 +232,7 @@ export function createOidcIdentityProvider(
   return new OidcIdentityProvider({
     clientId: settings.clientId,
     clientSecret: settings.clientSecret,
+    groupsClaim: settings.groupRoles?.claim ?? null,
     issuer: settings.issuer,
     redirectUri: new URL("/auth/callback", settings.applicationOrigin).toString(),
     scopes: settings.scopes,
