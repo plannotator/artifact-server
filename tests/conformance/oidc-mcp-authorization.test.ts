@@ -1,3 +1,4 @@
+import {createHash} from "node:crypto";
 import {createServer, type Server} from "node:http";
 
 import {
@@ -15,6 +16,7 @@ import {
 } from "jose";
 import {Effect, Predicate, Redacted} from "effect";
 import {afterEach, beforeEach, describe, expect, test} from "vitest";
+import {z} from "zod";
 
 import {createOidcHostedAuthentication} from
   "../../src/identity/oidc-hosted-authentication.js";
@@ -337,6 +339,131 @@ describe("generic OIDC MCP authorization", () => {
       issueToken({idToken: true}))).rejects.toThrow("ID token is not");
   });
 
+  test("an OIDC access token uploads and publishes the files of its own MCP upload plan", async () => {
+    const token = await issueToken({});
+    const bytes = new TextEncoder().encode("<!doctype html><title>oidc</title>\n");
+    const plan = await callTool(token, "artifact_create_upload", {
+      entryPath: "index.html",
+      files: [declaredFile("index.html", "text/html", bytes)],
+    }, uploadPlanSchema);
+
+    const [file] = plan.files;
+    expect(file?.authorization.credential).toBe("reuse_the_mcp_bearer_credential");
+    const uploaded = await putPlanFile(plan.files[0]?.uploadUrl, token, bytes);
+    expect(uploaded.status).toBe(200);
+
+    const published = await callTool(token, "artifact_commit_upload", {
+      idempotencyKey: `oidc-upload-${crypto.randomUUID()}`,
+      target: {kind: "new_artifact", name: "OIDC upload"},
+      uploadId: plan.uploadId,
+    }, publishedVersionSchema);
+    expect(published.links.review).toContain("/review");
+  });
+
+  test("an OIDC access token opens no other API route, no other principal's upload, and no wrong resource", async () => {
+    const token = await issueToken({});
+    const bytes = new TextEncoder().encode("hostile\n");
+    const declared = {
+      entryPath: "index.html",
+      files: [declaredFile("index.html", "text/plain", bytes)],
+    };
+
+    // Only the staged-file write takes the MCP credential; the rest of the
+    // API keeps its own contract.
+    const keys = await fetch(`${server.baseUrl}/api/v1/api-keys`, {
+      headers: {Authorization: `Bearer ${token}`},
+    });
+    expect(keys.status).toBe(401);
+    const restCreate = await fetch(`${server.baseUrl}/api/v1/uploads`, {
+      body: JSON.stringify(declared),
+      headers: {Authorization: `Bearer ${token}`, "Content-Type": "application/json"},
+      method: "POST",
+    });
+    expect(restCreate.status).toBe(401);
+
+    // Another principal's upload stays closed to this person.
+    const foreign = await callTool(
+      installation.apiToken,
+      "artifact_create_upload",
+      declared,
+      uploadPlanSchema,
+    );
+    const crossed = await putPlanFile(foreign.files[0]?.uploadUrl, token, bytes);
+    expect(crossed.ok).toBe(false);
+    expect([401, 403, 404]).toContain(crossed.status);
+
+    // Tokens /mcp refuses are refused here too.
+    const own = await callTool(token, "artifact_create_upload", declared, uploadPlanSchema);
+    const hostileTokens = await Promise.all([
+      issueToken({audience: "artifact-server"}),
+      issueToken({audience: "https://attacker.example/mcp"}),
+      issueToken({idToken: true}),
+      issueToken({expiresAt: Math.floor(Date.now() / 1_000) - 60}),
+    ]);
+    const hostileResponses = await Promise.all(hostileTokens.map((hostile) =>
+      putPlanFile(own.files[0]?.uploadUrl, hostile, bytes)
+    ));
+    expect(hostileResponses.map((response) => response.status))
+      .toEqual([401, 401, 401, 401]);
+  });
+
+  async function callTool<Output>(
+    token: string,
+    name: string,
+    parameters: ToolArguments,
+    output: z.ZodType<Output>,
+  ): Promise<Output> {
+    const response = await fetch(`${server.baseUrl}/mcp`, {
+      body: JSON.stringify({
+        id: crypto.randomUUID(),
+        jsonrpc: "2.0",
+        method: "tools/call",
+        params: {
+          _meta: {
+            [CLIENT_CAPABILITIES_META_KEY]: {},
+            [CLIENT_INFO_META_KEY]: {name: "oidc-auth-test", version: "1"},
+            [PROTOCOL_VERSION_META_KEY]: protocolVersion,
+          },
+          arguments: parameters,
+          name,
+        },
+      }),
+      headers: {
+        Accept: "application/json, text/event-stream",
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": protocolVersion,
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": name,
+      },
+      method: "POST",
+    });
+    expect(response.status).toBe(200);
+    const body = z.object({
+      result: z.object({
+        isError: z.boolean().optional(),
+        structuredContent: z.unknown(),
+      }).loose(),
+    }).loose().parse(await response.json());
+    expect(body.result.isError ?? false).toBe(false);
+    return output.parse(body.result.structuredContent);
+  }
+
+  /** PUT to the plan's URL path on this test server, whatever its origin. */
+  function putPlanFile(
+    uploadUrl: string | undefined,
+    token: string,
+    bytes: Uint8Array,
+  ): Promise<Response> {
+    if (uploadUrl === undefined) throw new Error("The upload plan has no file.");
+    const planned = new URL(uploadUrl);
+    return fetch(new URL(`${planned.pathname}${planned.search}`, server.baseUrl), {
+      body: Buffer.from(bytes),
+      headers: {Authorization: `Bearer ${token}`},
+      method: "PUT",
+    });
+  }
+
   async function issueToken(options: {
     readonly audience?: string | string[];
     /** `null` leaves the claim out. */
@@ -418,6 +545,37 @@ describe("generic OIDC MCP authorization", () => {
     });
   }
 });
+
+type ToolArgument =
+  | number
+  | string
+  | readonly ToolArgument[]
+  | {readonly [key: string]: ToolArgument};
+
+interface ToolArguments {
+  readonly [key: string]: ToolArgument;
+}
+
+const publishedVersionSchema = z.object({
+  links: z.object({review: z.string()}).loose(),
+}).loose();
+
+const uploadPlanSchema = z.object({
+  files: z.array(z.object({
+    authorization: z.object({credential: z.string()}).loose(),
+    uploadUrl: z.string(),
+  }).loose()).min(1),
+  uploadId: z.string(),
+}).loose();
+
+function declaredFile(manifestPath: string, mediaType: string, bytes: Uint8Array) {
+  return {
+    mediaType,
+    path: manifestPath,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    size: bytes.byteLength,
+  };
+}
 
 function verifiedSubject(
   verifier: ExternalMcpBearerVerifier,

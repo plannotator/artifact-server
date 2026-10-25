@@ -15,7 +15,7 @@ on:
       - scripts/install-release-syft.sh
   push:
     tags:
-      - "v*"
+      - '**'
   workflow_dispatch:
     inputs:
       dry_run:

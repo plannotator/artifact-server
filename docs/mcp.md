@@ -50,7 +50,7 @@ An agent uses this sequence:
 
 1. Call `artifact_capabilities` to read limits and available features.
 2. Call `artifact_create_upload` with each path, size, media type, and SHA-256 fingerprint.
-3. Upload each file to its returned opaque upload URL.
+3. Upload each file to its returned opaque upload URL with the same bearer credential the agent uses for MCP: an API key or the OAuth access token.
 4. Call `artifact_commit_upload` with the publication target and idempotency key.
 
 When the agent publishes a new version, it first reads the current version ID. It sends that ID as `expectedCurrentVersionId`.

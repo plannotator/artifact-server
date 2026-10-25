@@ -806,13 +806,21 @@ export function createHttpApp(
           message: "A valid Artifact Server API key is required.",
         });
       }
+      const credential = Redacted.make(parsed.data, {label: "bearer-credential"});
       const principal = await runHttpApplicationEffect(
         context,
         dependencies,
         AuthenticationService.use((authentication) =>
-          authentication.authenticateApiBearer(
-            Redacted.make(parsed.data, {label: "bearer-credential"}),
-          )
+          isStagedUploadFileRequest(context)
+            // An MCP upload plan tells the agent to PUT each file with the
+            // bearer it used on /mcp, so this one route accepts exactly the
+            // credentials /mcp accepts, including a hosted OAuth access token
+            // for the <origin>/mcp resource. Every other API route keeps the
+            // API-credential contract.
+            ? authentication.authenticateMcpBearer(credential).pipe(
+              Effect.map((authenticated) => authenticated.principal),
+            )
+            : authentication.authenticateApiBearer(credential)
         ),
       );
       context.set("authenticationMethod", "bearer");
@@ -4092,4 +4100,12 @@ function redirectToReview(
     requestUrl.searchParams.set(name, value);
   }
   return context.redirect(`/review?${requestUrl.searchParams.toString()}`, 308);
+}
+
+const stagedUploadFilePath = /^\/api\/v1\/uploads\/[^/]+\/files\/[^/]+$/u;
+
+/** Whether this request writes one file of a staged upload plan. */
+function isStagedUploadFileRequest(context: Context): boolean {
+  return context.req.method === "PUT"
+    && stagedUploadFilePath.test(context.req.path);
 }
