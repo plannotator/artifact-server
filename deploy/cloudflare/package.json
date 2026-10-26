@@ -23,15 +23,15 @@
   },
   "dependencies": {
     "alchemy": "2.0.0-beta.79",
-    "effect": "4.0.0-rc.115"
+    "effect": "4.0.5"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20260815.1",
-    "@effect/platform-node": "4.0.0-rc.115",
-    "@types/node": "26.6.0",
-    "oxlint": "1.78.0",
+    "@cloudflare/workers-types": "5.20261019.1",
+    "@effect/platform-node": "4.0.5",
+    "@types/node": "26.6.5",
+    "oxlint": "1.88.0",
     "typescript": "7.0.2",
     "vitest": "4.1.11",
-    "wrangler": "4.123.0"
+    "wrangler": "4.151.2"
   }
 }
