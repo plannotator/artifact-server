@@ -19,6 +19,7 @@ import {AuthenticationService} from "../application/authentication.js";
 import {
   isArtifactServerFailure,
 } from "../core/errors.js";
+import {maximumUploadPlanRequestBytes} from "../core/publishing-limits.js";
 import {
   membershipRoles,
   principalCapabilities,
@@ -99,6 +100,10 @@ export function createMcpHttpAdapter(
     },
     {
       legacy: "stateless",
+      // The SDK reads the body itself and, since 2.1.0, caps it at 4 MiB by
+      // default. The route is already bounded by boundedMcpBody at this same
+      // limit, which is also the limit advertised to MCP clients.
+      maxRequestBodySize: maximumUploadPlanRequestBytes,
       maxSubscriptions: 0,
       responseMode: "auto",
     },
