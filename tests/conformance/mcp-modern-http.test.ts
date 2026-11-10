@@ -282,6 +282,25 @@ describe("modern MCP HTTP", () => {
     });
     expect(oversized.status).toBe(413);
 
+    // The MCP SDK reads request bodies with its own limit since 2.1.0. A
+    // request just under the advertised upload-plan limit must still be read.
+    const nearLimit = await mcpRequest(
+      server,
+      installation.apiToken,
+      "tools/call",
+      {
+        arguments: {
+          padding: "x".repeat(
+            capabilities.publishing.maximumUploadPlanRequestBytes - 4_096,
+          ),
+        },
+        name: "artifact_capabilities",
+      },
+      {"Mcp-Name": "artifact_capabilities"},
+    );
+    expect(nearLimit.status).toBe(200);
+    expect(await nearLimit.json()).toMatchObject({jsonrpc: "2.0"});
+
     const officialClient = new Client(
       {name: "artifact-server-official-client-test", version: "1"},
       {versionNegotiation: {mode: {pin: protocolVersion}}},
