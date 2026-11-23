@@ -210,7 +210,7 @@ export function SendToAgentControl({
     : disconnectedDefaultName !== null
       ? `${disconnectedDefaultName} disconnected — pick another`
       : noAgents
-        ? "No agent connected. Connect one to send."
+        ? "No agent connected — connect one to send."
         : null;
   const mainLabel = mainAgent === null
     ? disconnectedDefaultName === null || oneAgentLabel === undefined
@@ -471,7 +471,7 @@ export function SendToAgentControl({
             <p className="text-sm text-muted-foreground">Reading connected agents…</p>
           ) : connectedDialogAgents.length === 0 ? (
             <p className="text-sm leading-6 text-muted-foreground">
-              No agent connected. Connect one to send.
+              No agent connected — connect one to send.
             </p>
           ) : (
             <>
