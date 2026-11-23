@@ -21,58 +21,66 @@ import {
   percentage,
 } from "./dashboard-format.ts";
 
-/** One headline figure with the context that makes it meaningful. */
-function StatTile({
+/** One counted reading in the readings panel: label, figure, then context. */
+function Reading({
   detail,
   label,
   value,
 }: {
-  readonly detail: ReactNode;
+  readonly detail: string;
   readonly label: string;
   readonly value: string;
 }) {
   return (
-    <Card className="min-w-0" size="sm">
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="font-mono text-3xl tracking-normal normal-case tabular-nums">
-          {value}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="text-xs text-muted-foreground">{detail}</CardContent>
-    </Card>
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1 bg-card px-6 py-4">
+      <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
+      <dd className="font-mono text-xl tabular-nums slashed-zero">{value}</dd>
+      <dd className="col-span-2 text-sm text-muted-foreground">{detail}</dd>
+    </div>
   );
 }
 
-/** The four numbers a reader checks first. */
+/**
+ * The readings panel: one value set large (what the installation holds),
+ * then three counted readings, cut from one surface with hairline seams.
+ */
 export function DashboardHeadline({insights}: {readonly insights: Insights}) {
   const {overview, review, storage} = insights;
   const inWindow = insights.window === "all" ? "in total" : "in this window";
   const inFlight = review.dispatches.queued + review.dispatches.claimed +
     review.dispatches.delivered;
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <StatTile
-        detail={`${overview.versionCount} versions, ${overview.versionsInWindow} ${inWindow}`}
-        label="Artifacts"
-        value={String(overview.artifactCount)}
-      />
-      <StatTile
-        detail={`${review.threadsOpenedInWindow} opened and ${review.threadsResolvedInWindow} resolved ${inWindow}`}
-        label="Open threads"
-        value={String(review.openThreads)}
-      />
-      <StatTile
-        detail={`${formatBytes(storage.logicalBytes)} across every version`}
-        label="Stored"
-        value={formatBytes(storage.storedBytes)}
-      />
-      <StatTile
-        detail={`${inFlight} still with an agent, ${review.dispatches.failed} failed`}
-        label="Dispatches"
-        value={String(review.dispatchesInWindow)}
-      />
-    </div>
+    <section
+      aria-label="Readings"
+      className="grid min-w-0 gap-px self-start overflow-hidden rounded-[var(--radius-card)] border border-border bg-border"
+    >
+      <div className="grid gap-1 bg-card px-6 py-5">
+        <h2 className="text-sm font-medium text-muted-foreground">Stored</h2>
+        <p className="font-mono text-4xl leading-none tabular-nums slashed-zero">
+          {formatBytes(storage.storedBytes)}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {formatBytes(storage.logicalBytes)} across every version
+        </p>
+      </div>
+      <dl className="grid gap-px">
+        <Reading
+          detail={`${overview.versionCount} versions, ${overview.versionsInWindow} ${inWindow}`}
+          label="Artifacts"
+          value={String(overview.artifactCount)}
+        />
+        <Reading
+          detail={`${review.threadsOpenedInWindow} opened and ${review.threadsResolvedInWindow} resolved ${inWindow}`}
+          label="Open threads"
+          value={String(review.openThreads)}
+        />
+        <Reading
+          detail={`${inFlight} still with an agent, ${review.dispatches.failed} failed`}
+          label="Dispatches"
+          value={String(review.dispatchesInWindow)}
+        />
+      </dl>
+    </section>
   );
 }
 
@@ -188,7 +196,7 @@ export function OverviewSection({
                     <TableCell className="text-right font-mono tabular-nums">{project.artifactCount}</TableCell>
                     <TableCell className="text-right font-mono tabular-nums">{project.versionCount}</TableCell>
                     <TableCell className="text-right">
-                      {project.latestVersionAt === null ? "—" : formatRelativeTime(project.latestVersionAt, now)}
+                      {project.latestVersionAt === null ? "None yet" : formatRelativeTime(project.latestVersionAt, now)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -402,7 +410,7 @@ function Figure({label, value}: {readonly label: string; readonly value: string}
   return (
     <div className="grid gap-1">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="font-mono text-lg tabular-nums">{value}</dd>
+      <dd className="font-mono text-lg tabular-nums slashed-zero">{value}</dd>
     </div>
   );
 }

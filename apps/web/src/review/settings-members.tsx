@@ -151,15 +151,15 @@ export function MembersScreen() {
           />
         )
         : (
-          <div className="overflow-x-auto border">
+          <div className="overflow-x-auto">
             <table className="w-full min-w-3xl text-left text-sm">
               <thead className="border-b text-sm text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Member</th>
-                  <th className="px-4 py-3 font-semibold">Role</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">Admitted</th>
-                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                  <th className="px-4 py-3 font-medium">Member</th>
+                  <th className="px-4 py-3 font-medium">Role</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Admitted</th>
+                  <th className="px-4 py-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>

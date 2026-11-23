@@ -151,17 +151,24 @@ export function DashboardPage({
         {state.status === "ready"
           ? (
             <>
-              <DashboardHeadline insights={state.insights} />
-              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                <OverviewSection insights={state.insights} now={now} projectNames={projectNames} />
-                <ReviewSection insights={state.insights} now={now} />
-                <StorageSection insights={state.insights} projectNames={projectNames} />
+              {/* The trail leads; readings, one chart and one table follow it. */}
+              <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
                 <ActivitySection
                   now={now}
                   projectId={selection.projectId}
                   projectNames={projectNames}
                   window={selection.window}
                 />
+                <div className="grid min-w-0 content-start gap-6 xl:col-span-4">
+                  <DashboardHeadline insights={state.insights} />
+                  <ReviewSection insights={state.insights} now={now} />
+                </div>
+                <div className="min-w-0 xl:col-span-7">
+                  <StorageSection insights={state.insights} projectNames={projectNames} />
+                </div>
+                <div className="min-w-0 xl:col-span-5">
+                  <OverviewSection insights={state.insights} now={now} projectNames={projectNames} />
+                </div>
               </div>
             </>
           )
@@ -201,15 +208,11 @@ function DashboardFailure({
 function DashboardSkeleton() {
   return (
     <div aria-busy="true" aria-label="Loading dashboard" className="grid gap-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {["artifacts", "threads", "stored", "dispatches"].map((key) => (
-          <Skeleton className="h-28" key={key} />
-        ))}
-      </div>
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        {["overview", "review", "storage", "activity"].map((key) => (
-          <Skeleton className="h-80" key={key} />
-        ))}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+        <Skeleton className="h-[28rem] xl:col-span-8" />
+        <Skeleton className="h-[28rem] xl:col-span-4" />
+        <Skeleton className="h-80 xl:col-span-7" />
+        <Skeleton className="h-80 xl:col-span-5" />
       </div>
     </div>
   );

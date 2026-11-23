@@ -3,6 +3,7 @@
  * axes: dark/grotesk-sans/chromatic-amber · posture: restrained · modes: light+dark · contrast: pass · v2.0.0 */
 /* Hallmark · pre-emit critique: P4 H4 E4 S5 R4 V4 · weakest: H, the review workspace keeps three panes of equal weight; the preview leads by width and the one amber control sits above it */
 /* Hallmark · waive 28b · the video is the reviewed artifact itself, read from its immutable version · a poster for this video preview would need a frame extracted from the artifact, a conversion the media preview never starts */
+/* Hallmark · dismissed F4 · the pencil beside Full screen is the annotate toggle in its on state, a tinted toggle and not a second filled action */
 
 :root {
   --as-focus-comments-width: min(22rem, calc(100dvw - 3rem));
@@ -18,6 +19,8 @@
   --as-subtle: var(--color-ink-2);
   --as-muted: var(--color-muted);
   --as-border: var(--color-rule);
+  --as-border-strong: var(--color-rule-2);
+  --as-hover: var(--color-paper-3);
   --as-iris: var(--color-accent);
   --as-iris-soft: var(--color-accent-soft);
   --as-action: var(--color-accent);
@@ -478,9 +481,9 @@ body {
 
 .as-catalog__brand {
   align-items: center;
-  background: var(--as-action);
+  background: var(--color-ink);
   border-radius: var(--as-radius);
-  color: var(--as-on-action);
+  color: var(--color-paper);
   display: inline-flex;
   flex: 0 0 auto;
   height: 2rem;
@@ -1510,6 +1513,7 @@ body {
   font-size: 0.82rem;
   font-weight: 600;
   margin: 0;
+  text-wrap: balance;
 }
 
 .as-focus-comments__header span {
@@ -1570,6 +1574,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-wrap: balance;
 }
 
 .as-share-positioner {
@@ -1634,6 +1639,7 @@ body {
   font-size: 0.88rem;
   font-weight: 600;
   margin: 0;
+  text-wrap: balance;
 }
 
 .as-share-popover__header p {
@@ -2226,7 +2232,7 @@ body {
   background: var(--as-action);
   color: var(--as-on-action);
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .as-button--secondary {
@@ -2340,6 +2346,7 @@ body {
   font-size: 0.8rem;
   font-weight: 600;
   margin: 0;
+  text-wrap: balance;
 }
 
 .as-inspector-section > header span {
@@ -3011,7 +3018,6 @@ body {
 .as-confirm-dialog {
   background: var(--as-surface);
   border: 1px solid var(--as-border-strong);
-  box-shadow: 0 1.4rem 4rem color-mix(in oklab, black 30%, transparent);
   color: var(--as-text);
   left: 50%;
   max-width: 27rem;
@@ -3026,6 +3032,7 @@ body {
 .as-confirm-dialog h2 {
   font-size: 1rem;
   margin: 0;
+  text-wrap: balance;
 }
 
 .as-confirm-dialog p {
@@ -3373,6 +3380,7 @@ body {
 .as-gate h1 {
   font-size: 1.4rem;
   margin: 0.55rem 0 0;
+  text-wrap: balance;
 }
 
 .as-gate small {
@@ -3520,8 +3528,9 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
 
 .as-settings__brand-mark {
   align-items: center;
-  background: var(--as-action);
-  color: var(--as-on-action);
+  background: var(--color-ink);
+  border-radius: var(--radius-pill);
+  color: var(--color-paper);
   display: inline-flex;
   height: 2rem;
   justify-content: center;
@@ -3539,47 +3548,49 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
   gap: 0.5rem;
 }
 
+/* One column under a tab row: six destinations do not earn a sidebar. */
 .as-settings__layout {
   display: grid;
-  gap: clamp(2rem, 5vw, 5rem);
-  grid-template-columns: 12rem minmax(0, 1fr);
+  gap: var(--space-xl);
+  grid-template-columns: minmax(0, 1fr);
   margin: 0 auto;
   max-width: 82rem;
   min-width: 0;
-  padding: clamp(2rem, 5vw, 4.5rem) 1.25rem 5rem;
+  padding: var(--space-lg) var(--space-lg) var(--space-3xl);
 }
 
 .as-settings__nav {
-  align-self: start;
-  display: grid;
-  gap: 0.2rem;
-  position: sticky;
-  top: 6rem;
+  border-bottom: 1px solid var(--color-rule);
+  display: flex;
+  gap: var(--space-2xs);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .as-settings__nav > p {
-  color: var(--as-subtle);
-  font-family: var(--font-body);
-  font-size: 0.68rem;
-  margin: 0 0 0.55rem;
+  display: none;
 }
 
 .as-settings__nav > a {
-  border-left: 2px solid transparent;
-  color: var(--as-subtle);
-  font-size: 0.9rem;
-  padding: 0.5rem 0.7rem;
+  border-bottom: 2px solid transparent;
+  color: var(--color-muted);
+  flex: 0 0 auto;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  margin-bottom: -1px;
+  padding: var(--space-xs) var(--space-sm);
   text-decoration: none;
+  transition: color var(--dur-micro) var(--ease-out);
+  white-space: nowrap;
 }
 
-.as-settings__nav > a:hover,
-.as-settings__nav > a[data-active="true"] {
-  background: var(--as-hover);
-  color: var(--as-text);
+.as-settings__nav > a:hover {
+  color: var(--color-ink);
 }
 
 .as-settings__nav > a[data-active="true"] {
-  border-left-color: var(--as-iris);
+  border-bottom-color: var(--color-accent);
+  color: var(--color-ink);
 }
 
 .as-settings__content {
@@ -3823,30 +3834,7 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
   }
 
   .as-settings__layout {
-    display: block;
-    padding: 1.25rem 0.8rem 3rem;
-  }
-
-  .as-settings__nav {
-    display: flex;
-    margin-bottom: 1.5rem;
-    overflow-x: auto;
-    padding-bottom: 0.3rem;
-    position: static;
-  }
-
-  .as-settings__nav > p {
-    display: none;
-  }
-
-  .as-settings__nav > a {
-    border-bottom: 2px solid transparent;
-    border-left: 0;
-    flex: 0 0 auto;
-  }
-
-  .as-settings__nav > a[data-active="true"] {
-    border-bottom-color: var(--as-iris);
+    padding: var(--space-md) var(--space-md) var(--space-2xl);
   }
 
   .as-app {

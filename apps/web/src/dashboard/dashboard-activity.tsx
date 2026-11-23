@@ -72,7 +72,7 @@ export function ActivitySection({
   };
 
   return (
-    <Card className="min-w-0">
+    <Card className="min-w-0 xl:col-span-8 xl:self-start">
       <CardHeader>
         <CardTitle>Activity</CardTitle>
         <CardDescription>Who published, changed, commented, or dispatched, newest first.</CardDescription>
@@ -96,7 +96,7 @@ export function ActivitySection({
               {state.events.length === 0
                 ? <p className="text-sm text-muted-foreground">Nothing happened in this window.</p>
                 : (
-                  <ol className="grid divide-y">
+                  <ol aria-label="Activity trail" className="ml-1 grid border-l border-[var(--color-rule-2)]">
                     {state.events.map((event) => (
                       <ActivityRow
                         event={event}
@@ -142,37 +142,44 @@ function ActivityRow({
 }) {
   const actor = activityActorLabel(event.actor);
   const label = activityLabel(event.kind);
+  // Console: amber is a person, cool is an instrument (an agent, a key, the
+  // local token); an actor the record does not keep reads in muted ink.
+  const actorTone = event.actor?.kind === "human"
+    ? "text-[var(--color-accent)]"
+    : event.actor?.kind === "service"
+      ? "text-[var(--color-cool)]"
+      : "text-muted-foreground";
   return (
-    <li className="flex flex-col gap-1 py-3 text-sm sm:flex-row sm:items-baseline sm:gap-4">
+    <li className="relative grid gap-1 py-3 pl-6 text-sm before:absolute before:top-[1.15rem] before:left-[-4px] before:size-[7px] before:rounded-full before:border before:border-[var(--color-rule-2)] before:bg-card sm:grid-cols-[7.5rem_minmax(0,1fr)] sm:gap-4">
       <time
-        className="w-28 shrink-0 text-xs text-muted-foreground"
+        className="font-mono text-sm text-[var(--color-cool)] tabular-nums"
         dateTime={event.occurredAt}
         title={formatTimestamp(event.occurredAt)}
       >
         {formatRelativeTime(event.occurredAt, now)}
       </time>
       <p className="min-w-0">
-        {actor === null ? null : <span className="font-medium">{actor} </span>}
-        <span>{label}</span>
+        {actor === null ? null : <span className={`font-medium ${actorTone}`}>{actor} </span>}
+        <span className="text-[var(--color-ink-2)]">{label}</span>
         {event.artifactId === null || event.artifactName === null
           ? null
           : (
             <>
               {" "}
               <a
-                className="underline-offset-4 hover:underline"
+                className="text-foreground underline-offset-4 hover:text-[var(--color-accent)] hover:underline"
                 href={artifactReviewHref(event.projectId, event.artifactId)}
               >
                 {event.artifactName}
               </a>
               {event.versionNumber === null
                 ? null
-                : <span className="font-mono text-muted-foreground"> v{event.versionNumber}</span>}
+                : <span className="font-mono text-[var(--color-cool)]"> v{event.versionNumber}</span>}
             </>
           )}
         {projectName === null
           ? null
-          : <span className="text-muted-foreground"> · {projectName}</span>}
+          : <span className="block text-sm text-muted-foreground">{projectName}</span>}
       </p>
     </li>
   );

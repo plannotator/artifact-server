@@ -388,16 +388,16 @@ export function PublicLinksScreen() {
                 </colgroup>
                 <thead className="border-b text-sm text-muted-foreground">
                   <tr>
-                    <th className="as-public-links-table__select-cell font-semibold">
+                    <th className="as-public-links-table__select-cell font-medium">
                       <Checkbox
                         aria-label="Select all visible public links"
                         checked={allVisibleSelected}
                         onCheckedChange={(checked) => selectItems(visibleItems, checked)}
                       />
                     </th>
-                    <th className="font-semibold">Artifact</th>
-                    <th className="font-semibold">Public link</th>
-                    <th className="text-right font-semibold">Actions</th>
+                    <th className="font-medium">Artifact</th>
+                    <th className="font-medium">Public link</th>
+                    <th className="text-right font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>

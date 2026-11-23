@@ -118,14 +118,14 @@ export function SettingsProjects({
           title="No projects"
         />
       ) : (
-        <div className="overflow-x-auto border">
+        <div className="overflow-x-auto">
           <table className="w-full min-w-2xl text-left text-sm">
             <thead className="border-b text-sm text-muted-foreground">
               <tr>
-                <th className="px-4 py-3 font-semibold">Project</th>
-                <th className="px-4 py-3 font-semibold">State</th>
-                <th className="px-4 py-3 font-semibold">Created</th>
-                <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                <th className="px-4 py-3 font-medium">Project</th>
+                <th className="px-4 py-3 font-medium">State</th>
+                <th className="px-4 py-3 font-medium">Created</th>
+                <th className="px-4 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -140,7 +140,7 @@ export function SettingsProjects({
                     </code>
                   </td>
                   <td className="px-4 py-4">
-                    <StatusBadge tone={project.archivedAt === null ? "primary" : "neutral"}>
+                    <StatusBadge>
                       {project.archivedAt === null ? "Active" : "Archived"}
                     </StatusBadge>
                   </td>
@@ -156,7 +156,7 @@ export function SettingsProjects({
                       >
                         Open artifacts
                       </ButtonLink>
-                      <ButtonLink href={projectSettingsHref(project.id)} size="sm">
+                      <ButtonLink href={projectSettingsHref(project.id)} size="sm" variant="outline">
                         Settings
                       </ButtonLink>
                     </div>
