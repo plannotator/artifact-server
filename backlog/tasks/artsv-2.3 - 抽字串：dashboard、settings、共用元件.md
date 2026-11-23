@@ -1,10 +1,10 @@
 ---
 id: ARTSV-2.3
 title: 抽字串：dashboard、settings、共用元件
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-23T21:50:00Z'
-updated_date: '2026-11-23T21:53:00Z'
+updated_date: '2026-11-23T22:23:00Z'
 labels: []
 dependencies:
   - ARTSV-2.1

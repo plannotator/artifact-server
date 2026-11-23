@@ -4973,7 +4973,11 @@ requirements:
       behavior: {id: LANG-001-B, description: "With no stored choice the dashboard reads in Traditional Chinese under lang zh-Hant-TW; the switch changes the interface to English across screens and reloads, and switches back."}
       failure: {id: LANG-001-F, description: "A stored value other than en (fr, EN, empty) opens in Traditional Chinese, and storage that throws on read still resolves the language to Traditional Chinese without failing."}
     deployments: [local]
-    status: implementing
-    proof_gap: Browser tests exist; durable browser evidence is attached after the next test:web run.
+    status: verified
     depends_on: []
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [LANG-001-B, LANG-001-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-23T22:12:03.115Z"
