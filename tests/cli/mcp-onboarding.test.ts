@@ -178,6 +178,8 @@ describe("local MCP onboarding", {timeout: testTimeoutMilliseconds}, () => {
     ]);
     const environment = {
       ...process.env,
+      // Never read the developer's real client configuration.
+      HOME: workspace,
       ARTIFACT_SERVER_CURSOR_MCP_CONFIG: cursorConfig,
       ARTIFACT_SERVER_VSCODE_MCP_CONFIG: vscodeConfig,
       FAKE_CLIENT_STATE_DIRECTORY: fakeStateDirectory,
@@ -246,6 +248,8 @@ describe("local MCP onboarding", {timeout: testTimeoutMilliseconds}, () => {
     await writeFakeClient(path.join(binaryDirectory, "codex"));
     const environment = {
       ...process.env,
+      // Never read the developer's real client configuration.
+      HOME: workspace,
       FAKE_CLIENT_GET_ERROR: "1",
       FAKE_CLIENT_STATE_DIRECTORY: workspace,
       PATH: binaryDirectory,
@@ -274,6 +278,8 @@ describe("local MCP onboarding", {timeout: testTimeoutMilliseconds}, () => {
     await writeFakeClient(path.join(binaryDirectory, "codex"));
     const environment = {
       ...process.env,
+      // Never read the developer's real client configuration.
+      HOME: workspace,
       FAKE_CLIENT_PAUSE_AFTER_ADD: "1",
       FAKE_CLIENT_STATE_DIRECTORY: fakeStateDirectory,
       PATH: binaryDirectory,
@@ -331,6 +337,8 @@ describe("local MCP onboarding", {timeout: testTimeoutMilliseconds}, () => {
     };
     const baseEnvironment = {
       ...process.env,
+      // Never read the developer's real client configuration.
+      HOME: workspace,
       FAKE_CLIENT_STATE_DIRECTORY: fakeStateDirectory,
       PATH: binaryDirectory,
     };
@@ -395,10 +403,14 @@ describe("local MCP onboarding", {timeout: testTimeoutMilliseconds}, () => {
 
     await expect(connectMcpClient("cursor", dataDirectory, invocation, {
       ...process.env,
+      // Never read the developer's real client configuration.
+      HOME: workspace,
       ARTIFACT_SERVER_CURSOR_MCP_CONFIG: cursorConfig,
     })).rejects.toThrow("unmanaged artifact-server entry");
     await expect(connectMcpClient("vscode", dataDirectory, invocation, {
       ...process.env,
+      // Never read the developer's real client configuration.
+      HOME: workspace,
       ARTIFACT_SERVER_VSCODE_MCP_CONFIG: vscodeConfig,
     })).rejects.toThrow("malformed MCP configuration");
     expect(await readFile(cursorConfig, "utf8")).toContain('"foreign"');
@@ -416,6 +428,8 @@ describe("local MCP onboarding", {timeout: testTimeoutMilliseconds}, () => {
     ]);
     const environment = {
       ...process.env,
+      // Never read the developer's real client configuration.
+      HOME: workspace,
       FAKE_CLIENT_STATE_DIRECTORY: workspace,
       PATH: [
         binaryDirectory,
