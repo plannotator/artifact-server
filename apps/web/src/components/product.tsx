@@ -19,16 +19,15 @@ export function PageHeader({
   readonly title: string;
 }) {
   return (
-    <header className="flex flex-col gap-5 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
+    <header className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
-        {eyebrow === undefined ? null : (
-          <p className="mb-2 font-mono text-xs font-semibold tracking-widest text-primary uppercase">
-            {eyebrow}
-          </p>
-        )}
-        <h1 className="font-heading text-3xl leading-tight font-semibold tracking-tight text-balance sm:text-4xl">
+        <h1 className="font-heading text-2xl leading-tight font-medium text-balance">
           {title}
         </h1>
+        {/* The group a screen belongs to follows its title, never above it. */}
+        {eyebrow === undefined ? null : (
+          <p className="mt-1 text-sm text-muted-foreground">{eyebrow}</p>
+        )}
         {description === undefined ? null : (
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
             {description}
@@ -127,7 +126,7 @@ export function MetadataRow({
 }) {
   return (
     <div className="grid gap-1 border-b py-3 last:border-b-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4">
-      <dt className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+      <dt className="text-sm font-medium text-muted-foreground">
         {label}
       </dt>
       <dd className="min-w-0 break-words text-sm">{children}</dd>

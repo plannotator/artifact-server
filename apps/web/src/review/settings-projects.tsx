@@ -120,7 +120,7 @@ export function SettingsProjects({
       ) : (
         <div className="overflow-x-auto border">
           <table className="w-full min-w-2xl text-left text-sm">
-            <thead className="border-b bg-muted/50 text-xs tracking-widest text-muted-foreground uppercase">
+            <thead className="border-b text-sm text-muted-foreground">
               <tr>
                 <th className="px-4 py-3 font-semibold">Project</th>
                 <th className="px-4 py-3 font-semibold">State</th>

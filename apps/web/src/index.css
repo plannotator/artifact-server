@@ -2,6 +2,7 @@
  * nav: kept (catalog shell on /review, a top bar with tabs on settings and dashboard) · signature: the version trail, who in amber or cool, when in the measured face · states: loading, empty, error, full · console: paper (dawn) and graphite (moon)
  * axes: dark/grotesk-sans/chromatic-amber · posture: restrained · modes: light+dark · contrast: pass · v2.0.0 */
 /* Hallmark · pre-emit critique: P4 H4 E4 S5 R4 V4 · weakest: H, the review workspace keeps three panes of equal weight; the preview leads by width and the one amber control sits above it */
+/* Hallmark · waive 28b · the video is the reviewed artifact itself, read from its immutable version · a poster for this video preview would need a frame extracted from the artifact, a conversion the media preview never starts */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -103,7 +104,7 @@
       mask: radial-gradient(
         farthest-side,
         transparent calc(100% - 2.5px),
-        #000 calc(100% - 2px)
+        var(--color-ink) calc(100% - 2px)
       );
       animation: presence-spin 1.2s linear infinite;
     }

@@ -386,7 +386,7 @@ export function PublicLinksScreen() {
                   <col className="as-public-links-table__link-column" />
                   <col className="as-public-links-table__actions-column" />
                 </colgroup>
-                <thead className="border-b bg-muted/50 text-xs tracking-widest text-muted-foreground uppercase">
+                <thead className="border-b text-sm text-muted-foreground">
                   <tr>
                     <th className="as-public-links-table__select-cell font-semibold">
                       <Checkbox

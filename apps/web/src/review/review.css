@@ -2,9 +2,10 @@
  * nav: kept (catalog shell on /review, a top bar with tabs on settings and dashboard) · signature: the version trail, who in amber or cool, when in the measured face · states: loading, empty, error, full · console: paper (dawn) and graphite (moon)
  * axes: dark/grotesk-sans/chromatic-amber · posture: restrained · modes: light+dark · contrast: pass · v2.0.0 */
 /* Hallmark · pre-emit critique: P4 H4 E4 S5 R4 V4 · weakest: H, the review workspace keeps three panes of equal weight; the preview leads by width and the one amber control sits above it */
+/* Hallmark · waive 28b · the video is the reviewed artifact itself, read from its immutable version · a poster for this video preview would need a frame extracted from the artifact, a conversion the media preview never starts */
 
 :root {
-  --as-focus-comments-width: min(22rem, calc(100vw - 3rem));
+  --as-focus-comments-width: min(22rem, calc(100dvw - 3rem));
   --as-gap: 0.75rem;
   --as-footer-height: 2.5rem;
   --as-header-height: 3rem;
@@ -52,31 +53,38 @@ body {
   color: var(--as-text);
 }
 
-button,
-input,
-select {
-  color: inherit;
-  font: inherit;
-}
+/*
+ * Element defaults live in the base layer, under Tailwind's utilities, so a
+ * component class (a primary button's ink, a control's ring) is never
+ * overridden by an unlayered element rule.
+ */
+@layer base {
+  button,
+  input,
+  select {
+    color: inherit;
+    font: inherit;
+  }
 
-button,
-a,
-select,
-input {
-  touch-action: manipulation;
-}
+  button,
+  a,
+  select,
+  input {
+    touch-action: manipulation;
+  }
 
-button,
-a {
-  -webkit-tap-highlight-color: transparent;
-}
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
 
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-select:focus-visible {
-  outline: 1px solid var(--as-iris);
-  outline-offset: 2px;
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
 }
 
 .as-visually-hidden {
@@ -162,7 +170,7 @@ select:focus-visible {
 }
 
 .as-home-overlay__backdrop {
-  background: rgb(0 0 0 / 14%);
+  background: var(--color-scrim);
   inset: 0;
   position: fixed;
   transition: opacity 120ms ease;
@@ -421,7 +429,7 @@ select:focus-visible {
   background: var(--as-surface-raised);
   border: 1px solid var(--as-border);
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-body);
   font-size: 0.68rem;
   line-height: 1;
   padding: 0.45rem 0.55rem;
@@ -530,9 +538,7 @@ select:focus-visible {
 .as-project-popover {
   background: var(--as-surface);
   border: 1px solid var(--as-border);
-  box-shadow:
-    0 1.75rem 5rem rgb(0 0 0 / 52%),
-    0 0.35rem 1.2rem rgb(0 0 0 / 24%);
+  box-shadow: none;
   gap: 0.5rem;
   max-height: min(28rem, var(--available-height));
   overflow: auto;
@@ -601,9 +607,7 @@ select:focus-visible {
 }
 
 :root[data-review-theme="dawn"] .as-project-popover {
-  box-shadow:
-    0 1.75rem 5rem rgb(0 0 0 / 20%),
-    0 0.35rem 1.2rem rgb(0 0 0 / 10%);
+  box-shadow: none;
 }
 
 .as-project-list {
@@ -654,10 +658,8 @@ select:focus-visible {
 
 .as-project-option__status {
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-body);
   font-size: 0.65rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .as-project-option > svg {
@@ -700,7 +702,7 @@ select:focus-visible {
   border-radius: 0;
   color: var(--as-muted);
   color-scheme: inherit;
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-body);
   font-size: 0.66rem;
   min-height: 1.85rem;
   padding: 0.28rem 0.45rem;
@@ -729,8 +731,8 @@ select:focus-visible {
 
 .as-catalog-filter-trigger__count {
   align-items: center;
-  background: var(--as-iris-soft);
-  color: var(--as-iris);
+  background: var(--color-cool-soft);
+  color: var(--color-cool);
   display: inline-flex;
   flex: 0 0 auto;
   font-size: 0.58rem;
@@ -747,8 +749,7 @@ select:focus-visible {
 
 .as-catalog-query-controls select:focus-visible,
 .as-catalog-filter-trigger:focus-visible {
-  border-color: var(--as-iris);
-  outline: 1px solid var(--as-iris);
+  outline: 2px solid var(--color-focus);
   outline-offset: 1px;
 }
 
@@ -760,16 +761,14 @@ select:focus-visible {
 .as-catalog-filter-popover {
   background: var(--as-surface);
   border: 1px solid var(--as-border);
-  box-shadow:
-    0 1rem 3rem rgb(0 0 0 / 42%),
-    0 0.2rem 0.8rem rgb(0 0 0 / 22%);
+  box-shadow: none;
   color: var(--as-text);
   max-height: min(28rem, var(--available-height));
   outline: none;
   overflow-y: auto;
   transform-origin: var(--transform-origin);
   transition: opacity 140ms ease, transform 160ms cubic-bezier(0.19, 1, 0.22, 1);
-  width: min(17rem, calc(100vw - 1rem));
+  width: min(17rem, calc(var(--available-width, 100dvw) - 1rem));
 }
 
 .as-catalog-filter-popover[data-starting-style],
@@ -789,7 +788,7 @@ select:focus-visible {
 .as-catalog-filter-popover__clear {
   background: transparent;
   border: 0;
-  color: var(--as-iris);
+  color: var(--color-ink-2);
   cursor: pointer;
   font-size: 0.7rem;
   min-height: 1.5rem;
@@ -815,11 +814,9 @@ select:focus-visible {
 
 .as-catalog-filter-popover legend {
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-body);
   font-size: 0.61rem;
-  letter-spacing: 0.08em;
   padding: 0.1rem 0.15rem 0.35rem;
-  text-transform: uppercase;
 }
 
 .as-catalog-filter-option {
@@ -904,6 +901,9 @@ select:focus-visible {
 }
 
 .as-catalog-refresh[data-state="loading"]:disabled {
+  background: var(--color-paper-3);
+  color: var(--color-muted);
+  cursor: not-allowed;
   opacity: 1;
 }
 
@@ -951,8 +951,8 @@ select:focus-visible {
 }
 
 .as-search:focus-within {
-  border-color: var(--as-iris);
-  box-shadow: 0 0 0 2px var(--as-iris-soft);
+  outline: 2px solid var(--color-focus);
+  outline-offset: -1px;
 }
 
 .as-search > svg {
@@ -964,7 +964,7 @@ select:focus-visible {
 .as-search input {
   background: transparent;
   border: 0;
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-body);
   font-size: 0.8rem;
   min-height: 2.15rem;
   min-width: 0;
@@ -1024,9 +1024,9 @@ select:focus-visible {
   min-width: 0;
 }
 
-.as-artifact-card__title-row strong {
+.as-artifact-card__name {
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: 500;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1044,14 +1044,17 @@ select:focus-visible {
 }
 
 .as-artifact-card__history {
-  align-items: center;
+  align-items: baseline;
   display: inline-flex;
   flex: 1;
-  gap: 0.35rem;
+  gap: var(--space-sm);
   min-width: 0;
 }
 
 .as-artifact-card__history time {
+  color: var(--color-cool);
+  font-family: var(--font-outlier);
+  font-variant-numeric: tabular-nums slashed-zero;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1085,7 +1088,7 @@ select:focus-visible {
 .as-mono,
 .as-tabular,
 .as-file-list code {
-  font-family: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+  font-family: var(--font-outlier);
 }
 
 .as-tabular,
@@ -1098,7 +1101,7 @@ select:focus-visible {
 .as-tag {
   border-radius: var(--as-radius);
   display: inline-flex;
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-body);
   font-size: 0.64rem;
   line-height: 1;
   padding: 0.27rem 0.45rem;
@@ -1119,7 +1122,7 @@ select:focus-visible {
   align-items: center;
   color: var(--as-muted);
   display: flex;
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-body);
   font-size: 0.72rem;
   min-height: var(--as-footer-height);
 }
@@ -1191,20 +1194,18 @@ select:focus-visible {
 .as-keyboard-shortcuts {
   background: var(--as-surface);
   border: 1px solid var(--as-border);
-  box-shadow:
-    0 1rem 3rem rgb(0 0 0 / 42%),
-    0 0.2rem 0.8rem rgb(0 0 0 / 22%);
+  box-shadow: none;
   color: var(--as-text);
   max-height: min(28rem, var(--available-height));
   outline: none;
   overflow-y: auto;
   transform-origin: var(--transform-origin);
   transition: opacity 140ms ease, transform 160ms cubic-bezier(0.19, 1, 0.22, 1);
-  width: min(19rem, calc(100vw - 1rem));
+  width: min(19rem, calc(var(--available-width, 100dvw) - 1rem));
 }
 
-.as-keyboard-shortcuts[data-starting-style],
-.as-keyboard-shortcuts[data-ending-style] {
+.js .as-keyboard-shortcuts[data-starting-style],
+.js .as-keyboard-shortcuts[data-ending-style] {
   opacity: 0;
   transform: translateY(0.2rem) scale(0.985);
 }
@@ -1223,12 +1224,10 @@ select:focus-visible {
 
 .as-keyboard-shortcuts h3 {
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-body);
   font-size: 0.6rem;
   font-weight: 500;
-  letter-spacing: 0.08em;
   margin: 0 0 0.35rem;
-  text-transform: uppercase;
 }
 
 .as-keyboard-shortcuts dl {
@@ -1271,7 +1270,7 @@ select:focus-visible {
   box-shadow: 0 1px 0 color-mix(in oklab, var(--as-text) 10%, transparent);
   color: var(--as-text);
   display: inline-flex;
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-outlier);
   font-size: 0.64rem;
   justify-content: center;
   min-height: 1.35rem;
@@ -1362,7 +1361,7 @@ select:focus-visible {
     transform 220ms cubic-bezier(0.19, 1, 0.22, 1);
 }
 
-.as-focus-controls-dock[data-collapsed="true"] .as-focus-controls {
+.js .as-focus-controls-dock[data-collapsed="true"] .as-focus-controls {
   opacity: 0;
   pointer-events: none;
   transform: translateX(calc(100% + 1.5rem));
@@ -1374,7 +1373,7 @@ select:focus-visible {
 .as-focus-controls__restore {
   background: color-mix(in oklab, var(--as-surface) 88%, transparent);
   border-color: color-mix(in oklab, var(--as-border) 80%, transparent);
-  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 18%);
+  box-shadow: none;
   color: var(--as-text);
   backdrop-filter: blur(10px);
 }
@@ -1392,10 +1391,10 @@ select:focus-visible {
 
 .as-focus-controls__count {
   align-items: center;
-  background: var(--as-iris-soft);
-  color: var(--as-iris);
+  background: var(--color-cool-soft);
+  color: var(--color-cool);
   display: inline-flex;
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-outlier);
   font-size: 0.6rem;
   justify-content: center;
   min-height: 1.1rem;
@@ -1403,7 +1402,7 @@ select:focus-visible {
   padding: 0 0.2rem;
 }
 
-.as-focus-controls__collapse {
+.js .as-focus-controls__collapse {
   opacity: 0;
   pointer-events: none;
   transform: translateX(0.35rem);
@@ -1420,7 +1419,7 @@ select:focus-visible {
   transform: translateX(0);
 }
 
-.as-focus-controls__restore {
+.js .as-focus-controls__restore {
   align-items: center;
   border: 1px solid color-mix(in oklab, var(--as-border) 80%, transparent);
   border-right: 0;
@@ -1447,7 +1446,7 @@ select:focus-visible {
   width: 0.95rem;
 }
 
-.as-focus-controls-dock[data-collapsed="true"] .as-focus-controls__restore {
+.js .as-focus-controls-dock[data-collapsed="true"] .as-focus-controls__restore {
   opacity: 0;
   pointer-events: none;
   right: 0;
@@ -1467,11 +1466,11 @@ select:focus-visible {
   transition: none;
 }
 
-.as-focus-comments {
+.js .as-focus-comments {
   background: color-mix(in oklab, var(--as-surface) 96%, transparent);
   border-left: 1px solid var(--as-border);
   bottom: 0;
-  box-shadow: -1rem 0 2.5rem rgb(0 0 0 / 20%);
+  box-shadow: none;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   opacity: 0;
@@ -1514,9 +1513,9 @@ select:focus-visible {
 }
 
 .as-focus-comments__header span {
-  background: var(--as-iris-soft);
-  color: var(--as-iris);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  background: var(--color-cool-soft);
+  color: var(--color-cool);
+  font-family: var(--font-outlier);
   font-size: 0.6rem;
   min-width: 1.15rem;
   padding: 0.13rem 0.35rem;
@@ -1579,7 +1578,7 @@ select:focus-visible {
 }
 
 .as-share-backdrop {
-  background: rgb(0 0 0 / 12%);
+  background: var(--color-scrim);
   inset: 0;
   position: fixed;
   transition: opacity 140ms ease;
@@ -1594,9 +1593,7 @@ select:focus-visible {
 .as-share-popover {
   background: var(--as-surface);
   border: 1px solid var(--as-border);
-  box-shadow:
-    0 1.75rem 5rem rgb(0 0 0 / 52%),
-    0 0.35rem 1.2rem rgb(0 0 0 / 24%);
+  box-shadow: none;
   color: var(--as-text);
   max-height: min(45rem, calc(100dvh - 1.5rem));
   outline: none;
@@ -1605,7 +1602,7 @@ select:focus-visible {
   transition:
     opacity 140ms ease,
     transform 160ms cubic-bezier(0.19, 1, 0.22, 1);
-  width: min(35rem, calc(100vw - 1rem));
+  width: min(35rem, calc(var(--available-width, 100dvw) - 1rem));
 }
 
 .as-share-popover[data-starting-style],
@@ -1678,9 +1675,7 @@ select:focus-visible {
   color: color-mix(in oklab, var(--as-subtle) 80%, var(--as-text));
   font-size: 0.65rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
   margin: 0;
-  text-transform: uppercase;
 }
 
 .as-share-link > div {
@@ -1694,7 +1689,7 @@ select:focus-visible {
   background: color-mix(in oklab, var(--as-surface-raised) 60%, transparent);
   border: 1px solid var(--as-border);
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-outlier);
   font-size: 0.68rem;
   min-width: 0;
   overflow: hidden;
@@ -1735,9 +1730,7 @@ select:focus-visible {
   color: color-mix(in oklab, var(--as-muted) 82%, var(--as-text));
   font-size: 0.65rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
   margin: 0 0 0.35rem;
-  text-transform: uppercase;
 }
 
 .as-share-secondary__row {
@@ -1766,7 +1759,7 @@ select:focus-visible {
 
 .as-share-secondary__row code {
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-outlier);
   font-size: 0.65rem;
   min-width: 0;
   overflow: hidden;
@@ -1879,25 +1872,19 @@ select:focus-visible {
 }
 
 :root[data-review-theme="dawn"] .as-share-backdrop {
-  background: rgb(0 0 0 / 7%);
+  background: var(--color-paper-3);
 }
 
 :root[data-review-theme="dawn"] .as-share-popover {
-  box-shadow:
-    0 1.75rem 5rem rgb(0 0 0 / 20%),
-    0 0.35rem 1.2rem rgb(0 0 0 / 10%);
+  box-shadow: none;
 }
 
 :root[data-review-theme="dawn"] .as-catalog-filter-popover {
-  box-shadow:
-    0 1rem 3rem rgb(0 0 0 / 16%),
-    0 0.2rem 0.8rem rgb(0 0 0 / 8%);
+  box-shadow: none;
 }
 
 :root[data-review-theme="dawn"] .as-keyboard-shortcuts {
-  box-shadow:
-    0 1rem 3rem rgb(0 0 0 / 16%),
-    0 0.2rem 0.8rem rgb(0 0 0 / 8%);
+  box-shadow: none;
 }
 
 .as-share-agent-setup {
@@ -1933,9 +1920,13 @@ select:focus-visible {
 }
 
 .as-share-agent-setup section > header span {
-  color: var(--as-iris);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.64rem;
+  color: var(--color-cool);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+}
+
+.as-share-agent-setup section > header abbr {
+  text-decoration: none;
 }
 
 .as-share-agent-setup section > p {
@@ -1955,7 +1946,7 @@ select:focus-visible {
   background: color-mix(in oklab, var(--as-surface-raised) 60%, transparent);
   border: 1px solid var(--as-border);
   color: var(--as-text);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-outlier);
   font-size: 0.68rem;
   min-width: 0;
   overflow: hidden;
@@ -2039,7 +2030,7 @@ select:focus-visible {
 }
 
 .as-share-access-option:has(input:focus-visible) {
-  outline: 1px solid var(--as-iris);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -2247,8 +2238,13 @@ select:focus-visible {
 
 .as-icon-button:disabled,
 .as-button:disabled {
-  cursor: default;
-  opacity: 0.35;
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.as-icon-button:active:not(:disabled),
+.as-button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .as-icon-button[data-active="true"] {
@@ -2287,7 +2283,7 @@ select:focus-visible {
   border: 1px solid transparent;
   border-bottom: 0;
   border-radius: var(--as-radius);
-  color: var(--as-iris);
+  color: var(--color-muted);
   cursor: pointer;
   display: flex;
   font-size: 0.78rem;
@@ -2305,9 +2301,9 @@ select:focus-visible {
 }
 
 .as-tab > span {
-  background: var(--as-iris-soft);
+  background: var(--color-cool-soft);
   border-radius: var(--as-radius);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-outlier);
   font-size: 0.62rem;
   min-width: 1.15rem;
   padding: 0.15rem 0.32rem;
@@ -2347,10 +2343,10 @@ select:focus-visible {
 }
 
 .as-inspector-section > header span {
-  background: var(--as-iris-soft);
+  background: var(--color-cool-soft);
   border-radius: var(--as-radius);
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-outlier);
   font-size: 0.6rem;
   min-width: 1.15rem;
   padding: 0.13rem 0.35rem;
@@ -2360,7 +2356,7 @@ select:focus-visible {
 .as-inspector-section__action {
   background: transparent;
   border: 0;
-  color: var(--as-iris);
+  color: var(--color-ink);
   cursor: pointer;
   font-size: 0.72rem;
   font-weight: 600;
@@ -2403,8 +2399,8 @@ select:focus-visible {
 }
 
 .as-tag {
-  background: var(--as-iris-soft);
-  color: var(--as-iris);
+  background: var(--color-paper-3);
+  color: var(--color-ink-2);
   margin: 0 0.3rem 0.3rem 0;
 }
 
@@ -2444,22 +2440,23 @@ select:focus-visible {
 
 .as-tag-editor input {
   background: var(--as-canvas);
-  border: 1px solid var(--as-border);
+  border: 1px solid var(--color-muted);
   border-radius: var(--as-radius);
   color: var(--as-text);
-  font: 0.78rem/1.4 "Atkinson Hyperlegible Mono", monospace;
+  font: 0.875rem/1.4 var(--font-body);
   min-height: 2.3rem;
-  outline: none;
+  outline: 2px solid transparent;
+  outline-offset: -3px;
   padding: 0.4rem 0.55rem;
   width: 100%;
 }
 
-.as-tag-editor input:focus {
-  border-color: var(--as-iris);
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--as-iris) 28%, transparent);
+.as-tag-editor input:focus-visible {
+  outline-color: var(--color-focus);
 }
 
 .as-tag-editor input:disabled {
+  cursor: not-allowed;
   opacity: 0.55;
 }
 
@@ -2636,9 +2633,10 @@ select:focus-visible {
   line-height: 1.5;
   min-height: 5rem;
   padding: 0.6rem 0.65rem;
+  outline: 2px solid transparent;
+  outline-offset: -3px;
   resize: vertical;
-  transition: background-color 140ms ease, border-color 140ms ease,
-    box-shadow 140ms ease;
+  transition: background-color var(--dur-micro) var(--ease-out);
 }
 
 .as-comments .as-comment-composer__input::placeholder {
@@ -2648,8 +2646,7 @@ select:focus-visible {
 
 .as-comments .as-comment-composer__input:focus-visible {
   background: var(--as-surface);
-  border-color: var(--as-iris);
-  box-shadow: 0 0 0 2px var(--as-iris-soft);
+  outline-color: var(--color-focus);
 }
 
 .as-comment-composer__actions {
@@ -2699,11 +2696,9 @@ select:focus-visible {
 .as-comment-card > header span {
   background: var(--as-iris-soft);
   color: var(--as-iris);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-body);
   font-size: 0.58rem;
-  letter-spacing: 0.05em;
   padding: 0.15rem 0.35rem;
-  text-transform: uppercase;
 }
 
 .as-comment-card > header span[data-state="resolved"] {
@@ -2929,7 +2924,7 @@ select:focus-visible {
   align-items: center;
   background: var(--as-iris-soft);
   border-radius: var(--as-radius);
-  color: var(--as-iris);
+  color: var(--color-muted);
   display: flex;
   height: 1.75rem;
   justify-content: center;
@@ -3000,7 +2995,7 @@ select:focus-visible {
 .as-version-list__make-current {
   background: transparent;
   border: 0;
-  color: var(--as-iris);
+  color: var(--color-ink);
   cursor: pointer;
   font-size: 0.68rem;
   padding: 0.45rem;
@@ -3055,7 +3050,7 @@ select:focus-visible {
 .as-version-list time,
 .as-version-list__state {
   color: var(--as-muted);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-outlier);
   font-size: 0.65rem;
 }
 
@@ -3072,8 +3067,6 @@ select:focus-visible {
 .as-compare-form label > span {
   color: var(--as-muted);
   font-size: 0.66rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .as-compare-form select,
@@ -3161,9 +3154,9 @@ select:focus-visible {
 
 .as-preview-welcome > span {
   align-items: center;
-  background: var(--as-iris-soft);
+  background: var(--color-paper-3);
   border-radius: var(--as-radius);
-  color: var(--as-iris);
+  color: var(--color-muted);
   display: flex;
   height: 3rem;
   justify-content: center;
@@ -3176,12 +3169,10 @@ select:focus-visible {
 }
 
 .as-preview-welcome p {
-  color: var(--as-iris);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  color: var(--color-muted);
+  font-family: var(--font-body);
   font-size: 0.65rem;
-  letter-spacing: 0.1em;
   margin: 1rem 0 0;
-  text-transform: uppercase;
 }
 
 .as-preview-welcome h2,
@@ -3264,7 +3255,7 @@ select:focus-visible {
 
 .as-media-preview__loading small {
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-body);
   font-size: 0.68rem;
   max-width: 100%;
   overflow: hidden;
@@ -3305,7 +3296,7 @@ select:focus-visible {
 }
 
 .as-preview-state__details code {
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-outlier);
 }
 
 .as-preview-state__actions {
@@ -3365,7 +3356,7 @@ select:focus-visible {
   border-radius: var(--as-radius);
   color: var(--as-on-action);
   display: flex;
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-display);
   font-weight: 600;
   height: 2.5rem;
   justify-content: center;
@@ -3373,12 +3364,10 @@ select:focus-visible {
 }
 
 .as-gate p {
-  color: var(--as-iris);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  color: var(--color-muted);
+  font-family: var(--font-body);
   font-size: 0.7rem;
-  letter-spacing: 0.08em;
   margin: 1.25rem 0 0;
-  text-transform: uppercase;
 }
 
 .as-gate h1 {
@@ -3426,7 +3415,7 @@ select:focus-visible {
   }
 
   .as-button--primary:hover:not(:disabled) {
-    background: color-mix(in oklab, var(--as-action) 88%, white);
+    background: color-mix(in oklab, var(--as-action) 88%, var(--color-ink));
   }
 
   .as-button--secondary:hover:not(:disabled) {
@@ -3570,11 +3559,9 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
 
 .as-settings__nav > p {
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+  font-family: var(--font-body);
   font-size: 0.68rem;
-  letter-spacing: 0.15em;
   margin: 0 0 0.55rem;
-  text-transform: uppercase;
 }
 
 .as-settings__nav > a {
@@ -3676,7 +3663,7 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
 .as-public-links-table__url {
   color: var(--as-settings-accent);
   display: block;
-  font-family: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+  font-family: var(--font-outlier);
   font-size: 0.72rem;
   line-height: 1.35;
   min-width: 0;
@@ -3796,7 +3783,7 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
   }
 
   .as-inspector {
-    box-shadow: -18px 0 40px rgb(0 0 0 / 18%);
+    box-shadow: none;
     max-width: 100vw;
   }
 }
@@ -3868,7 +3855,7 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
 
   .as-panel-assembly[data-side="left"] {
     bottom: 0;
-    box-shadow: 18px 0 40px rgb(0 0 0 / 18%);
+    box-shadow: none;
     left: 0;
     max-width: 100vw;
     position: absolute;
@@ -4004,4 +3991,11 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
 .as-settings__webmcp small {
   color: var(--as-muted);
   line-height: 1.4;
+}
+
+/* Links read in ink and take the signal only on hover. */
+.as-inspector-section__action:hover,
+.as-version-list__make-current:hover,
+.as-catalog-filter-popover__clear:hover {
+  color: var(--color-accent);
 }

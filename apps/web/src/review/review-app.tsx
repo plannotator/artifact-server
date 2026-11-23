@@ -1560,14 +1560,13 @@ function ArtifactReview({
                 type="button"
               >
                 <span className="as-artifact-card__title-row">
-                  <strong>{artifact.name}</strong>
+                  <span className="as-artifact-card__name">{artifact.name}</span>
                   <AccessPill access={artifact.accessSetting} />
                 </span>
                 <span className="as-artifact-card__meta">
                   <span className="as-artifact-card__history">
-                    <time dateTime={artifact.createdAt}>{formatTimestamp(artifact.createdAt)}</time>
-                    <span aria-hidden="true">·</span>
                     <span>{versionCount} version{versionCount === 1 ? "" : "s"}</span>
+                    <time dateTime={artifact.createdAt}>{formatTimestamp(artifact.createdAt)}</time>
                   </span>
                   <span className="as-artifact-card__counts">
                     <span>
@@ -2725,8 +2724,8 @@ function PreviewWelcome({
   return (
     <div className="as-preview-welcome">
       <span aria-hidden="true"><HugeiconsIcon icon={Link01Icon} strokeWidth={1.4} /></span>
-      <p>Immutable artifact workspace</p>
       <h2>{title}</h2>
+      <p>Immutable artifact workspace</p>
       <small>{description}</small>
     </div>
   );
@@ -2762,8 +2761,8 @@ function ReviewGate({
     <main className="as-gate">
       <section>
         <span aria-hidden="true" className="as-gate__mark">A</span>
-        <p>Artifact Server</p>
         <h1>{title}</h1>
+        <p>Artifact Server</p>
         <small>{description}</small>
         {action}
       </section>

@@ -142,7 +142,6 @@ export function DashboardPage({
             </div>
           )}
           description="Artifacts, review progress, storage, and activity at a glance."
-          eyebrow="Artifact Server"
           title="Dashboard"
         />
         {state.status === "loading" ? <DashboardSkeleton /> : null}

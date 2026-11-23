@@ -98,7 +98,7 @@ function SectionCard({
 
 function Subheading({children}: {readonly children: ReactNode}) {
   return (
-    <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+    <h3 className="text-sm font-medium text-muted-foreground">
       {children}
     </h3>
   );

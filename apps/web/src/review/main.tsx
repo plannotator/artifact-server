@@ -7,6 +7,10 @@ import { ReviewApp } from "./review-app.tsx";
 import "../index.css";
 import "./review.css";
 
+// Transient controls (focus-mode chrome, the shortcuts sheet) hide at rest
+// only once script is running; without it they stay visible.
+document.documentElement.classList.add("js");
+
 // Lives for the whole session, above every route: the leave prompt and the
 // logout purge must not depend on which screen is mounted.
 installDraftGuard();

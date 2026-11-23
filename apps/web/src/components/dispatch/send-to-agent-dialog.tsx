@@ -210,7 +210,7 @@ export function SendToAgentControl({
     : disconnectedDefaultName !== null
       ? `${disconnectedDefaultName} disconnected — pick another`
       : noAgents
-        ? "No agent connected — connect one to send."
+        ? "No agent connected. Connect one to send."
         : null;
   const mainLabel = mainAgent === null
     ? disconnectedDefaultName === null || oneAgentLabel === undefined
@@ -471,12 +471,12 @@ export function SendToAgentControl({
             <p className="text-sm text-muted-foreground">Reading connected agents…</p>
           ) : connectedDialogAgents.length === 0 ? (
             <p className="text-sm leading-6 text-muted-foreground">
-              No agent connected — connect one to send.
+              No agent connected. Connect one to send.
             </p>
           ) : (
             <>
               <fieldset className="grid gap-2">
-                <legend className="mb-2 text-xs font-semibold tracking-wide uppercase">
+                <legend className="mb-2 text-sm font-medium">
                   Connected agents
                 </legend>
                 {dialogAgents.map((agent) => (

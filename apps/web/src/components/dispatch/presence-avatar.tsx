@@ -244,19 +244,19 @@ export function PresenceAvatar({
         </PopoverHeader>
         <dl className="grid gap-1 text-xs text-muted-foreground">
           <div className="flex justify-between gap-3">
-            <dt className="shrink-0 font-semibold tracking-wide uppercase">
+            <dt className="shrink-0 font-medium">
               Agent
             </dt>
             <dd>{agent.kind}</dd>
           </div>
           <div className="flex justify-between gap-3">
-            <dt className="shrink-0 font-semibold tracking-wide uppercase">
+            <dt className="shrink-0 font-medium">
               Last seen
             </dt>
             <dd>{formatRelativeTime(agent.lastSeenAt, now)}</dd>
           </div>
           <div className="flex justify-between gap-3">
-            <dt className="shrink-0 font-semibold tracking-wide uppercase">
+            <dt className="shrink-0 font-medium">
               Working directory
             </dt>
             <dd className="min-w-0 font-mono break-all">

@@ -403,7 +403,7 @@ export function ReviewShareControl({
                 <section>
                   <header>
                     <strong>Without MCP</strong>
-                    <span>HTTP API</span>
+                    <span><abbr title="Hypertext Transfer Protocol application programming interface">HTTP API</abbr></span>
                   </header>
                   <p>The review prompt includes an exact authenticated API request for this version. Use a scoped API key from an administrator and never paste it into chat.</p>
                 </section>
