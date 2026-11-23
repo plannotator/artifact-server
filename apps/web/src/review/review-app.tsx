@@ -1,6 +1,8 @@
 import {
+  lazy,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
+  Suspense,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -30,6 +32,7 @@ import {
   PanelRightIcon,
   RefreshIcon,
   Search01Icon,
+  DashboardSquare01Icon,
   Settings02Icon,
   Sun03Icon,
   Tick02Icon,
@@ -70,13 +73,18 @@ import {
 } from "./review-comments.tsx";
 import { ReviewPreview } from "./review-preview.tsx";
 import {ReviewProjectPicker} from "./review-project-picker.tsx";
-import {isSettingsPath} from "./review-routes.ts";
+import {dashboardPath, isDashboardPath, isSettingsPath} from "./review-routes.ts";
 import {ReviewSettings} from "./review-settings.tsx";
 import {ReviewPanelEdge} from "./review-panel-edge.tsx";
 import {AgentLogos, ReviewShareControl} from "./review-share.tsx";
 import {useReviewPanelMotion} from "./use-review-panel-motion.ts";
 import {useReviewResizablePanel} from "./use-review-resizable-panel.ts";
 import {useWebmcp, type WebmcpBindings} from "./webmcp.tsx";
+
+// The dashboard and its chart library load only when someone opens it.
+const DashboardPage = lazy(async () => ({
+  default: (await import("../dashboard/dashboard-page.tsx")).DashboardPage,
+}));
 
 type ReviewTheme = "dawn" | "moon";
 type InspectorTab = "activity" | "comments" | "compare" | "details" | "files" | "versions";
@@ -479,6 +487,18 @@ export function ReviewApp() {
     );
   }
   if (session === null) return null;
+
+  if (isDashboardPath(window.location.pathname)) {
+    return (
+      <Suspense fallback={null}>
+        <DashboardPage
+          onThemeChange={() => setTheme((current) => current === "moon" ? "dawn" : "moon")}
+          projects={projects}
+          theme={theme}
+        />
+      </Suspense>
+    );
+  }
 
   if (isSettingsPath(window.location.pathname)) {
     return (
@@ -1431,6 +1451,16 @@ function ArtifactReview({
             >
               <HugeiconsIcon icon={theme === "moon" ? Sun03Icon : Moon02Icon} strokeWidth={1.8} />
             </IconButton>
+            <a
+              aria-label="Open dashboard"
+              className="as-icon-button"
+              href={selectedProject === null
+                ? dashboardPath
+                : `${dashboardPath}?${new URLSearchParams({project: selectedProject.id})}`}
+              title="Open dashboard"
+            >
+              <HugeiconsIcon icon={DashboardSquare01Icon} strokeWidth={1.8} />
+            </a>
             <a
               aria-label="Open settings"
               className="as-icon-button"

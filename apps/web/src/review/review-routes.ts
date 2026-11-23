@@ -9,6 +9,14 @@ export type SettingsRoute =
   | {readonly kind: "publicLinks"}
   | {readonly kind: "notFound"};
 
+/** The dashboard's one canonical path inside the application. */
+export const dashboardPath = "/review/dashboard";
+
+/** Return whether the current document path is the dashboard. */
+export function isDashboardPath(pathname: string): boolean {
+  return pathname === dashboardPath || pathname === `${dashboardPath}/`;
+}
+
 /** Return whether the current document path belongs to the settings mode. */
 export function isSettingsPath(pathname: string): boolean {
   return pathname === "/review/settings"
