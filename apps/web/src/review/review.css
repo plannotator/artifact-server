@@ -1,31 +1,29 @@
-@import "../theme-tokens.css";
-@import "@fontsource/atkinson-hyperlegible-next/latin-400.css";
-@import "@fontsource/atkinson-hyperlegible-next/latin-500.css";
-@import "@fontsource/atkinson-hyperlegible-next/latin-600.css";
-@import "@fontsource/atkinson-hyperlegible-mono/latin-400.css";
-@import "@fontsource/atkinson-hyperlegible-mono/latin-500.css";
+/* Hallmark · shape: app screen · genre: modern-minimal · theme: Console (deal 3/3, seed workspace-where-people-coding-c167·82c39f5e·2026-11-23·r0) · redesign: full
+ * nav: kept (catalog shell on /review, a top bar with tabs on settings and dashboard) · signature: the version trail, who in amber or cool, when in the measured face · states: loading, empty, error, full · console: paper (dawn) and graphite (moon)
+ * axes: dark/grotesk-sans/chromatic-amber · posture: restrained · modes: light+dark · contrast: pass · v2.0.0 */
+/* Hallmark · pre-emit critique: P4 H4 E4 S5 R4 V4 · weakest: H, the review workspace keeps three panes of equal weight; the preview leads by width and the one amber control sits above it */
 
 :root {
   --as-focus-comments-width: min(22rem, calc(100vw - 3rem));
   --as-gap: 0.75rem;
   --as-footer-height: 2.5rem;
   --as-header-height: 3rem;
-  --as-radius: 0;
-  --as-canvas: var(--background);
-  --as-surface: var(--background);
-  --as-surface-raised: var(--secondary);
-  --as-text: var(--foreground);
-  --as-subtle: var(--muted-foreground);
-  --as-muted: var(--muted-foreground);
-  --as-border: var(--border);
-  --as-iris: var(--sidebar-primary);
-  --as-iris-soft: color-mix(in oklab, var(--sidebar-primary) 12%, transparent);
-  --as-action: var(--primary);
-  --as-on-action: var(--primary-foreground);
-  --as-love: var(--destructive);
-  --as-gold: var(--chart-2);
-  color-scheme: dark;
-  font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif;
+  --as-radius: var(--radius-pill);
+  /* The workspace vocabulary, pointed at the Console tokens. */
+  --as-canvas: var(--color-paper);
+  --as-surface: var(--color-paper);
+  --as-surface-raised: var(--color-paper-2);
+  --as-text: var(--color-ink);
+  --as-subtle: var(--color-ink-2);
+  --as-muted: var(--color-muted);
+  --as-border: var(--color-rule);
+  --as-iris: var(--color-accent);
+  --as-iris-soft: var(--color-accent-soft);
+  --as-action: var(--color-accent);
+  --as-on-action: var(--color-accent-ink);
+  --as-love: var(--color-bad);
+  --as-gold: var(--color-accent);
+  font-family: var(--font-body);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -35,10 +33,6 @@
   color-scheme: light;
 }
 
-.dark {
-  --as-iris: color-mix(in oklab, var(--sidebar-primary) 70%, var(--foreground));
-  --as-iris-soft: color-mix(in oklab, var(--sidebar-primary) 14%, transparent);
-}
 
 * {
   box-sizing: border-box;
@@ -49,7 +43,8 @@ body,
 #review-root {
   height: 100%;
   margin: 0;
-  overflow: hidden;
+  /* The workspace scrolls inside its panes; clip keeps sticky working. */
+  overflow: clip;
 }
 
 body {
@@ -3469,7 +3464,9 @@ body:has(.as-settings),
 #review-root:has(.as-settings) {
   height: auto;
   min-height: 100%;
-  overflow: auto;
+  /* The document scrolls; horizontal overflow is clipped, never hidden. */
+  overflow-x: clip;
+  overflow-y: visible;
 }
 
 .as-settings .font-heading {

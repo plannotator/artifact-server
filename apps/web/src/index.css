@@ -1,15 +1,24 @@
+/* Hallmark · shape: app screen · genre: modern-minimal · theme: Console (deal 3/3, seed workspace-where-people-coding-c167·82c39f5e·2026-11-23·r0) · redesign: full
+ * nav: kept (catalog shell on /review, a top bar with tabs on settings and dashboard) · signature: the version trail, who in amber or cool, when in the measured face · states: loading, empty, error, full · console: paper (dawn) and graphite (moon)
+ * axes: dark/grotesk-sans/chromatic-amber · posture: restrained · modes: light+dark · contrast: pass · v2.0.0 */
+/* Hallmark · pre-emit critique: P4 H4 E4 S5 R4 V4 · weakest: H, the review workspace keeps three panes of equal weight; the preview leads by width and the one amber control sits above it */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
-@import "@fontsource-variable/noto-sans";
+@import "@fontsource/host-grotesk/latin-400.css";
+@import "@fontsource/host-grotesk/latin-500.css";
+@import "@fontsource/atkinson-hyperlegible-mono/latin-400.css";
+@import "@fontsource/atkinson-hyperlegible-mono/latin-500.css";
+@import "./hallmark/tokens.css";
+@import "./hallmark/base.css" layer(base);
 @import "./theme-tokens.css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: "Geist Variable", sans-serif;
-  --font-heading: "Noto Sans Variable", sans-serif;
+  --font-sans: var(--font-body);
+  --font-heading: var(--font-display);
+  --font-mono: var(--font-outlier);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);

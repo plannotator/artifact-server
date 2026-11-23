@@ -45,7 +45,7 @@ function ToggleGroup({
         // A fixed class per spacing step replaces the upstream inline custom
         // property, so no style attribute is needed.
         spacing === 0 ? "gap-0" : "gap-2",
-        "group/toggle-group flex w-fit flex-row items-center data-[spacing=0]:data-[variant=outline]:rounded-none data-vertical:flex-col data-vertical:items-stretch",
+        "group/toggle-group flex w-fit flex-row items-center data-[spacing=0]:data-[variant=outline]:rounded-[var(--radius-pill)] data-vertical:flex-col data-vertical:items-stretch",
         className
       )}
       {...props}
