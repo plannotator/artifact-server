@@ -1,10 +1,10 @@
 ---
 id: ARTSV-1
 title: Dashboard：artifact 總覽、審閱、用量、活動時間軸
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-23T18:58:00Z'
-updated_date: '2026-11-23T18:58:00Z'
+updated_date: '2026-11-23T20:04:00Z'
 labels: []
 dependencies: []
 priority: high
@@ -20,8 +20,8 @@ ordinal: 1000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 四塊都能在 /review/dashboard 看到，數字與 DB 一致
-- [ ] #2 沿用 requireArtifactListing 權限與專案範圍
-- [ ] #3 pnpm check 與 pnpm verify:iteration 通過
-- [ ] #4 正式 build 下瀏覽器無 CSP violation
+- [x] #1 四塊都能在 /review/dashboard 看到，數字與 DB 一致
+- [x] #2 沿用 requireArtifactListing 權限與專案範圍
+- [x] #3 pnpm check 與 pnpm verify:iteration 通過
+- [x] #4 正式 build 下瀏覽器無 CSP violation
 <!-- AC:END -->
