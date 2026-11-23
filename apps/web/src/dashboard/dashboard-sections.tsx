@@ -307,7 +307,7 @@ export function StorageSection({
       description="Bytes stay stored after an artifact is deleted, because versions are immutable."
       title="Storage"
     >
-      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <dl className="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-4 sm:grid-cols-[repeat(4,minmax(0,1fr))]">
         <Figure label="Stored" value={formatBytes(storage.storedBytes)} />
         <Figure label="Across versions" value={formatBytes(storage.logicalBytes)} />
         <Figure label="Saved by deduplication" value={formatBytes(saved)} />
@@ -408,8 +408,8 @@ export function StorageSection({
 
 function Figure({label, value}: {readonly label: string; readonly value: string}) {
   return (
-    <div className="grid gap-1">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
+    <div className="grid min-w-0 gap-1">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
       <dd className="font-mono text-lg tabular-nums slashed-zero">{value}</dd>
     </div>
   );

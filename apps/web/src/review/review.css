@@ -4,6 +4,8 @@
 /* Hallmark · pre-emit critique: P4 H4 E4 S5 R4 V4 · weakest: H, the review workspace keeps three panes of equal weight; the preview leads by width and the one amber control sits above it */
 /* Hallmark · waive 28b · the video is the reviewed artifact itself, read from its immutable version · a poster for this video preview would need a frame extracted from the artifact, a conversion the media preview never starts */
 /* Hallmark · dismissed F4 · the pencil beside Full screen is the annotate toggle in its on state, a tinted toggle and not a second filled action */
+/* Hallmark · waive 39b · button.as-artifact-card, one catalog row 80px tall · each row opens an artifact and carries its name, versions and comments, so it is a list row and not a toolbar control */
+/* Hallmark · dismissed F18 · shadcn marks every component with data-slot; popover-trigger and button-link are a popover trigger and link buttons, not picture slots */
 
 :root {
   --as-focus-comments-width: min(22rem, calc(100dvw - 3rem));
@@ -326,7 +328,7 @@ body {
 
 .as-home-resources__identity > span {
   color: var(--as-subtle);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   margin-top: 0.15rem;
 }
 
@@ -433,7 +435,7 @@ body {
   border: 1px solid var(--as-border);
   color: var(--as-subtle);
   font-family: var(--font-body);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   line-height: 1;
   padding: 0.45rem 0.55rem;
   pointer-events: none;
@@ -662,7 +664,7 @@ body {
 .as-project-option__status {
   color: var(--as-subtle);
   font-family: var(--font-body);
-  font-size: 0.65rem;
+  font-size: 0.75rem;
 }
 
 .as-project-option > svg {
@@ -700,14 +702,15 @@ body {
 .as-catalog-query-controls select,
 .as-catalog-filter-trigger {
   align-items: center;
-  background: var(--as-surface-raised);
-  border: 1px solid var(--as-border);
-  border-radius: 0;
-  color: var(--as-muted);
+  background: var(--color-paper-3);
+  /* A field's edge needs 3:1 against its surround; a rule never has it. */
+  border: 1px solid var(--color-muted);
+  border-radius: var(--as-radius);
+  color: var(--color-ink-2);
   color-scheme: inherit;
   font-family: var(--font-body);
-  font-size: 0.66rem;
-  min-height: 1.85rem;
+  font-size: 0.8125rem;
+  min-height: 2rem;
   padding: 0.28rem 0.45rem;
 }
 
@@ -738,7 +741,7 @@ body {
   color: var(--color-cool);
   display: inline-flex;
   flex: 0 0 auto;
-  font-size: 0.58rem;
+  font-size: 0.75rem;
   justify-content: center;
   min-height: 1rem;
   min-width: 1rem;
@@ -818,7 +821,7 @@ body {
 .as-catalog-filter-popover legend {
   color: var(--as-subtle);
   font-family: var(--font-body);
-  font-size: 0.61rem;
+  font-size: 0.75rem;
   padding: 0.1rem 0.15rem 0.35rem;
 }
 
@@ -877,7 +880,7 @@ body {
 
 .as-search-scope {
   color: var(--as-muted);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   line-height: 1.2;
   padding-inline: 0.15rem;
 }
@@ -943,8 +946,8 @@ body {
 
 .as-search {
   align-items: center;
-  background: color-mix(in oklab, var(--as-canvas) 72%, transparent);
-  border: 1px solid var(--as-border);
+  background: var(--color-paper-3);
+  border: 1px solid var(--color-muted);
   border-radius: var(--as-radius);
   display: flex;
   width: 100%;
@@ -1105,7 +1108,7 @@ body {
   border-radius: var(--as-radius);
   display: inline-flex;
   font-family: var(--font-body);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   line-height: 1;
   padding: 0.27rem 0.45rem;
   white-space: nowrap;
@@ -1228,7 +1231,7 @@ body {
 .as-keyboard-shortcuts h3 {
   color: var(--as-subtle);
   font-family: var(--font-body);
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   font-weight: 500;
   margin: 0 0 0.35rem;
 }
@@ -1263,7 +1266,7 @@ body {
 
 .as-keyboard-shortcuts dd span {
   color: var(--as-subtle);
-  font-size: 0.6rem;
+  font-size: 0.75rem;
 }
 
 .as-keyboard-shortcuts kbd {
@@ -1274,7 +1277,7 @@ body {
   color: var(--as-text);
   display: inline-flex;
   font-family: var(--font-outlier);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   justify-content: center;
   min-height: 1.35rem;
   min-width: 1.35rem;
@@ -1398,7 +1401,7 @@ body {
   color: var(--color-cool);
   display: inline-flex;
   font-family: var(--font-outlier);
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   justify-content: center;
   min-height: 1.1rem;
   min-width: 1.1rem;
@@ -1520,7 +1523,7 @@ body {
   background: var(--color-cool-soft);
   color: var(--color-cool);
   font-family: var(--font-outlier);
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   min-width: 1.15rem;
   padding: 0.13rem 0.35rem;
   text-align: center;
@@ -1678,7 +1681,7 @@ body {
 .as-share-link h3,
 .as-share-agent h3 {
   color: color-mix(in oklab, var(--as-subtle) 80%, var(--as-text));
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   font-weight: 600;
   margin: 0;
 }
@@ -1695,7 +1698,7 @@ body {
   border: 1px solid var(--as-border);
   color: var(--as-subtle);
   font-family: var(--font-outlier);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   min-width: 0;
   overflow: hidden;
   padding: 0.62rem 0.7rem;
@@ -1733,7 +1736,7 @@ body {
 
 .as-share-secondary > h3 {
   color: color-mix(in oklab, var(--as-muted) 82%, var(--as-text));
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   font-weight: 600;
   margin: 0 0 0.35rem;
 }
@@ -1758,14 +1761,14 @@ body {
 
 .as-share-secondary__row small {
   color: color-mix(in oklab, var(--as-muted) 82%, var(--as-text));
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   line-height: 1.25;
 }
 
 .as-share-secondary__row code {
   color: var(--as-subtle);
   font-family: var(--font-outlier);
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1952,7 +1955,7 @@ body {
   border: 1px solid var(--as-border);
   color: var(--as-text);
   font-family: var(--font-outlier);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   min-width: 0;
   overflow: hidden;
   padding: 0.55rem 0.65rem;
@@ -1999,7 +2002,7 @@ body {
   background: color-mix(in oklab, var(--as-surface-raised) 34%, transparent);
   border-top: 1px solid var(--as-border);
   color: var(--as-subtle);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   padding: 0.65rem 0.9rem;
 }
 
@@ -2164,7 +2167,7 @@ body {
 }
 
 .as-preview-footer__reload {
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   gap: 0.3rem;
   min-height: 1.75rem;
   padding: 0.2rem 0.4rem;
@@ -2309,7 +2312,7 @@ body {
   background: var(--color-cool-soft);
   border-radius: var(--as-radius);
   font-family: var(--font-outlier);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   min-width: 1.15rem;
   padding: 0.15rem 0.32rem;
   text-align: center;
@@ -2353,7 +2356,7 @@ body {
   border-radius: var(--as-radius);
   color: var(--as-subtle);
   font-family: var(--font-outlier);
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   min-width: 1.15rem;
   padding: 0.13rem 0.35rem;
   text-align: center;
@@ -2520,7 +2523,7 @@ body {
 .as-comments__agents span,
 .as-comments__agent-error {
   color: var(--as-muted);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
 }
 
 .as-comments__send-all {
@@ -2703,7 +2706,7 @@ body {
   background: var(--as-iris-soft);
   color: var(--as-iris);
   font-family: var(--font-body);
-  font-size: 0.58rem;
+  font-size: 0.75rem;
   padding: 0.15rem 0.35rem;
 }
 
@@ -2748,7 +2751,7 @@ body {
 .as-comment-card__body > footer {
   color: var(--as-muted);
   display: grid;
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   gap: 0.55rem;
 }
 
@@ -2790,7 +2793,7 @@ body {
   background: transparent;
   border: 1px solid color-mix(in oklab, var(--as-border) 76%, transparent);
   color: color-mix(in oklab, var(--as-muted) 72%, var(--as-text));
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   min-height: 1.7rem;
   padding: 0.2rem 0.4rem;
   text-transform: none;
@@ -2809,7 +2812,7 @@ body {
 
 .as-comment-card__conversation-label {
   color: color-mix(in oklab, var(--as-muted) 72%, var(--as-text));
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   font-weight: 600;
   margin: 0 0 0.55rem;
 }
@@ -2842,7 +2845,7 @@ body {
 
 .as-comment-replies header time {
   color: color-mix(in oklab, var(--as-muted) 72%, var(--as-text));
-  font-size: 0.62rem;
+  font-size: 0.75rem;
 }
 
 .as-comment-replies p {
@@ -2961,7 +2964,7 @@ body {
 .as-file-list__identity small,
 .as-file-list__size {
   color: var(--as-muted);
-  font-size: 0.65rem;
+  font-size: 0.75rem;
 }
 
 .as-version-list li + li {
@@ -3003,7 +3006,7 @@ body {
   border: 0;
   color: var(--color-ink);
   cursor: pointer;
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   padding: 0.45rem;
 }
 
@@ -3057,7 +3060,7 @@ body {
 .as-version-list__state {
   color: var(--as-muted);
   font-family: var(--font-outlier);
-  font-size: 0.65rem;
+  font-size: 0.75rem;
 }
 
 .as-compare-form {
@@ -3072,7 +3075,7 @@ body {
 
 .as-compare-form label > span {
   color: var(--as-muted);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
 }
 
 .as-compare-form select,
@@ -3123,7 +3126,7 @@ body {
 .as-activity-list code,
 .as-comparison-list code {
   color: var(--as-muted);
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   overflow-wrap: anywhere;
 }
 
@@ -3136,7 +3139,7 @@ body {
 .as-comparison-summary span {
   background: var(--as-iris-soft);
   color: var(--as-subtle);
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   padding: 0.2rem 0.4rem;
 }
 
@@ -3177,7 +3180,7 @@ body {
 .as-preview-welcome p {
   color: var(--color-muted);
   font-family: var(--font-body);
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   margin: 1rem 0 0;
 }
 
@@ -3262,7 +3265,7 @@ body {
 .as-media-preview__loading small {
   color: var(--as-subtle);
   font-family: var(--font-body);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3844,7 +3847,7 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
     bottom: 0;
     box-shadow: none;
     left: 0;
-    max-width: 100vw;
+    max-width: 100%;
     position: absolute;
     top: 0;
     z-index: 11;
@@ -3852,6 +3855,18 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
 
   .as-workspace {
     height: 100%;
+  }
+
+  /* The catalog's animated width never outgrows a phone. */
+  .as-panel-assembly[data-side="left"] .as-panel-clip,
+  .as-panel-assembly[data-side="left"] .as-catalog {
+    max-width: 100%;
+  }
+
+  /* Full-width on a phone, the catalog has no width to drag, so its edge
+     handle's hit area stays inside the screen. */
+  .as-panel-assembly[data-side="left"] {
+    overflow-x: clip;
   }
 
   .as-preview-footer__metadata,
