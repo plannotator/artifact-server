@@ -1,0 +1,8 @@
+{ "scanned": "2026-11-24", "findings": {
+  "fonts": "Geist Variable (sans) + Noto Sans Variable (heading) via @fontsource (apps/web/src/index.css L4-L12); Atkinson Hyperlegible packages installed",
+  "palette": "shadcn mauve OKLCH tokens (theme-tokens.css :root/.dark) + as-* tokens in review.css (as-canvas, as-text, as-iris from sidebar-primary)",
+  "motion": "motion 12.43.0 (apps/web/package.json L22), tw-animate-css",
+  "spacing": "Tailwind 4 defaults; radius token 0.625rem",
+  "framework": "React 19 + Vite 8 + Tailwind 4 + Base UI + shadcn base-sera; CSP style-src 'self'" },
+  "preserve": ["ArtifactMark logo", "iris accent", "routes and wiring"],
+  "introduce": ["theme or brand tokens", "app-screen gates", "four data states per region"] }

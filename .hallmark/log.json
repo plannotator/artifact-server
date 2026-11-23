@@ -1,0 +1,29 @@
+[
+ {
+  "mode": "redesign",
+  "depth": "full",
+  "scope": "app",
+  "shape": "app screen",
+  "theme": "console",
+  "axes": "dark/grotesk-sans/chromatic-amber",
+  "hero": "none (app screen)",
+  "nav": "kept catalog shell; top bar with tabs on settings and dashboard",
+  "footer": "kept",
+  "imagery": "none",
+  "photos": [],
+  "entry": "/review",
+  "fingerprint": "app-screen/console/trail-led-dashboard/tabbed-settings",
+  "sections": [
+   "review workspace",
+   "dashboard: activity trail, readings, review, storage, artifacts",
+   "settings: tabbed tables"
+  ],
+  "signature": "the version trail, people in amber and instruments in cool",
+  "waived": [
+   "28b",
+   "39b"
+  ],
+  "prompt": "a workspace where people and coding agents publish versioned web artifacts, review each version, leave comments and dispatch fixes to agents; a dashboard of counts, storage and activity; settings tables for projects, members and keys; utilitarian",
+  "date": "2026-11-23"
+ }
+]
