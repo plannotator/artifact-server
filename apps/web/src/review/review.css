@@ -2284,6 +2284,8 @@ body {
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
+  /* The row scrolls when its tabs do not fit; the fading edge says so. */
+  mask-image: linear-gradient(to right, var(--color-ink) calc(100% - 1.5rem), transparent);
 }
 
 .as-tab {
