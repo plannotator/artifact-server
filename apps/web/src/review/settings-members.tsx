@@ -171,7 +171,7 @@ export function MembersScreen() {
                     </td>
                     <td className="px-4 py-4 capitalize">{member.role}</td>
                     <td className="px-4 py-4">
-                      <StatusBadge tone={member.status === "active" ? "primary" : "neutral"}>
+                      <StatusBadge>
                         {member.status}
                       </StatusBadge>
                     </td>

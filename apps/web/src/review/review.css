@@ -1567,14 +1567,13 @@ body {
 
 .as-preview-header h1 {
   font-size: 0.92rem;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.15;
   margin: 0;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-wrap: balance;
 }
 
 .as-share-positioner {
