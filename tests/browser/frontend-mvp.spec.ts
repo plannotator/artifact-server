@@ -1480,7 +1480,7 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(fixture.page.getByText(secretValue ?? "missing-secret")).toHaveCount(0);
       expect(await browserStorage(fixture.page)).toEqual({
         indexedDatabaseNames: [],
-        localStorageKeys: ["artifact-review-theme"],
+        localStorageKeys: ["artifact-review-locale", "artifact-review-theme"],
         sessionStorageKeys: ["artifact-review-return-url"],
       });
 

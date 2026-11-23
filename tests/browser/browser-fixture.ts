@@ -19,7 +19,13 @@ export async function englishContext(
 ): Promise<BrowserContext> {
   const context = await browser.newContext(options);
   await context.addInitScript(() => {
-    window.localStorage.setItem("artifact-review-locale", "en");
+    // Only the application document: sandboxed artifact frames have no storage.
+    if (window.top !== window) return;
+    try {
+      window.localStorage.setItem("artifact-review-locale", "en");
+    } catch {
+      // A document without storage keeps the default language.
+    }
   });
   return context;
 }
@@ -74,7 +80,9 @@ export async function browserStorage(page: Page): Promise<{
     indexedDatabaseNames: (await indexedDB.databases())
       .map((database) => database.name)
       .filter((name): name is string => name !== undefined),
-    localStorageKeys: Object.keys(localStorage),
-    sessionStorageKeys: Object.keys(sessionStorage),
+    // Sorted, so a comparison names the keys and never depends on the
+    // browser's enumeration order.
+    localStorageKeys: Object.keys(localStorage).toSorted(),
+    sessionStorageKeys: Object.keys(sessionStorage).toSorted(),
   }));
 }
