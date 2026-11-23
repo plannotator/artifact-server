@@ -25,6 +25,7 @@ import {
 } from "../observability/application-observability.js";
 import { LocalBlobStore } from "../storage/local-blob-store.js";
 import { LocalStagingStore } from "../storage/local-staging-store.js";
+import { SqliteArtifactInsightsStore } from "../storage/sqlite-artifact-insights.js";
 import { SqliteArtifactRepository } from "../storage/sqlite-artifact-repository.js";
 import { SqliteIdentityRepository } from "../storage/sqlite-identity-repository.js";
 import {
@@ -136,6 +137,7 @@ export async function createLocalRuntime(
     gitHistory.capability,
   );
   const repository = new SqliteArtifactRepository(databasePath, installationId);
+  const insights = new SqliteArtifactInsightsStore(databasePath, installationId);
   const identityRepository = new SqliteIdentityRepository(databasePath);
   const configuredGitHistory = configuredNodeGitHistory(gitHistory);
   const gitHistoryProvider = configuredGitHistory === null
@@ -202,11 +204,13 @@ export async function createLocalRuntime(
       Effect.succeed({
         gitHistoryIdentityStore,
         identityRepository,
+        insights,
         repository,
       }),
       (owned) => Effect.sync(() => {
         owned.gitHistoryIdentityStore?.close();
         owned.identityRepository.close();
+        owned.insights.close();
         owned.repository.close();
       }),
     ),
@@ -225,6 +229,7 @@ export async function createLocalRuntime(
     externalMcpOAuthVerifier: config.externalMcpOAuthVerifier ?? null,
     ids: new SystemIdGenerator(),
     identityRepository,
+    insights,
     installationId,
     gitHistory: {read: () => applicationGitHistory.read()},
     interactiveIdentityProvider: config.interactiveIdentityProvider ?? null,

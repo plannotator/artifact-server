@@ -206,6 +206,137 @@ export type Manifest = z.infer<typeof manifestSchema>;
 export type ArtifactVersion = z.infer<typeof artifactVersionSchema>;
 export type ArtifactState = z.infer<typeof artifactStateSchema>;
 
+const insightWindowSchema = z.enum(["7d", "30d", "90d", "all"]);
+const insightDispatchStateSchema = z.enum([
+  "queued",
+  "claimed",
+  "delivered",
+  "addressed",
+  "failed",
+  "canceled",
+]);
+const insightCountSchema = z.number().int().nonnegative();
+const insightArtifactRefSchema = z.object({
+  artifactId: z.string(),
+  name: z.string(),
+  projectId: z.string(),
+});
+const insightsSchema = z.object({
+  generatedAt: z.string(),
+  overview: z.object({
+    artifactCount: insightCountSchema,
+    projects: z.array(z.object({
+      archived: z.boolean(),
+      artifactCount: insightCountSchema,
+      latestVersionAt: z.string().nullable(),
+      name: z.string(),
+      projectId: z.string(),
+      versionCount: insightCountSchema,
+    })),
+    publicLinkCount: insightCountSchema,
+    recentArtifacts: z.array(insightArtifactRefSchema.extend({
+      latestVersionAt: z.string(),
+      latestVersionNumber: z.number().int().positive(),
+    })),
+    tags: z.array(z.object({artifactCount: insightCountSchema, tag: z.string()})),
+    untaggedArtifactCount: insightCountSchema,
+    versionCount: insightCountSchema,
+    versionsInWindow: insightCountSchema,
+  }),
+  projectId: z.string().nullable(),
+  review: z.object({
+    dispatches: z.record(insightDispatchStateSchema, insightCountSchema),
+    dispatchesInWindow: insightCountSchema,
+    oldestOpenThreadAt: z.string().nullable(),
+    openDispatchedThreads: insightCountSchema,
+    openThreads: insightCountSchema,
+    openThreadsByArtifact: z.array(insightArtifactRefSchema.extend({
+      openThreads: insightCountSchema,
+    })),
+    repliesInWindow: insightCountSchema,
+    resolvedThreads: insightCountSchema,
+    threadsOpenedInWindow: insightCountSchema,
+    threadsResolvedInWindow: insightCountSchema,
+  }),
+  since: z.string().nullable(),
+  storage: z.object({
+    distinctBlobCount: insightCountSchema,
+    fileCount: insightCountSchema,
+    gitHistory: z.object({
+      committedBytes: insightCountSchema,
+      failingJobs: insightCountSchema,
+      pendingJobs: insightCountSchema,
+      projects: z.array(z.object({
+        budgetBytes: insightCountSchema.nullable(),
+        committedBytes: insightCountSchema,
+        enabled: z.boolean(),
+        projectId: z.string(),
+        reservedBytes: insightCountSchema,
+      })),
+      reservedBytes: insightCountSchema,
+    }),
+    growth: z.array(z.object({
+      addedBytes: insightCountSchema,
+      cumulativeBytes: insightCountSchema,
+      day: z.string(),
+      versions: insightCountSchema,
+    })),
+    growthBucket: z.enum(["day", "week"]),
+    largestArtifacts: z.array(insightArtifactRefSchema.extend({
+      logicalBytes: insightCountSchema,
+    })),
+    logicalBytes: insightCountSchema,
+    storedBytes: insightCountSchema,
+  }),
+  window: insightWindowSchema,
+});
+const insightsResponseSchema = z.object({insights: insightsSchema});
+const insightActivityKindSchema = z.enum([
+  "artifact.published",
+  "artifact.restored",
+  "artifact.deleted",
+  "artifact.captured",
+  "artifact.linked",
+  "artifact.relinked",
+  "artifact.access_changed",
+  "artifact.tags_changed",
+  "comment.opened",
+  "comment.replied",
+  "comment.resolved",
+  "comment.reopened",
+  "comment.edited",
+  "comment.deleted",
+  "dispatch.sent",
+  "dispatch.delivered",
+  "dispatch.addressed",
+  "dispatch.failed",
+  "dispatch.canceled",
+]);
+const insightActivityPageSchema = z.object({
+  items: z.array(z.object({
+    actor: z.object({
+      displayName: z.string().nullable(),
+      kind: principalKindSchema.nullable(),
+      principalId: z.string(),
+    }).nullable(),
+    artifactId: z.string().nullable(),
+    artifactName: z.string().nullable(),
+    id: z.string(),
+    kind: insightActivityKindSchema,
+    occurredAt: z.string(),
+    projectId: z.string(),
+    versionNumber: z.number().int().positive().nullable(),
+  })),
+  nextCursor: z.string().nullable(),
+});
+
+export type InsightWindow = z.infer<typeof insightWindowSchema>;
+export type InsightDispatchState = z.infer<typeof insightDispatchStateSchema>;
+export type Insights = z.infer<typeof insightsSchema>;
+export type InsightActivityKind = z.infer<typeof insightActivityKindSchema>;
+export type InsightActivityPage = z.infer<typeof insightActivityPageSchema>;
+export type InsightActivityEvent = InsightActivityPage["items"][number];
+
 const publicLinkItemSchema = z.object({
   artifact: artifactSchema,
   currentVersion: versionSchema,
@@ -874,6 +1005,22 @@ export const api = {
     });
     // Drafts and other departing-principal state listen for this.
     window.dispatchEvent(new Event("artifact-session-logout"));
+  },
+  insights: async (projectId: string | null, window: InsightWindow) => {
+    const query = new URLSearchParams({window});
+    if (projectId !== null) query.set("projectId", projectId);
+    return (await request(insightsResponseSchema, `/api/v1/insights?${query}`))
+      .insights;
+  },
+  insightActivity: (
+    projectId: string | null,
+    window: InsightWindow,
+    cursor: string | null,
+  ) => {
+    const query = new URLSearchParams({limit: "25", window});
+    if (projectId !== null) query.set("projectId", projectId);
+    if (cursor !== null) query.set("cursor", cursor);
+    return request(insightActivityPageSchema, `/api/v1/insights/activity?${query}`);
   },
   publicLinks: (cursor: string | null) => {
     const query = new URLSearchParams({ limit: "25" });

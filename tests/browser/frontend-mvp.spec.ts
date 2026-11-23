@@ -1125,6 +1125,11 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(share.getByText(published.body.links.version, {exact: true})).toBeVisible();
       await expect(share.getByText("Moves when a new version is published", {exact: true}))
         .toBeVisible();
+      // The popover fades in; measuring contrast mid-transition reads a
+      // partly blended color, so wait until its animations have finished.
+      await fixture.page.waitForFunction(() =>
+        document.getAnimations().every((animation) => animation.playState !== "running")
+      );
       const shareAccessibility = await new AxeBuilder({page: fixture.page})
         .exclude(".as-artifact-frame")
         // Base UI gives its invisible Safari focus guards a button role only
