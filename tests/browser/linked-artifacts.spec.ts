@@ -19,7 +19,7 @@ import {
   type RunningTestServer,
   type TestInstallation,
 } from "../support/runtime-harness.js";
-import {localLogin} from "./browser-fixture.js";
+import {localLogin, englishContext} from "./browser-fixture.js";
 
 /** The link answer these tests read, mirroring the HTTP response shaping. */
 const linkedPublicationSchema = z.object({
@@ -69,7 +69,7 @@ async function startLinkedFixture(browser: Browser): Promise<LinkedFixture> {
     linkedFiles: "on",
     linkRoots: [linkRoot],
   });
-  const context = await browser.newContext();
+  const context = await englishContext(browser);
   const page = await context.newPage();
   return {context, installation, linkRoot, page, server};
 }

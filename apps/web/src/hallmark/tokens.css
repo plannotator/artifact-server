@@ -14,8 +14,10 @@
   --dur-micro: 120ms; --dur-short: 220ms; --dur-long: 420ms;
   --container: 1440px; --gutter: 64px; --gap-columns: 32px; --section-gap-s: 120px; --section-gap: 144px; --section-gap-l: 176px;
   --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-sticky-nav: 300; --z-modal: 400; --z-toast: 500; --z-tooltip: 600;
-  --font-display: "Host Grotesk", ui-sans-serif, system-ui, sans-serif; --font-body: var(--font-display);
-  --font-outlier: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+  /* Latin from the theme faces; Han characters fall to the system's
+     Traditional Chinese face (no CJK webfont: the CSP serves fonts from self). */
+  --font-display: "Host Grotesk", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", ui-sans-serif, system-ui, sans-serif; --font-body: var(--font-display);
+  --font-outlier: "Atkinson Hyperlegible Mono", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", ui-monospace, monospace;
   --radius-card: 10px; --radius-pill: 6px; --radius-chip: 4px; --rule-hair: 1px;
   --shadow-card: none;
   --tracking-display: -0.03em; --display-weight: 500;

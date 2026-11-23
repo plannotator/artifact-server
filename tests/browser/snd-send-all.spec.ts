@@ -19,6 +19,7 @@ import {
   startBrowserFixture,
   stopBrowserFixture,
   type BrowserFixture,
+  englishContext,
 } from "./browser-fixture.js";
 import {createThreadOverApi} from "./comment-api.js";
 
@@ -31,7 +32,7 @@ async function startSendFixture(browser: Browser): Promise<SendFixture> {
   const installation = await createTestInstallation();
   const clock = new MutableClock();
   const server = await startTestServer(installation, {clock});
-  const context = await browser.newContext();
+  const context = await englishContext(browser);
   const page = await context.newPage();
   return {clock, context, installation, page, server};
 }

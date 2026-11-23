@@ -8,6 +8,7 @@ import {ButtonLink} from "@/components/ui/button";
 import {NativeSelect} from "@/components/ui/native-select";
 import {Skeleton} from "@/components/ui/skeleton";
 import {ToggleGroup, ToggleGroupItem} from "@/components/ui/toggle-group";
+import {LanguageSwitch} from "@/i18n/language-switch";
 import {ArtifactMark} from "../review/artifact-mark.tsx";
 import {ActivitySection} from "./dashboard-activity.tsx";
 import {dashboardWindows} from "./dashboard-format.ts";
@@ -85,6 +86,7 @@ export function DashboardPage({
             <span className="as-settings__brand-label">Dashboard</span>
           </a>
           <div className="as-settings__header-actions">
+            <LanguageSwitch />
             <button
               aria-label={theme === "moon" ? "Use light theme" : "Use dark theme"}
               className="as-icon-button"

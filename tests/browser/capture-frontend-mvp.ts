@@ -1,3 +1,4 @@
+import {englishContext} from "./browser-fixture.js";
 import {mkdir} from "node:fs/promises";
 import path from "node:path";
 
@@ -14,7 +15,7 @@ const outputDirectory = path.resolve("project/evidence/frontend-mvp");
 const installation = await createTestInstallation();
 const server = await startTestServer(installation);
 const browser = await chromium.launch({headless: true});
-const context = await browser.newContext({
+const context = await englishContext(browser, {
   colorScheme: "light",
   viewport: {height: 900, width: 1440},
 });

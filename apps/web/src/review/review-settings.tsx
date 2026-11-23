@@ -4,6 +4,7 @@ import {HugeiconsIcon} from "@hugeicons/react";
 import {api, type Project, type Session} from "@/api/client";
 import {StatePanel} from "@/components/product";
 import {Button, ButtonLink} from "@/components/ui/button";
+import {LanguageSwitch} from "@/i18n/language-switch";
 import {ArtifactMark} from "./artifact-mark.tsx";
 import {parseSettingsRoute, type SettingsRoute} from "./review-routes.ts";
 import {ApiKeysScreen} from "./settings-api-keys.tsx";
@@ -50,6 +51,7 @@ export function ReviewSettings({
             <span className="as-settings__brand-label">Settings</span>
           </a>
           <div className="as-settings__header-actions">
+            <LanguageSwitch />
             <button
               aria-label={theme === "moon" ? "Use light theme" : "Use dark theme"}
               className="as-icon-button"

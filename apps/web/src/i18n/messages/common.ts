@@ -1,0 +1,147 @@
+import {defineMessages} from "../locale.ts";
+
+/** Text shared by every screen: failures, access, action history, linked sources. */
+export const commonText = defineMessages({
+  en: {
+    failure: {
+      generic: "Artifact Server could not complete the request.",
+      sessionExpired: "Your session expired. Sign in again to continue.",
+      forbidden: "You are signed in, but you do not have permission for this action.",
+      artifactChanged: "This artifact changed after you opened it. Reload before trying again.",
+      projectArchived: "This project is archived. Existing artifacts remain available, but new work is blocked.",
+    },
+    access: {
+      accountRequired: "Account required",
+      publicLink: "Public link",
+    },
+    action: {
+      capture: "Captured linked file",
+      link: "Linked source file",
+      relink: "Relinked source file",
+      changeAccess: "Changed access",
+      changeTags: "Replaced tags",
+      commentCreate: "Opened comment",
+      commentDelete: "Deleted comment",
+      commentReopen: "Reopened comment",
+      commentReply: "Replied to comment",
+      commentResolve: "Resolved comment",
+      commentUpdate: "Edited comment",
+      delete: "Tombstoned artifact",
+      publish: "Published version",
+      restore: "Restored version",
+    },
+    freshness: {
+      inSync: "In sync",
+      missing: "File missing",
+      modified: "Modified on disk",
+      unreadable: "Unreadable",
+      missingDescription: "The linked file is missing from disk. The last captured version is what everyone reads.",
+      unreadableDescription: "The linked file cannot be read right now. The last captured version is what everyone reads.",
+      liveDescription: "File changed on disk — showing live bytes.",
+      capturedDescription: "A newer state exists on disk. Comments and shared links stay on the captured version.",
+    },
+    language: {
+      label: "Language",
+      switchTo: "繁體中文",
+      switchToLabel: "切換為繁體中文",
+    },
+  },
+  "zh-TW": {
+    failure: {
+      generic: "Artifact Server 無法完成這個要求。",
+      sessionExpired: "登入已逾時，請重新登入後繼續。",
+      forbidden: "你已登入，但沒有執行這個操作的權限。",
+      artifactChanged: "這個 Artifact 在你開啟後已有變更，請重新載入後再試一次。",
+      projectArchived: "這個專案已封存。既有的 Artifact 仍可查看，但無法新增內容。",
+    },
+    access: {
+      accountRequired: "需要帳號",
+      publicLink: "公開連結",
+    },
+    action: {
+      capture: "擷取了連結的檔案",
+      link: "連結了來源檔案",
+      relink: "重新連結了來源檔案",
+      changeAccess: "變更了存取權限",
+      changeTags: "更換了標籤",
+      commentCreate: "新增了留言",
+      commentDelete: "刪除了留言",
+      commentReopen: "重新開啟了留言",
+      commentReply: "回覆了留言",
+      commentResolve: "將留言標為已解決",
+      commentUpdate: "編輯了留言",
+      delete: "刪除了 Artifact",
+      publish: "發布了版本",
+      restore: "還原了版本",
+    },
+    freshness: {
+      inSync: "已同步",
+      missing: "找不到檔案",
+      modified: "磁碟上已修改",
+      unreadable: "無法讀取",
+      missingDescription: "連結的檔案已不在磁碟上，大家看到的是最後擷取的版本。",
+      unreadableDescription: "目前無法讀取連結的檔案，大家看到的是最後擷取的版本。",
+      liveDescription: "磁碟上的檔案已變更，正在顯示即時內容。",
+      capturedDescription: "磁碟上有較新的內容。留言與分享連結仍停在擷取的版本。",
+    },
+    language: {
+      label: "語言",
+      switchTo: "English",
+      switchToLabel: "Switch to English",
+    },
+  },
+});
+
+/**
+ * Traditional Chinese text for every stable server error code. English shows
+ * the server's own message, so this table exists only for zh-TW.
+ */
+const serverErrorText = new Map(Object.entries({
+  AGENT_NOT_FOUND: "找不到這個 Agent。",
+  ARTIFACT_NOT_FOUND: "找不到這個 Artifact，可能已被刪除。",
+  ARTIFACT_MUTATION_CONFLICT: "這個 Artifact 在你開啟後已有變更，請重新載入後再試一次。",
+  AUTHORIZATION_DENIED: "你沒有執行這個操作的權限。",
+  AUTHENTICATION_REQUIRED: "請先登入。",
+  COMMENT_NOT_FOUND: "找不到這則留言，可能已被刪除。",
+  COMMENT_RESOLVED: "這則留言已標為已解決，請先重新開啟再回覆。",
+  DISPATCH_NOT_FOUND: "找不到這筆派工。",
+  DISPATCH_STATE_CONFLICT: "這筆派工的狀態已經改變，請重新整理後再試一次。",
+  CONTENT_BOOTSTRAP_REJECTED: "預覽連線已失效，請重新開啟這個版本。",
+  CONTENT_NOT_PUBLIC: "這個內容需要登入才能查看。",
+  IDEMPOTENCY_CONFLICT: "同一個要求已用不同內容送出過，請重新操作一次。",
+  IDENTITY_ADMISSION_DENIED: "這個帳號沒有被允許加入這台伺服器。",
+  IDENTITY_CONFLICT: "這個身分已經存在。",
+  IDENTITY_NOT_FOUND: "找不到這個成員。",
+  IDENTITY_PROVIDER_FAILURE: "登入服務暫時無法使用，請稍後再試。",
+  INTERACTIVE_LOGIN_UNAVAILABLE: "這台伺服器沒有開放瀏覽器登入。",
+  INVALID_COMMENT: "留言內容不符合規定，請檢查長度與位置。",
+  INVALID_DISPATCH: "這筆派工的內容不正確，請重新選擇留言。",
+  INVALID_INPUT: "輸入的內容不正確，請檢查後再試一次。",
+  INVALID_LINK_PATH: "這個檔案路徑無法使用。",
+  INVALID_MANIFEST_PATH: "檔案路徑不正確。",
+  LINK_PATH_OUTSIDE_ROOTS: "這個檔案不在允許連結的資料夾裡。",
+  LINK_PATH_PROTECTED: "這個檔案受到保護，不能連結。",
+  METHOD_NOT_ALLOWED: "這個操作不被允許。",
+  MEDIA_PREVIEW_CONTEXT_REQUIRED: "需要從審閱畫面開啟才能預覽這個媒體。",
+  MEDIA_PREVIEW_TYPE_UNSUPPORTED: "不支援預覽這種檔案格式，請直接下載。",
+  CAPABILITY_UNAVAILABLE: "這台伺服器沒有提供這項功能。",
+  SOURCE_DRIFTED: "來源檔案已經變更，請重新整理後再試一次。",
+  SOURCE_MISSING: "找不到來源檔案。",
+  SOURCE_UNREADABLE: "目前無法讀取來源檔案。",
+  PUBLISH_CONFLICT: "這個 Artifact 在你開啟後已有變更，請重新載入後再試一次。",
+  PROJECT_ARCHIVED: "這個專案已封存。既有的 Artifact 仍可查看，但無法新增內容。",
+  PROJECT_CONFLICT: "已經有同名的專案。",
+  PROJECT_NOT_FOUND: "找不到這個專案。",
+  PROJECT_SELECTION_REQUIRED: "請先選擇一個專案。",
+  UPLOAD_CLOSED: "這次上傳已經結束。",
+  UPLOAD_EXPIRED: "上傳已逾時，請重新開始。",
+  UPLOAD_FILE_NOT_FOUND: "找不到要上傳的檔案。",
+  UPLOAD_INCOMPLETE: "還有檔案沒有上傳完成。",
+  UPLOAD_NOT_FOUND: "找不到這次上傳。",
+  VERSION_NOT_FOUND: "找不到這個版本。",
+}));
+
+/** The zh-TW sentence for one server error code, when the code is known. */
+export function serverErrorMessage(code: string): string | undefined {
+  return serverErrorText.get(code);
+}

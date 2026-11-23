@@ -1,11 +1,13 @@
 import { ApiError, type ArtifactAction, type SourceFreshness } from "@/api/client";
+import { commonText, serverErrorMessage } from "@/i18n/messages/common";
+import { intlLocale, locale } from "@/i18n/locale";
 
-/** Formats a stored ISO timestamp for the current browser locale. */
+/** Formats a stored ISO timestamp for the interface language. */
 export function formatTimestamp(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : new Intl.DateTimeFormat(undefined, {
+    : new Intl.DateTimeFormat(intlLocale, {
       dateStyle: "medium",
       timeStyle: "short",
     }).format(date);
@@ -25,7 +27,7 @@ export function formatRelativeTime(value: string, now: number): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   const elapsed = date.getTime() - now;
-  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const formatter = new Intl.RelativeTimeFormat(intlLocale, { numeric: "auto" });
   for (const [unit, milliseconds] of relativeUnits) {
     if (Math.abs(elapsed) >= milliseconds) {
       return formatter.format(Math.round(elapsed / milliseconds), unit);
@@ -45,62 +47,63 @@ export function formatBytes(value: number): string {
 /** Returns a useful operator-facing message for expected API failures. */
 export function errorMessage(error: Error): string {
   if (!(error instanceof ApiError)) {
-    return "Artifact Server could not complete the request.";
+    return commonText.failure.generic;
   }
   if (error.status === 401) {
-    return "Your session expired. Sign in again to continue.";
+    return commonText.failure.sessionExpired;
   }
   if (error.status === 403) {
-    return "You are signed in, but you do not have permission for this action.";
+    return commonText.failure.forbidden;
   }
   if (
     error.code === "ARTIFACT_MUTATION_CONFLICT"
     || error.code === "PUBLISH_CONFLICT"
   ) {
-    return "This artifact changed after you opened it. Reload before trying again.";
+    return commonText.failure.artifactChanged;
   }
   if (error.code === "PROJECT_ARCHIVED") {
-    return "This project is archived. Existing artifacts remain available, but new work is blocked.";
+    return commonText.failure.projectArchived;
   }
-  return error.message;
+  // English shows the server's own words; zh-TW translates the stable code.
+  return locale === "en" ? error.message : serverErrorMessage(error.code) ?? error.message;
 }
 
 /** Converts an access-setting value into the product's visible term. */
 export function accessSettingLabel(value: "account_required" | "public_link"): string {
-  return value === "account_required" ? "Account required" : "Public link";
+  return value === "account_required" ? commonText.access.accountRequired : commonText.access.publicLink;
 }
 
 /** Converts one action kind into compact action-history text. */
 export function actionLabel(value: ArtifactAction["action"]): string {
   switch (value) {
     case "capture":
-      return "Captured linked file";
+      return commonText.action.capture;
     case "link":
-      return "Linked source file";
+      return commonText.action.link;
     case "relink":
-      return "Relinked source file";
+      return commonText.action.relink;
     case "change_access":
-      return "Changed access";
+      return commonText.action.changeAccess;
     case "change_tags":
-      return "Replaced tags";
+      return commonText.action.changeTags;
     case "comment_create":
-      return "Opened comment";
+      return commonText.action.commentCreate;
     case "comment_delete":
-      return "Deleted comment";
+      return commonText.action.commentDelete;
     case "comment_reopen":
-      return "Reopened comment";
+      return commonText.action.commentReopen;
     case "comment_reply":
-      return "Replied to comment";
+      return commonText.action.commentReply;
     case "comment_resolve":
-      return "Resolved comment";
+      return commonText.action.commentResolve;
     case "comment_update":
-      return "Edited comment";
+      return commonText.action.commentUpdate;
     case "delete":
-      return "Tombstoned artifact";
+      return commonText.action.delete;
     case "publish":
-      return "Published version";
+      return commonText.action.publish;
     case "restore":
-      return "Restored version";
+      return commonText.action.restore;
   }
   return actionHandled(value);
 }
@@ -113,13 +116,13 @@ function actionHandled(value: never): never {
 export function sourceFreshnessLabel(value: SourceFreshness): string {
   switch (value) {
     case "in-sync":
-      return "In sync";
+      return commonText.freshness.inSync;
     case "missing":
-      return "File missing";
+      return commonText.freshness.missing;
     case "modified":
-      return "Modified on disk";
+      return commonText.freshness.modified;
     case "unreadable":
-      return "Unreadable";
+      return commonText.freshness.unreadable;
   }
   return freshnessHandled(value);
 }
@@ -150,15 +153,15 @@ export function sourceDriftDescription(
   view: "captured" | "live",
 ): string | null {
   if (value === "missing") {
-    return "The linked file is missing from disk. The last captured version is what everyone reads.";
+    return commonText.freshness.missingDescription;
   }
   if (value === "unreadable") {
-    return "The linked file cannot be read right now. The last captured version is what everyone reads.";
+    return commonText.freshness.unreadableDescription;
   }
   if (value !== "modified") return null;
   return view === "live"
-    ? "File changed on disk — showing live bytes."
-    : "A newer state exists on disk. Comments and shared links stay on the captured version.";
+    ? commonText.freshness.liveDescription
+    : commonText.freshness.capturedDescription;
 }
 
 function freshnessHandled(value: never): never {
