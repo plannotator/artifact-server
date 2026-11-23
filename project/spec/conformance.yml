@@ -4871,3 +4871,74 @@ requirements:
         result: pass
         run: project/evidence/browser.json
         recorded_at: "2026-08-24T03:47:04.897Z"
+
+  # Fork-local dashboard insights (ShiGaChenTW/artifact-server); not upstream.
+  - id: DSH-001
+    kind: behavior
+    behavior: The dashboard overview counts live artifacts, versions, recent changes, tag distribution, and public links for one project or the whole installation.
+    owner: http-api
+    source: {file: dashboard-insights-spec.md, anchor: contract}
+    acceptance:
+      behavior: {id: DSH-001-B, description: "Read the overview for one project and for the installation and receive exact live-artifact, version, in-window version, public-link, tag, and most-recent-artifact figures."}
+      failure: {id: DSH-001-F, description: "Deleted artifacts and other projects' artifacts never appear in a project's overview, and an unknown project is refused with PROJECT_NOT_FOUND."}
+    deployments: [local]
+    status: implementing
+    proof_gap: Normal and hostile tests exist; no durable local evidence report has been attached yet.
+    depends_on: [PRJ-001, ART-001]
+    evidence: []
+
+  - id: DSH-002
+    kind: behavior
+    behavior: The dashboard review section reports open, resolved, replied, and dispatched review work for the selected scope and window.
+    owner: http-api
+    source: {file: dashboard-insights-spec.md, anchor: contract}
+    acceptance:
+      behavior: {id: DSH-002-B, description: "After opening, resolving, replying to, and dispatching threads, the review section reports exact open, resolved, dispatched-open, in-window, and per-state dispatch counts."}
+      failure: {id: DSH-002-F, description: "Review counts never include another project's threads or dispatches, and work older than the window leaves the in-window counts while staying in the open totals."}
+    deployments: [local]
+    status: implementing
+    proof_gap: Normal and hostile tests exist; no durable local evidence report has been attached yet.
+    depends_on: [CMT-001, DSP-003]
+    evidence: []
+
+  - id: DSH-003
+    kind: behavior
+    behavior: The dashboard storage section separates declared bytes from deduplicated stored bytes and draws growth from the bytes published before the window.
+    owner: http-api
+    source: {file: dashboard-insights-spec.md, anchor: contract}
+    acceptance:
+      behavior: {id: DSH-003-B, description: "Identical bytes published in two artifacts count twice as declared bytes and once as stored bytes, and the daily series starts from the pre-window baseline and ends at the total."}
+      failure: {id: DSH-003-F, description: "A history longer than ninety days folds into weekly buckets whose sums still equal every retained byte and version, including those of deleted artifacts."}
+    deployments: [local]
+    status: implementing
+    proof_gap: Normal and hostile tests exist; no durable local evidence report has been attached yet.
+    depends_on: [PUB-001]
+    evidence: []
+
+  - id: DSH-004
+    kind: behavior
+    behavior: The dashboard activity timeline merges artifact, comment, and dispatch changes newest first with stable keyset pages.
+    owner: http-api
+    source: {file: dashboard-insights-spec.md, anchor: contract}
+    acceptance:
+      behavior: {id: DSH-004-B, description: "Small cursor pages return exactly the events of one large page, in newest-first order, with a resolved actor for local publications."}
+      failure: {id: DSH-004-F, description: "Activity never crosses projects, and malformed cursors or page sizes are refused with INVALID_INPUT."}
+    deployments: [local]
+    status: implementing
+    proof_gap: Normal and hostile tests exist; no durable local evidence report has been attached yet.
+    depends_on: [DSH-001]
+    evidence: []
+
+  - id: DSH-005
+    kind: security
+    behavior: Dashboard reads require artifact-listing and comment-read authority, and deployments without insights persistence refuse them explicitly.
+    owner: authorization
+    source: {file: dashboard-insights-spec.md, anchor: contract}
+    acceptance:
+      behavior: {id: DSH-005-B, description: "An administrator browser session and an API key granted artifact:read both read the summary and the activity timeline."}
+      failure: {id: DSH-005-F, description: "Anonymous requests are refused, a key without artifact:read is denied, malformed window or project input is refused, and a deployment without insights persistence answers CAPABILITY_UNAVAILABLE."}
+    deployments: [local]
+    status: implementing
+    proof_gap: Normal and hostile tests exist; no durable local evidence report has been attached yet.
+    depends_on: [AUTH-001]
+    evidence: []

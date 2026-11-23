@@ -46,6 +46,10 @@ import {
 } from "../application/git-history-access.js";
 
 import {
+  ArtifactInsightsService,
+  disabledArtifactInsightsLayer,
+} from "../application/artifact-insights.js";
+import {
   disabledLinkedArtifactLayer,
   type LinkedArtifactConfiguration,
   type LinkedSourceEngineOperations,
@@ -126,6 +130,12 @@ import type {
 } from "../core/ports.js";
 import type {IdentityRepository} from "../core/identity-ports.js";
 import type { ManifestEntry } from "../core/model.js";
+import type {
+  ArtifactInsightFacts,
+  InsightActivityPage,
+  ListInsightActivity,
+  ReadArtifactInsights,
+} from "../core/insights.js";
 import {randomBase64Url} from "../core/random.js";
 import { FileVerificationError } from "../storage/verified-file.js";
 import {defaultStagingCleanupPolicy} from
@@ -169,6 +179,12 @@ export interface ApplicationAdapters {
    * stable capability-unavailable shape.
    */
   readonly linked?: LinkedApplicationAdapters;
+  /**
+   * Dashboard insights queries, present only where the persistence adapter
+   * implements them. Absent, every runtime still provides the insights
+   * service through its disabled layer.
+   */
+  readonly insights?: ArtifactInsightsStore;
   readonly localBootstrapCredential: Redacted.Redacted | null;
   readonly protectBootstrapAdministrator: boolean;
   readonly repository: ArtifactRepository &
@@ -193,6 +209,16 @@ export interface LinkedApplicationAdapters {
   readonly engine: LinkedSourceEngineOperations;
 }
 
+/** Promise-shaped dashboard queries implemented by a persistence adapter. */
+export interface ArtifactInsightsStore {
+  readonly listActivity: (
+    command: ListInsightActivity,
+  ) => Promise<InsightActivityPage>;
+  readonly readInsights: (
+    command: ReadArtifactInsights,
+  ) => Promise<ArtifactInsightFacts>;
+}
+
 interface PublicLinkInventoryStore {
   readonly listPublicLinks: (
     command: ListPublicLinks,
@@ -204,6 +230,7 @@ export function createApplicationLayer(
   adapters: ApplicationAdapters,
 ): Layer.Layer<
   | AgentDispatchService
+  | ArtifactInsightsService
   | AuthenticationService
   | ArtifactCommentService
   | ArtifactManagementService
@@ -1117,6 +1144,30 @@ export function createApplicationLayer(
   ).pipe(
     Layer.provideMerge(Layer.mergeAll(authorizationLayer, managementLayer)),
   );
+  const insights = adapters.insights;
+  const insightsLayer = insights === undefined
+    ? disabledArtifactInsightsLayer
+    : ArtifactInsightsService.layer({
+      clock,
+      knownPrincipals: new Map([
+        [localPrincipal.id, {
+          displayName: localPrincipal.displayName,
+          kind: localPrincipal.kind,
+        }],
+      ]),
+      repository: {
+        listActivity: (command) =>
+          Effect.tryPromise({
+            try: () => insights.listActivity(command),
+            catch: (cause) => repositoryFailure("listInsightActivity", cause),
+          }),
+        readInsights: (command) =>
+          Effect.tryPromise({
+            try: () => insights.readInsights(command),
+            catch: (cause) => repositoryFailure("readInsights", cause),
+          }),
+      },
+    }).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)));
   const comparisonLayer = CompareArtifactService.layer(
     comparisonDependencies,
   ).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)));
@@ -1134,6 +1185,7 @@ export function createApplicationLayer(
     publicLinkAdministrationLayer,
     comparisonLayer,
     gitHistoryAccessLayer,
+    insightsLayer,
     projectGitHistoryLayer,
     projectLayer,
   );

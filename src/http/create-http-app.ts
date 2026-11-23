@@ -47,6 +47,8 @@ import {
   type ArtifactVersionDetails,
   ArtifactManagementService,
 } from "../application/artifact-management.js";
+import {ArtifactInsightsService} from "../application/artifact-insights.js";
+import {defaultInsightWindow, insightWindows} from "../core/insights.js";
 import {
   type MakePublicLinkPrivateResult,
   PublicLinkAdministrationService,
@@ -371,6 +373,13 @@ const artifactPageQuerySchema = pageQuerySchema.extend({
   tags: z.array(z.string().max(200)).max(20).default([]),
 });
 const publicLinksPageQuerySchema = pageQuerySchema.omit({search: true});
+const insightsQuerySchema = z.object({
+  window: z.enum(insightWindows).default(defaultInsightWindow),
+});
+const insightActivityQuerySchema = insightsQuerySchema.extend({
+  cursor: z.string().max(1_024).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
 const makePublicLinkPrivateItemSchema = z.object({
   artifactId: z.string().min(1).max(200),
   expectedCurrentVersionId: z.string().min(1).max(200),
@@ -1570,6 +1579,43 @@ export function createHttpApp(
         message: "Publish files through POST /api/v1/uploads and the server-issued upload plan.",
       },
     }, 405);
+  });
+
+  app.get("/api/v1/insights", async (context) => {
+    const query = insightsQuerySchema.parse(context.req.query());
+    const insights = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      ArtifactInsightsService.use((service) =>
+        service.readInsights({
+          principal: context.get("principal"),
+          projectId: requestedProjectId(context),
+          window: query.window,
+        })
+      ),
+    );
+    return context.json({insights});
+  });
+
+  app.get("/api/v1/insights/activity", async (context) => {
+    const query = insightActivityQuerySchema.parse(context.req.query());
+    const page = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      ArtifactInsightsService.use((service) =>
+        service.listActivity({
+          cursor: decodePageCursor(query.cursor),
+          limit: query.limit,
+          principal: context.get("principal"),
+          projectId: requestedProjectId(context),
+          window: query.window,
+        })
+      ),
+    );
+    return context.json({
+      items: page.items,
+      nextCursor: encodePageCursor(page.nextCursor),
+    });
   });
 
   app.get("/api/v1/artifacts", async (context) => {

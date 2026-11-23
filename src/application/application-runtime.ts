@@ -1,6 +1,7 @@
 import { Effect, type ManagedRuntime, Result, type Tracer } from "effect";
 
 import type { AgentDispatchService } from "./agent-dispatch.js";
+import type { ArtifactInsightsService } from "./artifact-insights.js";
 import type { PublishArtifactService } from "./publish-artifact.js";
 import type { StagedUploadService } from "./staged-upload.js";
 import type { AuthenticationService } from "./authentication.js";
@@ -23,6 +24,7 @@ import type {PublicLinkAdministrationService} from
 export type ApplicationServices =
   | AgentDispatchService
   | ArtifactCommentService
+  | ArtifactInsightsService
   | ArtifactManagementService
   | AuthenticationService
   | AuthorizationService
