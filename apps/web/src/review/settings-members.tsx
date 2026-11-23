@@ -152,7 +152,7 @@ export function MembersScreen() {
         )
         : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-3xl text-left text-sm">
+            <table className="as-stack-table w-full min-w-3xl text-left text-sm">
               <thead className="border-b text-sm text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3 font-medium">Member</th>
@@ -171,7 +171,7 @@ export function MembersScreen() {
                     </td>
                     <td className="px-4 py-4 capitalize">{member.role}</td>
                     <td className="px-4 py-4">
-                      <StatusBadge>
+                      <StatusBadge tone={member.status === "active" ? "primary" : "neutral"}>
                         {member.status}
                       </StatusBadge>
                     </td>

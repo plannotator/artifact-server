@@ -253,7 +253,7 @@ export function ApiKeysScreen() {
                   <div>
                     <div className="flex flex-wrap items-center gap-3">
                       <h2 className="font-heading font-semibold">{apiKey.name}</h2>
-                      <StatusBadge tone={apiKey.revokedAt === null ? "neutral" : "danger"}>
+                      <StatusBadge tone={apiKey.revokedAt === null ? "primary" : "danger"}>
                         {apiKey.revokedAt === null ? "Active" : "Revoked"}
                       </StatusBadge>
                     </div>

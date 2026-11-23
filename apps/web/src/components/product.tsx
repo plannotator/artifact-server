@@ -106,8 +106,10 @@ export function StatusBadge({
   return (
     <Badge
       className={cn(
-        tone === "primary" && "text-primary",
-        tone === "danger" && "text-destructive",
+        "border px-1.5 py-0.5",
+        tone === "neutral" && "border-border bg-[var(--color-paper-3)] text-[var(--color-ink-2)]",
+        tone === "primary" && "border-[color-mix(in_oklab,var(--color-cool)_40%,transparent)] bg-[var(--color-cool-soft)] text-[var(--color-cool)]",
+        tone === "danger" && "border-[color-mix(in_oklab,var(--color-bad)_40%,transparent)] bg-[var(--color-bad-soft)] text-[var(--color-bad)]",
       )}
       variant={tone === "danger" ? "destructive" : "secondary"}
     >

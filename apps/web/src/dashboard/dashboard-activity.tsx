@@ -72,7 +72,7 @@ export function ActivitySection({
   };
 
   return (
-    <Card className="min-w-0 xl:col-span-8 xl:self-start">
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle>Activity</CardTitle>
         <CardDescription>Who published, changed, commented, or dispatched, newest first.</CardDescription>

@@ -119,7 +119,7 @@ export function SettingsProjects({
         />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-2xl text-left text-sm">
+          <table className="as-stack-table w-full min-w-2xl text-left text-sm">
             <thead className="border-b text-sm text-muted-foreground">
               <tr>
                 <th className="px-4 py-3 font-medium">Project</th>
@@ -140,7 +140,7 @@ export function SettingsProjects({
                     </code>
                   </td>
                   <td className="px-4 py-4">
-                    <StatusBadge>
+                    <StatusBadge tone={project.archivedAt === null ? "primary" : "neutral"}>
                       {project.archivedAt === null ? "Active" : "Archived"}
                     </StatusBadge>
                   </td>

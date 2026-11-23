@@ -152,21 +152,23 @@ export function DashboardPage({
           ? (
             <>
               {/* The trail leads; readings, one chart and one table follow it. */}
-              <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-                <ActivitySection
-                  now={now}
-                  projectId={selection.projectId}
-                  projectNames={projectNames}
-                  window={selection.window}
-                />
-                <div className="grid min-w-0 content-start gap-6 xl:col-span-4">
+              {/* Two columns that stack on their own, so no panel stretches to
+                  a neighbour's height and leaves a dead band. */}
+              <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-12">
+                <div className="grid min-w-0 gap-6 xl:col-span-8">
+                  <ActivitySection
+                    now={now}
+                    projectId={selection.projectId}
+                    projectNames={projectNames}
+                    window={selection.window}
+                  />
+                  <StorageSection insights={state.insights} projectNames={projectNames} />
+                </div>
+                <div className="grid min-w-0 gap-6 xl:col-span-4">
                   <DashboardHeadline insights={state.insights} />
                   <ReviewSection insights={state.insights} now={now} />
                 </div>
-                <div className="min-w-0 xl:col-span-7">
-                  <StorageSection insights={state.insights} projectNames={projectNames} />
-                </div>
-                <div className="min-w-0 xl:col-span-5">
+                <div className="min-w-0 xl:col-span-12">
                   <OverviewSection insights={state.insights} now={now} projectNames={projectNames} />
                 </div>
               </div>

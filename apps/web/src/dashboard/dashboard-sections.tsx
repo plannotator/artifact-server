@@ -99,7 +99,7 @@ function SectionCard({
         <CardTitle>{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
-      <CardContent className="grid min-w-0 gap-6">{children}</CardContent>
+      <CardContent className="grid min-w-0 grid-cols-1 gap-6">{children}</CardContent>
     </Card>
   );
 }
@@ -133,7 +133,8 @@ export function OverviewSection({
       description="Live artifacts, their latest versions, and tags."
       title="Artifacts"
     >
-      <div className="grid gap-3">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="grid min-w-0 grid-cols-1 content-start gap-3">
         <Subheading>Recently updated</Subheading>
         {overview.recentArtifacts.length === 0
           ? <Quiet>No artifacts yet.</Quiet>
@@ -173,9 +174,10 @@ export function OverviewSection({
             </Table>
           )}
       </div>
+      <div className="grid min-w-0 content-start gap-6">
       {showProjects
         ? (
-          <div className="grid gap-3">
+          <div className="grid min-w-0 grid-cols-1 gap-3">
             <Subheading>Projects</Subheading>
             <Table>
               <TableHeader>
@@ -205,7 +207,7 @@ export function OverviewSection({
           </div>
         )
         : null}
-      <div className="grid gap-3">
+      <div className="grid min-w-0 grid-cols-1 gap-3">
         <Subheading>Tags</Subheading>
         {overview.tags.length === 0
           ? <Quiet>No artifact carries a tag.</Quiet>
@@ -213,6 +215,8 @@ export function OverviewSection({
         <Quiet>
           {overview.untaggedArtifactCount} untagged, {overview.publicLinkCount} with a public link.
         </Quiet>
+      </div>
+      </div>
       </div>
     </SectionCard>
   );
@@ -234,7 +238,7 @@ export function ReviewSection({
       description="Comment threads and agent dispatches."
       title="Review"
     >
-      <div className="grid gap-3">
+      <div className="grid min-w-0 grid-cols-1 gap-3">
         <div className="flex items-baseline justify-between gap-4">
           <Subheading>Resolved</Subheading>
           <span className="font-mono text-sm tabular-nums">
@@ -251,7 +255,7 @@ export function ReviewSection({
             : ` The oldest was opened ${formatRelativeTime(review.oldestOpenThreadAt, now)}.`}
         </Quiet>
       </div>
-      <div className="grid gap-3">
+      <div className="grid min-w-0 grid-cols-1 gap-3">
         <Subheading>Dispatches</Subheading>
         <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
           {dispatchStates.map((entry) => (
@@ -266,16 +270,16 @@ export function ReviewSection({
           ))}
         </dl>
       </div>
-      <div className="grid gap-3">
+      <div className="grid min-w-0 grid-cols-1 gap-3">
         <Subheading>Most open threads</Subheading>
         {review.openThreadsByArtifact.length === 0
           ? <Quiet>Nothing is waiting for review.</Quiet>
           : (
-            <ul className="grid gap-2 text-sm">
+            <ul className="grid grid-cols-1 gap-2 text-sm">
               {review.openThreadsByArtifact.map((artifact) => (
-                <li className="flex items-center justify-between gap-4" key={artifact.artifactId}>
+                <li className="flex min-w-0 items-center justify-between gap-4" key={artifact.artifactId}>
                   <a
-                    className="truncate underline-offset-4 hover:underline"
+                    className="min-w-0 truncate underline-offset-4 hover:underline"
                     href={artifactReviewHref(artifact.projectId, artifact.artifactId)}
                   >
                     {artifact.name}
@@ -313,7 +317,7 @@ export function StorageSection({
         <Figure label="Saved by deduplication" value={formatBytes(saved)} />
         <Figure label={`Files, ${storage.distinctBlobCount} unique`} value={String(storage.fileCount)} />
       </dl>
-      <div className="grid gap-3">
+      <div className="grid min-w-0 grid-cols-1 gap-3">
         <Subheading>
           Published bytes{firstDay === undefined ? "" : ` since ${formatDay(firstDay)}`}
         </Subheading>
@@ -349,16 +353,16 @@ export function StorageSection({
           </Table>
         </details>
       </div>
-      <div className="grid gap-3">
+      <div className="grid min-w-0 grid-cols-1 gap-3">
         <Subheading>Largest artifacts</Subheading>
         {storage.largestArtifacts.length === 0
           ? <Quiet>No artifacts yet.</Quiet>
           : (
-            <ul className="grid gap-2 text-sm">
+            <ul className="grid grid-cols-1 gap-2 text-sm">
               {storage.largestArtifacts.map((artifact) => (
-                <li className="flex items-center justify-between gap-4" key={artifact.artifactId}>
+                <li className="flex min-w-0 items-center justify-between gap-4" key={artifact.artifactId}>
                   <a
-                    className="truncate underline-offset-4 hover:underline"
+                    className="min-w-0 truncate underline-offset-4 hover:underline"
                     href={artifactReviewHref(artifact.projectId, artifact.artifactId)}
                   >
                     {artifact.name}
@@ -369,7 +373,7 @@ export function StorageSection({
             </ul>
           )}
       </div>
-      <div className="grid gap-3">
+      <div className="grid min-w-0 grid-cols-1 gap-3">
         <Subheading>Git history</Subheading>
         {enabledProjects.length === 0
           ? <Quiet>Git-history mirroring is off for every project in view.</Quiet>

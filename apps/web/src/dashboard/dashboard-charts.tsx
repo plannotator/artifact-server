@@ -53,7 +53,7 @@ export function GrowthChart({
           axisLine={false}
           tickFormatter={formatBytes}
           tickLine={false}
-          width={64}
+          width={80}
         />
         <ChartTooltip
           content={({activeIndex}) => {
