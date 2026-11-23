@@ -20,7 +20,8 @@ import {
 } from "@/components/ui/dialog";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
-import {formatBytes, formatTimestamp} from "@/lib/presentation";
+import {settingsText} from "@/i18n/messages/settings";
+import {formatBytes, formatTimestamp, displayError} from "@/lib/presentation";
 import {projectSettingsHref} from "./review-routes.ts";
 
 interface ProjectSettingsSharedProps {
@@ -55,7 +56,7 @@ export function SettingsProjects({
       await onProjectsChanged();
       window.location.assign(projectSettingsHref(created.id));
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Project creation failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.projects.createFailed));
     } finally {
       setPending(false);
     }
@@ -75,57 +76,57 @@ export function SettingsProjects({
             }}
             open={createOpen}
           >
-            <DialogTrigger render={<Button type="button" />}>New project</DialogTrigger>
+            <DialogTrigger render={<Button type="button" />}>{settingsText.projects.newProject}</DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>New project</DialogTitle>
+                <DialogTitle>{settingsText.projects.newProject}</DialogTitle>
                 <DialogDescription>
-                  Create a place for related artifacts. Every installation member can use it.
+                  {settingsText.projects.createDescription}
                 </DialogDescription>
               </DialogHeader>
               {error === null ? null : (
-                <p className="text-sm text-destructive" role="alert">{error.message}</p>
+                <p className="text-sm text-destructive" role="alert">{displayError(error)}</p>
               )}
               <div className="grid gap-2">
-                <Label className="sr-only" htmlFor="settings-project-name">Project name</Label>
+                <Label className="sr-only" htmlFor="settings-project-name">{settingsText.projects.projectName}</Label>
                 <Input
                   autoFocus
                   id="settings-project-name"
                   maxLength={120}
                   onChange={(event) => setName(event.currentTarget.value)}
-                  placeholder="Project name"
+                  placeholder={settingsText.projects.projectName}
                   value={name}
                 />
               </div>
               <DialogFooter>
                 <Button disabled={pending} onClick={() => setCreateOpen(false)} type="button" variant="outline">
-                  Cancel
+                  {settingsText.projects.cancel}
                 </Button>
                 <Button disabled={pending || name.trim() === ""} onClick={() => void createProject()} type="button">
-                  {pending ? "Creating…" : "Create project"}
+                  {pending ? settingsText.projects.creating : settingsText.projects.createProject}
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
         ) : undefined}
-        description="Create projects, open their artifacts, or manage their lifecycle."
-        title="Projects"
+        description={settingsText.projects.listDescription}
+        title={settingsText.projects.title}
       />
 
       {orderedProjects.length === 0 ? (
         <StatePanel
-          description="Create a project to begin organizing artifacts in this installation."
-          title="No projects"
+          description={settingsText.projects.emptyDescription}
+          title={settingsText.projects.emptyTitle}
         />
       ) : (
         <div className="overflow-x-auto">
           <table className="as-stack-table w-full min-w-2xl text-left text-sm">
             <thead className="border-b text-sm text-muted-foreground">
               <tr>
-                <th className="px-4 py-3 font-medium">Project</th>
-                <th className="px-4 py-3 font-medium">State</th>
-                <th className="px-4 py-3 font-medium">Created</th>
-                <th className="px-4 py-3 text-right font-medium">Actions</th>
+                <th className="px-4 py-3 font-medium">{settingsText.projects.columnProject}</th>
+                <th className="px-4 py-3 font-medium">{settingsText.projects.columnState}</th>
+                <th className="px-4 py-3 font-medium">{settingsText.projects.columnCreated}</th>
+                <th className="px-4 py-3 text-right font-medium">{settingsText.projects.columnActions}</th>
               </tr>
             </thead>
             <tbody>
@@ -141,7 +142,7 @@ export function SettingsProjects({
                   </td>
                   <td className="px-4 py-4">
                     <StatusBadge tone={project.archivedAt === null ? "primary" : "neutral"}>
-                      {project.archivedAt === null ? "Active" : "Archived"}
+                      {project.archivedAt === null ? settingsText.projects.active : settingsText.projects.archived}
                     </StatusBadge>
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap text-muted-foreground">
@@ -154,10 +155,10 @@ export function SettingsProjects({
                         size="sm"
                         variant="outline"
                       >
-                        Open artifacts
+                        {settingsText.projects.openArtifacts}
                       </ButtonLink>
                       <ButtonLink href={projectSettingsHref(project.id)} size="sm" variant="outline">
-                        Settings
+                        {settingsText.projects.settings}
                       </ButtonLink>
                     </div>
                   </td>
@@ -205,7 +206,7 @@ export function SettingsProject({
         if (current) {
           setError(caught instanceof Error
             ? caught
-            : new Error("Git history status could not be loaded."));
+            : new Error(settingsText.projects.gitStatusLoadFailed));
         }
       }
     })();
@@ -219,11 +220,11 @@ export function SettingsProject({
       <StatePanel
         action={(
           <ButtonLink href="/review/settings/projects" variant="outline">
-            View projects
+            {settingsText.projects.viewProjects}
           </ButtonLink>
         )}
-        description="The project named by this settings URL is unavailable."
-        title="Project not found"
+        description={settingsText.projects.notFoundDescription}
+        title={settingsText.projects.notFoundTitle}
       />
     );
   }
@@ -236,7 +237,7 @@ export function SettingsProject({
       await api.renameProject(project.id, name.trim());
       await onProjectsChanged();
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Project rename failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.projects.renameFailed));
     } finally {
       setPending(false);
     }
@@ -253,7 +254,7 @@ export function SettingsProject({
       await onProjectsChanged();
       setArchiveOpen(false);
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Project update failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.projects.updateFailed));
     } finally {
       setPending(false);
     }
@@ -264,7 +265,7 @@ export function SettingsProject({
     try {
       setGitEstimate(await api.estimateProjectGitHistory(project.id));
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Git history estimate failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.projects.gitEstimateFailed));
     } finally {
       setPending(false);
     }
@@ -276,7 +277,7 @@ export function SettingsProject({
       setGitSetting(await api.setProjectGitHistory(project.id, enabled));
       setGitEstimate(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Git history update failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.projects.gitUpdateFailed));
     } finally {
       setPending(false);
     }
@@ -290,23 +291,23 @@ export function SettingsProject({
             href={`/review?project=${encodeURIComponent(project.id)}`}
             variant="outline"
           >
-            Open artifacts
+            {settingsText.projects.openArtifacts}
           </ButtonLink>
         )}
         description={project.archivedAt === null
-          ? "Manage this project's name, lifecycle, and optional history."
-          : "This project is archived. Existing artifacts and immutable versions remain readable."}
+          ? settingsText.projects.activeDescription
+          : settingsText.projects.archivedDescription}
         title={project.name}
       />
       {error === null ? null : <ErrorPanel error={error} />}
 
       <section className="grid gap-5 border p-5 sm:p-6" aria-labelledby="project-identity-heading">
         <div>
-          <h2 className="font-heading text-lg font-semibold" id="project-identity-heading">Project identity</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Renaming changes the label, not the stable project ID.</p>
+          <h2 className="font-heading text-lg font-semibold" id="project-identity-heading">{settingsText.projects.identityHeading}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{settingsText.projects.identityHelp}</p>
         </div>
         <div className="grid max-w-xl gap-2">
-          <Label htmlFor="settings-rename-project">Project name</Label>
+          <Label htmlFor="settings-rename-project">{settingsText.projects.projectName}</Label>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <Input
               disabled={!canManage || pending}
@@ -320,14 +321,14 @@ export function SettingsProject({
               onClick={() => void rename()}
               type="button"
             >
-              {pending ? "Saving…" : "Save name"}
+              {pending ? settingsText.projects.saving : settingsText.projects.saveName}
             </Button>
           </div>
         </div>
         <dl className="grid gap-1 text-sm sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-4">
-          <dt className="text-muted-foreground">Project ID</dt>
+          <dt className="text-muted-foreground">{settingsText.projects.projectId}</dt>
           <dd><code className="break-all font-mono text-xs">{project.id}</code></dd>
-          <dt className="text-muted-foreground">Created</dt>
+          <dt className="text-muted-foreground">{settingsText.projects.created}</dt>
           <dd>{formatTimestamp(project.createdAt)}</dd>
         </dl>
       </section>
@@ -336,13 +337,13 @@ export function SettingsProject({
         <section className="grid gap-5 border p-5 sm:p-6" aria-labelledby="project-git-heading">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h2 className="font-heading text-lg font-semibold" id="project-git-heading">Git history</h2>
+              <h2 className="font-heading text-lg font-semibold" id="project-git-heading">{settingsText.projects.gitHeading}</h2>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Cloudflare Artifacts keeps a derived Git repository for each artifact. Artifact Server remains the source of truth.
+                {settingsText.projects.gitDescription}
               </p>
             </div>
             <StatusBadge tone={gitSetting?.enabled === true ? "primary" : "neutral"}>
-              {gitSetting === null ? "Loading" : gitSetting.state.replaceAll("-", " ")}
+              {gitSetting === null ? settingsText.projects.loading : settingsText.projects.gitState[gitSetting.state]}
             </StatusBadge>
           </div>
           <div>
@@ -358,12 +359,12 @@ export function SettingsProject({
               variant="outline"
             >
               {pending
-                ? "Working…"
-                : gitSetting?.enabled === true ? "Disable Git history" : "Enable Git history"}
+                ? settingsText.projects.working
+                : gitSetting?.enabled === true ? settingsText.projects.disableGitHistory : settingsText.projects.enableGitHistory}
             </Button>
             {gitHistory.providerState === "available" ? null : (
               <p className="mt-2 text-sm text-muted-foreground">
-                Git history is currently {gitHistory.providerState.replaceAll("-", " ")} for this deployment.
+                {settingsText.projects.providerNotice(settingsText.projects.providerState[gitHistory.providerState])}
               </p>
             )}
           </div>
@@ -372,11 +373,11 @@ export function SettingsProject({
 
       <section className="grid gap-5 border border-destructive/40 p-5 sm:p-6" aria-labelledby="project-lifecycle-heading">
         <div>
-          <h2 className="font-heading text-lg font-semibold" id="project-lifecycle-heading">Project lifecycle</h2>
+          <h2 className="font-heading text-lg font-semibold" id="project-lifecycle-heading">{settingsText.projects.lifecycleHeading}</h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
             {project.archivedAt === null
-              ? "Archiving stops new artifacts and versions. Existing reads, links, and immutable history remain."
-              : "Unarchive this project to accept new artifacts and versions again."}
+              ? settingsText.projects.archiveHelp
+              : settingsText.projects.unarchiveHelp}
           </p>
         </div>
         {canManage ? (
@@ -390,20 +391,20 @@ export function SettingsProject({
                 />
               )}
             >
-              {project.archivedAt === null ? "Archive project" : "Unarchive project"}
+              {project.archivedAt === null ? settingsText.projects.archiveProject : settingsText.projects.unarchiveProject}
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>{project.archivedAt === null ? "Archive project?" : "Unarchive project?"}</DialogTitle>
+                <DialogTitle>{project.archivedAt === null ? settingsText.projects.archiveConfirmTitle : settingsText.projects.unarchiveConfirmTitle}</DialogTitle>
                 <DialogDescription>
                   {project.archivedAt === null
-                    ? "New publication stops. Saved artifacts, links, and immutable versions remain readable."
-                    : "This project will accept new artifacts and versions again."}
+                    ? settingsText.projects.archiveConfirmDescription
+                    : settingsText.projects.unarchiveConfirmDescription}
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
                 <Button disabled={pending} onClick={() => void changeArchiveState()} type="button" variant={project.archivedAt === null ? "destructive" : "default"}>
-                  {pending ? "Working…" : project.archivedAt === null ? "Archive project" : "Unarchive project"}
+                  {pending ? settingsText.projects.working : project.archivedAt === null ? settingsText.projects.archiveProject : settingsText.projects.unarchiveProject}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -414,25 +415,25 @@ export function SettingsProject({
       <Dialog onOpenChange={(open) => { if (!open) setGitEstimate(null); }} open={gitEstimate !== null}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Enable Git history?</DialogTitle>
+            <DialogTitle>{settingsText.projects.enableGitTitle}</DialogTitle>
             <DialogDescription>
-              Existing and future versions will be copied to derived Cloudflare Artifacts repositories.
+              {settingsText.projects.enableGitDescription}
             </DialogDescription>
           </DialogHeader>
           {gitEstimate === null ? null : (
             <dl className="grid grid-cols-2 gap-3 border-y py-4 text-sm">
-              <dt className="text-muted-foreground">Repositories</dt>
+              <dt className="text-muted-foreground">{settingsText.projects.repositories}</dt>
               <dd>{gitEstimate.repositories}</dd>
-              <dt className="text-muted-foreground">Versions</dt>
+              <dt className="text-muted-foreground">{settingsText.projects.versions}</dt>
               <dd>{gitEstimate.versions}</dd>
-              <dt className="text-muted-foreground">Estimated copy</dt>
+              <dt className="text-muted-foreground">{settingsText.projects.estimatedCopy}</dt>
               <dd>{formatBytes(gitEstimate.estimatedCopiedBytes)}</dd>
             </dl>
           )}
           <DialogFooter>
-            <Button disabled={pending} onClick={() => setGitEstimate(null)} type="button" variant="outline">Cancel</Button>
+            <Button disabled={pending} onClick={() => setGitEstimate(null)} type="button" variant="outline">{settingsText.projects.cancel}</Button>
             <Button disabled={pending} onClick={() => void changeGitHistory(true)} type="button">
-              {pending ? "Enabling…" : "Enable Git history"}
+              {pending ? settingsText.projects.enabling : settingsText.projects.enableGitHistory}
             </Button>
           </DialogFooter>
         </DialogContent>

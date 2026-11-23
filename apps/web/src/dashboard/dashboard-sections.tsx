@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {dashboardText} from "@/i18n/messages/dashboard";
 import {formatBytes, formatRelativeTime, formatTimestamp} from "@/lib/presentation";
 import {GrowthChart, TagChart} from "./dashboard-charts.tsx";
 import {
@@ -20,6 +21,11 @@ import {
   formatDay,
   percentage,
 } from "./dashboard-format.ts";
+
+const readingsText = dashboardText.readings;
+const overviewText = dashboardText.overview;
+const reviewText = dashboardText.review;
+const storageText = dashboardText.storage;
 
 /** One counted reading in the readings panel: label, figure, then context. */
 function Reading({
@@ -46,37 +52,37 @@ function Reading({
  */
 export function DashboardHeadline({insights}: {readonly insights: Insights}) {
   const {overview, review, storage} = insights;
-  const inWindow = insights.window === "all" ? "in total" : "in this window";
+  const inWindow = insights.window === "all" ? readingsText.inTotal : readingsText.inThisWindow;
   const inFlight = review.dispatches.queued + review.dispatches.claimed +
     review.dispatches.delivered;
   return (
     <section
-      aria-label="Readings"
+      aria-label={readingsText.label}
       className="grid min-w-0 gap-px self-start overflow-hidden rounded-[var(--radius-card)] border border-border bg-border"
     >
       <div className="grid gap-1 bg-card px-6 py-5">
-        <h2 className="text-sm font-medium text-muted-foreground">Stored</h2>
+        <h2 className="text-sm font-medium text-muted-foreground">{readingsText.stored}</h2>
         <p className="font-mono text-4xl leading-none tabular-nums slashed-zero">
           {formatBytes(storage.storedBytes)}
         </p>
         <p className="text-sm text-muted-foreground">
-          {formatBytes(storage.logicalBytes)} across every version
+          {readingsText.acrossEveryVersion(formatBytes(storage.logicalBytes))}
         </p>
       </div>
       <dl className="grid gap-px">
         <Reading
-          detail={`${overview.versionCount} versions, ${overview.versionsInWindow} ${inWindow}`}
-          label="Artifacts"
+          detail={readingsText.versionsDetail(overview.versionCount, overview.versionsInWindow, inWindow)}
+          label={readingsText.artifacts}
           value={String(overview.artifactCount)}
         />
         <Reading
-          detail={`${review.threadsOpenedInWindow} opened and ${review.threadsResolvedInWindow} resolved ${inWindow}`}
-          label="Open threads"
+          detail={readingsText.threadsDetail(review.threadsOpenedInWindow, review.threadsResolvedInWindow, inWindow)}
+          label={readingsText.openThreads}
           value={String(review.openThreads)}
         />
         <Reading
-          detail={`${inFlight} still with an agent, ${review.dispatches.failed} failed`}
-          label="Dispatches"
+          detail={readingsText.dispatchesDetail(inFlight, review.dispatches.failed)}
+          label={readingsText.dispatches}
           value={String(review.dispatchesInWindow)}
         />
       </dl>
@@ -130,22 +136,22 @@ export function OverviewSection({
   const showProjects = insights.projectId === null && overview.projects.length > 1;
   return (
     <SectionCard
-      description="Live artifacts, their latest versions, and tags."
-      title="Artifacts"
+      description={overviewText.description}
+      title={overviewText.title}
     >
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <div className="grid min-w-0 grid-cols-1 content-start gap-3">
-        <Subheading>Recently updated</Subheading>
+        <Subheading>{overviewText.recentlyUpdated}</Subheading>
         {overview.recentArtifacts.length === 0
-          ? <Quiet>No artifacts yet.</Quiet>
+          ? <Quiet>{overviewText.noArtifacts}</Quiet>
           : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Artifact</TableHead>
-                  {showProjects ? <TableHead>Project</TableHead> : null}
-                  <TableHead className="text-right">Version</TableHead>
-                  <TableHead className="text-right">Updated</TableHead>
+                  <TableHead>{overviewText.artifact}</TableHead>
+                  {showProjects ? <TableHead>{overviewText.project}</TableHead> : null}
+                  <TableHead className="text-right">{overviewText.version}</TableHead>
+                  <TableHead className="text-right">{overviewText.updated}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -178,14 +184,14 @@ export function OverviewSection({
       {showProjects
         ? (
           <div className="grid min-w-0 grid-cols-1 gap-3">
-            <Subheading>Projects</Subheading>
+            <Subheading>{overviewText.projects}</Subheading>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Project</TableHead>
-                  <TableHead className="text-right">Artifacts</TableHead>
-                  <TableHead className="text-right">Versions</TableHead>
-                  <TableHead className="text-right">Last version</TableHead>
+                  <TableHead>{overviewText.project}</TableHead>
+                  <TableHead className="text-right">{overviewText.artifacts}</TableHead>
+                  <TableHead className="text-right">{overviewText.versions}</TableHead>
+                  <TableHead className="text-right">{overviewText.lastVersion}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -193,12 +199,12 @@ export function OverviewSection({
                   <TableRow key={project.projectId}>
                     <TableCell>
                       {project.name}
-                      {project.archived ? <span className="ml-2"><StatusBadge>Archived</StatusBadge></span> : null}
+                      {project.archived ? <span className="ml-2"><StatusBadge>{overviewText.archived}</StatusBadge></span> : null}
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums">{project.artifactCount}</TableCell>
                     <TableCell className="text-right font-mono tabular-nums">{project.versionCount}</TableCell>
                     <TableCell className="text-right">
-                      {project.latestVersionAt === null ? "None yet" : formatRelativeTime(project.latestVersionAt, now)}
+                      {project.latestVersionAt === null ? overviewText.noneYet : formatRelativeTime(project.latestVersionAt, now)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -208,12 +214,12 @@ export function OverviewSection({
         )
         : null}
       <div className="grid min-w-0 grid-cols-1 gap-3">
-        <Subheading>Tags</Subheading>
+        <Subheading>{overviewText.tags}</Subheading>
         {overview.tags.length === 0
-          ? <Quiet>No artifact carries a tag.</Quiet>
+          ? <Quiet>{overviewText.noTags}</Quiet>
           : <TagChart tags={overview.tags} />}
         <Quiet>
-          {overview.untaggedArtifactCount} untagged, {overview.publicLinkCount} with a public link.
+          {overviewText.tagSummary(overview.untaggedArtifactCount, overview.publicLinkCount)}
         </Quiet>
       </div>
       </div>
@@ -235,28 +241,28 @@ export function ReviewSection({
   const resolvedShare = percentage(review.resolvedThreads, total);
   return (
     <SectionCard
-      description="Comment threads and agent dispatches."
-      title="Review"
+      description={reviewText.description}
+      title={reviewText.title}
     >
       <div className="grid min-w-0 grid-cols-1 gap-3">
         <div className="flex items-baseline justify-between gap-4">
-          <Subheading>Resolved</Subheading>
+          <Subheading>{reviewText.resolved}</Subheading>
           <span className="font-mono text-sm tabular-nums">
-            {review.resolvedThreads} of {total}
+            {reviewText.resolvedOf(review.resolvedThreads, total)}
           </span>
         </div>
         {resolvedShare === null
-          ? <Quiet>No comment threads yet.</Quiet>
-          : <Progress aria-label="Resolved threads" value={resolvedShare} />}
+          ? <Quiet>{reviewText.noThreads}</Quiet>
+          : <Progress aria-label={reviewText.resolvedThreads} value={resolvedShare} />}
         <Quiet>
-          {review.openThreads} open, {review.openDispatchedThreads} of them sent to an agent.
+          {reviewText.openSummary(review.openThreads, review.openDispatchedThreads)}
           {review.oldestOpenThreadAt === null
             ? null
-            : ` The oldest was opened ${formatRelativeTime(review.oldestOpenThreadAt, now)}.`}
+            : reviewText.oldestOpened(formatRelativeTime(review.oldestOpenThreadAt, now))}
         </Quiet>
       </div>
       <div className="grid min-w-0 grid-cols-1 gap-3">
-        <Subheading>Dispatches</Subheading>
+        <Subheading>{reviewText.dispatches}</Subheading>
         <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
           {dispatchStates.map((entry) => (
             <div className="flex items-center justify-between gap-3" key={entry.state}>
@@ -271,9 +277,9 @@ export function ReviewSection({
         </dl>
       </div>
       <div className="grid min-w-0 grid-cols-1 gap-3">
-        <Subheading>Most open threads</Subheading>
+        <Subheading>{reviewText.mostOpenThreads}</Subheading>
         {review.openThreadsByArtifact.length === 0
-          ? <Quiet>Nothing is waiting for review.</Quiet>
+          ? <Quiet>{reviewText.nothingWaiting}</Quiet>
           : (
             <ul className="grid grid-cols-1 gap-2 text-sm">
               {review.openThreadsByArtifact.map((artifact) => (
@@ -308,36 +314,38 @@ export function StorageSection({
   const enabledProjects = storage.gitHistory.projects.filter((project) => project.enabled);
   return (
     <SectionCard
-      description="Bytes stay stored after an artifact is deleted, because versions are immutable."
-      title="Storage"
+      description={storageText.description}
+      title={storageText.title}
     >
       <dl className="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-4 sm:grid-cols-[repeat(4,minmax(0,1fr))]">
-        <Figure label="Stored" value={formatBytes(storage.storedBytes)} />
-        <Figure label="Across versions" value={formatBytes(storage.logicalBytes)} />
-        <Figure label="Saved by deduplication" value={formatBytes(saved)} />
-        <Figure label={`Files, ${storage.distinctBlobCount} unique`} value={String(storage.fileCount)} />
+        <Figure label={storageText.stored} value={formatBytes(storage.storedBytes)} />
+        <Figure label={storageText.acrossVersions} value={formatBytes(storage.logicalBytes)} />
+        <Figure label={storageText.savedByDeduplication} value={formatBytes(saved)} />
+        <Figure label={storageText.files(storage.distinctBlobCount)} value={String(storage.fileCount)} />
       </dl>
       <div className="grid min-w-0 grid-cols-1 gap-3">
         <Subheading>
-          Published bytes{firstDay === undefined ? "" : ` since ${formatDay(firstDay)}`}
+          {storageText.publishedBytes(firstDay === undefined ? null : formatDay(firstDay))}
         </Subheading>
         {storage.growth.length < 2
           ? (
             <Quiet>
-              {formatBytes(storage.growth.at(0)?.cumulativeBytes ?? 0)} published
-              {firstDay === undefined ? "" : ` on ${formatDay(firstDay)}`}; a trend appears once a second day has data.
+              {storageText.singleDay(
+                formatBytes(storage.growth.at(0)?.cumulativeBytes ?? 0),
+                firstDay === undefined ? null : formatDay(firstDay),
+              )}
             </Quiet>
           )
           : <GrowthChart bucket={storage.growthBucket} points={storage.growth} />}
         <details className="text-sm">
-          <summary className="cursor-pointer text-muted-foreground">View as table</summary>
+          <summary className="cursor-pointer text-muted-foreground">{storageText.viewAsTable}</summary>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{storage.growthBucket === "week" ? "Week of" : "Day"}</TableHead>
-                <TableHead className="text-right">Added</TableHead>
-                <TableHead className="text-right">Versions</TableHead>
-                <TableHead className="text-right">Total</TableHead>
+                <TableHead>{storage.growthBucket === "week" ? storageText.weekOf : storageText.day}</TableHead>
+                <TableHead className="text-right">{storageText.added}</TableHead>
+                <TableHead className="text-right">{storageText.versions}</TableHead>
+                <TableHead className="text-right">{storageText.total}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -354,9 +362,9 @@ export function StorageSection({
         </details>
       </div>
       <div className="grid min-w-0 grid-cols-1 gap-3">
-        <Subheading>Largest artifacts</Subheading>
+        <Subheading>{storageText.largestArtifacts}</Subheading>
         {storage.largestArtifacts.length === 0
-          ? <Quiet>No artifacts yet.</Quiet>
+          ? <Quiet>{storageText.noArtifacts}</Quiet>
           : (
             <ul className="grid grid-cols-1 gap-2 text-sm">
               {storage.largestArtifacts.map((artifact) => (
@@ -374,16 +382,18 @@ export function StorageSection({
           )}
       </div>
       <div className="grid min-w-0 grid-cols-1 gap-3">
-        <Subheading>Git history</Subheading>
+        <Subheading>{storageText.gitHistory}</Subheading>
         {enabledProjects.length === 0
-          ? <Quiet>Git-history mirroring is off for every project in view.</Quiet>
+          ? <Quiet>{storageText.gitHistoryOff}</Quiet>
           : (
             <>
               <Quiet>
-                {formatBytes(storage.gitHistory.committedBytes)} mirrored,
-                {" "}{formatBytes(storage.gitHistory.reservedBytes)} reserved,
-                {" "}{storage.gitHistory.pendingJobs} jobs pending
-                {storage.gitHistory.failingJobs > 0 ? `, ${storage.gitHistory.failingJobs} retrying after an error` : ""}.
+                {storageText.gitHistorySummary(
+                  formatBytes(storage.gitHistory.committedBytes),
+                  formatBytes(storage.gitHistory.reservedBytes),
+                  storage.gitHistory.pendingJobs,
+                  storage.gitHistory.failingJobs,
+                )}
               </Quiet>
               {enabledProjects.map((project) => {
                 const used = project.committedBytes + project.reservedBytes;
@@ -394,12 +404,12 @@ export function StorageSection({
                       <span>{projectNames.get(project.projectId) ?? project.projectId}</span>
                       <span className="font-mono tabular-nums">
                         {formatBytes(used)}
-                        {project.budgetBytes === null ? " (no budget)" : ` of ${formatBytes(project.budgetBytes)}`}
+                        {project.budgetBytes === null ? storageText.noBudget : storageText.ofBudget(formatBytes(project.budgetBytes))}
                       </span>
                     </div>
                     {share === null
                       ? null
-                      : <Progress aria-label="Git-history budget used" value={Math.min(100, share)} />}
+                      : <Progress aria-label={storageText.budgetUsed} value={Math.min(100, share)} />}
                   </div>
                 );
               })}

@@ -6,7 +6,8 @@ import {
   api,
   type ArtifactVersion,
 } from "@/api/client";
-import {formatBytes} from "@/lib/presentation";
+import {reviewPartsText} from "@/i18n/messages/review-parts";
+import {formatBytes, displayError} from "@/lib/presentation";
 import {
   frameMessageSchema,
   reviewProtocolVersion,
@@ -14,6 +15,8 @@ import {
   type ReviewAnchor,
   type ReviewAnnotation,
 } from "@/review-frame/protocol";
+
+const text = reviewPartsText.preview;
 
 interface PreviewDocument {
   readonly baseHref: string;
@@ -76,8 +79,8 @@ export function ReviewPreview({
   if (version === null) {
     return (
       <PreviewState
-        description="Reading the selected immutable version."
-        title="Loading preview"
+        description={text.loadingVersion}
+        title={text.loadingTitle}
       />
     );
   }
@@ -96,11 +99,11 @@ export function ReviewPreview({
     return (
       <TerminalPreviewState
         actions={commonActions}
-        description="This path is not part of the selected immutable version."
+        description={text.notFoundDescription}
         mediaType="unknown"
         path={path}
         size={null}
-        title="File not found"
+        title={text.notFoundTitle}
       />
     );
   }
@@ -176,11 +179,11 @@ export function ReviewPreview({
   return (
     <TerminalPreviewState
       actions={commonActions}
-      description="Artifact Server does not preview this declared media type."
+      description={text.unsupportedDescription}
       mediaType={entry.mediaType}
       path={entry.path}
       size={entry.size}
-      title="Preview not supported"
+      title={text.unsupportedTitle}
     />
   );
 }
@@ -247,7 +250,7 @@ function HtmlPreview({
           api.previewLease(projectId, artifactId, version.version.id).then(
             (lease) => {
               if (lease.versionId !== version.version.id) {
-                throw new Error("The preview lease resolved a different version.");
+                throw new Error(text.leaseMismatch);
               }
               return lease.baseUrl;
             },
@@ -263,7 +266,7 @@ function HtmlPreview({
       } catch (cause) {
         if (!current) return;
         setError(
-          cause instanceof Error ? cause : new Error("Artifact preview failed."),
+          cause instanceof Error ? cause : new Error(text.failed),
         );
       } finally {
         if (current) setLoading(false);
@@ -380,8 +383,8 @@ function HtmlPreview({
   if (loading) {
     return (
       <PreviewState
-        description={`Reading ${entry.path} from the selected version.`}
-        title="Loading preview"
+        description={text.loadingPath(entry.path)}
+        title={text.loadingTitle}
       />
     );
   }
@@ -389,11 +392,11 @@ function HtmlPreview({
     return (
       <TerminalPreviewState
         actions={actions}
-        description={error.message}
+        description={displayError(error)}
         mediaType={entry.mediaType}
         path={entry.path}
         size={entry.size}
-        title="Preview unavailable"
+        title={text.unavailableTitle}
       />
     );
   }
@@ -402,7 +405,7 @@ function HtmlPreview({
       className="as-artifact-frame"
       ref={frameRef}
       src="/review-frame"
-      title={`${version.version.artifactId} version ${version.version.number}`}
+      title={text.frameTitle(version.version.artifactId, version.version.number)}
     />
   );
 }
@@ -435,7 +438,7 @@ function NativeMediaPreview({
   const mountedRef = useRef(true);
   const probeInFlightRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const accessibleName = `${artifactName} — ${entry.path}`;
+  const accessibleName = text.mediaName(artifactName, entry.path);
 
   useEffect(() => () => {
     mountedRef.current = false;
@@ -466,7 +469,7 @@ function NativeMediaPreview({
     return (
       <TerminalPreviewState
         actions={actions}
-        description={`This browser could not decode or deliver the declared ${entry.mediaType} file.`}
+        description={text.mediaUnavailableDescription(entry.mediaType)}
         mediaType={entry.mediaType}
         onRetry={() => {
           setRetry((current) => current + 1);
@@ -474,7 +477,7 @@ function NativeMediaPreview({
         }}
         path={entry.path}
         size={entry.size}
-        title={`${kind === "image" ? "Image" : "Video"} preview unavailable`}
+        title={text.mediaUnavailableTitle(kind)}
       />
     );
   }
@@ -505,7 +508,7 @@ function NativeMediaPreview({
       {status === "loading" ? (
         <div className="as-media-preview__loading" role="status">
           <span aria-hidden="true" className="as-preview-state__mark" />
-          <strong>Loading preview</strong>
+          <strong>{text.loadingTitle}</strong>
           <small>{entry.path}</small>
         </div>
       ) : null}
@@ -575,15 +578,15 @@ function TerminalPreviewState({
       <h3>{title}</h3>
       <p>{description}</p>
       <dl className="as-preview-state__details">
-        <div><dt>Path</dt><dd><code>{path}</code></dd></div>
-        <div><dt>Type</dt><dd><code>{mediaType}</code></dd></div>
+        <div><dt>{text.pathLabel}</dt><dd><code>{path}</code></dd></div>
+        <div><dt>{text.typeLabel}</dt><dd><code>{mediaType}</code></dd></div>
         {size === null ? null : (
-          <div><dt>Size</dt><dd>{formatBytes(size)}</dd></div>
+          <div><dt>{text.sizeLabel}</dt><dd>{formatBytes(size)}</dd></div>
         )}
       </dl>
       <div className="as-preview-state__actions">
         {onRetry === undefined ? null : (
-          <button className="as-button" onClick={onRetry} type="button">Retry preview</button>
+          <button className="as-button" onClick={onRetry} type="button">{text.retry}</button>
         )}
         <button
           className="as-button as-button--primary"
@@ -592,10 +595,10 @@ function TerminalPreviewState({
           type="button"
         >
           <HugeiconsIcon aria-hidden="true" icon={ExternalLinkIcon} strokeWidth={1.8} />
-          {actions.opening ? "Opening…" : "Open raw artifact"}
+          {actions.opening ? text.opening : text.openRaw}
         </button>
         {actions.downloadUrl === null ? null : (
-          <a className="as-button" download href={actions.downloadUrl}>Download file</a>
+          <a className="as-button" download href={actions.downloadUrl}>{text.download}</a>
         )}
       </div>
     </div>

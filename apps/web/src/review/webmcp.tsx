@@ -8,6 +8,7 @@ import {
   type CommentReply,
   type CommentThread,
 } from "@/api/client";
+import {reviewPartsText} from "@/i18n/messages/review-parts";
 import {echoCounts, type EchoCounts} from "./webmcp-counts.ts";
 
 /**
@@ -622,11 +623,8 @@ export function WebmcpSettingsCard() {
         type="checkbox"
       />
       <span>
-        <strong>Browser agent tools</strong>
-        <small>
-          Let a browser-resident AI agent operate Review through WebMCP tools in this session.
-          Dispatching to coding agents stays a human action.
-        </small>
+        <strong>{reviewPartsText.webmcp.title}</strong>
+        <small>{reviewPartsText.webmcp.description}</small>
       </span>
     </label>
   );

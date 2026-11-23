@@ -25,11 +25,10 @@ import {
 import {Label} from "@/components/ui/label";
 import {Popover, PopoverContent, PopoverTrigger} from "@/components/ui/popover";
 import {Textarea} from "@/components/ui/textarea";
+import {componentsText} from "@/i18n/messages/components";
 import {errorMessage, formatRelativeTime} from "@/lib/presentation";
 
-function annotationCount(count: number): string {
-  return count === 1 ? "1 annotation" : `${count} annotations`;
-}
+const text = componentsText.dispatch;
 
 function defaultAgentStorageKey(principalId: string, projectId: string): string {
   return `dispatch-default:${principalId}:${projectId}`;
@@ -206,11 +205,11 @@ export function SendToAgentControl({
   const noAgents = knownConnected !== null && knownConnected.length === 0;
   const nothingToSend = openCount === 0;
   const mainReason = nothingToSend
-    ? "Nothing open to send."
+    ? text.nothingOpen
     : disconnectedDefaultName !== null
-      ? `${disconnectedDefaultName} disconnected — pick another`
+      ? text.disconnectedPickAnother(disconnectedDefaultName)
       : noAgents
-        ? "No agent connected — connect one to send."
+        ? text.noAgentConnected
         : null;
   const mainLabel = mainAgent === null
     ? disconnectedDefaultName === null || oneAgentLabel === undefined
@@ -392,14 +391,14 @@ export function SendToAgentControl({
             />
           )}
           <span className="min-w-0 truncate">
-            {quickPending ? "Sending…" : mainLabel}
+            {quickPending ? text.sending : mainLabel}
           </span>
         </Button>
         <Popover onOpenChange={setMenuOpen} open={menuOpen}>
           <PopoverTrigger
             render={(
               <Button
-                aria-label="Choose agent or send with a note"
+                aria-label={text.chooseAgentOrNote}
                 className="as-send-to-agent__menu -ml-px px-1.5"
                 disabled={caretDisabled}
                 size={buttonSize}
@@ -442,7 +441,7 @@ export function SendToAgentControl({
               }}
               type="button"
             >
-              Send with a note…
+              {text.sendWithNoteMenu}
             </button>
           </PopoverContent>
         </Popover>
@@ -456,10 +455,9 @@ export function SendToAgentControl({
       <Dialog onOpenChange={changeNoteOpen} open={noteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Send with a note</DialogTitle>
+            <DialogTitle>{text.sendWithNoteTitle}</DialogTitle>
             <DialogDescription>
-              The annotations in this send leave the open list when it succeeds.
-              Undo can call them back while the agent has not completed the send.
+              {text.sendWithNoteDescription}
             </DialogDescription>
           </DialogHeader>
 
@@ -468,16 +466,16 @@ export function SendToAgentControl({
           )}
 
           {loading ? (
-            <p className="text-sm text-muted-foreground">Reading connected agents…</p>
+            <p className="text-sm text-muted-foreground">{text.readingAgents}</p>
           ) : connectedDialogAgents.length === 0 ? (
             <p className="text-sm leading-6 text-muted-foreground">
-              No agent connected — connect one to send.
+              {text.noAgentConnected}
             </p>
           ) : (
             <>
               <fieldset className="grid gap-2">
                 <legend className="mb-2 text-sm font-medium">
-                  Connected agents
+                  {text.connectedAgents}
                 </legend>
                 {dialogAgents.map((agent) => (
                   <label className="flex items-start gap-3 border p-3" key={agent.id}>
@@ -507,8 +505,8 @@ export function SendToAgentControl({
                       </span>
                       <span className="block text-xs text-muted-foreground">
                         {agent.connected
-                          ? "Connected"
-                          : `Not connected, last seen ${formatRelativeTime(agent.lastSeenAt, now)}`}
+                          ? text.connected
+                          : text.notConnected(formatRelativeTime(agent.lastSeenAt, now))}
                       </span>
                     </span>
                   </label>
@@ -516,21 +514,22 @@ export function SendToAgentControl({
               </fieldset>
 
               <div className="grid gap-2">
-                <Label htmlFor={`${dialogId}-note`}>Note for the agent</Label>
+                <Label htmlFor={`${dialogId}-note`}>{text.noteLabel}</Label>
                 <Textarea
                   aria-describedby={noteTooLong ? `${dialogId}-note-limit` : undefined}
                   aria-invalid={noteTooLong}
                   disabled={pending}
                   id={`${dialogId}-note`}
                   onChange={(event) => setNote(event.currentTarget.value)}
-                  placeholder="Optional context for the whole bundle."
+                  placeholder={text.notePlaceholder}
                   value={note}
                 />
                 {noteTooLong ? (
                   <p className="text-xs text-destructive" id={`${dialogId}-note-limit`}>
-                    {`A note holds at most ${maximumDispatchNoteCharacters} characters. Remove ${
-                      trimmedNote.length - maximumDispatchNoteCharacters
-                    }.`}
+                    {text.noteTooLong(
+                      maximumDispatchNoteCharacters,
+                      trimmedNote.length - maximumDispatchNoteCharacters,
+                    )}
                   </p>
                 ) : null}
               </div>
@@ -539,7 +538,7 @@ export function SendToAgentControl({
 
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="ghost" />}>
-              Cancel
+              {text.cancel}
             </DialogClose>
             {connectedDialogAgents.length === 0 ? null : (
               <Button
@@ -548,7 +547,7 @@ export function SendToAgentControl({
                 onClick={() => void sendWithNote()}
                 type="button"
               >
-                {pending ? "Sending…" : `Send ${annotationCount(threadIds.length)}`}
+                {pending ? text.sending : text.sendCount(threadIds.length)}
               </Button>
             )}
           </DialogFooter>

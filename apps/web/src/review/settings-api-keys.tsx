@@ -22,6 +22,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { settingsText } from "@/i18n/messages/settings";
 import { formatTimestamp } from "@/lib/presentation";
 
 const capabilities: readonly {
@@ -29,14 +30,14 @@ const capabilities: readonly {
   readonly label: string;
   readonly value: PrincipalCapability;
 }[] = [
-  { description: "List and read artifact metadata.", label: "Read artifacts", value: "artifact:read" },
-  { description: "Create new artifacts.", label: "Create artifacts", value: "artifact:create" },
-  { description: "Publish new immutable versions.", label: "Publish versions", value: "artifact:publish:any" },
-  { description: "Restore, change tags and access, or tombstone.", label: "Manage artifacts", value: "artifact:manage:any" },
-  { description: "Open account-required artifact content.", label: "Issue content sessions", value: "content-session:issue" },
-  { description: "Create, rename, archive, and unarchive projects.", label: "Manage projects", value: "project:manage" },
-  { description: "Register a coding agent and claim dispatched annotations.", label: "Connect agents", value: "agent:connect" },
-  { description: "Read, reply to, and resolve review comments.", label: "Manage comments", value: "comment:write" },
+  { ...settingsText.apiKeys.capability.readArtifacts, value: "artifact:read" },
+  { ...settingsText.apiKeys.capability.createArtifacts, value: "artifact:create" },
+  { ...settingsText.apiKeys.capability.publishVersions, value: "artifact:publish:any" },
+  { ...settingsText.apiKeys.capability.manageArtifacts, value: "artifact:manage:any" },
+  { ...settingsText.apiKeys.capability.issueContentSessions, value: "content-session:issue" },
+  { ...settingsText.apiKeys.capability.manageProjects, value: "project:manage" },
+  { ...settingsText.apiKeys.capability.connectAgents, value: "agent:connect" },
+  { ...settingsText.apiKeys.capability.manageComments, value: "comment:write" },
 ];
 
 /** Format one instant as the browser's local wall-clock minute value. */
@@ -72,7 +73,7 @@ export function ApiKeysScreen() {
       setApiKeys(loadedKeys);
       setMembers(loadedMembers);
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("API key list failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.apiKeys.listFailed));
     } finally {
       setLoading(false);
     }
@@ -107,7 +108,7 @@ export function ApiKeysScreen() {
       setSelectedCapabilities([]);
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("API key issuance failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.apiKeys.issueFailed));
     } finally {
       setPending(false);
     }
@@ -120,7 +121,7 @@ export function ApiKeysScreen() {
       setIssued(await api.rotateApiKey(keyId));
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("API key rotation failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.apiKeys.rotateFailed));
     } finally {
       setPending(false);
     }
@@ -133,7 +134,7 @@ export function ApiKeysScreen() {
       await api.revokeApiKey(keyId);
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("API key revocation failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.apiKeys.revokeFailed));
     } finally {
       setPending(false);
     }
@@ -144,18 +145,17 @@ export function ApiKeysScreen() {
       <PageHeader
         actions={(
           <Dialog onOpenChange={setIssueOpen} open={issueOpen}>
-            <DialogTrigger render={<Button type="button" />}>Issue API key</DialogTrigger>
+            <DialogTrigger render={<Button type="button" />}>{settingsText.apiKeys.issueApiKey}</DialogTrigger>
             <DialogContent className="sm:max-w-xl">
               <DialogHeader>
-                <DialogTitle>Issue API key</DialogTitle>
+                <DialogTitle>{settingsText.apiKeys.issueApiKey}</DialogTitle>
                 <DialogDescription>
-                  The secret appears once. Give the key only the capabilities it needs and choose
-                  a future expiration.
+                  {settingsText.apiKeys.issueDescription}
                 </DialogDescription>
               </DialogHeader>
               <div className="grid max-h-[60svh] gap-5 overflow-y-auto pr-1">
                 <div className="grid gap-2">
-                  <Label htmlFor="api-key-name">Name</Label>
+                  <Label htmlFor="api-key-name">{settingsText.apiKeys.name}</Label>
                   <Input
                     id="api-key-name"
                     maxLength={200}
@@ -164,7 +164,7 @@ export function ApiKeysScreen() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="api-key-expiration">Expires at</Label>
+                  <Label htmlFor="api-key-expiration">{settingsText.apiKeys.expiresAt}</Label>
                   <Input
                     id="api-key-expiration"
                     min={formatDatetimeLocalMinimum(new Date())}
@@ -174,14 +174,14 @@ export function ApiKeysScreen() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="api-key-owner">Owner</Label>
+                  <Label htmlFor="api-key-owner">{settingsText.apiKeys.owner}</Label>
                   <NativeSelect
                     className="w-full"
                     id="api-key-owner"
                     onChange={(event) => setMemberId(event.currentTarget.value)}
                     value={memberId}
                   >
-                    <NativeSelectOption value="">Service principal</NativeSelectOption>
+                    <NativeSelectOption value="">{settingsText.apiKeys.servicePrincipal}</NativeSelectOption>
                     {members.filter((member) => member.status === "active").map((member) => (
                       <NativeSelectOption key={member.id} value={member.id}>
                         {member.displayName} · {member.email}
@@ -190,7 +190,7 @@ export function ApiKeysScreen() {
                   </NativeSelect>
                 </div>
                 <fieldset className="grid gap-3">
-                  <legend className="text-sm font-medium">Capabilities</legend>
+                  <legend className="text-sm font-medium">{settingsText.apiKeys.capabilities}</legend>
                   {capabilities.map((capability) => {
                     const checked = selectedCapabilities.includes(capability.value);
                     return (
@@ -222,28 +222,28 @@ export function ApiKeysScreen() {
                   onClick={() => void issue()}
                   type="button"
                 >
-                  {pending ? "Issuing…" : "Issue API key"}
+                  {pending ? settingsText.apiKeys.issuing : settingsText.apiKeys.issueApiKey}
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
         )}
-        description="Managed API keys have explicit capabilities, a required expiration, and revocation. Secrets are never shown again."
-        eyebrow="Administration"
-        title="API keys"
+        description={settingsText.apiKeys.description}
+        eyebrow={settingsText.apiKeys.eyebrow}
+        title={settingsText.apiKeys.title}
       />
 
       <SecretDialog issued={issued} onDiscard={() => setIssued(null)} />
       {error === null ? null : <ErrorPanel error={error} onRetry={() => void load()} />}
       {loading && apiKeys.length === 0
         ? (
-          <StatePanel description="Loading managed API keys." title="Loading API keys" />
+          <StatePanel description={settingsText.apiKeys.loadingDescription} title={settingsText.apiKeys.loadingTitle} />
         )
         : apiKeys.length === 0
           ? (
             <StatePanel
-              description="Issue a scoped key for automation or a compatible self-hosted MCP client."
-              title="No managed API keys"
+              description={settingsText.apiKeys.emptyDescription}
+              title={settingsText.apiKeys.emptyTitle}
             />
           )
           : (
@@ -254,14 +254,14 @@ export function ApiKeysScreen() {
                     <div className="flex flex-wrap items-center gap-3">
                       <h2 className="font-heading font-semibold">{apiKey.name}</h2>
                       <StatusBadge tone={apiKey.revokedAt === null ? "primary" : "danger"}>
-                        {apiKey.revokedAt === null ? "Active" : "Revoked"}
+                        {apiKey.revokedAt === null ? settingsText.apiKeys.active : settingsText.apiKeys.revoked}
                       </StatusBadge>
                     </div>
                     <p className="mt-2 font-mono text-xs break-all text-muted-foreground">
                       {apiKey.prefix}
                     </p>
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Expires {formatTimestamp(apiKey.expiresAt)}
+                      {settingsText.apiKeys.expires(formatTimestamp(apiKey.expiresAt))}
                     </p>
                   </div>
                   <div className="flex flex-wrap content-start gap-x-3 gap-y-2">
@@ -279,18 +279,17 @@ export function ApiKeysScreen() {
                           type="button"
                           variant="outline"
                         >
-                          Rotate
+                          {settingsText.apiKeys.rotate}
                         </Button>
                         <Dialog>
                           <DialogTrigger render={<Button size="xs" type="button" variant="ghost" />}>
-                            Revoke
+                            {settingsText.apiKeys.revoke}
                           </DialogTrigger>
                           <DialogContent>
                             <DialogHeader>
-                              <DialogTitle>Revoke API key</DialogTitle>
+                              <DialogTitle>{settingsText.apiKeys.revokeTitle}</DialogTitle>
                               <DialogDescription>
-                                Requests using {apiKey.name} will stop immediately. Revocation does
-                                not remove prior action attribution.
+                                {settingsText.apiKeys.revokeDescription(apiKey.name)}
                               </DialogDescription>
                             </DialogHeader>
                             <DialogFooter>
@@ -300,7 +299,7 @@ export function ApiKeysScreen() {
                                 type="button"
                                 variant="destructive"
                               >
-                                {pending ? "Revoking…" : "Revoke API key"}
+                                {pending ? settingsText.apiKeys.revoking : settingsText.apiKeys.revokeApiKey}
                               </Button>
                             </DialogFooter>
                           </DialogContent>
@@ -337,10 +336,9 @@ function SecretDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Copy API key now</DialogTitle>
+          <DialogTitle>{settingsText.apiKeys.copyNowTitle}</DialogTitle>
           <DialogDescription>
-            This secret is displayed once. Store it in the intended client’s secret input or a
-            deployment secret manager. Artifact Server cannot show it again.
+            {settingsText.apiKeys.copyNowDescription}
           </DialogDescription>
         </DialogHeader>
         <code className="max-h-32 overflow-auto border bg-muted p-3 font-mono text-xs break-all">
@@ -353,10 +351,10 @@ function SecretDialog({
             }}
             type="button"
           >
-            {copied ? "Copied" : "Copy API key"}
+            {copied ? settingsText.apiKeys.copied : settingsText.apiKeys.copyApiKey}
           </Button>
           <Button onClick={onDiscard} type="button" variant="outline">
-            I stored it
+            {settingsText.apiKeys.stored}
           </Button>
         </DialogFooter>
       </DialogContent>

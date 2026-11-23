@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 
+import {reviewPartsText} from "@/i18n/messages/review-parts";
 import type {ReviewPanelResize} from "./use-review-resizable-panel.ts";
 
 const keyboardStep = 10;
@@ -112,7 +113,7 @@ export function ReviewPanelEdge({
             role="tooltip"
             style={{left: cursor.x + 14, top: cursor.y + 16}}
           >
-            Click to close · Drag to resize
+            {reviewPartsText.panelEdge.tooltip}
           </div>,
           document.body,
         )

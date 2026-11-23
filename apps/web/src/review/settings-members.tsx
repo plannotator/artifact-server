@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { settingsText } from "@/i18n/messages/settings";
 import { formatTimestamp } from "@/lib/presentation";
 
 /** Administrator-only installation member lifecycle surface. */
@@ -33,7 +34,7 @@ export function MembersScreen() {
     try {
       setMembers(await api.members());
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Member list failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.members.listFailed));
     } finally {
       setLoading(false);
     }
@@ -53,7 +54,7 @@ export function MembersScreen() {
       setRole("member");
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Member admission failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.members.admitFailed));
     } finally {
       setPending(false);
     }
@@ -66,7 +67,7 @@ export function MembersScreen() {
       await api.deactivateMember(memberId);
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Member deactivation failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.members.deactivateFailed));
     } finally {
       setPending(false);
     }
@@ -77,18 +78,17 @@ export function MembersScreen() {
       <PageHeader
         actions={(
           <Dialog>
-            <DialogTrigger render={<Button type="button" />}>Admit member</DialogTrigger>
+            <DialogTrigger render={<Button type="button" />}>{settingsText.members.admitMember}</DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Admit member</DialogTitle>
+                <DialogTitle>{settingsText.members.admitMember}</DialogTitle>
                 <DialogDescription>
-                  Admit one person to this installation. Every active member can manage artifacts
-                  in every project.
+                  {settingsText.members.admitDescription}
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="member-name">Display name</Label>
+                  <Label htmlFor="member-name">{settingsText.members.displayName}</Label>
                   <Input
                     id="member-name"
                     maxLength={200}
@@ -97,7 +97,7 @@ export function MembersScreen() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="member-email">Email</Label>
+                  <Label htmlFor="member-email">{settingsText.members.email}</Label>
                   <Input
                     id="member-email"
                     maxLength={320}
@@ -107,7 +107,7 @@ export function MembersScreen() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="member-role">Role</Label>
+                  <Label htmlFor="member-role">{settingsText.members.role}</Label>
                   <NativeSelect
                     className="w-full"
                     id="member-role"
@@ -118,9 +118,9 @@ export function MembersScreen() {
                     }}
                     value={role}
                   >
-                    <NativeSelectOption value="member">Member</NativeSelectOption>
+                    <NativeSelectOption value="member">{settingsText.members.roleOptionMember}</NativeSelectOption>
                     <NativeSelectOption value="administrator">
-                      Administrator
+                      {settingsText.members.roleOptionAdministrator}
                     </NativeSelectOption>
                   </NativeSelect>
                 </div>
@@ -131,23 +131,23 @@ export function MembersScreen() {
                   onClick={() => void admit()}
                   type="button"
                 >
-                  {pending ? "Admitting…" : "Admit member"}
+                  {pending ? settingsText.members.admitting : settingsText.members.admitMember}
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
         )}
-        description="One installation has one closed member group. There is no public sign-up or project-specific membership."
-        eyebrow="Administration"
-        title="Members"
+        description={settingsText.members.description}
+        eyebrow={settingsText.members.eyebrow}
+        title={settingsText.members.title}
       />
 
       {error === null ? null : <ErrorPanel error={error} onRetry={() => void load()} />}
       {loading && members.length === 0
         ? (
           <StatePanel
-            description="Loading installation members."
-            title="Loading members"
+            description={settingsText.members.loadingDescription}
+            title={settingsText.members.loadingTitle}
           />
         )
         : (
@@ -155,11 +155,11 @@ export function MembersScreen() {
             <table className="as-stack-table w-full min-w-3xl text-left text-sm">
               <thead className="border-b text-sm text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Member</th>
-                  <th className="px-4 py-3 font-medium">Role</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Admitted</th>
-                  <th className="px-4 py-3 text-right font-medium">Actions</th>
+                  <th className="px-4 py-3 font-medium">{settingsText.members.columnMember}</th>
+                  <th className="px-4 py-3 font-medium">{settingsText.members.columnRole}</th>
+                  <th className="px-4 py-3 font-medium">{settingsText.members.columnStatus}</th>
+                  <th className="px-4 py-3 font-medium">{settingsText.members.columnAdmitted}</th>
+                  <th className="px-4 py-3 text-right font-medium">{settingsText.members.columnActions}</th>
                 </tr>
               </thead>
               <tbody>
@@ -169,10 +169,10 @@ export function MembersScreen() {
                       <p className="font-heading font-semibold">{member.displayName}</p>
                       <p className="mt-1 text-xs text-muted-foreground">{member.email}</p>
                     </td>
-                    <td className="px-4 py-4 capitalize">{member.role}</td>
+                    <td className="px-4 py-4 capitalize">{settingsText.members.roleValue[member.role]}</td>
                     <td className="px-4 py-4">
                       <StatusBadge tone={member.status === "active" ? "primary" : "neutral"}>
-                        {member.status}
+                        {settingsText.members.statusValue[member.status]}
                       </StatusBadge>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-muted-foreground">
@@ -186,14 +186,13 @@ export function MembersScreen() {
                             <DialogTrigger
                               render={<Button size="xs" type="button" variant="ghost" />}
                             >
-                              Deactivate
+                              {settingsText.members.deactivate}
                             </DialogTrigger>
                             <DialogContent>
                               <DialogHeader>
-                                <DialogTitle>Deactivate member</DialogTitle>
+                                <DialogTitle>{settingsText.members.deactivateTitle}</DialogTitle>
                                 <DialogDescription>
-                                  {member.displayName} will lose new browser sessions and API access.
-                                  Existing artifact records and attribution remain unchanged.
+                                  {settingsText.members.deactivateDescription(member.displayName)}
                                 </DialogDescription>
                               </DialogHeader>
                               <DialogFooter>
@@ -203,7 +202,7 @@ export function MembersScreen() {
                                   type="button"
                                   variant="destructive"
                                 >
-                                  {pending ? "Deactivating…" : "Deactivate member"}
+                                  {pending ? settingsText.members.deactivating : settingsText.members.deactivateMember}
                                 </Button>
                               </DialogFooter>
                             </DialogContent>

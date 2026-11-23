@@ -3,6 +3,9 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { componentsText } from "@/i18n/messages/components";
+
+const text = componentsText.comments;
 
 /**
  * Bounded comment body editor.
@@ -70,7 +73,7 @@ export function CommentComposer({
         {draftRestored && trimmed !== "" ? (
           <span className="flex items-baseline gap-2">
             <span className="text-xs text-muted-foreground" data-draft-marker>
-              Draft
+              {text.draft}
             </span>
             {onDiscardDraft === undefined ? null : (
               <button
@@ -78,7 +81,7 @@ export function CommentComposer({
                 onClick={discardDraft}
                 type="button"
               >
-                Discard
+                {text.discard}
               </button>
             )}
           </span>
@@ -94,15 +97,13 @@ export function CommentComposer({
           setBody(event.currentTarget.value);
           onBodyChange?.(event.currentTarget.value);
         }}
-        placeholder="Describe what should change and why."
+        placeholder={text.placeholder}
         value={body}
       />
       {tooLong
         ? (
           <p className="text-xs text-destructive" id={`${inputId}-limit`}>
-            {`A comment holds at most ${maximumCharacters} characters. Remove ${
-              trimmed.length - maximumCharacters
-            }.`}
+            {text.tooLong(maximumCharacters, trimmed.length - maximumCharacters)}
           </p>
         )
         : null}
@@ -113,7 +114,7 @@ export function CommentComposer({
           size="xs"
           type="button"
         >
-          {pending ? "Saving…" : submitLabel}
+          {pending ? text.saving : submitLabel}
         </Button>
         {onCancel === null || cancelLabel === null
           ? null

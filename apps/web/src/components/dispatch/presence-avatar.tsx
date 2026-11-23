@@ -9,6 +9,7 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { componentsText } from "@/i18n/messages/components";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/presentation";
 import opencodeGlyphUrl from "@/review/assets/agents/opencode-dark.svg";
@@ -76,12 +77,9 @@ export function presenceRing(agent: AgentPresence): PresenceRing {
   return (agent.activity ?? "idle") === "working" ? "working" : "idle";
 }
 
-const ringHeadings = {
-  disconnected: "Disconnected",
-  idle: "Idle",
-  replying: "Replying",
-  working: "Working",
-} satisfies Record<PresenceRing, string>;
+const text = componentsText.presence;
+
+const ringHeadings = text.ring satisfies Record<PresenceRing, string>;
 
 /** One sentence saying what the ring means, in words instead of motion. */
 export function presenceSentence(
@@ -91,17 +89,15 @@ export function presenceSentence(
 ): string {
   switch (ring) {
     case "idle":
-      return "Connected and idle — a send reaches it as one message.";
+      return text.idleSentence;
     case "working":
-      return `Working — took a bundle ${
-        formatRelativeTime(agent.lastActivityAt ?? agent.lastSeenAt, now)
-      }.`;
+      return text.workingSentence(
+        formatRelativeTime(agent.lastActivityAt ?? agent.lastSeenAt, now),
+      );
     case "replying":
-      return "Replying — writing back to the annotations it was sent.";
+      return text.replyingSentence;
     case "disconnected":
-      return `Not connected — last seen ${
-        formatRelativeTime(agent.lastSeenAt, now)
-      }. Restart the agent in its working directory to reconnect.`;
+      return text.disconnectedSentence(formatRelativeTime(agent.lastSeenAt, now));
   }
   return ringHandled(ring);
 }
@@ -189,7 +185,7 @@ export function AgentActivityLine({
     <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
       <PresenceAvatar agent={agent} now={now} />
       <span>
-        {`${agent.displayName} is ${ring === "replying" ? "replying…" : "working…"}`}
+        {ring === "replying" ? text.isReplying(agent.displayName) : text.isWorking(agent.displayName)}
       </span>
     </p>
   );
@@ -215,7 +211,7 @@ export function PresenceAvatar({
   return (
     <Popover onOpenChange={setOpen} open={open}>
       <PopoverTrigger
-        aria-label={`${agent.displayName} — ${ringHeadings[ring]}`}
+        aria-label={text.avatarLabel(agent.displayName, ringHeadings[ring])}
         className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         onBlur={() => setOpen(false)}
         onFocus={() => setOpen(true)}
@@ -245,19 +241,19 @@ export function PresenceAvatar({
         <dl className="grid gap-1 text-xs text-muted-foreground">
           <div className="flex justify-between gap-3">
             <dt className="shrink-0 font-medium">
-              Agent
+              {text.agent}
             </dt>
             <dd>{agent.kind}</dd>
           </div>
           <div className="flex justify-between gap-3">
             <dt className="shrink-0 font-medium">
-              Last seen
+              {text.lastSeen}
             </dt>
             <dd>{formatRelativeTime(agent.lastSeenAt, now)}</dd>
           </div>
           <div className="flex justify-between gap-3">
             <dt className="shrink-0 font-medium">
-              Working directory
+              {text.workingDirectory}
             </dt>
             <dd className="min-w-0 font-mono break-all">
               {agent.workingDirectory}

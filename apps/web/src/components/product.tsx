@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/presentation";
+import { settingsText } from "@/i18n/messages/settings";
 
 /** Primary heading and actions for a management screen. */
 export function PageHeader({
@@ -76,17 +77,17 @@ export function ErrorPanel({
     || error.code === "PUBLISH_CONFLICT"
   );
   const title = forbidden
-    ? "Permission required"
+    ? settingsText.product.permissionRequired
     : conflict
-      ? "Artifact changed"
-      : "Request failed";
+      ? settingsText.product.artifactChanged
+      : settingsText.product.requestFailed;
   return (
     <StatePanel
       action={onRetry === undefined
         ? undefined
         : (
           <Button onClick={onRetry} type="button" variant="outline">
-            {conflict ? "Reload artifact" : "Try again"}
+            {conflict ? settingsText.product.reloadArtifact : settingsText.product.tryAgain}
           </Button>
         )}
       description={errorMessage(error)}

@@ -1,3 +1,5 @@
+import {locale} from "@/i18n/locale";
+import {serverErrorMessage} from "@/i18n/messages/common";
 import {useEffect, useMemo, useState} from "react";
 
 import {
@@ -23,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {settingsText} from "@/i18n/messages/settings";
 import {formatTimestamp} from "@/lib/presentation";
 
 const maximumBulkSize = 100;
@@ -75,7 +78,7 @@ export function PublicLinksScreen() {
       setSelectedKeys(new Set());
       setFailures([]);
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Public-link inventory failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.publicLinks.inventoryFailed));
     } finally {
       setLoading(false);
     }
@@ -99,7 +102,7 @@ export function PublicLinksScreen() {
       setPages((current) => [...current, nextPage]);
       setPageIndex((current) => current + 1);
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Public-link page failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.publicLinks.pageFailed));
     } finally {
       setLoading(false);
     }
@@ -116,9 +119,7 @@ export function PublicLinksScreen() {
           continue;
         }
         if (next.size >= maximumBulkSize && !next.has(key)) {
-          setSelectionMessage(
-            `Bulk changes are limited to ${maximumBulkSize} public links. Clear part of the selection before adding more.`,
-          );
+          setSelectionMessage(settingsText.publicLinks.bulkLimit(maximumBulkSize));
           break;
         }
         next.add(key);
@@ -162,7 +163,7 @@ export function PublicLinksScreen() {
         const item = itemByKey.get(key);
         const command = commandByKey.get(key);
         if (item === undefined || command === undefined) {
-          throw new Error("A public-link mutation result did not match its bounded request.");
+          throw new Error(settingsText.publicLinks.resultMismatch);
         }
         nextFailures.push({command, item, result});
       }
@@ -170,12 +171,10 @@ export function PublicLinksScreen() {
       setFailures(nextFailures);
       setSelectedKeys(new Set(nextFailures.map(({item}) => selectionKey(item))));
       if (response.summary.succeeded > 0) {
-        setNotice(
-          `${response.summary.succeeded} public ${response.summary.succeeded === 1 ? "link is" : "links are"} now private. ${response.warning}`,
-        );
+        setNotice(settingsText.publicLinks.madePrivate(response.summary.succeeded, response.warning));
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Making public links private failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.publicLinks.makePrivateFailed));
     } finally {
       setPending(false);
     }
@@ -229,7 +228,7 @@ export function PublicLinksScreen() {
       if (ready.length === 0) {
         setFailures(retained);
         if (alreadyPrivate.size > 0) {
-          setNotice("The remaining public links were already private when their current state was refreshed.");
+          setNotice(settingsText.publicLinks.alreadyPrivate);
         }
         return;
       }
@@ -239,7 +238,7 @@ export function PublicLinksScreen() {
         retained,
       );
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Retrying public links failed."));
+      setError(caught instanceof Error ? caught : new Error(settingsText.publicLinks.retryFailedError));
     } finally {
       setPending(false);
     }
@@ -248,8 +247,8 @@ export function PublicLinksScreen() {
   if (loading && pages.length === 0) {
     return (
       <StatePanel
-        description="Loading active public links across every project."
-        title="Loading public links"
+        description={settingsText.publicLinks.loadingDescription}
+        title={settingsText.publicLinks.loadingTitle}
       />
     );
   }
@@ -262,31 +261,31 @@ export function PublicLinksScreen() {
       <PageHeader
         actions={(
           <Button onClick={() => void loadFirstPage()} type="button" variant="outline">
-            Reload
+            {settingsText.publicLinks.reload}
           </Button>
         )}
-        description="See every active artifact that currently allows public-link access, then make individual links or a bounded selection private."
-        eyebrow="Administration"
-        title="Public links"
+        description={settingsText.publicLinks.description}
+        eyebrow={settingsText.publicLinks.eyebrow}
+        title={settingsText.publicLinks.title}
       />
 
       {error === null ? null : <ErrorPanel error={error} onRetry={() => void loadFirstPage()} />}
       {notice === null ? null : (
         <Alert>
-          <AlertTitle>Public access changed</AlertTitle>
+          <AlertTitle>{settingsText.publicLinks.noticeTitle}</AlertTitle>
           <AlertDescription>{notice}</AlertDescription>
         </Alert>
       )}
       {failures.length === 0 ? null : (
         <Alert variant="destructive">
           <AlertTitle>
-            {failures.length} {failures.length === 1 ? "link was" : "links were"} not changed
+            {settingsText.publicLinks.notChanged(failures.length)}
           </AlertTitle>
           <AlertDescription>
             <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-left text-sm">
               {failures.map(({item, result}) => (
                 <li key={selectionKey(item)}>
-                  {item.project.name} / {item.artifact.name}: {result.error.message}
+                  {item.project.name} / {item.artifact.name}: {locale === "en" ? result.error.message : serverErrorMessage(result.error.code) ?? result.error.message}
                 </li>
               ))}
             </ul>
@@ -300,7 +299,7 @@ export function PublicLinksScreen() {
                   type="button"
                   variant="outline"
                 >
-                  {pending ? "Retrying…" : "Retry failed"}
+                  {pending ? settingsText.publicLinks.retrying : settingsText.publicLinks.retryFailed}
                 </Button>
               )
               : null}
@@ -311,14 +310,14 @@ export function PublicLinksScreen() {
       {loadedItems.length === 0 && fullyLoaded
         ? (
           <StatePanel
-            description="No active artifact in this installation currently allows public-link access."
-            title="No public links"
+            description={settingsText.publicLinks.emptyDescription}
+            title={settingsText.publicLinks.emptyTitle}
           />
         )
         : (
           <>
             <section
-              aria-label="Bulk selection"
+              aria-label={settingsText.publicLinks.bulkSelection}
               className="flex flex-col gap-3 border p-4 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex flex-wrap gap-2">
@@ -329,7 +328,7 @@ export function PublicLinksScreen() {
                   type="button"
                   variant="outline"
                 >
-                  Select visible ({visibleItems.length})
+                  {settingsText.publicLinks.selectVisible(visibleItems.length)}
                 </Button>
                 <Button
                   disabled={loadedItems.length === 0 || loadedItems.length > maximumBulkSize}
@@ -338,7 +337,9 @@ export function PublicLinksScreen() {
                   type="button"
                   variant="outline"
                 >
-                  {fullyLoaded ? "Select all" : "Select all loaded"} ({loadedItems.length})
+                  {fullyLoaded
+                    ? settingsText.publicLinks.selectAll(loadedItems.length)
+                    : settingsText.publicLinks.selectAllLoaded(loadedItems.length)}
                 </Button>
                 <Button
                   disabled={selectedKeys.size === 0}
@@ -347,12 +348,12 @@ export function PublicLinksScreen() {
                   type="button"
                   variant="ghost"
                 >
-                  Clear selection
+                  {settingsText.publicLinks.clearSelection}
                 </Button>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <span className="text-sm text-muted-foreground">
-                  {selectedItems.length} selected · maximum {maximumBulkSize}
+                  {settingsText.publicLinks.selectedCount(selectedItems.length, maximumBulkSize)}
                 </span>
                 <Button
                   disabled={pending || selectedItems.length === 0}
@@ -360,15 +361,15 @@ export function PublicLinksScreen() {
                   size="sm"
                   type="button"
                 >
-                  Make {selectedItems.length} private
+                  {settingsText.publicLinks.makeCountPrivate(selectedItems.length)}
                 </Button>
               </div>
               <p className="basis-full text-xs leading-5 text-muted-foreground sm:order-3">
                 {fullyLoaded
-                  ? "All inventory pages are loaded, so Select all covers every listed public link."
-                  : "More inventory pages exist. Select all loaded never includes pages you have not visited."}
+                  ? settingsText.publicLinks.fullyLoadedHint
+                  : settingsText.publicLinks.partiallyLoadedHint}
                 {loadedItems.length > maximumBulkSize
-                  ? ` Select visible or choose up to ${maximumBulkSize} links for one bulk change.`
+                  ? settingsText.publicLinks.overLimitHint(maximumBulkSize)
                   : ""}
               </p>
               {selectionMessage === null ? null : (
@@ -379,7 +380,7 @@ export function PublicLinksScreen() {
             </section>
 
             <div className="as-public-links-inventory">
-              <table aria-label="Public links inventory" className="as-public-links-table">
+              <table aria-label={settingsText.publicLinks.tableLabel} className="as-public-links-table">
                 <colgroup>
                   <col className="as-public-links-table__select-column" />
                   <col className="as-public-links-table__artifact-column" />
@@ -390,14 +391,14 @@ export function PublicLinksScreen() {
                   <tr>
                     <th className="as-public-links-table__select-cell font-medium">
                       <Checkbox
-                        aria-label="Select all visible public links"
+                        aria-label={settingsText.publicLinks.selectAllVisible}
                         checked={allVisibleSelected}
                         onCheckedChange={(checked) => selectItems(visibleItems, checked)}
                       />
                     </th>
-                    <th className="font-medium">Artifact</th>
-                    <th className="font-medium">Public link</th>
-                    <th className="text-right font-medium">Actions</th>
+                    <th className="font-medium">{settingsText.publicLinks.columnArtifact}</th>
+                    <th className="font-medium">{settingsText.publicLinks.columnPublicLink}</th>
+                    <th className="text-right font-medium">{settingsText.publicLinks.columnActions}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -406,8 +407,8 @@ export function PublicLinksScreen() {
                       <tr className="as-public-links-table__empty-row">
                         <td className="text-center text-muted-foreground" colSpan={4}>
                           {currentPage?.nextCursor === null
-                            ? "Every public link on this page is now private. Return to a previous page to inspect the remaining loaded links."
-                            : "Every public link on this loaded page is now private. Continue to the next page to inspect older public links."}
+                            ? settingsText.publicLinks.emptyLastPage
+                            : settingsText.publicLinks.emptyLoadedPage}
                         </td>
                       </tr>
                     )
@@ -417,7 +418,7 @@ export function PublicLinksScreen() {
                       <tr className="as-public-links-table__row" key={selectionKey(item)}>
                         <td className="as-public-links-table__select-cell">
                           <Checkbox
-                            aria-label={`Select ${item.artifact.name}`}
+                            aria-label={settingsText.publicLinks.selectItem(item.artifact.name)}
                             checked={selected}
                             onCheckedChange={(checked) => selectItems([item], checked)}
                           />
@@ -435,7 +436,7 @@ export function PublicLinksScreen() {
                             </a>
                             {item.project.archivedAt === null
                               ? null
-                              : <StatusBadge>Archived</StatusBadge>}
+                              : <StatusBadge>{settingsText.publicLinks.archived}</StatusBadge>}
                           </div>
                           <p className="as-public-links-table__meta">{item.project.name}</p>
                         </td>
@@ -450,9 +451,9 @@ export function PublicLinksScreen() {
                             {item.links.public}
                           </a>
                           <p className="as-public-links-table__meta">
-                            <span>Version {item.currentVersion.number}</span>
+                            <span>{settingsText.publicLinks.version(item.currentVersion.number)}</span>
                             <span aria-hidden="true"> · </span>
-                            <span>Saved {formatTimestamp(item.currentVersion.createdAt)}</span>
+                            <span>{settingsText.publicLinks.saved(formatTimestamp(item.currentVersion.createdAt))}</span>
                           </p>
                         </td>
                         <td className="as-public-links-table__actions-cell">
@@ -464,7 +465,7 @@ export function PublicLinksScreen() {
                               target="_blank"
                               variant="outline"
                             >
-                              Open
+                              {settingsText.publicLinks.open}
                             </ButtonLink>
                             <Button
                               disabled={pending}
@@ -473,7 +474,7 @@ export function PublicLinksScreen() {
                               type="button"
                               variant="ghost"
                             >
-                              Make private
+                              {settingsText.publicLinks.makePrivate}
                             </Button>
                           </div>
                         </td>
@@ -484,23 +485,23 @@ export function PublicLinksScreen() {
               </table>
             </div>
 
-            <nav aria-label="Public links pagination" className="flex items-center justify-between">
+            <nav aria-label={settingsText.publicLinks.pagination} className="flex items-center justify-between">
               <Button
                 disabled={loading || pageIndex === 0}
                 onClick={() => setPageIndex((current) => current - 1)}
                 type="button"
                 variant="outline"
               >
-                Previous
+                {settingsText.publicLinks.previous}
               </Button>
-              <span className="text-sm text-muted-foreground">Page {pageIndex + 1}</span>
+              <span className="text-sm text-muted-foreground">{settingsText.publicLinks.page(pageIndex + 1)}</span>
               <Button
                 disabled={loading || currentPage?.nextCursor === null}
                 onClick={() => void showNextPage()}
                 type="button"
                 variant="outline"
               >
-                {loading ? "Loading…" : "Next"}
+                {loading ? settingsText.publicLinks.loading : settingsText.publicLinks.next}
               </Button>
             </nav>
           </>
@@ -515,17 +516,14 @@ export function PublicLinksScreen() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Make {confirmation.length} public {confirmation.length === 1 ? "link" : "links"} private?
+              {settingsText.publicLinks.confirmTitle(confirmation.length)}
             </DialogTitle>
             <DialogDescription>
-              New requests to successful items will require an admitted account. Copies already
-              downloaded or cached outside Artifact Server cannot be recalled.
+              {settingsText.publicLinks.confirmDescription}
             </DialogDescription>
           </DialogHeader>
           <p className="text-sm leading-6 text-muted-foreground">
-            Each item is checked against the current version shown when you selected it. If an
-            artifact changed, that item fails without changing its access and can be retried after
-            refreshing its version.
+            {settingsText.publicLinks.confirmDetail}
           </p>
           <DialogFooter>
             <Button
@@ -534,14 +532,14 @@ export function PublicLinksScreen() {
               type="button"
               variant="outline"
             >
-              Cancel
+              {settingsText.publicLinks.cancel}
             </Button>
             <Button
               disabled={pending}
               onClick={() => void confirmMutation()}
               type="button"
             >
-              {pending ? "Making private…" : "Make private"}
+              {pending ? settingsText.publicLinks.makingPrivate : settingsText.publicLinks.makePrivate}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -4962,3 +4962,18 @@ requirements:
         result: pass
         run: project/evidence/local-foundation.json
         recorded_at: "2026-11-23T19:31:06.217Z"
+
+  # Fork-local interface language (ShiGaChenTW/artifact-server); not upstream.
+  - id: LANG-001
+    kind: behavior
+    behavior: The web application opens in Traditional Chinese, switches to English and back on request, and treats any unknown or unreadable stored choice as Traditional Chinese.
+    owner: web-application
+    source: {file: interface-language-spec.md, anchor: contract}
+    acceptance:
+      behavior: {id: LANG-001-B, description: "With no stored choice the dashboard reads in Traditional Chinese under lang zh-Hant-TW; the switch changes the interface to English across screens and reloads, and switches back."}
+      failure: {id: LANG-001-F, description: "A stored value other than en (fr, EN, empty) opens in Traditional Chinese, and storage that throws on read still resolves the language to Traditional Chinese without failing."}
+    deployments: [local]
+    status: implementing
+    proof_gap: Browser tests exist; durable browser evidence is attached after the next test:web run.
+    depends_on: []
+    evidence: []

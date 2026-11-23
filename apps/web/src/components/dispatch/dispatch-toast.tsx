@@ -7,7 +7,10 @@ import {
   type AgentPresence,
 } from "@/api/client";
 import { Button } from "@/components/ui/button";
+import { componentsText } from "@/i18n/messages/components";
 import { errorMessage } from "@/lib/presentation";
+
+const text = componentsText.dispatch.toast;
 
 /** One send that just left, with everything the undo toast needs to name it. */
 export interface SentDispatch {
@@ -37,8 +40,11 @@ type Toast =
   | { readonly kind: "notice"; readonly text: string }
   | { readonly kind: "sent"; readonly sent: SentDispatch };
 
-function threadsWord(count: number): string {
-  return count === 1 ? "1 thread" : `${count} threads`;
+function sentThreadCount(sent: SentDispatch): number {
+  return sent.dispatches.reduce(
+    (count, dispatch) => count + dispatch.threadIds.length,
+    0,
+  );
 }
 
 /**
@@ -92,7 +98,7 @@ export function useDispatchUndo(
     );
     if (failures.length === 0) {
       show(
-        { kind: "notice", text: "Send canceled — the annotations are back." },
+        { kind: "notice", text: text.undone },
         noticeToastMilliseconds,
       );
     } else {
@@ -104,7 +110,7 @@ export function useDispatchUndo(
         {
           kind: "notice",
           text: conflict
-            ? `Too late to undo — ${sent.agent.displayName} already carried this send past the point of cancelling.`
+            ? text.tooLate(sent.agent.displayName)
             : errorMessage(
               firstFailure instanceof Error
                 ? firstFailure
@@ -131,19 +137,13 @@ export function useDispatchUndo(
               <p className="min-w-0 leading-5">
                 {toast.sent.incompleteCount === undefined
                   ? toast.sent.agent.capabilities?.evidence === "mailbox"
-                    ? `Queued for ${toast.sent.agent.displayName} — it picks this up when it next checks in.`
-                    : `Sent ${threadsWord(
-                      toast.sent.dispatches.reduce(
-                        (count, dispatch) => count + dispatch.threadIds.length,
-                        0,
-                      ),
-                    )} to ${toast.sent.agent.displayName}`
-                  : `Sent ${threadsWord(
-                    toast.sent.dispatches.reduce(
-                      (count, dispatch) => count + dispatch.threadIds.length,
-                      0,
-                    ),
-                  )} to ${toast.sent.agent.displayName}; ${threadsWord(toast.sent.incompleteCount)} could not be sent.`}
+                    ? text.queuedFor(toast.sent.agent.displayName)
+                    : text.sent(sentThreadCount(toast.sent), toast.sent.agent.displayName)
+                  : text.sentPartially(
+                    sentThreadCount(toast.sent),
+                    toast.sent.agent.displayName,
+                    toast.sent.incompleteCount,
+                  )}
               </p>
               <Button
                 className="shrink-0"
@@ -153,7 +153,7 @@ export function useDispatchUndo(
                 type="button"
                 variant="outline"
               >
-                {undoPending ? "Undoing…" : "Undo"}
+                {undoPending ? text.undoing : text.undo}
               </Button>
             </>
           )

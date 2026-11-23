@@ -5,8 +5,11 @@ import {ErrorPanel} from "@/components/product";
 import {Button} from "@/components/ui/button";
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
 import {Skeleton} from "@/components/ui/skeleton";
+import {dashboardText} from "@/i18n/messages/dashboard";
 import {formatRelativeTime, formatTimestamp} from "@/lib/presentation";
 import {activityActorLabel, activityLabel, artifactReviewHref} from "./dashboard-format.ts";
+
+const text = dashboardText.activity;
 
 type ActivityState =
   | {readonly status: "loading"}
@@ -74,8 +77,8 @@ export function ActivitySection({
   return (
     <Card className="min-w-0">
       <CardHeader>
-        <CardTitle>Activity</CardTitle>
-        <CardDescription>Who published, changed, commented, or dispatched, newest first.</CardDescription>
+        <CardTitle>{text.title}</CardTitle>
+        <CardDescription>{text.description}</CardDescription>
       </CardHeader>
       <CardContent>
         {state.status === "loading"
@@ -94,9 +97,9 @@ export function ActivitySection({
           ? (
             <div className="grid gap-4">
               {state.events.length === 0
-                ? <p className="text-sm text-muted-foreground">Nothing happened in this window.</p>
+                ? <p className="text-sm text-muted-foreground">{text.empty}</p>
                 : (
-                  <ol aria-label="Activity trail" className="ml-1 grid border-l border-[var(--color-rule-2)]">
+                  <ol aria-label={text.trail} className="ml-1 grid border-l border-[var(--color-rule-2)]">
                     {state.events.map((event) => (
                       <ActivityRow
                         event={event}
@@ -120,7 +123,7 @@ export function ActivitySection({
                     type="button"
                     variant="outline"
                   >
-                    {state.loadingMore ? "Loading…" : "Show older activity"}
+                    {state.loadingMore ? text.loading : text.showOlder}
                   </Button>
                 )}
             </div>
@@ -160,9 +163,11 @@ function ActivityRow({
       </time>
       <p className="min-w-0">
         {actor === null ? null : <span className={`font-medium ${actorTone}`}>{actor} </span>}
-        <span className="text-[var(--color-ink-2)]">{label}</span>
+        {label.lead === "" ? null : <span className="text-[var(--color-ink-2)]">{label.lead}</span>}
         {event.artifactId === null || event.artifactName === null
-          ? null
+          ? label.trail === ""
+            ? null
+            : <span className="text-[var(--color-ink-2)]">{` ${text.unknownArtifact}${label.trail}`}</span>
           : (
             <>
               {" "}
@@ -175,6 +180,7 @@ function ActivityRow({
               {event.versionNumber === null
                 ? null
                 : <span className="font-mono text-[var(--color-cool)]"> v{event.versionNumber}</span>}
+              {label.trail === "" ? null : <span className="text-[var(--color-ink-2)]">{label.trail}</span>}
             </>
           )}
         {projectName === null

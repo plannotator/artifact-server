@@ -5,6 +5,7 @@ import {api, type Project, type Session} from "@/api/client";
 import {StatePanel} from "@/components/product";
 import {Button, ButtonLink} from "@/components/ui/button";
 import {LanguageSwitch} from "@/i18n/language-switch";
+import {settingsText} from "@/i18n/messages/settings";
 import {ArtifactMark} from "./artifact-mark.tsx";
 import {parseSettingsRoute, type SettingsRoute} from "./review-routes.ts";
 import {ApiKeysScreen} from "./settings-api-keys.tsx";
@@ -48,39 +49,39 @@ export function ReviewSettings({
             <span className="as-settings__brand-mark">
               <ArtifactMark className="as-settings__mark" />
             </span>
-            <span className="as-settings__brand-label">Settings</span>
+            <span className="as-settings__brand-label">{settingsText.shell.brandLabel}</span>
           </a>
           <div className="as-settings__header-actions">
             <LanguageSwitch />
             <button
-              aria-label={theme === "moon" ? "Use light theme" : "Use dark theme"}
+              aria-label={theme === "moon" ? settingsText.shell.useLightTheme : settingsText.shell.useDarkTheme}
               className="as-icon-button"
               onClick={onThemeChange}
-              title={theme === "moon" ? "Use light theme" : "Use dark theme"}
+              title={theme === "moon" ? settingsText.shell.useLightTheme : settingsText.shell.useDarkTheme}
               type="button"
             >
               <HugeiconsIcon icon={theme === "moon" ? Sun03Icon : Moon02Icon} strokeWidth={1.8} />
             </button>
             <ButtonLink href={reviewHref} size="sm" variant="outline">
               <HugeiconsIcon data-icon="inline-start" icon={ArrowLeft01Icon} strokeWidth={1.8} />
-              Back to review
+              {settingsText.shell.backToReview}
             </ButtonLink>
             <Button
               onClick={() => void api.logout().finally(() => window.location.assign("/review"))}
               size="sm"
               variant="ghost"
             >
-              Sign out
+              {settingsText.shell.signOut}
             </Button>
           </div>
         </div>
       </header>
       <div className="as-settings__layout">
-        <nav aria-label="Settings" className="as-settings__nav">
-          <p>Settings</p>
+        <nav aria-label={settingsText.shell.navLabel} className="as-settings__nav">
+          <p>{settingsText.shell.navHeading}</p>
           {canManageProjects ? (
             <SettingsLink active={route.kind === "projects" || route.kind === "project"} href="/review/settings/projects">
-              Projects
+              {settingsText.shell.navProjects}
             </SettingsLink>
           ) : null}
           <SettingsLink active={route.kind === "mcp"} href="/review/settings/mcp">
@@ -91,9 +92,9 @@ export function ReviewSettings({
           </SettingsLink>
           {administrator ? (
             <>
-              <SettingsLink active={route.kind === "members"} href="/review/settings/members">Members</SettingsLink>
-              <SettingsLink active={route.kind === "apiKeys"} href="/review/settings/api-keys">API keys</SettingsLink>
-              <SettingsLink active={route.kind === "publicLinks"} href="/review/settings/public-links">Public links</SettingsLink>
+              <SettingsLink active={route.kind === "members"} href="/review/settings/members">{settingsText.shell.navMembers}</SettingsLink>
+              <SettingsLink active={route.kind === "apiKeys"} href="/review/settings/api-keys">{settingsText.shell.navApiKeys}</SettingsLink>
+              <SettingsLink active={route.kind === "publicLinks"} href="/review/settings/public-links">{settingsText.shell.navPublicLinks}</SettingsLink>
             </>
           ) : null}
         </nav>
@@ -132,11 +133,11 @@ function SettingsContent({
       <StatePanel
         action={(
           <ButtonLink href="/review/settings/projects" variant="outline">
-            View settings
+            {settingsText.shell.notFoundAction}
           </ButtonLink>
         )}
-        description="This Artifact Server settings route does not exist."
-        title="Page not found"
+        description={settingsText.shell.notFoundDescription}
+        title={settingsText.shell.notFoundTitle}
       />
     );
   }
@@ -195,8 +196,8 @@ function SettingsLink({
 function ProjectPermissionRequired() {
   return (
     <StatePanel
-      description="This account cannot manage projects."
-      title="Project permission required"
+      description={settingsText.shell.projectPermissionDescription}
+      title={settingsText.shell.projectPermissionTitle}
     />
   );
 }
@@ -204,8 +205,8 @@ function ProjectPermissionRequired() {
 function AdministratorPermissionRequired() {
   return (
     <StatePanel
-      description="Only an installation administrator can manage members, API keys, and public links."
-      title="Administrator permission required"
+      description={settingsText.shell.administratorPermissionDescription}
+      title={settingsText.shell.administratorPermissionTitle}
     />
   );
 }

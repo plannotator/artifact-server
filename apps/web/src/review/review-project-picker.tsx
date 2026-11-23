@@ -1,3 +1,4 @@
+import {displayError} from "@/lib/presentation";
 import {
   Add01Icon,
   ArrowDown01Icon,
@@ -25,7 +26,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {Separator} from "@/components/ui/separator";
+import {reviewPartsText} from "@/i18n/messages/review-parts";
 import {projectSettingsHref} from "./review-routes.ts";
+
+const text = reviewPartsText.projectPicker;
 
 interface ReviewProjectPickerProps {
   readonly canCreate: boolean;
@@ -88,7 +92,7 @@ export function ReviewProjectPicker({
       setName("");
       onSelect(project.id);
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Project creation failed."));
+      setError(caught instanceof Error ? caught : new Error(text.createFailed));
     } finally {
       setCreating(false);
     }
@@ -97,10 +101,10 @@ export function ReviewProjectPicker({
   return (
     <Popover onOpenChange={changePickerOpen} open={pickerOpen}>
       <PopoverTrigger
-        aria-label={`Current project: ${selectedProject?.name ?? "none"}`}
+        aria-label={text.current(selectedProject?.name ?? null)}
         className="as-project-trigger"
       >
-        <span>{selectedProject?.name ?? "Select project"}</span>
+        <span>{selectedProject?.name ?? text.select}</span>
         <HugeiconsIcon aria-hidden="true" icon={ArrowDown01Icon} strokeWidth={2} />
       </PopoverTrigger>
       <PopoverContent
@@ -112,8 +116,8 @@ export function ReviewProjectPicker({
         {pickerScreen === "projects"
           ? (
             <>
-              <PopoverTitle className="sr-only">Projects</PopoverTitle>
-              <div aria-label="Projects" className="as-project-list" role="listbox">
+              <PopoverTitle className="sr-only">{text.projects}</PopoverTitle>
+              <div aria-label={text.projects} className="as-project-list" role="listbox">
                 {orderedProjects.map((project) => {
                   const selected = project.id === selectedProjectId;
                   return (
@@ -129,7 +133,7 @@ export function ReviewProjectPicker({
                         <span>{project.name}</span>
                         {project.archivedAt === null
                           ? null
-                          : <span className="as-project-option__status">Archived</span>}
+                          : <span className="as-project-option__status">{text.archived}</span>}
                       </span>
                       {selected
                         ? <HugeiconsIcon aria-hidden="true" icon={Tick02Icon} strokeWidth={2} />
@@ -149,7 +153,7 @@ export function ReviewProjectPicker({
                         onClick={() => setPickerOpen(false)}
                       >
                         <HugeiconsIcon aria-hidden="true" icon={Settings02Icon} strokeWidth={2} />
-                        <span>Project settings</span>
+                        <span>{text.settings}</span>
                       </a>
                     )}
                     <a
@@ -158,7 +162,7 @@ export function ReviewProjectPicker({
                       onClick={() => setPickerOpen(false)}
                     >
                       <HugeiconsIcon aria-hidden="true" icon={FolderManagementIcon} strokeWidth={2} />
-                      <span>Manage projects</span>
+                      <span>{text.manage}</span>
                     </a>
                     <button
                       className="as-project-action as-project-action--create"
@@ -166,7 +170,7 @@ export function ReviewProjectPicker({
                       type="button"
                     >
                       <HugeiconsIcon aria-hidden="true" icon={Add01Icon} strokeWidth={2} />
-                      <span>New project</span>
+                      <span>{text.newProject}</span>
                     </button>
                   </div>
                 </>
@@ -175,12 +179,12 @@ export function ReviewProjectPicker({
           )
           : (
             <form className="flex flex-col gap-4" onSubmit={(event) => void createProject(event)}>
-              <PopoverTitle className="as-visually-hidden">Create project</PopoverTitle>
+              <PopoverTitle className="as-visually-hidden">{text.createTitle}</PopoverTitle>
               {error === null
                 ? null
                 : (
                   <Alert variant="destructive">
-                    <AlertDescription>{error.message}</AlertDescription>
+                    <AlertDescription>{displayError(error)}</AlertDescription>
                   </Alert>
                 )}
               <FieldGroup>
@@ -189,7 +193,7 @@ export function ReviewProjectPicker({
                     className="as-visually-hidden"
                     htmlFor="review-new-project-name"
                   >
-                    Project name
+                    {text.nameLabel}
                   </FieldLabel>
                   <Input
                     aria-invalid={error !== null}
@@ -198,11 +202,11 @@ export function ReviewProjectPicker({
                     id="review-new-project-name"
                     maxLength={120}
                     onChange={(event) => setName(event.currentTarget.value)}
-                    placeholder="Project name"
+                    placeholder={text.namePlaceholder}
                     value={name}
                   />
                   <FieldError>
-                    {name.length > 120 ? "Use 120 characters or fewer." : null}
+                    {name.length > 120 ? text.nameTooLong : null}
                   </FieldError>
                 </Field>
               </FieldGroup>
@@ -218,10 +222,10 @@ export function ReviewProjectPicker({
                   type="button"
                   variant="outline"
                 >
-                  Back
+                  {text.back}
                 </Button>
                 <Button disabled={creating || name.trim() === ""} size="sm" type="submit">
-                  {creating ? "Creating…" : "Create project"}
+                  {creating ? text.creating : text.create}
                 </Button>
               </div>
             </form>

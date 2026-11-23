@@ -1,14 +1,8 @@
 import type {AgentDispatchState} from "@/api/client";
 import {StatusBadge} from "@/components/product";
+import {componentsText} from "@/i18n/messages/components";
 
-const stateLabels = {
-  addressed: "Addressed",
-  canceled: "Canceled",
-  claimed: "Claimed",
-  delivered: "Delivered",
-  failed: "Failed",
-  queued: "Queued",
-} satisfies Record<AgentDispatchState, string>;
+const stateLabels = componentsText.dispatch.state satisfies Record<AgentDispatchState, string>;
 
 /** True while a send can still be called back from its agent. */
 export function dispatchIsCancelable(state: AgentDispatchState): boolean {

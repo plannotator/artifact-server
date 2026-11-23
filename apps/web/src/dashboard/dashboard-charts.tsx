@@ -8,18 +8,21 @@ import {
   ChartTooltipFrame,
   chartTooltipIndex,
 } from "@/components/ui/chart";
+import {dashboardText} from "@/i18n/messages/dashboard";
 import {formatBytes} from "@/lib/presentation";
 import {formatDay} from "./dashboard-format.ts";
 
 type GrowthPoint = Insights["storage"]["growth"][number];
 type TagCount = Insights["overview"]["tags"][number];
 
+const text = dashboardText.chart;
+
 const growthConfig = {
-  stored: {color: "var(--insight-series)", label: "Published bytes"},
+  stored: {color: "var(--insight-series)", label: text.publishedBytes},
 } satisfies ChartConfig;
 
 const tagConfig = {
-  artifacts: {color: "var(--insight-series)", label: "Artifacts"},
+  artifacts: {color: "var(--insight-series)", label: text.artifacts},
 } satisfies ChartConfig;
 
 /**
@@ -35,7 +38,7 @@ export function GrowthChart({
 }) {
   return (
     <ChartContainer
-      aria-label="Cumulative published bytes over time"
+      aria-label={text.growthLabel}
       className="aspect-auto h-56 w-full"
       config={growthConfig}
       role="img"
@@ -66,23 +69,23 @@ export function GrowthChart({
                   {
                     color: "var(--color-stored)",
                     key: "total",
-                    label: "Total",
+                    label: text.total,
                     value: formatBytes(point.cumulativeBytes),
                   },
                   {
                     color: "transparent",
                     key: "added",
-                    label: bucket === "week" ? "Added that week" : "Added that day",
+                    label: bucket === "week" ? text.addedThatWeek : text.addedThatDay,
                     value: formatBytes(point.addedBytes),
                   },
                   {
                     color: "transparent",
                     key: "versions",
-                    label: "Versions",
+                    label: text.versions,
                     value: String(point.versions),
                   },
                 ]}
-                title={bucket === "week" ? `Week of ${formatDay(point.day)}` : formatDay(point.day)}
+                title={bucket === "week" ? text.weekOf(formatDay(point.day)) : formatDay(point.day)}
               />
             );
           }}
@@ -106,7 +109,7 @@ export function GrowthChart({
 export function TagChart({tags}: {readonly tags: readonly TagCount[]}) {
   return (
     <ChartContainer
-      aria-label="Live artifacts per tag"
+      aria-label={text.tagLabel}
       className="aspect-auto w-full"
       config={tagConfig}
       role="img"
@@ -136,7 +139,7 @@ export function TagChart({tags}: {readonly tags: readonly TagCount[]}) {
                 rows={[{
                   color: "var(--color-artifacts)",
                   key: "artifacts",
-                  label: "Artifacts",
+                  label: text.artifacts,
                   value: String(tag.artifactCount),
                 }]}
                 title={tag.tag}

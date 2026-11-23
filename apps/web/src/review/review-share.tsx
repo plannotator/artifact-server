@@ -19,6 +19,7 @@ import {
   type ArtifactDetails,
   type ArtifactVersion,
 } from "@/api/client";
+import {reviewPartsText} from "@/i18n/messages/review-parts";
 import claudeLogoUrl from "./assets/agents/claude.svg";
 import codexDarkLogoUrl from "./assets/agents/codex-dark.svg";
 import codexLightLogoUrl from "./assets/agents/codex-light.svg";
@@ -41,6 +42,7 @@ type CopiedTarget =
   | "review-link";
 
 const copiedResetMilliseconds = 1_600;
+const shareText = reviewPartsText.share;
 
 interface ReviewShareControlProps {
   readonly details: ArtifactDetails | null;
@@ -91,7 +93,7 @@ export function ReviewShareControl({
     setFailure(null);
     try {
       if (navigator.clipboard === undefined) {
-        throw new Error("Clipboard access is unavailable in this browser.");
+        throw new Error(shareText.failure.clipboardUnavailable);
       }
       await navigator.clipboard.writeText(text);
       setCopiedTarget(target);
@@ -117,7 +119,7 @@ export function ReviewShareControl({
     await copyText(
       reviewLink,
       "review-link",
-      "The exact Review link could not be copied.",
+      shareText.failure.reviewLink,
     );
   };
 
@@ -126,7 +128,7 @@ export function ReviewShareControl({
     await copyText(
       buildAgentReviewPrompt(details, selectedVersion, reviewLink),
       "agent-prompt",
-      "The agent review prompt could not be copied.",
+      shareText.failure.agentPrompt,
     );
   };
 
@@ -159,14 +161,14 @@ export function ReviewShareControl({
       setNotice(
         changed.warning ?? (
           selectedAccess === "public_link"
-            ? "The current version can now be opened without signing in."
-            : "This artifact now requires an admitted account."
+            ? shareText.nowPublic
+            : shareText.nowPrivate
         ),
       );
       setScreen("overview");
     } catch (caught) {
       setFailure(
-        caught instanceof Error ? caught.message : "Artifact access could not be changed.",
+        caught instanceof Error ? caught.message : shareText.failure.access,
       );
     } finally {
       setPending(false);
@@ -182,7 +184,7 @@ export function ReviewShareControl({
       <Popover.Trigger
         render={(
           <button
-            aria-label="Share"
+            aria-label={shareText.trigger}
             className={triggerClassName}
             disabled={details === null || selectedVersion === null}
             type="button"
@@ -190,12 +192,12 @@ export function ReviewShareControl({
         )}
       >
         <HugeiconsIcon aria-hidden="true" icon={Share01Icon} strokeWidth={1.8} />
-        <span className="as-button__label">Share</span>
+        <span className="as-button__label">{shareText.trigger}</span>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Backdrop className="as-share-backdrop" />
         <Popover.Positioner align="end" className="as-share-positioner" sideOffset={8}>
-          <Popover.Popup aria-label="Share artifact" className="as-share-popover">
+          <Popover.Popup aria-label={shareText.popupLabel} className="as-share-popover">
             {screen === "overview" ? (
               <header className="as-share-popover__header as-share-popover__header--artifact">
                 <span aria-hidden="true" className="as-share-destination__icon">
@@ -203,10 +205,10 @@ export function ReviewShareControl({
                 </span>
                 <div>
                   <h2>{details?.artifact.name ?? "Artifact"}</h2>
-                  <p>Exact version · Version {selectedVersion?.version.number ?? "—"}</p>
+                  <p>{shareText.exactVersion(selectedVersion?.version.number ?? null)}</p>
                 </div>
                 <button
-                  aria-label="Close Share"
+                  aria-label={shareText.close}
                   className="as-icon-button"
                   disabled={pending}
                   onClick={() => updateOpen(false)}
@@ -218,7 +220,7 @@ export function ReviewShareControl({
             ) : (
               <header className="as-share-popover__header">
                 <button
-                  aria-label="Back to Share"
+                  aria-label={shareText.back}
                   className="as-icon-button"
                   disabled={pending}
                   onClick={() => setScreen("overview")}
@@ -227,11 +229,11 @@ export function ReviewShareControl({
                   <HugeiconsIcon aria-hidden="true" icon={ArrowLeft01Icon} strokeWidth={1.8} />
                 </button>
                 <div>
-                  <h2>{screen === "access" ? "Artifact access" : "Connect MCP"}</h2>
-                  <p>{details?.artifact.name ?? "No artifact selected"}</p>
+                  <h2>{screen === "access" ? shareText.accessHeading : shareText.connectHeading}</h2>
+                  <p>{details?.artifact.name ?? shareText.noArtifact}</p>
                 </div>
                 <button
-                  aria-label="Close Share"
+                  aria-label={shareText.close}
                   className="as-icon-button"
                   disabled={pending}
                   onClick={() => updateOpen(false)}
@@ -245,7 +247,7 @@ export function ReviewShareControl({
             {screen === "overview" ? (
               <div className="as-share-overview">
                 <section aria-labelledby="as-share-link-heading" className="as-share-link">
-                  <h3 id="as-share-link-heading">Review and comment</h3>
+                  <h3 id="as-share-link-heading">{shareText.reviewHeading}</h3>
                   <div>
                     <code title={reviewLink ?? undefined}>{reviewLink ?? ""}</code>
                     <button
@@ -259,7 +261,7 @@ export function ReviewShareControl({
                         icon={copiedTarget === "review-link" ? Tick02Icon : Copy01Icon}
                         strokeWidth={1.8}
                       />
-                      {copiedTarget === "review-link" ? "Copied" : "Copy Review link"}
+                      {copiedTarget === "review-link" ? shareText.copied : shareText.copyReviewLink}
                     </button>
                   </div>
                 </section>
@@ -271,8 +273,8 @@ export function ReviewShareControl({
                     strokeWidth={1.8}
                   />
                   <p>
-                    People with access to this Artifact Server can review this exact version.
-                    {publicArtifact ? " The latest raw artifact is public." : ""}
+                    {shareText.accessSummary}
+                    {publicArtifact ? shareText.accessSummaryPublic : ""}
                   </p>
                   <button
                     className="as-button"
@@ -280,22 +282,22 @@ export function ReviewShareControl({
                     onClick={openAccess}
                     type="button"
                   >
-                    Manage access
+                    {shareText.manageAccess}
                   </button>
                 </div>
 
                 <section aria-labelledby="as-share-secondary-heading" className="as-share-secondary">
-                  <h3 id="as-share-secondary-heading">Other links</h3>
+                  <h3 id="as-share-secondary-heading">{shareText.otherLinks}</h3>
                   <ShareSecondaryLink
                     copied={copiedTarget === "latest-link"}
-                    description="Moves when a new version is published"
-                    label="Latest"
+                    description={shareText.latestDescription}
+                    label={shareText.latestLabel}
                     onCopy={() => {
                       if (details !== null) {
                         void copyText(
                           details.links.artifact,
                           "latest-link",
-                          "The latest artifact link could not be copied.",
+                          shareText.failure.latestLink,
                         );
                       }
                     }}
@@ -303,14 +305,14 @@ export function ReviewShareControl({
                   />
                   <ShareSecondaryLink
                     copied={copiedTarget === "raw-link"}
-                    description="Exact version without Review controls"
-                    label="Raw"
+                    description={shareText.rawDescription}
+                    label={shareText.rawLabel}
                     onCopy={() => {
                       if (selectedVersion !== null) {
                         void copyText(
                           selectedVersion.links.version,
                           "raw-link",
-                          "The raw version link could not be copied.",
+                          shareText.failure.rawLink,
                         );
                       }
                     }}
@@ -319,8 +321,8 @@ export function ReviewShareControl({
                 </section>
 
                 <section aria-labelledby="as-share-agent-heading" className="as-share-agent">
-                  <h3 id="as-share-agent-heading">Review with an AI agent</h3>
-                  <p>Copy one complete prompt into Claude, Codex, Cursor, GitHub Copilot, Pi, or OpenCode.</p>
+                  <h3 id="as-share-agent-heading">{shareText.agentHeading}</h3>
+                  <p>{shareText.agentDescription}</p>
                   <div className="as-share-agent__actions">
                     <button
                       className="as-share-agent__prompt"
@@ -330,7 +332,7 @@ export function ReviewShareControl({
                     >
                       <AgentLogos />
                       <span>
-                        {copiedTarget === "agent-prompt" ? "Prompt copied" : "Copy review prompt"}
+                        {copiedTarget === "agent-prompt" ? shareText.promptCopied : shareText.copyPrompt}
                       </span>
                       <HugeiconsIcon
                         aria-hidden="true"
@@ -347,7 +349,7 @@ export function ReviewShareControl({
                       }}
                       type="button"
                     >
-                      Connect MCP
+                      {shareText.connectMcp}
                       <HugeiconsIcon aria-hidden="true" icon={ArrowRight01Icon} strokeWidth={1.8} />
                     </button>
                   </div>
@@ -362,21 +364,21 @@ export function ReviewShareControl({
               </div>
             ) : screen === "agents" ? (
               <div className="as-share-agent-setup">
-                <p>Choose the connection that matches where Artifact Server is running.</p>
+                <p>{shareText.setupIntro}</p>
 
                 <section>
                   <header>
-                    <strong>On this computer</strong>
-                    <span>Recommended for local use</span>
+                    <strong>{shareText.localHeading}</strong>
+                    <span>{shareText.localBadge}</span>
                   </header>
-                  <p>Detect a supported client, install its private MCP connection, and verify it without copying a token.</p>
+                  <p>{shareText.localDescription}</p>
                   <CopyableAgentValue
                     copied={copiedTarget === "local-command"}
-                    label="Copy local connection command"
+                    label={shareText.copyLocalCommand}
                     onCopy={() => void copyText(
                       "artifactserver connect",
                       "local-command",
-                      "The local connection command could not be copied.",
+                      shareText.failure.localCommand,
                     )}
                     value="artifactserver connect"
                   />
@@ -384,17 +386,17 @@ export function ReviewShareControl({
 
                 <section>
                   <header>
-                    <strong>Team or remote server</strong>
+                    <strong>{shareText.remoteHeading}</strong>
                     <span>MCP</span>
                   </header>
-                  <p>Add this server address to the agent. Compatible deployments open browser sign-in; other self-hosted deployments use an administrator-issued scoped key.</p>
+                  <p>{shareText.remoteDescription}</p>
                   <CopyableAgentValue
                     copied={copiedTarget === "mcp-address"}
-                    label="Copy MCP server address"
+                    label={shareText.copyMcpAddress}
                     onCopy={() => void copyText(
                       mcpAddress,
                       "mcp-address",
-                      "The MCP server address could not be copied.",
+                      shareText.failure.mcpAddress,
                     )}
                     value={mcpAddress}
                   />
@@ -402,10 +404,10 @@ export function ReviewShareControl({
 
                 <section>
                   <header>
-                    <strong>Without MCP</strong>
-                    <span><abbr title="Hypertext Transfer Protocol application programming interface">HTTP API</abbr></span>
+                    <strong>{shareText.withoutMcpHeading}</strong>
+                    <span><abbr title={shareText.httpApiTitle}>HTTP API</abbr></span>
                   </header>
-                  <p>The review prompt includes an exact authenticated API request for this version. Use a scoped API key from an administrator and never paste it into chat.</p>
+                  <p>{shareText.withoutMcpDescription}</p>
                 </section>
 
                 {failure === null ? null : (
@@ -414,34 +416,34 @@ export function ReviewShareControl({
               </div>
             ) : (
               <div className="as-share-access-editor">
-                <p>Choose who can open the current version from the stable artifact link.</p>
+                <p>{shareText.accessIntro}</p>
                 <fieldset>
-                  <legend className="as-visually-hidden">Who can open this artifact</legend>
+                  <legend className="as-visually-hidden">{shareText.accessLegend}</legend>
                   <ShareAccessOption
                     checked={selectedAccess === "account_required"}
-                    description="An admitted installation account is required."
+                    description={shareText.privateDescription}
                     disabled={pending}
-                    label="Private"
+                    label={shareText.privateLabel}
                     onChange={() => setSelectedAccess("account_required")}
                     value="account_required"
                   />
                   <ShareAccessOption
                     checked={selectedAccess === "public_link"}
-                    description="No sign-in. Anyone who can reach this server and has the link can open the current version."
+                    description={shareText.publicDescription}
                     disabled={pending}
-                    label="Public link"
+                    label={shareText.publicLabel}
                     onChange={() => setSelectedAccess("public_link")}
                     value="public_link"
                   />
                 </fieldset>
                 <p className="as-share-network-note">
-                  Public access does not create a tunnel, open a firewall, or make an unreachable server reachable.
+                  {shareText.networkNote}
                 </p>
                 {selectedAccess !== details?.artifact.accessSetting ? (
                   <p className="as-share-access-warning">
                     {selectedAccess === "public_link"
-                      ? "The link can be redistributed. Earlier versions and history stay account-required."
-                      : "Downloaded or externally cached copies cannot be recalled."}
+                      ? shareText.publicWarning
+                      : shareText.privateWarning}
                   </p>
                 ) : null}
                 {failure === null ? null : (
@@ -454,7 +456,7 @@ export function ReviewShareControl({
                     onClick={() => setScreen("overview")}
                     type="button"
                   >
-                    Cancel
+                    {shareText.cancel}
                   </button>
                   <button
                     className="as-button as-button--primary"
@@ -466,7 +468,7 @@ export function ReviewShareControl({
                     onClick={() => void saveAccess()}
                     type="button"
                   >
-                    {pending ? "Saving…" : "Save"}
+                    {pending ? shareText.saving : shareText.save}
                   </button>
                 </div>
               </div>
@@ -474,8 +476,7 @@ export function ReviewShareControl({
 
             {screen === "overview" ? (
               <footer className="as-share-popover__footer">
-                This Review link stays pinned to Version {selectedVersion?.version.number ?? "—"}
-                {selectedPath === null ? "." : ` and ${selectedPath}.`}
+                {shareText.pinnedFooter(selectedVersion?.version.number ?? null, selectedPath)}
               </footer>
             ) : null}
           </Popover.Popup>
@@ -488,7 +489,7 @@ export function ReviewShareControl({
 export function AgentLogos() {
   return (
     <span
-      aria-label="Claude, Codex, Cursor, GitHub Copilot, Pi, and OpenCode"
+      aria-label={shareText.agentLogos}
       className="as-agent-logos"
       role="img"
     >
@@ -577,7 +578,7 @@ function ShareSecondaryLink({
       </span>
       <code title={value}>{value}</code>
       <button
-        aria-label={`Copy ${label.toLocaleLowerCase("en-US")} link`}
+        aria-label={shareText.copySecondaryLink(label)}
         className="as-icon-button"
         disabled={value === ""}
         onClick={onCopy}

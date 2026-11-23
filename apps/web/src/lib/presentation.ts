@@ -68,6 +68,16 @@ export function errorMessage(error: Error): string {
   return locale === "en" ? error.message : serverErrorMessage(error.code) ?? error.message;
 }
 
+/**
+ * The text of a failure shown as is. English keeps the message exactly as
+ * before; zh-TW replaces a server failure's message with the translated
+ * sentence for its stable code.
+ */
+export function displayError(error: Error): string {
+  if (locale === "en" || !(error instanceof ApiError)) return error.message;
+  return serverErrorMessage(error.code) ?? error.message;
+}
+
 /** Converts an access-setting value into the product's visible term. */
 export function accessSettingLabel(value: "account_required" | "public_link"): string {
   return value === "account_required" ? commonText.access.accountRequired : commonText.access.publicLink;

@@ -1,10 +1,10 @@
 ---
 id: ARTSV-2.1
 title: i18n 核心：字典、語言設定、中文字體、錯誤代碼對照
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-23T21:50:00Z'
-updated_date: '2026-11-23T21:50:00Z'
+updated_date: '2026-11-23T21:53:00Z'
 labels: []
 dependencies: []
 parent_task_id: ARTSV-2
@@ -21,6 +21,6 @@ apps/web/src/i18n：en 為鍵的來源、zh-TW 以 satisfies 對齊；語言存 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 型別保證兩份字典鍵一致
-- [ ] #2 測試 fixture 固定英文
+- [x] #1 型別保證兩份字典鍵一致
+- [x] #2 測試 fixture 固定英文
 <!-- AC:END -->
