@@ -4882,10 +4882,14 @@ requirements:
       behavior: {id: DSH-001-B, description: "Read the overview for one project and for the installation and receive exact live-artifact, version, in-window version, public-link, tag, and most-recent-artifact figures."}
       failure: {id: DSH-001-F, description: "Deleted artifacts and other projects' artifacts never appear in a project's overview, and an unknown project is refused with PROJECT_NOT_FOUND."}
     deployments: [local]
-    status: implementing
-    proof_gap: Normal and hostile tests exist; no durable local evidence report has been attached yet.
+    status: verified
     depends_on: [PRJ-001, ART-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [DSH-001-B, DSH-001-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-23T19:31:06.217Z"
 
   - id: DSH-002
     kind: behavior
@@ -4896,10 +4900,14 @@ requirements:
       behavior: {id: DSH-002-B, description: "After opening, resolving, replying to, and dispatching threads, the review section reports exact open, resolved, dispatched-open, in-window, and per-state dispatch counts."}
       failure: {id: DSH-002-F, description: "Review counts never include another project's threads or dispatches, and work older than the window leaves the in-window counts while staying in the open totals."}
     deployments: [local]
-    status: implementing
-    proof_gap: Normal and hostile tests exist; no durable local evidence report has been attached yet.
+    status: verified
     depends_on: [CMT-001, DSP-003]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [DSH-002-B, DSH-002-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-23T19:31:06.217Z"
 
   - id: DSH-003
     kind: behavior
@@ -4910,10 +4918,14 @@ requirements:
       behavior: {id: DSH-003-B, description: "Identical bytes published in two artifacts count twice as declared bytes and once as stored bytes, and the daily series starts from the pre-window baseline and ends at the total."}
       failure: {id: DSH-003-F, description: "A history longer than ninety days folds into weekly buckets whose sums still equal every retained byte and version, including those of deleted artifacts."}
     deployments: [local]
-    status: implementing
-    proof_gap: Normal and hostile tests exist; no durable local evidence report has been attached yet.
+    status: verified
     depends_on: [PUB-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [DSH-003-B, DSH-003-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-23T19:31:06.217Z"
 
   - id: DSH-004
     kind: behavior
@@ -4924,10 +4936,14 @@ requirements:
       behavior: {id: DSH-004-B, description: "Small cursor pages return exactly the events of one large page, in newest-first order, with a resolved actor for local publications."}
       failure: {id: DSH-004-F, description: "Activity never crosses projects, and malformed cursors or page sizes are refused with INVALID_INPUT."}
     deployments: [local]
-    status: implementing
-    proof_gap: Normal and hostile tests exist; no durable local evidence report has been attached yet.
+    status: verified
     depends_on: [DSH-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [DSH-004-B, DSH-004-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-23T19:31:06.217Z"
 
   - id: DSH-005
     kind: security
@@ -4938,7 +4954,11 @@ requirements:
       behavior: {id: DSH-005-B, description: "An administrator browser session and an API key granted artifact:read both read the summary and the activity timeline."}
       failure: {id: DSH-005-F, description: "Anonymous requests are refused, a key without artifact:read is denied, malformed window or project input is refused, and a deployment without insights persistence answers CAPABILITY_UNAVAILABLE."}
     deployments: [local]
-    status: implementing
-    proof_gap: Normal and hostile tests exist; no durable local evidence report has been attached yet.
+    status: verified
     depends_on: [AUTH-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [DSH-005-B, DSH-005-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-23T19:31:06.217Z"
