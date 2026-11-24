@@ -5317,9 +5317,14 @@ requirements:
       behavior: {id: PRV-006-B, description: "Select an audio entry and play, pause, and seek with ranged requests observed."}
       failure: {id: PRV-006-F, description: "Corrupt or unsupported audio settles into the typed fallback, and the media route still refuses top-level document navigation."}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [PRV-003]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [PRV-006-B, PRV-006-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-24T08:14:50.364Z"
 
   - id: PRV-007
     kind: security
@@ -5330,9 +5335,14 @@ requirements:
       behavior: {id: PRV-007-B, description: "Select a PDF entry and read it in the browser's PDF viewer inside the review frame on the version content origin."}
       failure: {id: PRV-007-F, description: "A PDF is never served typed to the application origin, a PDF with embedded scripts gains no application-origin access, and an unrenderable PDF settles into the typed fallback."}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [PRV-003, CNT-003]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [PRV-007-B, PRV-007-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-24T08:14:50.364Z"
 
   - id: PRV-008
     kind: security
@@ -5343,9 +5353,14 @@ requirements:
       behavior: {id: PRV-008-B, description: "Render a Markdown fixture with headings, tables, code, relative images, and relative links, and toggle the raw source."}
       failure: {id: PRV-008-F, description: "Script tags, event handlers, javascript: and data:text/html URLs, and raw HTML injection are neutralized, and nothing from the file is parsed into the application origin."}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [CNT-003]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [PRV-008-B, PRV-008-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-24T08:14:50.364Z"
 
   - id: PRV-009
     kind: behavior
@@ -5356,9 +5371,14 @@ requirements:
       behavior: {id: PRV-009-B, description: "Open text and code fixtures, including CRLF, UTF-8 BOM, and a 3 MiB file, and observe correct rendering and truncation notice."}
       failure: {id: PRV-009-F, description: "Invalid UTF-8 renders with replacement characters, markup in a file renders as literal text, and no file byte reaches innerHTML."}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [PRV-004]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [PRV-009-B, PRV-009-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-24T08:14:50.364Z"
 
   - id: PRV-010
     kind: behavior
@@ -5369,9 +5389,14 @@ requirements:
       behavior: {id: PRV-010-B, description: "Open CSV, TSV, JSON, and NDJSON fixtures and observe a virtualized table of up to 5,000 rows and a collapsible JSON tree."}
       failure: {id: PRV-010-F, description: "Malformed data, a pathological quoted CSV, and an over-bound JSON file settle into the typed fallback without freezing the page."}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [PRV-004, PRV-005]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [PRV-010-B, PRV-010-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-24T08:14:50.364Z"
 
   # Fork-local review refinements (ShiGaChenTW/artifact-server); not upstream.
   - id: UXR-001
