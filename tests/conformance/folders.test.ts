@@ -8,12 +8,16 @@ import {promisify} from "node:util";
 import {
   CLIENT_CAPABILITIES_META_KEY, CLIENT_INFO_META_KEY, PROTOCOL_VERSION_META_KEY,
 } from "@modelcontextprotocol/server";
-import {Effect} from "effect";
+import {Effect, Redacted} from "effect";
 import {afterEach, beforeEach, describe, expect, test} from "vitest";
 import {z} from "zod";
 
 import {browserLoginKinds, privateTeamBrowserAccess} from "../../src/core/browser-access.js";
 import {OidcIdentityProvider} from "../../src/identity/oidc-identity-provider.js";
+import {
+  defaultGitHistoryFileCopyBytes, defaultGitHistoryVersionCopyBytes,
+} from "../../src/git-history/git-history-capability.js";
+import type {NodeGitHistoryConfiguration} from "../../src/git-history/node-git-history-configuration.js";
 import {checkCompactIntegrity} from "../../src/lifecycle/integrity-check.js";
 import {SqliteArtifactRepository} from "../../src/storage/sqlite-artifact-repository.js";
 import {parsePublishResponse, publishNew, publishVersion, type PublishResponse} from "../support/publishing.js";
@@ -22,7 +26,10 @@ import {
   startTestServer, type RunningTestServer, type TestInstallation,
 } from "../support/runtime-harness.js";
 import {startStubOidcProvider} from "../support/stub-oidc-provider.js";
-import {issueApiKey, signInAdministrator} from "../support/agent-dispatch.js";
+import {
+  ApiClient, dispatchCreationSchema, dispatchEnvelopeSchema, issueApiKey, signInAdministrator,
+} from "../support/agent-dispatch.js";
+import {RecordingGitHistoryProvider} from "../support/git-history-provider.js";
 import {downgradeToSchemaTwelve} from "../support/schema-twelve.js";
 
 const defaultProject = "prj_default";
@@ -198,6 +205,216 @@ describe("local folders and artifact placement", () => {
     await expectFailure(await request(`${route}/move?projectId=${defaultProject}`, "POST", {toFolderId: null, expectedCurrentVersionId}, key), 409, "IDEMPOTENCY_CONFLICT");
     expect((await list("root")).artifacts).toMatchObject([{artifact: {id: artifact.artifact.id, folderId: null}}]);
   });
+
+  test("FLD-004-B: artifacts and folder subtrees change project with identical identities, links and child scope", async () => {
+    const destination = await createProject();
+    const inbox = await createFolder("Inbox", null, undefined, destination);
+    const reports = await createFolder("Reports");
+    const nested = await createFolder("2026", reports.id);
+    const single = await publish();
+    const contained = await publish();
+    const overMcp = await publish();
+    await place(contained, nested.id);
+    const linked = await linkFile();
+    await place(linked.artifact, nested.id);
+    const singleThread = await addComment(single);
+    await addComment(contained);
+    const reply = await request(`${routeFor(single)}/comments/${singleThread}/replies?projectId=${defaultProject}`, "POST", {body: "Still applies."});
+    expect(reply.status).toBe(201);
+    const moving = [single, contained, linked.artifact, overMcp].map(({artifact}) => artifact.id);
+    const identities = () => readDatabase((db) => ({
+      versions: db.prepare(`SELECT id, artifact_id, number, content_token, manifest_digest FROM versions
+        WHERE artifact_id IN (SELECT value FROM json_each(?)) ORDER BY id`).all(JSON.stringify(moving)),
+      threads: db.prepare(`SELECT id, artifact_id, version_id, body FROM comment_threads
+        WHERE artifact_id IN (SELECT value FROM json_each(?)) ORDER BY id`).all(JSON.stringify(moving)),
+      replies: db.prepare("SELECT id, thread_id, body FROM comment_replies ORDER BY id").all(),
+      blobs: db.prepare(`SELECT version_id, path, sha256 FROM manifest_entries
+        WHERE version_id IN (SELECT id FROM versions WHERE artifact_id IN (SELECT value FROM json_each(?)))
+        ORDER BY version_id, path`).all(JSON.stringify(moving)),
+    }));
+    const before = identities();
+    const bindingBefore = await artifactJson(linked.artifact.artifact.id, defaultProject);
+
+    const key = "cross-project-artifact-move-key";
+    const body = {toProjectId: destination, toFolderId: inbox.id, expectedCurrentVersionId: single.version.id};
+    const moved = await request(`${routeFor(single)}/move?projectId=${defaultProject}`, "POST", body, key);
+    expect(moved.status).toBe(200);
+    const movedBody = await moved.json();
+    expect(movedBody).toEqual({artifact: {
+      id: single.artifact.id, projectId: destination, folderId: inbox.id, name: "Fixture",
+      currentVersionId: single.version.id,
+    }});
+    expect(await (await request(`${routeFor(single)}/move?projectId=${defaultProject}`, "POST", body, key)).json()).toEqual(movedBody);
+    const folderMove = await request(`${foldersPath}/${reports.id}/move-to-project`, "POST", {
+      toProjectId: destination, toParentFolderId: inbox.id, expectedRevision: 1,
+    });
+    expect(folderMove.status).toBe(200);
+    expect(folderResult.parse(await folderMove.json()).folder).toEqual({
+      id: reports.id, name: "Reports", parentFolderId: inbox.id, revision: 2,
+    });
+    const mcpMove = await tool("artifact_move", {
+      artifactId: overMcp.artifact.id, projectId: defaultProject, toProjectId: destination, toFolderId: null,
+      expectedCurrentVersionId: overMcp.version.id, idempotencyKey: randomUUID(),
+    });
+    expect(mcpMove.isError).not.toBe(true);
+    expect(mcpMove.structuredContent).toMatchObject({artifact: {id: overMcp.artifact.id, projectId: destination, folderId: null}});
+    const cliFolder = await createFolder("Shared");
+    const tokenFile = path.join(installation.dataDirectory, "move-fixture.key");
+    await writeFile(tokenFile, installation.apiToken, {mode: 0o600});
+    expect(await cli(tokenFile, "mv", cliFolder.id, "root", "--project", defaultProject, "--to-project", destination,
+      "--expected-revision", "1")).toMatchObject({folder: {id: cliFolder.id, projectId: destination, parentFolderId: null}});
+
+    expect(identities()).toEqual(before);
+    expect(readDatabase((db) => ["artifacts", "versions", "actions", "comment_threads"].map((table) =>
+      db.prepare(`SELECT DISTINCT project_id FROM ${table} WHERE ${table === "artifacts" ? "id" : "artifact_id"}
+        IN (SELECT value FROM json_each(?))`).all(JSON.stringify(moving))))).toEqual(
+      Array.from({length: 4}, () => [{project_id: destination}]),
+    );
+    expect(readDatabase((db) => db.prepare("SELECT DISTINCT project_id FROM comment_replies").all()))
+      .toEqual([{project_id: destination}]);
+    expect(readDatabase((db) => db.prepare("SELECT id, project_id FROM folders WHERE id IN (?, ?) ORDER BY id")
+      .all(reports.id, nested.id))).toEqual([reports.id, nested.id].toSorted().map((id) => ({id, project_id: destination})));
+    expect((await request(`${routeFor(contained)}?projectId=${defaultProject}`)).status).toBe(404);
+    const destinationFolder = await request(`/api/v1/projects/${destination}/folders/${nested.id}`);
+    expect(folderPage.parse(await destinationFolder.json())).toMatchObject({
+      breadcrumbs: [inbox, {id: reports.id}, nested].map(({id}) => expect.objectContaining({id})),
+      artifacts: expect.arrayContaining([contained, linked.artifact].map(({artifact}) =>
+        ({artifact: expect.objectContaining({id: artifact.id, folderId: nested.id})}))),
+    });
+    expect((await artifactJson(linked.artifact.artifact.id, destination)).sourceBinding).toEqual(bindingBefore.sourceBinding);
+    const threads = await request(`${routeFor(single)}/comments?projectId=${destination}`);
+    expect(z.object({items: z.array(idSchema)}).parse(await threads.json()).items.map(({id}) => id)).toEqual([singleThread]);
+    expect((await fetch(single.links.artifact, {redirect: "manual"})).status).toBe(302);
+    expect(await (await fetchVersion(running(), contained.links.version)).text()).toBe(content);
+    const {actions} = actionsResult.parse(await (await request(`${routeFor(single)}/actions?projectId=${destination}`)).json());
+    expect(actions).toEqual(expect.arrayContaining([expect.objectContaining({action: "move", versionId: single.version.id})]));
+    expect(readDatabase((db) => db.prepare("SELECT project_id, action FROM folder_actions WHERE folder_id = ? ORDER BY rowid")
+      .all(reports.id))).toEqual([{project_id: defaultProject, action: "create"}, {project_id: destination, action: "move"}]);
+    const location = await request(`/api/v1/artifacts/${contained.artifact.id}/location`);
+    expect(await location.json()).toEqual({location: {artifactId: contained.artifact.id, projectId: destination, folderId: nested.id}});
+    expect(await tool("artifact_get", {artifactId: contained.artifact.id, projectId: defaultProject})).toMatchObject({
+      isError: true,
+      structuredContent: {error: {code: "ARTIFACT_NOT_FOUND", location: {projectId: destination, folderId: nested.id}}},
+    });
+    await stop();
+    readDatabase((db) => {
+      expect(() => db.prepare("UPDATE versions SET project_id = ? WHERE artifact_id = ?").run(defaultProject, single.artifact.id))
+        .toThrow("version project cannot change");
+      expect(() => db.prepare("UPDATE artifacts SET project_id = ? WHERE id = ?").run(defaultProject, single.artifact.id))
+        .toThrow("artifact project cannot change");
+    });
+    expect((await Effect.runPromise(checkCompactIntegrity(installation.dataDirectory))).problems).toEqual([]);
+  }, 45_000);
+
+  test("FLD-004-F: held dispatches, archived projects, Git history, oversized subtrees and foreign readers change and disclose nothing", async () => {
+    await stop();
+    const provider = new RecordingGitHistoryProvider();
+    server = await startTestServer(installation, {
+      gitHistory: gitHistoryConfiguration(),
+      gitHistoryHealthProbe: {check: () => Effect.succeed({state: "available"})},
+      gitHistoryProvider: provider,
+    });
+    const destination = await createProject();
+    const publishKey = "cross-project-pre-move-publish";
+    const artifact = (await publishNew(running(), installation, {
+      accessSetting: "account_required", content, name: "Held", idempotencyKey: publishKey, projectId: defaultProject,
+    })).body;
+    const tables = [
+      "artifacts", "versions", "actions", "comment_threads", "comment_replies", "folders",
+      "folder_actions", "idempotency_records", "agent_dispatches",
+    ];
+    const move = (subject: PublishResponse) => request(`${routeFor(subject)}/move?projectId=${defaultProject}`, "POST", {
+      toProjectId: destination, toFolderId: null, expectedCurrentVersionId: subject.version.id,
+    });
+    const refused = async (attempt: () => Promise<Response>, code: string) => {
+      const before = dbSnapshot(tables);
+      await expectFailure(await attempt(), 409, code);
+      expect(dbSnapshot(tables)).toEqual(before);
+    };
+
+    const client = new ApiClient(running(), installation.apiToken);
+    const agent = await client.registerAgent({
+      connectionKey: "cross-project-move-agent", displayName: "move worker", workingDirectory: "/work/move",
+    });
+    const thread = (await client.openThread(artifact, "Hold this artifact.", "cross-project-held-thread")).id;
+    const sent = await client.sendDispatch({
+      agentId: agent.id, idempotencyKey: "cross-project-held-send", projectId: defaultProject, threadIds: [thread],
+    });
+    expect(sent.status).toBe(201);
+    const dispatchId = dispatchCreationSchema.parse(await sent.json()).dispatch.id;
+    await refused(() => move(artifact), "DISPATCH_HELD");
+    expect((await client.claim(agent.id)).status).toBe(200);
+    await refused(() => move(artifact), "DISPATCH_HELD");
+    expect((await client.reportDelivered(dispatchId, agent.id)).status).toBe(200);
+    await refused(() => move(artifact), "DISPATCH_HELD");
+    expect((await client.setThreadState(artifact, thread, "resolved")).status).toBe(200);
+    expect(dispatchEnvelopeSchema.parse(await (await client.getDispatch(dispatchId, defaultProject)).json()).dispatch.state)
+      .toBe("addressed");
+
+    const refusedWhileArchived = async (archived: string) => {
+      expect((await request(`/api/v1/projects/${archived}/archive`, "POST")).status).toBe(200);
+      await refused(() => move(artifact), "PROJECT_ARCHIVED");
+      expect((await request(`/api/v1/projects/${archived}/unarchive`, "POST")).status).toBe(200);
+    };
+    await refusedWhileArchived(destination);
+    await refusedWhileArchived(defaultProject);
+
+    const tagKey = "cross-project-pre-move-tags";
+    expect((await request(`${routeFor(artifact)}/tags?projectId=${defaultProject}`, "PATCH",
+      {tags: ["draft"], expectedCurrentVersionId: artifact.version.id}, tagKey)).status).toBe(200);
+    expect((await move(artifact)).status).toBe(200);
+    const afterMove = dbSnapshot(tables);
+    await expect(publishNew(running(), installation, {
+      accessSetting: "account_required", content, name: "Held", idempotencyKey: publishKey, projectId: defaultProject,
+    })).rejects.toThrow(/HTTP 404.*ARTIFACT_NOT_FOUND/u);
+    await expectFailure(await request(`${routeFor(artifact)}/tags?projectId=${defaultProject}`, "PATCH",
+      {tags: ["draft"], expectedCurrentVersionId: artifact.version.id}, tagKey), 404, "ARTIFACT_NOT_FOUND");
+    expect(dbSnapshot(tables)).toEqual(afterMove);
+
+    const cookies = await signInAdministrator(running(), installation);
+    const publisherKey = await issueApiKey(running(), cookies, ["artifact:create"], "Publisher only");
+    const locate = (id: string, token: string) => fetch(`${running().baseUrl}/api/v1/artifacts/${id}/location`, {
+      headers: {Authorization: `Bearer ${token}`},
+    });
+    await expectFailure(await locate(artifact.artifact.id, publisherKey), 404, "ARTIFACT_NOT_FOUND");
+    await expectFailure(await locate("art_missing", installation.apiToken), 404, "ARTIFACT_NOT_FOUND");
+
+    const bulk = await createFolder("Bulk");
+    const template = await publish();
+    // Seed 1,001 complete artifacts directly: publishing them one by one would
+    // only measure the upload path, not the bound this test proves.
+    readDatabase((db) => db.prepare(`
+      WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1001)
+      INSERT INTO artifacts (id, project_id, name, search_name, access_setting, created_at, folder_id)
+      SELECT 'bulk-' || i, project_id, name, search_name, access_setting, created_at, ? FROM artifacts, n WHERE id = ?
+    `).run(bulk.id, template.artifact.id));
+    readDatabase((db) => {
+      db.prepare(`
+        INSERT INTO versions (
+          id, project_id, artifact_id, number, manifest_digest, entry_path, routing_mode, content_token,
+          publisher_principal_id, created_at
+        ) SELECT 'version-' || artifact.id, version.project_id, artifact.id, 1, version.manifest_digest,
+          version.entry_path, version.routing_mode, 'token-' || artifact.id, version.publisher_principal_id, version.created_at
+        FROM artifacts artifact, versions version WHERE artifact.id LIKE 'bulk-%' AND version.id = ?
+      `).run(template.version.id);
+      db.exec("UPDATE artifacts SET current_version_id = 'version-' || id WHERE id LIKE 'bulk-%'");
+    });
+    await refused(() => request(`${foldersPath}/${bulk.id}/move-to-project`, "POST", {
+      toProjectId: destination, toParentFolderId: null, expectedRevision: 1,
+    }), "MOVE_TOO_LARGE");
+
+    const mirrored = await publish();
+    await waitForGitHistoryAvailable();
+    const gitHistory = (projectId: string, enabled: boolean) => request(`/api/v1/projects/${projectId}/git-history`, "PUT",
+      enabled ? {confirmEstimate: true, enabled} : {enabled});
+    expect((await gitHistory(destination, true)).status).toBe(200);
+    await refused(() => move(mirrored), "GIT_HISTORY_ENABLED");
+    expect((await gitHistory(destination, false)).status).toBe(200);
+    expect((await gitHistory(defaultProject, true)).status).toBe(200);
+    await expect.poll(() => provider.commits.get(mirrored.artifact.id)?.has(mirrored.version.id), {timeout: 15_000}).toBe(true);
+    expect((await gitHistory(defaultProject, false)).status).toBe(200);
+    await refused(() => move(mirrored), "GIT_HISTORY_ENABLED");
+  }, 60_000);
 
   test("FLD-006-B: schema 12 backfill preserves publication, comments, source binding and tombstone records", async () => {
     const artifact = await publish();
@@ -481,9 +698,23 @@ describe("local folders and artifact placement", () => {
     expect(result.status).toBe(200);
   }
 
-  async function addComment(artifact: PublishResponse) {
+  async function addComment(artifact: PublishResponse): Promise<string> {
     const response = await request(`${routeFor(artifact)}/versions/${artifact.version.id}/comments?projectId=${artifact.artifact.projectId}`, "POST", {body: "Review the saved bytes."});
     expect(response.status).toBe(201);
+    return z.object({thread: idSchema}).parse(await response.json()).thread.id;
+  }
+
+  async function artifactJson(id: string, projectId: string) {
+    const response = await request(`/api/v1/artifacts/${id}?projectId=${projectId}`);
+    expect(response.status).toBe(200);
+    return z.object({sourceBinding: z.json().optional()}).loose().parse(await response.json());
+  }
+
+  async function waitForGitHistoryAvailable(): Promise<void> {
+    await expect.poll(async () => z.object({capabilities: z.object({
+      gitHistory: z.object({providerState: z.string()}).loose(),
+    }).loose()}).loose().parse(await (await request("/api/v1/session")).json()).capabilities.gitHistory.providerState,
+    {timeout: 5_000}).toBe("available");
   }
 
   async function cli(tokenFile: string, ...args: readonly string[]): Promise<Json> {
@@ -527,6 +758,26 @@ const folderCreateTestSchema = z.object({
   name: z.string(),
   parentFolderId: z.string().nullable(),
 }).transform(({id, ...input}) => id === undefined ? input : {...input, id});
+
+function gitHistoryConfiguration(): NodeGitHistoryConfiguration {
+  return {
+    _tag: "CloudflareArtifactsRest",
+    apiToken: Redacted.make("cross-project-move-test-token"),
+    capability: {
+      limits: {
+        fileCopyBytes: defaultGitHistoryFileCopyBytes,
+        logicalCopiedBytes: 0,
+        logicalReservedBytes: 0,
+        storageBudgetBytes: null,
+        versionCopyBytes: defaultGitHistoryVersionCopyBytes,
+      },
+      provider: "cloudflare-artifacts",
+      providerState: "checking",
+    },
+    identity: {accountId: "cross-project-account", namespace: "cross-project-namespace", provider: "cloudflare-artifacts"},
+    issues: [],
+  };
+}
 
 function routeFor(artifact: PublishResponse): string {
   return `/api/v1/artifacts/${artifact.artifact.id}`;

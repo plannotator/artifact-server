@@ -31,6 +31,8 @@ export const folderText = defineMessages({
     deleteTitle: (name: string) => `Delete ${name}?`,
     deleteDescription: "Only empty folders can be deleted.",
     folderActions: (name: string) => `Actions for ${name}`,
+    project: "Project",
+    crossProjectNote: "Moving to another project keeps the same IDs, versions, comments, and links. Old Review links open the new location.",
   },
   "zh-TW": {
     location: "位置",
@@ -62,5 +64,7 @@ export const folderText = defineMessages({
     deleteTitle: (name: string) => `刪除「${name}」？`,
     deleteDescription: "只能刪除空資料夾。",
     folderActions: (name: string) => `「${name}」的操作`,
+    project: "專案",
+    crossProjectNote: "移到其他專案後，ID、版本、留言和連結都不變，舊的審閱連結也會開到新位置。",
   },
 });

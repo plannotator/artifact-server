@@ -28,6 +28,7 @@ const sessionSchema = z.object({
       providerState: z.literal("misconfigured"),
     }).strict(),
     folders: z.boolean(),
+    crossProjectMove: z.boolean(),
     linkedArtifacts: z.boolean(),
   }).strict(),
 }).loose();

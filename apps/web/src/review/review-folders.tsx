@@ -2,7 +2,9 @@ import {Dialog} from "@base-ui/react/dialog";
 import {useEffect, useState} from "react";
 import type {FormEvent, ReactNode} from "react";
 
-import {api, ApiError, type Artifact, type Folder, type FolderPage} from "@/api/client";
+import {
+  api, ApiError, type Artifact, type ArtifactLocation, type Folder, type FolderPage, type Project,
+} from "@/api/client";
 import {folderText} from "@/i18n/messages/folders";
 import {displayError} from "@/lib/presentation";
 
@@ -72,28 +74,52 @@ export function ArtifactFolderLocation({
 
 type PlacementResult = Awaited<ReturnType<typeof api.moveArtifact>>["artifact"];
 
+/** The record a dialog changed, when the caller may need to follow it to a new place. */
+export type FolderDialogResult =
+  | {readonly kind: "artifact"; readonly artifact: PlacementResult}
+  | {readonly kind: "folder"; readonly folder: Folder};
+
+/**
+ * Find where an artifact went when an old project-scoped Review link no longer
+ * resolves. Readers without installation-wide read receive not-found, so the
+ * link simply stays unavailable for them.
+ */
+export async function locateMovedArtifact(artifactId: string, projectId: string): Promise<ArtifactLocation | null> {
+  try {
+    const {location} = await api.locateArtifact(artifactId);
+    return location.projectId === projectId ? null : location;
+  } catch {
+    return null;
+  }
+}
+
 export function FolderDialog({
-  action, projectId, projectName, onClose, onChanged,
+  action, projectId, projectName, projects = [], onClose, onChanged,
 }: {
   readonly action: FolderDialogAction;
   readonly projectId: string;
   readonly projectName: string;
+  /** Active projects a move may target; empty when cross-project moves are unavailable. */
+  readonly projects?: readonly Project[];
   readonly onClose: () => void;
-  readonly onChanged: (artifact?: PlacementResult) => void;
+  readonly onChanged: (result?: FolderDialogResult) => void;
 }) {
   const [name, setName] = useState(action.kind === "rename" ? action.subject.record.name : "");
   const [destination, setDestination] = useState<string | null>(null);
+  const [destinationProjectId, setDestinationProjectId] = useState(projectId);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [key, setKey] = useState(() => crypto.randomUUID());
   const title = dialogTitle(action);
+  const destinationProject = projects.find(({id}) => id === destinationProjectId);
+  const crossProject = destinationProjectId !== projectId;
 
   const confirm = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     setPending(true);
     setError(null);
     try {
-      const result = await saveFolderChange(action, projectId, name, destination, key);
+      const result = await saveFolderChange(action, projectId, name, destination, key, destinationProjectId);
       onChanged(result);
       onClose();
     } catch (cause) {
@@ -109,11 +135,28 @@ export function FolderDialog({
         <Dialog.Backdrop className="as-confirm-dialog__backdrop" />
         <Dialog.Popup className="as-confirm-dialog as-folder-dialog">
           <Dialog.Title>{title}</Dialog.Title>
+          {action.kind === "move" && projects.length > 1 ? (
+            <div className="as-folder-picker__project">
+              <label>
+                {folderText.project}
+                <select disabled={pending} value={destinationProjectId} onChange={(event) => {
+                  setDestinationProjectId(event.currentTarget.value);
+                  setDestination(null);
+                  setError(null);
+                  setKey(crypto.randomUUID());
+                }}>
+                  {projects.map(({id, name: label}) => <option key={id} value={id}>{label}</option>)}
+                </select>
+              </label>
+              {crossProject ? <p>{folderText.crossProjectNote}</p> : null}
+            </div>
+          ) : null}
           {action.kind === "move" ? (
             <FolderDestinationPicker
-              projectId={projectId}
-              projectName={projectName}
-              excludedId={action.subject.kind === "folder" ? action.subject.record.id : null}
+              key={destinationProjectId}
+              projectId={destinationProjectId}
+              projectName={crossProject ? destinationProject?.name ?? folderText.root : projectName}
+              excludedId={action.subject.kind === "folder" && !crossProject ? action.subject.record.id : null}
               destination={destination}
               onNavigate={(id) => {setDestination(id); setKey(crypto.randomUUID());}}
               disabled={pending}
@@ -260,7 +303,8 @@ function submitLabel(action: FolderDialogAction): string {
 
 async function saveFolderChange(
   action: FolderDialogAction, projectId: string, name: string, destination: string | null, key: string,
-): Promise<PlacementResult | undefined> {
+  destinationProjectId: string,
+): Promise<FolderDialogResult | undefined> {
   switch (action.kind) {
     case "create":
       await api.createFolder(projectId, action.parent, name, key);
@@ -269,13 +313,21 @@ async function saveFolderChange(
       await api.deleteFolder(action.folder, key);
       return undefined;
     case "rename":
-      if (action.subject.kind === "artifact") return (await api.renameArtifact(action.subject.record, name, key)).artifact;
+      if (action.subject.kind === "artifact") {
+        return {kind: "artifact", artifact: (await api.renameArtifact(action.subject.record, name, key)).artifact};
+      }
       await api.updateFolder(action.subject.record, {name}, key);
       return undefined;
-    case "move":
-      if (action.subject.kind === "artifact") return (await api.moveArtifact(action.subject.record, destination, key)).artifact;
-      await api.updateFolder(action.subject.record, {parentFolderId: destination}, key);
-      return undefined;
+    case "move": {
+      const {subject} = action;
+      if (subject.kind === "artifact") {
+        return {kind: "artifact", artifact: (await api.moveArtifact(subject.record, destination, key, destinationProjectId)).artifact};
+      }
+      const {folder} = destinationProjectId === subject.record.projectId
+        ? await api.updateFolder(subject.record, {parentFolderId: destination}, key)
+        : await api.moveFolderToProject(subject.record, destinationProjectId, destination, key);
+      return {kind: "folder", folder};
+    }
     default: return action satisfies never;
   }
 }

@@ -1,4 +1,4 @@
-import {readCompactFolderProblems} from "./compact-folder-integrity.js";
+import {readCompactFolderProblems, readCompactRelocations} from "./compact-folder-integrity.js";
 import {createHash} from "node:crypto";
 import {DatabaseSync} from "node:sqlite";
 import path from "node:path";
@@ -69,6 +69,8 @@ export type ProjectReferenceRow = typeof projectReferenceRowSchema.Type;
 /** Provider-neutral catalog consumed by the shared integrity checker. */
 export interface IntegrityCatalog {
   readonly placementProblems?: readonly IntegrityProblem[];
+  /** Recorded cross-project moves: the artifact left `projectId` for its current project. */
+  readonly relocations?: readonly {readonly artifactId: string; readonly projectId: string}[];
   readonly artifacts: readonly ArtifactRow[];
   readonly entries: readonly EntryRow[];
   readonly projects: readonly ProjectRow[];
@@ -126,6 +128,8 @@ export class IntegrityCheckError extends Schema.TaggedError<IntegrityCheckError>
     ]),
   },
 ) {}
+
+const requestScopedReferenceKinds: ReadonlySet<string> = new Set(["idempotency", "staged_upload"]);
 
 /** Run a complete read-only compact installation integrity scan. */
 export const checkCompactIntegrity = Effect.fn("checkCompactIntegrity")(
@@ -244,6 +248,7 @@ function readCompactCatalog(databasePath: string): IntegrityCatalog {
         ORDER BY version_id, path
       `).all()),
       placementProblems: readCompactFolderProblems(database),
+      relocations: readCompactRelocations(database),
       projects: decodeProjectRows(database.prepare(`
         SELECT id FROM projects ORDER BY id
       `).all()),
@@ -404,6 +409,9 @@ export const checkIntegrityCatalog = Effect.fn("checkIntegrityCatalog")(function
       versionId: artifact.currentVersionId,
     });
   }
+  const relocations = new Set((catalog.relocations ?? []).map(
+    ({artifactId, projectId}) => JSON.stringify([artifactId, projectId]),
+  ));
   for (const reference of catalog.projectReferences) {
     const artifact = reference.artifactId === null
       ? undefined
@@ -411,12 +419,20 @@ export const checkIntegrityCatalog = Effect.fn("checkIntegrityCatalog")(function
     const version = reference.versionId === null
       ? undefined
       : versions.get(reference.versionId);
+    // Idempotency and staged-upload records stay in the project that received
+    // the request; after a recorded move out of that project they follow the
+    // artifact's current scope for every other consistency check.
+    const owner = artifacts.get(reference.artifactId ?? version?.artifactId ?? "");
+    const scopeProjectId = requestScopedReferenceKinds.has(reference.kind) && owner !== undefined &&
+      relocations.has(JSON.stringify([owner.id, reference.projectId]))
+      ? owner.projectId
+      : reference.projectId;
     const projectMissing = !projects.has(reference.projectId);
     const artifactMismatch = reference.artifactId !== null &&
-      (artifact === undefined || artifact.projectId !== reference.projectId);
+      (artifact === undefined || artifact.projectId !== scopeProjectId);
     const versionMismatch = reference.versionId !== null &&
       (version === undefined ||
-        version.projectId !== reference.projectId ||
+        version.projectId !== scopeProjectId ||
         (reference.artifactId !== null &&
           version.artifactId !== reference.artifactId));
     if (!projectMissing && !artifactMismatch && !versionMismatch) continue;

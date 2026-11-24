@@ -13,6 +13,12 @@ const folderFailureStatus = {
   "invalid-name": {code: errorCodes.invalidInput, status: 422},
 } as const;
 
+const projectMoveStatus = {
+  "dispatch-held": errorCodes.dispatchHeld,
+  "git-history-enabled": errorCodes.gitHistoryEnabled,
+  "too-large": errorCodes.moveTooLarge,
+} as const;
+
 /** Stable protocol-safe projection shared by HTTP and MCP adapters. */
 export function artifactServerFailureResponse(failure: ArtifactServerFailure) {
   switch (failure._tag) {
@@ -23,6 +29,8 @@ export function artifactServerFailureResponse(failure: ArtifactServerFailure) {
       };
       return failure.current === undefined ? response : {...response, current: failure.current};
     }
+    case "ProjectMoveRefused":
+      return {code: projectMoveStatus[failure.reason], message: failure.message, status: 409};
     case "AgentNotFound":
       return {code: errorCodes.agentNotFound, message: failure.message, status: 404};
     case "AgentDispatchNotFound":

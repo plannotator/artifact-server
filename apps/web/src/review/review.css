@@ -4257,6 +4257,18 @@ body:has(.as-settings),
   overflow-wrap: anywhere;
 }
 
+.as-folder-picker__project select {
+  display: block;
+  background: var(--as-canvas);
+  border: 1px solid var(--as-border);
+  border-radius: var(--as-radius);
+  color: var(--as-text);
+  font: var(--text-xs)/1.4 var(--font-outlier);
+  min-height: 2.25rem;
+  padding: 0.4rem 0.55rem;
+  width: 100%;
+}
+
 .as-folder-picker {
   min-width: 0;
   margin: 0;

@@ -6,12 +6,14 @@ import {
   ProjectNotFound, PublishConflict,
 } from "../core/errors.js";
 import {
+  type ArtifactLocation, type ArtifactPlacement, type ArtifactProjectMove, type FolderProjectMove,
   type ArtifactPlacementChange, type FolderChange, type FolderContents,
   type FolderRecord, type ListFolderContents, maximumFolderDepth,
   maximumProjectFolders, type PlacementWrite,
 } from "../core/folders.js";
 import type {ArtifactPage} from "../core/model.js";
 import type {ArtifactPlacementRepository, FolderRepository, ListArtifacts} from "../core/ports.js";
+import {SqliteProjectMoves} from "./sqlite-project-moves.js";
 
 const folderSchema = z.object({
   id: z.string(),
@@ -48,6 +50,7 @@ export class SqliteFolders implements FolderRepository, ArtifactPlacementReposit
   private readonly database: DatabaseSync;
   private readonly transaction: <A>(operation: () => A) => A;
   private readonly listArtifacts: (command: ListArtifacts, folderId: string | null) => ArtifactPage;
+  private readonly moves: SqliteProjectMoves;
 
   constructor(
     database: DatabaseSync,
@@ -57,6 +60,22 @@ export class SqliteFolders implements FolderRepository, ArtifactPlacementReposit
     this.database = database;
     this.transaction = transaction;
     this.listArtifacts = listArtifacts;
+    this.moves = new SqliteProjectMoves(database, transaction, {
+      assertActive: (scope) => this.assertActive(scope),
+      folder: (scope, id) => this.folder(scope, id),
+    });
+  }
+
+  moveArtifactToProject(command: ArtifactProjectMove): Promise<ArtifactPlacement> {
+    return this.moves.moveArtifactToProject(command);
+  }
+
+  moveFolderToProject(command: FolderProjectMove): Promise<FolderRecord> {
+    return this.moves.moveFolderToProject(command);
+  }
+
+  locateArtifact(installationId: string, artifactId: string): Promise<ArtifactLocation | null> {
+    return this.moves.locateArtifact(installationId, artifactId);
   }
 
   async listFolder(command: ListFolderContents): Promise<FolderContents> {

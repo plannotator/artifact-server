@@ -112,7 +112,10 @@ export interface PublishArtifactRepository {
     projectId: string,
     idempotencyKey: string,
     inputDigest: string,
-  ): Effect.Effect<PublishedVersion | null, IdempotencyConflict | ArtifactRepositoryFailure>;
+  ): Effect.Effect<
+    PublishedVersion | null,
+    IdempotencyConflict | ArtifactNotFound | ArtifactRepositoryFailure
+  >;
   findCurrentVersion(
     projectId: string,
     artifactId: string,

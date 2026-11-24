@@ -5034,7 +5034,8 @@ requirements:
       behavior: {id: FLD-004-B, description: "Move an artifact and a folder subtree to another project; observe identical artifact, version, thread, and content-token IDs, the stable URL and public link still serving, every child row scoped to the destination, a move action in the destination, and the location endpoint redirecting an old Review URL."}
       failure: {id: FLD-004-F, description: "The move is refused with nothing changed when a thread is held by a queued, claimed, or delivered dispatch, when either project is archived, when Git history is enabled or coordinates exist, or above 1,000 artifacts; the location endpoint answers not-found to callers without installation-wide read; a pre-move idempotency key replayed in the source project discloses nothing."}
     deployments: [local]
-    status: specified
+    status: implementing
+    proof_gap: Named local behavior and failure tests cover the one-transaction scope rewrite over HTTP, MCP, and the CLI, the location lookup and Review link redirect, and the dispatch-held, archived, Git-history, size-bound, foreign-reader, and pre-move replay refusals. The generated run report is excluded from this change.
     depends_on: [FLD-003, PRJ-002, DSP-003, CMT-020]
     evidence: []
 

@@ -63,10 +63,12 @@ const deploymentCapabilitiesSchema = z.object({
   gitHistory: gitHistoryCapabilitySchema.default(disabledGitHistoryCapability),
   linkedArtifacts: z.boolean(),
   folders: z.boolean().default(false),
+  crossProjectMove: z.boolean().default(false),
 }).default({
   gitHistory: disabledGitHistoryCapability,
   linkedArtifacts: false,
   folders: false,
+  crossProjectMove: false,
 });
 
 const sessionSchema = z.object({
@@ -514,6 +516,12 @@ const folderSchema = z.object({
 export type Folder = z.infer<typeof folderSchema>;
 
 const folderMutationSchema = z.object({folder: folderSchema});
+const artifactLocationSchema = z.object({location: z.object({
+  artifactId: z.string(),
+  projectId: z.string(),
+  folderId: z.string().nullable(),
+})});
+export type ArtifactLocation = z.infer<typeof artifactLocationSchema>["location"];
 const placementMutationSchema = z.object({artifact: z.object({
   id: z.string(),
   projectId: z.string(),
@@ -1200,10 +1208,21 @@ export const api = {
     `/api/v1/artifacts/${encodeURIComponent(artifact.id)}/name?${projectQuery(artifact.projectId)}`,
     {method: "PATCH", headers: mutationHeaders(key), body: JSON.stringify({name, expectedCurrentVersionId: artifact.currentVersionId})},
   ),
-  moveArtifact: (artifact: Artifact, toFolderId: string | null, key: string) => request(
+  moveArtifact: (artifact: Artifact, toFolderId: string | null, key: string, toProjectId = artifact.projectId) => request(
     placementMutationSchema,
     `/api/v1/artifacts/${encodeURIComponent(artifact.id)}/move?${projectQuery(artifact.projectId)}`,
-    {method: "POST", headers: mutationHeaders(key), body: JSON.stringify({toFolderId, expectedCurrentVersionId: artifact.currentVersionId})},
+    {method: "POST", headers: mutationHeaders(key), body: JSON.stringify(
+      {toFolderId, expectedCurrentVersionId: artifact.currentVersionId, toProjectId},
+    )},
+  ),
+  moveFolderToProject: (folder: Folder, toProjectId: string, toParentFolderId: string | null, key: string) => request(
+    folderMutationSchema,
+    `${folderUrl(folder.projectId, folder.id)}/move-to-project`,
+    {method: "POST", headers: mutationHeaders(key), body: JSON.stringify({toProjectId, toParentFolderId, expectedRevision: folder.revision})},
+  ),
+  locateArtifact: (artifactId: string) => request(
+    artifactLocationSchema,
+    `/api/v1/artifacts/${encodeURIComponent(artifactId)}/location`,
   ),
   artifact: (projectId: string, artifactId: string) => request(
     artifactDetailsSchema,

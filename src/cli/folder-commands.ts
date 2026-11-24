@@ -63,20 +63,26 @@ export function configureFolderCommands(program: Command, profileDirectory: stri
       }));
     });
 
-  placementOptions(configure("mv", "Move an artifact or folder within its project."))
+  placementOptions(configure("mv", "Move an artifact or folder, optionally into another project."))
     .argument("<id>", "artifact or folder ID")
-    .argument("<destination>", "destination folder ID or root")
-    .action(async (id: string, destination: string, options: PlacementOptions) => {
+    .argument("<destination>", "destination folder ID or root, in the destination project")
+    .option("--to-project <id>", "move into this project, keeping every ID, version, comment, and link")
+    .action(async (id: string, destination: string, options: PlacementOptions & {readonly toProject?: string}) => {
       const {connection, projectId} = await folderConnection(options);
       const folderId = rootAsNull(destination);
-      if (folderIdPattern.test(id)) {
+      const toProjectId = options.toProject;
+      if (folderIdPattern.test(id) && toProjectId !== undefined) {
+        await printRequest(connection, `${folderPath(projectId, id)}/move-to-project`, mutation(options, "POST", {
+          toProjectId, toParentFolderId: folderId, expectedRevision: revision(options),
+        }));
+      } else if (folderIdPattern.test(id)) {
         await printRequest(connection, folderPath(projectId, id), mutation(options, "PATCH", {
           parentFolderId: folderId, expectedRevision: revision(options),
         }));
       } else {
-        await printRequest(connection, artifactPath(projectId, id, "move"), mutation(options, "POST", {
-          toFolderId: folderId, expectedCurrentVersionId: currentVersion(options),
-        }));
+        const move = {toFolderId: folderId, expectedCurrentVersionId: currentVersion(options)};
+        await printRequest(connection, artifactPath(projectId, id, "move"),
+          mutation(options, "POST", toProjectId === undefined ? move : {...move, toProjectId}));
       }
     });
 
@@ -176,7 +182,8 @@ type FolderRequest =
   | {readonly id: string | undefined; readonly name: string; readonly parentFolderId: string | null}
   | {readonly name: string; readonly expectedRevision: number}
   | {readonly parentFolderId: string | null; readonly expectedRevision: number}
-  | {readonly toFolderId: string | null; readonly expectedCurrentVersionId: string}
+  | {readonly toFolderId: string | null; readonly expectedCurrentVersionId: string; readonly toProjectId?: string}
+  | {readonly toProjectId: string; readonly toParentFolderId: string | null; readonly expectedRevision: number}
   | {readonly name: string; readonly expectedCurrentVersionId: string};
 
 function mutation(options: FolderOptions, method: string, body?: FolderRequest): RequestInit {
