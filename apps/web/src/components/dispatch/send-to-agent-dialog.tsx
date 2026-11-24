@@ -478,7 +478,7 @@ export function SendToAgentControl({
                   {text.connectedAgents}
                 </legend>
                 {dialogAgents.map((agent) => (
-                  <label className="flex items-start gap-3 border p-3" key={agent.id}>
+                  <label className="flex items-start gap-3 rounded-[var(--radius-pill)] border p-3" key={agent.id}>
                     <input
                       checked={agentId === agent.id}
                       className="mt-1 size-4 accent-primary"

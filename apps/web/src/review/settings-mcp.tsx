@@ -49,7 +49,7 @@ export function McpScreen({administrator}: {readonly administrator: boolean}) {
       />
 
       {failure === null ? null : (
-        <p className="border border-destructive px-4 py-3 text-sm text-destructive" role="alert">
+        <p className="rounded-[var(--radius-pill)] border border-destructive px-4 py-3 text-sm text-destructive" role="alert">
           {failure}
         </p>
       )}
@@ -95,9 +95,9 @@ export function McpScreen({administrator}: {readonly administrator: boolean}) {
         </ConnectionCard>
       </div>
 
-      <section className="grid gap-5 border p-5 sm:p-6" aria-labelledby="mcp-after-connection">
+      <section className="grid gap-4 rounded-[var(--radius-card)] border bg-card p-5" aria-labelledby="mcp-after-connection">
         <header className="grid gap-1">
-          <h2 className="font-heading text-lg font-semibold text-balance" id="mcp-after-connection">
+          <h2 className="font-heading text-base font-semibold text-balance" id="mcp-after-connection">
             {settingsText.mcp.checkHeading}
           </h2>
           <p className="max-w-3xl text-sm leading-6 text-muted-foreground text-pretty">
@@ -115,9 +115,9 @@ export function McpScreen({administrator}: {readonly administrator: boolean}) {
         </p>
       </section>
 
-      <section className="grid gap-5 border p-5 sm:p-6" aria-labelledby="mcp-agent-skill">
+      <section className="grid gap-4 rounded-[var(--radius-card)] border bg-card p-5" aria-labelledby="mcp-agent-skill">
         <header className="grid gap-1">
-          <h2 className="font-heading text-lg font-semibold text-balance" id="mcp-agent-skill">
+          <h2 className="font-heading text-base font-semibold text-balance" id="mcp-agent-skill">
             {settingsText.mcp.skillHeading}
           </h2>
           <p className="max-w-3xl text-sm leading-6 text-muted-foreground text-pretty">
@@ -147,9 +147,9 @@ function ConnectionCard({
   readonly title: string;
 }) {
   return (
-    <section className="flex flex-col gap-5 rounded-[var(--radius-card)] border bg-card p-5 sm:p-6">
-      <header className="grid gap-2">
-        <h2 className="font-heading text-xl font-medium text-balance">{title}</h2>
+    <section className="flex flex-col gap-4 rounded-[var(--radius-card)] border bg-card p-5">
+      <header className="grid gap-1.5">
+        <h2 className="font-heading text-base font-semibold text-balance">{title}</h2>
         <p className="text-sm text-muted-foreground">{eyebrow}</p>
         <p className="text-sm leading-6 text-muted-foreground text-pretty">{description}</p>
       </header>
@@ -170,13 +170,13 @@ function CopyableValue({
   readonly value: string;
 }) {
   return (
-    <div className="flex min-w-0 items-stretch border bg-muted/30">
+    <div className="flex min-w-0 items-stretch overflow-hidden rounded-[var(--radius-pill)] border bg-[var(--color-paper-3)]">
       <code className="min-w-0 flex-1 overflow-x-auto px-3 py-2.5 text-xs leading-5 whitespace-nowrap">
         {value}
       </code>
       <Button
         aria-label={copied ? settingsText.mcp.copied : label}
-        className="shrink-0 border-y-0 border-r-0"
+        className="h-auto shrink-0 rounded-none border-y-0 border-r-0"
         onClick={onCopy}
         size="sm"
         type="button"

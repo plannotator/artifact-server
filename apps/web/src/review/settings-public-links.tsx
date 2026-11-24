@@ -318,7 +318,7 @@ export function PublicLinksScreen() {
           <>
             <section
               aria-label={settingsText.publicLinks.bulkSelection}
-              className="flex flex-col gap-3 border p-4 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-3 rounded-[var(--radius-card)] border bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex flex-wrap gap-2">
                 <Button

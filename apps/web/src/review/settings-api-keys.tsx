@@ -195,7 +195,7 @@ export function ApiKeysScreen() {
                     const checked = selectedCapabilities.includes(capability.value);
                     return (
                       <label
-                        className="group/field grid cursor-pointer grid-cols-[auto_1fr] gap-x-3 border p-3"
+                        className="group/field grid cursor-pointer grid-cols-[auto_1fr] gap-x-3 rounded-[var(--radius-pill)] border p-3"
                         key={capability.value}
                       >
                         <Checkbox
@@ -247,7 +247,7 @@ export function ApiKeysScreen() {
             />
           )
           : (
-            <div className="grid border">
+            <div className="grid overflow-hidden rounded-[var(--radius-card)] border bg-card">
               {apiKeys.map((apiKey) => (
                 <article className="grid gap-4 border-b p-5 last:border-b-0 lg:grid-cols-[1fr_1.5fr_auto]" key={apiKey.id}>
                   <div>
@@ -341,7 +341,7 @@ function SecretDialog({
             {settingsText.apiKeys.copyNowDescription}
           </DialogDescription>
         </DialogHeader>
-        <code className="max-h-32 overflow-auto border bg-muted p-3 font-mono text-xs break-all">
+        <code className="max-h-32 overflow-auto rounded-[var(--radius-pill)] border bg-muted p-3 font-mono text-xs break-all">
           {issued.token}
         </code>
         <DialogFooter>

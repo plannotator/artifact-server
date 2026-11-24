@@ -23,6 +23,8 @@ const initialTheme = window.localStorage.getItem("artifact-review-theme") === "d
   ? "dawn"
   : "moon";
 document.documentElement.dataset["reviewTheme"] = initialTheme;
+// The colour palette is a theme class (src/themes/); Plannotator is the default.
+document.documentElement.classList.add("theme-plannotator");
 document.documentElement.classList.toggle("dark", initialTheme === "moon");
 
 const rootElement = document.querySelector("#review-root");

@@ -105,7 +105,7 @@ export function DashboardPage({
           </div>
         </div>
       </header>
-      <main className="mx-auto grid w-full max-w-7xl min-w-0 grid-cols-1 gap-6 px-4 py-8 sm:px-6" id="main-content">
+      <main className="mx-auto grid w-full max-w-[72rem] min-w-0 grid-cols-1 gap-6 px-4 pt-6 pb-24 sm:px-6" id="main-content">
         <PageHeader
           actions={(
             <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">

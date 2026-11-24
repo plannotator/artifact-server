@@ -301,9 +301,9 @@ export function SettingsProject({
       />
       {error === null ? null : <ErrorPanel error={error} />}
 
-      <section className="grid gap-5 border p-5 sm:p-6" aria-labelledby="project-identity-heading">
+      <section className="grid gap-4 rounded-[var(--radius-card)] border bg-card p-5" aria-labelledby="project-identity-heading">
         <div>
-          <h2 className="font-heading text-lg font-semibold" id="project-identity-heading">{settingsText.projects.identityHeading}</h2>
+          <h2 className="font-heading text-base font-semibold" id="project-identity-heading">{settingsText.projects.identityHeading}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{settingsText.projects.identityHelp}</p>
         </div>
         <div className="grid max-w-xl gap-2">
@@ -334,10 +334,10 @@ export function SettingsProject({
       </section>
 
       {gitHistory.provider === null ? null : (
-        <section className="grid gap-5 border p-5 sm:p-6" aria-labelledby="project-git-heading">
+        <section className="grid gap-4 rounded-[var(--radius-card)] border bg-card p-5" aria-labelledby="project-git-heading">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h2 className="font-heading text-lg font-semibold" id="project-git-heading">{settingsText.projects.gitHeading}</h2>
+              <h2 className="font-heading text-base font-semibold" id="project-git-heading">{settingsText.projects.gitHeading}</h2>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
                 {settingsText.projects.gitDescription}
               </p>
@@ -371,9 +371,9 @@ export function SettingsProject({
         </section>
       )}
 
-      <section className="grid gap-5 border border-destructive/40 p-5 sm:p-6" aria-labelledby="project-lifecycle-heading">
+      <section className="grid gap-4 rounded-[var(--radius-card)] border border-destructive/40 bg-card p-5" aria-labelledby="project-lifecycle-heading">
         <div>
-          <h2 className="font-heading text-lg font-semibold" id="project-lifecycle-heading">{settingsText.projects.lifecycleHeading}</h2>
+          <h2 className="font-heading text-base font-semibold" id="project-lifecycle-heading">{settingsText.projects.lifecycleHeading}</h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
             {project.archivedAt === null
               ? settingsText.projects.archiveHelp

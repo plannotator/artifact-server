@@ -29,3 +29,13 @@ body {
 [data-comment-popover] button[aria-label="Attachments"] {
   display: none;
 }
+
+/*
+ * The artifact is the sheet under the lamp: an artifact that paints no
+ * background of its own reads on white paper in both themes. The annotation
+ * chrome around it keeps following the shell's theme.
+ */
+iframe {
+  background: #ffffff;
+  color-scheme: light;
+}

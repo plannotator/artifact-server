@@ -20,9 +20,9 @@ export function PageHeader({
   readonly title: string;
 }) {
   return (
-    <header className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
+    <header className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
-        <h1 className="font-heading text-2xl leading-tight font-medium text-balance">
+        <h1 className="font-heading text-xl leading-tight font-semibold text-balance">
           {title}
         </h1>
         {/* The group a screen belongs to follows its title, never above it. */}
@@ -30,7 +30,7 @@ export function PageHeader({
           <p className="mt-1 text-sm text-muted-foreground">{eyebrow}</p>
         )}
         {description === undefined ? null : (
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+          <p className="mt-1.5 max-w-3xl text-sm text-muted-foreground">
             {description}
           </p>
         )}
@@ -53,9 +53,9 @@ export function StatePanel({
   readonly title: string;
 }) {
   return (
-    <section className="flex min-h-56 flex-col items-start justify-center border p-6 sm:p-8">
-      <h2 className="font-heading text-lg font-semibold">{title}</h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+    <section className="flex min-h-44 flex-col items-start justify-center rounded-[var(--radius-card)] border bg-card p-6">
+      <h2 className="font-heading text-base font-semibold">{title}</h2>
+      <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
         {description}
       </p>
       {action === undefined ? null : <div className="mt-5">{action}</div>}
@@ -128,8 +128,8 @@ export function MetadataRow({
   readonly label: string;
 }) {
   return (
-    <div className="grid gap-1 border-b py-3 last:border-b-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4">
-      <dt className="text-sm font-medium text-muted-foreground">
+    <div className="grid gap-1 border-b py-2.5 last:border-b-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4">
+      <dt className="text-sm text-muted-foreground">
         {label}
       </dt>
       <dd className="min-w-0 break-words text-sm">{children}</dd>

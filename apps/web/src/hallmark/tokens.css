@@ -1,49 +1,26 @@
 /*
- * Console tokens for the Artifact Server application. The shared scale is
- * Hallmark's app scale (ratio 1.2). Two colourways from the Console theme:
- * `paper` on :root (the dawn theme) and `graphite` under `.dark` (the moon
- * theme), which the application toggles on <html>. In both, amber is a
- * person and the current selection; cool blue is an instrument or an agent.
+ * Workbench tokens for the Artifact Server application: scale, type, radius,
+ * motion and layers. Colours come from a theme in src/themes/ (the default
+ * is themes/plannotator.css), which defines the same --color-* tokens for
+ * light and dark.
  */
 :root {
-  color-scheme: light;
   --space-3xs: 2px; --space-2xs: 4px; --space-xs: 8px; --space-sm: 12px; --space-md: 16px; --space-lg: 24px; --space-xl: 40px; --space-2xl: 64px; --space-3xl: 96px; --space-4xl: 144px;
-  --text-xs: 0.75rem; --text-sm: 0.875rem; --text-md: 1rem; --text-lg: 1.2rem; --text-xl: 1.44rem; --text-2xl: 1.728rem; --text-3xl: 2.074rem;
-  --text-display-s: 1.44rem; --text-display: 1.728rem; --text-section: 1.2rem; --text-title: 1rem; --text-lead: 1rem;
+  --text-xs: 0.75rem; --text-sm: 0.8125rem; --text-md: 0.875rem; --text-lg: 1rem; --text-xl: 1.25rem; --text-2xl: 1.5rem; --text-3xl: 1.875rem;
+  --text-display-s: 1.25rem; --text-display: 1.5rem; --text-section: 1rem; --text-title: 0.875rem; --text-lead: 0.875rem;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1); --ease-in: cubic-bezier(0.7, 0, 0.84, 0); --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --dur-micro: 120ms; --dur-short: 220ms; --dur-long: 420ms;
-  --container: 1440px; --gutter: 64px; --gap-columns: 32px; --section-gap-s: 120px; --section-gap: 144px; --section-gap-l: 176px;
+  --dur-micro: 120ms; --dur-short: 200ms; --dur-long: 380ms;
+  --container: 1200px; --gutter: 40px; --gap-columns: 24px; --section-gap-s: 120px; --section-gap: 144px; --section-gap-l: 176px;
   --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-sticky-nav: 300; --z-modal: 400; --z-toast: 500; --z-tooltip: 600;
-  /* Latin from the theme faces; Han characters fall to the system's
-     Traditional Chinese face (no CJK webfont: the CSP serves fonts from self). */
-  --font-display: "Host Grotesk", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", ui-sans-serif, system-ui, sans-serif; --font-body: var(--font-display);
-  --font-outlier: "Atkinson Hyperlegible Mono", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", ui-monospace, monospace;
-  --radius-card: 10px; --radius-pill: 6px; --radius-chip: 4px; --rule-hair: 1px;
+  /* Latin from Geist; Han characters fall to the system's Traditional Chinese
+     face (no CJK webfont: the CSP serves fonts from self only). */
+  --font-display: "Geist Variable", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", ui-sans-serif, system-ui, sans-serif; --font-body: var(--font-display);
+  --font-outlier: "Geist Mono Variable", "PingFang TC", "Noto Sans TC", ui-monospace, monospace;
+  --radius-card: 8px; --radius-pill: 6px; --radius-chip: 4px; --rule-hair: 1px;
   --shadow-card: none;
-  --tracking-display: -0.03em; --display-weight: 500;
+  --shadow-overlay: 0 12px 32px -8px var(--color-overlay-shadow), 0 2px 6px -2px var(--color-overlay-shadow);
+  --tracking-display: -0.02em; --display-weight: 600;
+  --status-height: 28px;
 
-  /* paper colourway */
-  --color-paper: oklch(98% 0.006 85); --color-paper-2: oklch(99.4% 0.004 85); --color-paper-3: oklch(95.4% 0.008 85);
-  --color-ink: oklch(19% 0.01 60); --color-ink-2: oklch(33% 0.012 60); --color-muted: oklch(47% 0.012 60);
-  --color-rule: oklch(89% 0.01 80); --color-rule-2: oklch(79% 0.012 80);
-  --color-accent: oklch(54% 0.14 70); --color-accent-ink: oklch(98.5% 0.01 85); --color-accent-soft: oklch(94% 0.035 80); --color-focus: oklch(54% 0.14 70);
-  --color-cool: oklch(52% 0.14 250); --color-cool-soft: oklch(94% 0.025 245);
-  --color-ok: oklch(50% 0.13 150); --color-ok-soft: oklch(94.5% 0.03 150); --color-bad: oklch(53% 0.17 27); --color-bad-soft: oklch(94.5% 0.03 25);
-  --color-error: oklch(53% 0.17 27); --color-success: oklch(50% 0.13 150);
-  --color-scrim: oklch(19% 0.01 60 / 0.45);
-  --color-overlay-shadow: oklch(19% 0.01 60 / 0.12);
 }
 
-.dark {
-  color-scheme: dark;
-  /* graphite colourway */
-  --color-paper: oklch(17% 0.008 250); --color-paper-2: oklch(21% 0.009 250); --color-paper-3: oklch(13.5% 0.007 250);
-  --color-ink: oklch(95% 0.005 250); --color-ink-2: oklch(83% 0.008 250); --color-muted: oklch(71% 0.01 250);
-  --color-rule: oklch(31% 0.01 250); --color-rule-2: oklch(42% 0.012 250);
-  --color-accent: oklch(82% 0.15 80); --color-accent-ink: oklch(18% 0.04 75); --color-accent-soft: oklch(29% 0.05 80); --color-focus: oklch(82% 0.15 80);
-  --color-cool: oklch(77% 0.12 245); --color-cool-soft: oklch(29% 0.05 245);
-  --color-ok: oklch(76% 0.15 150); --color-ok-soft: oklch(24.5% 0.03 150); --color-bad: oklch(70% 0.17 25); --color-bad-soft: oklch(24.5% 0.035 25);
-  --color-error: oklch(72% 0.15 27); --color-success: oklch(76% 0.13 150);
-  --color-scrim: oklch(10% 0.008 250 / 0.6);
-  --color-overlay-shadow: oklch(8% 0.008 250 / 0.4);
-}

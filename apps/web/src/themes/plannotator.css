@@ -1,0 +1,80 @@
+/*
+ * Plannotator theme, the default palette. Values follow
+ * @plannotator/ui themes/plannotator.css: cool blue-grey surfaces on hue 260,
+ * violet primary (280), teal secondary (180), amber accent (60). Text and
+ * rule steps are adjusted where the interface needs more steps than
+ * Plannotator's semantic set, and to keep WCAG AA contrast.
+ *
+ * Every theme defines the same workbench tokens for light and dark. Roles:
+ * `--color-accent` is a person, the current selection and the one primary
+ * action (Plannotator's primary); `--color-cool` is an instrument: an
+ * agent, a time, a version or a count (Plannotator's secondary);
+ * `--color-warn` is Plannotator's accent.
+ *
+ * Light is the default on :root; dark applies under `.dark` on <html>.
+ * Another theme adds `:root.theme-<name>` and `:root.theme-<name>.dark`.
+ */
+:root,
+:root.theme-plannotator {
+  color-scheme: light;
+  --color-paper: oklch(0.97 0.005 260);
+  --color-paper-2: oklch(1 0 0);
+  --color-paper-3: oklch(0.945 0.008 260);
+  --color-hover: oklch(0.925 0.01 260);
+  --color-stage: oklch(0.93 0.01 260);
+  --color-sheet: oklch(1 0 0);
+  --color-ink: oklch(0.18 0.02 260);
+  --color-ink-2: oklch(0.32 0.02 260);
+  --color-muted: oklch(0.45 0.02 260);
+  --color-rule: oklch(0.9 0.01 260);
+  --color-rule-2: oklch(0.83 0.012 260);
+  --color-accent: oklch(0.5 0.25 280);
+  --color-accent-ink: oklch(1 0 0);
+  --color-accent-soft: oklch(0.94 0.035 280);
+  --color-focus: oklch(0.5 0.25 280);
+  --color-cool: oklch(0.47 0.12 180);
+  --color-cool-soft: oklch(0.95 0.025 180);
+  --color-warn: oklch(0.55 0.16 60);
+  --color-ok: oklch(0.45 0.15 150);
+  --color-ok-soft: oklch(0.95 0.03 150);
+  --color-bad: oklch(0.5 0.2 25);
+  --color-bad-soft: oklch(0.95 0.025 25);
+  --color-error: oklch(0.5 0.2 25);
+  --color-success: oklch(0.45 0.15 150);
+  --color-scrim: oklch(0.18 0.02 260 / 0.4);
+  --color-overlay-shadow: oklch(0.18 0.02 260 / 0.14);
+  /* The lamp: light falls from above the stage onto the artifact. */
+  --stage-light: radial-gradient(120% 70% at 50% -10%, oklch(1 0 0 / 0.9), transparent 70%);
+}
+
+:root.dark,
+:root.theme-plannotator.dark {
+  color-scheme: dark;
+  --color-paper: oklch(0.15 0.02 260);
+  --color-paper-2: oklch(0.2 0.02 260);
+  --color-paper-3: oklch(0.12 0.02 260);
+  --color-hover: oklch(0.25 0.02 260);
+  --color-stage: oklch(0.175 0.02 260);
+  --color-sheet: oklch(1 0 0);
+  --color-ink: oklch(0.92 0.01 260);
+  --color-ink-2: oklch(0.82 0.015 260);
+  --color-muted: oklch(0.7 0.02 260);
+  --color-rule: oklch(0.26 0.02 260);
+  --color-rule-2: oklch(0.35 0.02 260);
+  --color-accent: oklch(0.75 0.18 280);
+  --color-accent-ink: oklch(0.15 0.02 260);
+  --color-accent-soft: oklch(0.29 0.07 280);
+  --color-focus: oklch(0.75 0.18 280);
+  --color-cool: oklch(0.72 0.12 180);
+  --color-cool-soft: oklch(0.26 0.04 180);
+  --color-warn: oklch(0.75 0.15 70);
+  --color-ok: oklch(0.72 0.17 150);
+  --color-ok-soft: oklch(0.26 0.05 150);
+  --color-bad: oklch(0.68 0.19 25);
+  --color-bad-soft: oklch(0.27 0.06 25);
+  --color-error: oklch(0.68 0.19 25);
+  --color-success: oklch(0.72 0.17 150);
+  --color-scrim: oklch(0.08 0.02 260 / 0.62);
+  --color-overlay-shadow: oklch(0 0 0 / 0.5);
+  --stage-light: radial-gradient(110% 60% at 50% -12%, oklch(0.75 0.18 280 / 0.08), transparent 72%);
+}

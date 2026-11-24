@@ -12,9 +12,9 @@ export function WebmcpScreen() {
         title="WebMCP"
       />
 
-      <section className="grid max-w-3xl gap-5 border p-5 sm:p-6" aria-labelledby="webmcp-review-tools">
+      <section className="grid max-w-3xl gap-4 rounded-[var(--radius-card)] border bg-card p-5" aria-labelledby="webmcp-review-tools">
         <header className="grid gap-1">
-          <h2 className="font-heading text-lg font-semibold text-balance" id="webmcp-review-tools">
+          <h2 className="font-heading text-base font-semibold text-balance" id="webmcp-review-tools">
             {settingsText.webmcp.toolsHeading}
           </h2>
           <p className="text-sm leading-6 text-muted-foreground text-pretty">

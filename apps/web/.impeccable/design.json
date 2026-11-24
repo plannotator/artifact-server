@@ -1,0 +1,431 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-24T00:00:00Z",
+  "title": "Design System: Artifact Server (fork)",
+  "extensions": {
+    "colorMeta": {
+      "coral": {
+        "role": "primary",
+        "displayName": "Lamp Coral (daylight)",
+        "canonical": "oklch(53.3% 0.147 40)",
+        "tonalRamp": [
+          "oklch(15% 0.073 40)",
+          "oklch(26% 0.118 40)",
+          "oklch(37% 0.147 40)",
+          "oklch(48% 0.147 40)",
+          "oklch(60% 0.147 40)",
+          "oklch(72% 0.125 40)",
+          "oklch(84% 0.078 40)",
+          "oklch(95% 0.025 40)"
+        ]
+      },
+      "night-coral": {
+        "role": "primary",
+        "displayName": "Lamp Coral (night)",
+        "canonical": "oklch(69.1% 0.150 40)",
+        "tonalRamp": [
+          "oklch(15% 0.075 40)",
+          "oklch(26% 0.120 40)",
+          "oklch(37% 0.150 40)",
+          "oklch(48% 0.150 40)",
+          "oklch(60% 0.150 40)",
+          "oklch(72% 0.127 40)",
+          "oklch(84% 0.079 40)",
+          "oklch(95% 0.026 40)"
+        ]
+      },
+      "coral-wash": {
+        "role": "primary",
+        "displayName": "Coral Wash",
+        "canonical": "#f8e6de"
+      },
+      "instrument-blue": {
+        "role": "secondary",
+        "displayName": "Instrument Blue (daylight)",
+        "canonical": "oklch(52.7% 0.185 265)",
+        "tonalRamp": [
+          "oklch(15% 0.092 265)",
+          "oklch(26% 0.148 265)",
+          "oklch(37% 0.185 265)",
+          "oklch(48% 0.185 265)",
+          "oklch(60% 0.185 265)",
+          "oklch(72% 0.157 265)",
+          "oklch(84% 0.098 265)",
+          "oklch(95% 0.032 265)"
+        ]
+      },
+      "night-instrument-blue": {
+        "role": "secondary",
+        "displayName": "Instrument Blue (night)",
+        "canonical": "oklch(74.1% 0.133 266)",
+        "tonalRamp": [
+          "oklch(15% 0.066 266)",
+          "oklch(26% 0.107 266)",
+          "oklch(37% 0.133 266)",
+          "oklch(48% 0.133 266)",
+          "oklch(60% 0.133 266)",
+          "oklch(72% 0.113 266)",
+          "oklch(84% 0.070 266)",
+          "oklch(95% 0.023 266)"
+        ]
+      },
+      "ok": {
+        "role": "tertiary",
+        "displayName": "Ok Green",
+        "canonical": "oklch(56.2% 0.125 156)",
+        "tonalRamp": [
+          "oklch(15% 0.062 156)",
+          "oklch(26% 0.100 156)",
+          "oklch(37% 0.125 156)",
+          "oklch(48% 0.125 156)",
+          "oklch(60% 0.125 156)",
+          "oklch(72% 0.106 156)",
+          "oklch(84% 0.066 156)",
+          "oklch(95% 0.022 156)"
+        ]
+      },
+      "bad": {
+        "role": "tertiary",
+        "displayName": "Bad Red",
+        "canonical": "oklch(54.7% 0.181 27)",
+        "tonalRamp": [
+          "oklch(15% 0.090 27)",
+          "oklch(26% 0.145 27)",
+          "oklch(37% 0.181 27)",
+          "oklch(48% 0.181 27)",
+          "oklch(60% 0.181 27)",
+          "oklch(72% 0.153 27)",
+          "oklch(84% 0.096 27)",
+          "oklch(95% 0.031 27)"
+        ]
+      },
+      "bench-ground": {
+        "role": "neutral",
+        "displayName": "Daylight Bench",
+        "canonical": "#f5f5f4",
+        "tonalRamp": [
+          "oklch(15% 0.003 286)",
+          "oklch(26% 0.003 286)",
+          "oklch(37% 0.003 286)",
+          "oklch(48% 0.003 286)",
+          "oklch(60% 0.003 286)",
+          "oklch(72% 0.003 286)",
+          "oklch(84% 0.003 286)",
+          "oklch(95% 0.003 286)"
+        ]
+      },
+      "night-ground": {
+        "role": "neutral",
+        "displayName": "Night Bench",
+        "canonical": "#111112",
+        "tonalRamp": [
+          "oklch(15% 0.003 286)",
+          "oklch(26% 0.003 286)",
+          "oklch(37% 0.003 286)",
+          "oklch(48% 0.003 286)",
+          "oklch(60% 0.003 286)",
+          "oklch(72% 0.003 286)",
+          "oklch(84% 0.003 286)",
+          "oklch(95% 0.003 286)"
+        ]
+      },
+      "night-raised": {
+        "role": "neutral",
+        "displayName": "Night Bench Raised",
+        "canonical": "#18181a"
+      },
+      "night-sunk": {
+        "role": "neutral",
+        "displayName": "Night Bench Sunk",
+        "canonical": "#0c0c0d"
+      },
+      "stage": {
+        "role": "neutral",
+        "displayName": "Stage",
+        "canonical": "#e9e9e7"
+      },
+      "night-stage": {
+        "role": "neutral",
+        "displayName": "Night Stage",
+        "canonical": "#161618"
+      },
+      "sheet": {
+        "role": "neutral",
+        "displayName": "Artifact Sheet",
+        "canonical": "#ffffff"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(21.0% 0.004 286)",
+        "tonalRamp": [
+          "oklch(15% 0.003 286)",
+          "oklch(26% 0.003 286)",
+          "oklch(37% 0.003 286)",
+          "oklch(48% 0.003 286)",
+          "oklch(60% 0.003 286)",
+          "oklch(72% 0.003 286)",
+          "oklch(84% 0.003 286)",
+          "oklch(95% 0.003 286)"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Hairline Rule",
+        "canonical": "#e2e2df"
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page title on dashboard and settings; the largest size in the product."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Panel and empty-state headings, pane-header project name, brand label."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text and comments; 1.7 line height for Han text."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Buttons, tabs, toggles, field text."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "Row metadata, captions, table headers."
+      },
+      "fact": {
+        "displayName": "Fact",
+        "purpose": "Every measured value: times, versions, counts, ids, sizes, the status bar."
+      }
+    },
+    "shadows": [
+      {
+        "name": "overlay",
+        "value": "0 12px 32px -8px var(--color-overlay-shadow), 0 2px 6px -2px var(--color-overlay-shadow)",
+        "purpose": "Popovers, menus, the focus-mode toolbar and its restore button."
+      },
+      {
+        "name": "sheet",
+        "value": "0 -1px 0 color-mix(in oklab, var(--color-ink) 4%, transparent), 0 18px 48px -18px var(--color-overlay-shadow)",
+        "purpose": "The artifact frame on the stage only."
+      },
+      {
+        "name": "selected-row-marker",
+        "value": "inset 2px 0 0 var(--color-accent)",
+        "purpose": "The coral marker inside the selected catalog row."
+      },
+      {
+        "name": "stage-light",
+        "value": "radial-gradient(120% 70% at 50% -10%, rgb(255 255 255 / 0.9), transparent 70%) / night: radial-gradient(110% 60% at 50% -12%, rgb(255 236 220 / 0.11), transparent 72%)",
+        "purpose": "The lamp: light falling onto the stage from above. Background, not a shadow; the only gradient on the bench."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Default easing for state transitions."
+      },
+      {
+        "name": "ease-in",
+        "value": "cubic-bezier(0.7, 0, 0.84, 0)",
+        "purpose": "Exits."
+      },
+      {
+        "name": "ease-in-out",
+        "value": "cubic-bezier(0.65, 0, 0.35, 1)",
+        "purpose": "Symmetric moves."
+      },
+      {
+        "name": "dur-micro",
+        "value": "120ms",
+        "purpose": "Colour and fill changes on hover."
+      },
+      {
+        "name": "dur-short",
+        "value": "200ms",
+        "purpose": "Button state, popovers."
+      },
+      {
+        "name": "dur-long",
+        "value": "380ms",
+        "purpose": "The longest allowed transition (panel and drawer moves)."
+      },
+      {
+        "name": "presence-pulse",
+        "value": "2s ease-in-out infinite",
+        "purpose": "Agent working."
+      },
+      {
+        "name": "presence-spin",
+        "value": "1.2s linear infinite",
+        "purpose": "Agent replying."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "720px"
+      },
+      {
+        "name": "gutter-sm",
+        "value": "40rem"
+      },
+      {
+        "name": "gutter-md",
+        "value": "60rem"
+      }
+    ],
+    "layout": {
+      "headerHeight": "48px",
+      "statusHeight": "28px",
+      "catalogWidthDefault": "300px",
+      "inspectorWidthDefault": "360px",
+      "pageShellMaxWidth": "72rem"
+    },
+    "themes": {
+      "light": ":root (daylight bench)",
+      "dark": ".dark on <html> (night bench)",
+      "note": "Frontmatter keys prefixed night- are the .dark values of the same roles."
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled coral action on a screen.",
+      "html": "<button class=\"ds-btn-primary\">全部派工</button>",
+      "css": ".ds-btn-primary { font-family: var(--font-body, 'Geist Variable', 'PingFang TC', system-ui, sans-serif); height: 32px; padding: 0 12px; border: 1px solid transparent; border-radius: var(--radius-pill, 6px); background: var(--color-accent, #b0471f); color: var(--color-accent-ink, #fff); font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color var(--dur-short, 200ms) var(--ease-out, cubic-bezier(0.16,1,0.3,1)), transform var(--dur-short, 200ms) var(--ease-out, cubic-bezier(0.16,1,0.3,1)); } .ds-btn-primary:hover { background: color-mix(in oklab, var(--color-accent, #b0471f), var(--color-ink, #18181a) 14%); } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-focus, #b0471f); outline-offset: 2px; } .ds-btn-primary:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Ghost Toolbar Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Default text button for every toolbar.",
+      "html": "<button class=\"ds-btn-ghost\"><svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M4 4h16v12H8l-4 4z\"/></svg>留言</button>",
+      "css": ".ds-btn-ghost { font-family: var(--font-body, 'Geist Variable', 'PingFang TC', system-ui, sans-serif); display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 9px; border: 1px solid transparent; border-radius: var(--radius-pill, 6px); background: transparent; color: var(--color-ink-2, #3b3b40); font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color var(--dur-micro, 120ms) var(--ease-out, ease-out), color var(--dur-micro, 120ms) var(--ease-out, ease-out); } .ds-btn-ghost:hover { background: var(--color-hover, #ebebe9); color: var(--color-ink, #18181a); } .ds-btn-ghost:focus-visible { outline: 2px solid var(--color-focus, #b0471f); outline-offset: 2px; } .ds-btn-ghost:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Pressed Toggle",
+      "kind": "button",
+      "refersTo": "button-toggle-pressed",
+      "description": "A toggle that is on, such as 標註 in the toolbar or focus mode.",
+      "html": "<button class=\"ds-toggle\" aria-pressed=\"true\">標註</button>",
+      "css": ".ds-toggle { font-family: var(--font-body, 'Geist Variable', 'PingFang TC', system-ui, sans-serif); height: 32px; padding: 0 12px; border: 0; border-radius: var(--radius-pill, 6px); background: transparent; color: var(--color-ink-2, #3b3b40); font-size: 13px; font-weight: 500; cursor: pointer; } .ds-toggle:hover { background: var(--color-hover, #ebebe9); } .ds-toggle[aria-pressed=true] { background: var(--color-accent-soft, #f8e6de); color: var(--color-accent, #b0471f); } .ds-toggle:focus-visible { outline: 2px solid var(--color-focus, #b0471f); outline-offset: 2px; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action in panels and dialogs.",
+      "html": "<button class=\"ds-btn-outline\">再試一次</button>",
+      "css": ".ds-btn-outline { font-family: var(--font-body, 'Geist Variable', 'PingFang TC', system-ui, sans-serif); height: 32px; padding: 0 12px; border: 1px solid var(--color-rule-2, #cdcdc9); border-radius: var(--radius-pill, 6px); background: transparent; color: var(--color-ink-2, #3b3b40); font-size: 13px; font-weight: 500; cursor: pointer; } .ds-btn-outline:hover { background: var(--color-hover, #ebebe9); color: var(--color-ink, #18181a); } .ds-btn-outline:focus-visible { outline: 2px solid var(--color-focus, #b0471f); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "32px sunk field with an inner coral focus outline.",
+      "html": "<input class=\"ds-input\" placeholder=\"搜尋 Artifact\">",
+      "css": ".ds-input { font-family: var(--font-body, 'Geist Variable', 'PingFang TC', system-ui, sans-serif); height: 32px; width: 240px; padding: 4px 12px; border: 1px solid var(--color-muted, #66666c); border-radius: var(--radius-pill, 6px); background: var(--color-paper-3, #ededeb); color: var(--color-ink, #18181a); font-size: 13px; outline: 2px solid transparent; outline-offset: -3px; } .ds-input::placeholder { color: var(--color-muted, #66666c); } .ds-input:focus-visible { outline-color: var(--color-focus, #b0471f); }"
+    },
+    {
+      "name": "Underline Tabs",
+      "kind": "nav",
+      "refersTo": "tab",
+      "description": "Inspector and settings tabs in the 48px header row; coral underline on the active tab, blue mono counts.",
+      "html": "<nav class=\"ds-tabs\"><button class=\"ds-tab\" data-active=\"true\">留言 <span>12</span></button><button class=\"ds-tab\">詳細資料</button><button class=\"ds-tab\">版本 <span>4</span></button></nav>",
+      "css": ".ds-tabs { display: flex; border-bottom: 1px solid var(--color-rule, #e2e2df); background: var(--color-paper, #f5f5f4); } .ds-tab { font-family: var(--font-body, 'Geist Variable', 'PingFang TC', system-ui, sans-serif); display: flex; align-items: center; gap: 5px; min-height: 48px; margin-bottom: -1px; padding: 2px 6px 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--color-muted, #66666c); font-size: 13px; font-weight: 500; cursor: pointer; transition: color var(--dur-micro, 120ms) var(--ease-out, ease-out); } .ds-tab:hover { color: var(--color-ink, #18181a); } .ds-tab[data-active=true] { border-bottom-color: var(--color-accent, #b0471f); color: var(--color-ink, #18181a); } .ds-tab span { font-family: var(--font-outlier, 'Geist Mono Variable', ui-monospace, monospace); color: var(--color-cool, #3560d4); font-size: 12px; font-variant-numeric: tabular-nums; } .ds-tab:focus-visible { outline: 2px solid var(--color-focus, #b0471f); outline-offset: 2px; }"
+    },
+    {
+      "name": "Catalog Row",
+      "kind": "custom",
+      "refersTo": "catalog-row-selected",
+      "description": "The row under the lamp: neutral fill and a 2px coral inset marker when selected.",
+      "html": "<div class=\"ds-list\"><button class=\"ds-row\" data-selected=\"true\"><span class=\"ds-row__name\">發布流程提案</span><span class=\"ds-row__meta\"><time>11-24 08:05</time><span>v4</span></span></button><button class=\"ds-row\"><span class=\"ds-row__name\">儀表板報告</span><span class=\"ds-row__meta\"><time>11-23 21:40</time><span>v2</span></span></button></div>",
+      "css": ".ds-list { width: 300px; background: var(--color-paper, #f5f5f4); border-right: 1px solid var(--color-rule, #e2e2df); } .ds-row { font-family: var(--font-body, 'Geist Variable', 'PingFang TC', system-ui, sans-serif); display: grid; gap: 5px; width: 100%; min-height: 68px; padding: 10px 14px; border: 0; border-bottom: 1px solid var(--color-rule, #e2e2df); background: transparent; color: var(--color-ink, #18181a); text-align: left; cursor: pointer; } .ds-row:hover { background: var(--color-hover, #ebebe9); } .ds-row[data-selected=true] { background: var(--color-hover, #ebebe9); box-shadow: inset 2px 0 0 var(--color-accent, #b0471f); } .ds-row:focus-visible { outline: 2px solid var(--color-focus, #b0471f); outline-offset: -2px; } .ds-row__name { font-size: 14px; font-weight: 500; } .ds-row__meta { display: flex; justify-content: space-between; color: var(--color-muted, #66666c); font-size: 12px; } .ds-row__meta time { font-family: var(--font-outlier, 'Geist Mono Variable', ui-monospace, monospace); color: var(--color-cool, #3560d4); font-variant-numeric: tabular-nums slashed-zero; }"
+    },
+    {
+      "name": "Stage and Sheet",
+      "kind": "custom",
+      "refersTo": "panel",
+      "description": "The preview: stage under the lamp gradient, artifact on a white sheet, 28px mono status bar.",
+      "html": "<div class=\"ds-stage\"><div class=\"ds-sheet\"></div></div><div class=\"ds-status\">v4 · 2026-11-24 08:05 · 18.2 KB</div>",
+      "css": ".ds-stage { height: 180px; padding: 16px 20px 0; background: var(--stage-light, radial-gradient(120% 70% at 50% -10%, rgb(255 255 255 / 0.9), transparent 70%)), var(--color-stage, #e9e9e7); } .ds-sheet { height: 100%; background: var(--color-sheet, #fff); border: 1px solid var(--color-rule, #e2e2df); border-bottom: 0; border-radius: 8px 8px 0 0; box-shadow: 0 -1px 0 color-mix(in oklab, var(--color-ink, #18181a) 4%, transparent), 0 18px 48px -18px var(--color-overlay-shadow, rgb(24 24 26 / 0.14)); } .ds-status { font-family: var(--font-outlier, 'Geist Mono Variable', ui-monospace, monospace); display: flex; align-items: center; min-height: 28px; padding: 0 10px; border-top: 1px solid var(--color-rule, #e2e2df); background: var(--color-paper, #f5f5f4); color: var(--color-muted, #66666c); font-size: 12px; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Focus Toolbar",
+      "kind": "custom",
+      "refersTo": "button-ghost",
+      "description": "Floating capsule of ghost buttons in focus mode; the only floating chrome with a shadow.",
+      "html": "<div class=\"ds-dock\"><button class=\"ds-dock__btn\">互動</button><button class=\"ds-dock__btn\" data-active=\"true\">標註</button><button class=\"ds-dock__btn\">留言 <span>3</span></button></div>",
+      "css": ".ds-dock { display: inline-flex; align-items: center; gap: 2px; padding: 3px; background: var(--color-paper-2, #fff); border: 1px solid var(--color-rule, #e2e2df); border-radius: var(--radius-card, 8px); box-shadow: var(--shadow-overlay, 0 12px 32px -8px rgb(24 24 26 / 0.14), 0 2px 6px -2px rgb(24 24 26 / 0.14)); } .ds-dock__btn { font-family: var(--font-body, 'Geist Variable', 'PingFang TC', system-ui, sans-serif); height: 32px; padding: 0 9px; border: 0; border-radius: var(--radius-pill, 6px); background: transparent; color: var(--color-ink-2, #3b3b40); font-size: 13px; font-weight: 500; cursor: pointer; } .ds-dock__btn:hover { background: var(--color-hover, #ebebe9); color: var(--color-ink, #18181a); } .ds-dock__btn[data-active=true] { background: var(--color-accent-soft, #f8e6de); color: var(--color-accent, #b0471f); } .ds-dock__btn span { font-family: var(--font-outlier, 'Geist Mono Variable', ui-monospace, monospace); color: var(--color-cool, #3560d4); font-size: 12px; } .ds-dock__btn:focus-visible { outline: 2px solid var(--color-focus, #b0471f); outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Workbench Under One Lamp",
+    "overview": "The application is one workbench, and only the work under the lamp is lit: the artifact being read and the row being worked on. Everything else is the bench itself, a neutral near-black (or, by day, an off-white) laid out in a few tonal steps and divided by hairline rules. The third-party artifact sits on a dimmer stage like a white sheet under a soft pool of light; the interface frames it and never restyles it.\n\nDensity is that of a desk tool used for long sessions on a large display. Panes meet at 1px seams rather than floating as cards; every screen shares the same 48px header row, the same text-button toolbar, the same underline tabs and the same status-bar height. The workspace, focus mode, the dashboard and settings read as one tool. Colour carries meaning, not decoration: coral is the person, blue is the machine.\n\nThis world replaced the earlier Console system; nothing of that system carries over.",
+    "keyCharacteristics": [
+      "Neutral bench in four steps (ground, raised, sunk, hover) plus a separate stage, with no warm or cool cast.",
+      "Two signals only: coral for the person, the selection and the one primary action; blue for agents, times, versions and counts.",
+      "Geist for words, Geist Mono for every measured fact.",
+      "Flat panes joined by 1px rules; the only shadows belong to things that float over the bench.",
+      "Daylight and night are the same bench under different light; both themes are required."
+    ],
+    "rules": [
+      {
+        "name": "The Two Signals Rule",
+        "body": "Coral means a person or a choice; blue means a machine or a measurement. Never swap them, never add a third signal colour, never use either as decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Coral Fill Rule",
+        "body": "One filled coral button per screen. On the comments tab that is the send-all dispatch at the head of the panel. Everything else in a toolbar is a text button.",
+        "section": "colors"
+      },
+      {
+        "name": "The Lamp Rule",
+        "body": "Light falls only on the stage: a radial gradient from above (`--stage-light`) over the stage colour, and the artifact sheet beneath it. Nothing else on the bench gets a gradient or glow.",
+        "section": "colors"
+      },
+      {
+        "name": "The Measured Fact Rule",
+        "body": "Anything measured (a time, version, count, id, size) is set in Geist Mono with tabular numerals, and in instrument blue when it is the subject of the line.",
+        "section": "typography"
+      },
+      {
+        "name": "The Han Leading Rule",
+        "body": "Under `:lang(zh)` headings drop negative tracking and running text opens to 1.7 line height.",
+        "section": "typography"
+      },
+      {
+        "name": "The Seams Not Cards Rule",
+        "body": "Panes meet at 1px seams; a pane never gets a shadow or a floating card treatment. Shadows are for overlays and the sheet only.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do take every colour from `tokens.css` through its role (`--color-accent`, `--color-cool`, `--color-paper-*`), and define both the daylight and night value of any new token.",
+      "Do keep coral for the person, the selection and the one primary action, and blue for agents, times, versions and counts.",
+      "Do set every measured fact in Geist Mono with tabular numerals.",
+      "Do open every screen with the 48px header row and the brand mark in the same place, and close panes with the 28px status row.",
+      "Do use ghost text buttons in toolbars and the 2px coral underline for the active tab.",
+      "Do mark the selected row with the neutral hover fill and the 2px coral inset marker.",
+      "Do keep transitions short (120ms for colour, 200ms for state, 380ms at most) on the shared ease-out curve, and honour reduced motion.",
+      "Do self-host every font and set styles through CSS files or the CSSOM; the CSP allows `style-src 'self'` and `font-src 'self'` only."
+    ],
+    "donts": [
+      "Don't add a second filled coral button to a screen, or fill a selected row with coral.",
+      "Don't add a permanent sidebar to Review; settings and dashboard share the one-column page shell.",
+      "Don't put shadows on panes, rows or resting panels; shadows belong to overlays and the artifact sheet.",
+      "Don't restyle or tint the artifact; it stays on its white sheet in both themes.",
+      "Don't load a CJK webfont or any font from a third-party host.",
+      "Don't introduce a third signal colour, a gradient outside the stage, or a type size outside 12, 13, 14, 16, 20, 24.",
+      "Don't ship a screen that works in only one of the two themes."
+    ]
+  }
+}

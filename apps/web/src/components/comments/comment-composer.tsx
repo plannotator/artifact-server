@@ -113,6 +113,7 @@ export function CommentComposer({
           onClick={() => void submit()}
           size="xs"
           type="button"
+          variant="outline"
         >
           {pending ? text.saving : submitLabel}
         </Button>

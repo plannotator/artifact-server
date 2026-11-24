@@ -1,9 +1,9 @@
 /*
- * shadcn/ui variables pointed at the Hallmark Console tokens
- * (hallmark/tokens.css). The tokens switch colourway under `.dark`, so this
- * one block serves both themes. shadcn's `accent` is a hover surface and its
- * `muted` a quiet background; Hallmark's amber signal stays `--color-accent`
- * and is reached through var(), never through a shadcn utility.
+ * shadcn/ui variables pointed at the workbench tokens (hallmark/tokens.css).
+ * The tokens switch bench under `.dark`, so this one block serves both
+ * themes. shadcn's `accent` is a hover surface and its `muted` a quiet
+ * background; the violet signal stays `--color-accent` and is reached through
+ * var(), never through a shadcn utility.
  */
 :root {
   --background: var(--color-paper);
@@ -31,7 +31,7 @@
   --chart-4: var(--color-rule);
   --chart-5: var(--color-paper-3);
   --insight-series: var(--color-cool);
-  --radius: 0.625rem;
+  --radius: 0.5rem;
   --sidebar: var(--color-paper-2);
   --sidebar-foreground: var(--color-ink);
   --sidebar-primary: var(--color-accent);

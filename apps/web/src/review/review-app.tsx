@@ -1783,22 +1783,34 @@ function ArtifactReview({
                 </IconButton>
               ) : null}
               <h1>{details?.artifact.name ?? selectedItem?.artifact.name ?? "Artifact Server"}</h1>
+              {selectedVersion === null ? null : (
+                <span className="as-preview-header__version">v{selectedVersion.version.number}</span>
+              )}
             </div>
             <div className="as-preview-header__actions">
               {previewKind === "html" && canComment ? (
-                <IconButton
-                  active={htmlAnnotateModeActive}
-                  label={htmlAnnotateModeActive
+                <button
+                  aria-label={htmlAnnotateModeActive
                     ? reviewAppText.focus.annotateModeDescription
                     : reviewAppText.focus.interactModeDescription}
+                  aria-pressed={htmlAnnotateModeActive}
+                  className="as-button as-button--ghost"
+                  data-active={htmlAnnotateModeActive}
                   onClick={() => setHtmlAnnotateModeActive((active) => !active)}
+                  title={htmlAnnotateModeActive
+                    ? reviewAppText.focus.annotateModeDescription
+                    : reviewAppText.focus.interactModeDescription}
+                  type="button"
                 >
-                  <HugeiconsIcon icon={Edit02Icon} strokeWidth={1.8} />
-                </IconButton>
+                  <HugeiconsIcon aria-hidden="true" icon={Edit02Icon} strokeWidth={1.8} />
+                  <span className="as-button__label">
+                    {htmlAnnotateModeActive ? reviewAppText.focus.annotateMode : reviewAppText.focus.interactMode}
+                  </span>
+                </button>
               ) : null}
               <button
                 aria-label={opening ? reviewAppText.preview.openingRaw : reviewAppText.preview.openRaw}
-                className="as-button as-button--secondary as-preview-header__raw"
+                className="as-button as-button--ghost as-preview-header__raw"
                 disabled={selectedVersionId === null || opening}
                 onClick={() => void openRawArtifact()}
                 type="button"
@@ -1814,16 +1826,16 @@ function ArtifactReview({
                 onArtifactChanged={updateArtifact}
                 selectedPath={selectedPath}
                 selectedVersion={selectedVersion}
-                triggerClassName="as-button as-button--secondary"
+                triggerClassName="as-button as-button--ghost"
               />
               <ReviewDownloadControl
-                className="as-button as-button--secondary"
+                className="as-button as-button--ghost"
                 download={download}
               />
               <button
                 aria-label={reviewAppText.preview.fullScreen}
                 aria-keyshortcuts="F"
-                className="as-button as-button--primary"
+                className="as-button as-button--ghost"
                 disabled={selectedVersionId === null}
                 onClick={enterFocusMode}
                 title={reviewAppText.preview.fullScreenTitle}

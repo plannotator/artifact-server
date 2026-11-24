@@ -145,7 +145,7 @@ function ActivityRow({
 }) {
   const actor = activityActorLabel(event.actor);
   const label = activityLabel(event.kind);
-  // Console: amber is a person, cool is an instrument (an agent, a key, the
+  // Workbench: violet is a person, teal is an instrument (an agent, a key, the
   // local token); an actor the record does not keep reads in muted ink.
   const actorTone = event.actor?.kind === "human"
     ? "text-[var(--color-accent)]"
@@ -153,9 +153,9 @@ function ActivityRow({
       ? "text-[var(--color-cool)]"
       : "text-muted-foreground";
   return (
-    <li className="relative grid gap-1 py-3 pl-6 text-sm before:absolute before:top-[1.15rem] before:left-[-4px] before:size-[7px] before:rounded-full before:border before:border-[var(--color-rule-2)] before:bg-card sm:grid-cols-[7.5rem_minmax(0,1fr)] sm:gap-4">
+    <li className="relative grid gap-1 py-2.5 pl-6 text-sm before:absolute before:top-[1rem] before:left-[-4px] before:size-[7px] before:rounded-full before:border before:border-[var(--color-rule-2)] before:bg-card sm:grid-cols-[6rem_minmax(0,1fr)] sm:gap-3">
       <time
-        className="font-mono text-sm text-[var(--color-cool)] tabular-nums"
+        className="pt-px text-xs text-[var(--color-cool)] tabular-nums"
         dateTime={event.occurredAt}
         title={formatTimestamp(event.occurredAt)}
       >
