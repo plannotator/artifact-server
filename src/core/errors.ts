@@ -41,6 +41,14 @@ export const errorCodes = {
   sourceDrifted: "SOURCE_DRIFTED",
   sourceMissing: "SOURCE_MISSING",
   sourceUnreadable: "SOURCE_UNREADABLE",
+  sourceMoved: "SOURCE_MOVED",
+  entryNotCapturable: "ENTRY_NOT_CAPTURABLE",
+  folderLinkNotFound: "FOLDER_LINK_NOT_FOUND",
+  inventoryEntryNotFound: "INVENTORY_ENTRY_NOT_FOUND",
+  linkOverlap: "LINK_OVERLAP",
+  linkLimit: "LINK_LIMIT",
+  captureBatchTooLarge: "CAPTURE_BATCH_TOO_LARGE",
+  folderLinkRevisionConflict: "FOLDER_LINK_REVISION_CONFLICT",
   publishConflict: "PUBLISH_CONFLICT",
   projectArchived: "PROJECT_ARCHIVED",
   projectConflict: "PROJECT_CONFLICT",
@@ -371,6 +379,26 @@ export class SourceUnreadable extends Schema.TaggedError<SourceUnreadable>()(
   messageField,
 ) {}
 
+/**
+ * A linked-folder entry's path no longer canonicalizes to the path the scan
+ * recorded, such as a parent directory swapped for a symlink after the scan.
+ */
+export class SourceMoved extends Schema.TaggedError<SourceMoved>()(
+  "SourceMoved",
+  messageField,
+) {}
+
+/** A folder-link command was refused without writing link or inventory state. */
+export class FolderLinkFailure extends Schema.TaggedError<FolderLinkFailure>()(
+  "FolderLinkFailure",
+  {
+    ...messageField,
+    reason: Schema.Literals([
+      "not-found", "entry-not-found", "overlap", "limit", "batch-too-large", "revision",
+    ]),
+  },
+) {}
+
 /** A deployment-gated capability is not available on this installation. */
 export class CapabilityUnavailable extends Schema.TaggedError<CapabilityUnavailable>()(
   "CapabilityUnavailable",
@@ -399,6 +427,7 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
       "createStagedUpload",
       "exchangeContentBootstrap",
       "linkedSource",
+      "folderLinks",
       "deleteCommentReply",
       "deleteCommentThread",
       "disconnectRegisteredAgent",
@@ -552,6 +581,8 @@ const artifactServerFailureSchema = Schema.Union([
   SourceDrifted,
   SourceMissing,
   SourceUnreadable,
+  SourceMoved,
+  FolderLinkFailure,
   CapabilityUnavailable,
   ArtifactRepositoryFailure,
   IdentityRepositoryFailure,

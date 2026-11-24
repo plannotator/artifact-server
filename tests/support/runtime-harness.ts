@@ -100,6 +100,9 @@ export async function startTestServer(
     readonly interactiveIdentityProvider?: InteractiveIdentityProvider;
     readonly linkedFiles?: "off" | "on";
     readonly linkRoots?: readonly string[];
+    readonly linkedFolderHooks?: LocalServerConfig["linkedFolderHooks"];
+    readonly linkedFolderReconcileIntervalMilliseconds?: number;
+    readonly linkedFolderWatch?: "off" | "on";
     readonly mcpOAuthResource?: McpOAuthResourceConfiguration;
     readonly observability?: boolean;
     readonly port?: number;
@@ -183,6 +186,18 @@ export async function startTestServer(
   }
   if (options.mcpOAuthResource !== undefined) {
     config = {...config, mcpOAuthResource: options.mcpOAuthResource};
+  }
+  if (options.linkedFolderHooks !== undefined) {
+    config = {...config, linkedFolderHooks: options.linkedFolderHooks};
+  }
+  if (options.linkedFolderReconcileIntervalMilliseconds !== undefined) {
+    config = {
+      ...config,
+      linkedFolderReconcileIntervalMilliseconds: options.linkedFolderReconcileIntervalMilliseconds,
+    };
+  }
+  if (options.linkedFolderWatch !== undefined) {
+    config = {...config, linkedFolderWatch: options.linkedFolderWatch};
   }
   if (options.webAssetsRoot !== undefined) {
     config = {...config, webAssetsRoot: options.webAssetsRoot};

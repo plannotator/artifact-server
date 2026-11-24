@@ -2,7 +2,9 @@ import type {DatabaseSync} from "node:sqlite";
 import {z} from "zod";
 
 import {classifyFileKind} from "../core/file-kind.js";
-import {requiredSqliteSchemaVersion} from "./sqlite-schema.js";
+
+/** Schema revision introduced by phase-one folders and placement. */
+export const folderSchemaVersion = 13;
 
 /** Install phase-one placement schema and backfill existing current versions. */
 export function migrateSqliteFolders(database: DatabaseSync): void {
@@ -82,7 +84,7 @@ export function migrateSqliteFolders(database: DatabaseSync): void {
     SELECT id, current_version_id AS currentVersionId FROM artifacts WHERE current_version_id IS NOT NULL
   `).all());
   for (const artifact of artifacts) writeSqliteCurrentFileMetadata(database, artifact.id, artifact.currentVersionId);
-  database.exec(`PRAGMA user_version = ${requiredSqliteSchemaVersion};`);
+  database.exec(`PRAGMA user_version = ${folderSchemaVersion};`);
 }
 
 const currentFileMetadata = z.object({

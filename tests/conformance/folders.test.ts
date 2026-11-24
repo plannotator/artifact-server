@@ -16,6 +16,7 @@ import {browserLoginKinds, privateTeamBrowserAccess} from "../../src/core/browse
 import {OidcIdentityProvider} from "../../src/identity/oidc-identity-provider.js";
 import {checkCompactIntegrity} from "../../src/lifecycle/integrity-check.js";
 import {SqliteArtifactRepository} from "../../src/storage/sqlite-artifact-repository.js";
+import {requiredSqliteSchemaVersion} from "../../src/storage/sqlite-schema.js";
 import {parsePublishResponse, publishNew, publishVersion, type PublishResponse} from "../support/publishing.js";
 import {
   apiHeaders, createTestInstallation, fetchVersion, removeTestInstallation, reserveLoopbackPort,
@@ -243,9 +244,10 @@ describe("local folders and artifact placement", () => {
     server = await startTestServer(installation);
     expect((await list("root")).artifacts).toMatchObject([{artifact: {id: artifact.artifact.id}}]);
     await stop();
-    readDatabase((db) => db.exec("PRAGMA user_version = 14"));
+    const newer = requiredSqliteSchemaVersion + 1;
+    readDatabase((db) => db.exec(`PRAGMA user_version = ${newer}`));
     expect(() => new SqliteArtifactRepository(databasePath())).toThrow(/newer schema/u);
-    expect(readDatabase((db) => db.prepare("PRAGMA user_version").get())).toMatchObject({user_version: 14});
+    expect(readDatabase((db) => db.prepare("PRAGMA user_version").get())).toMatchObject({user_version: newer});
   });
 
   test("FLD-007-B: phase-one HTTP, MCP and CLI share folder and placement records", async () => {

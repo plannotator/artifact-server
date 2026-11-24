@@ -1,6 +1,10 @@
 import type {
+  CaptureEntryResult, FolderLinkRecord, FolderLinkStatus, InventoryEntryRecord, InventoryState,
+  LinkedBindingSummary, OverLimitReason, ScanObservation,
+} from "./folder-links.js";
+import type {
   ArtifactPlacement, ArtifactPlacementChange, FolderChange, FolderContents,
-  FolderRecord, ListFolderContents, PlacementWrite,
+  FolderName, FolderRecord, ListFolderContents, PlacementWrite,
 } from "./folders.js";
 import type {
   AccessSetting,
@@ -380,6 +384,8 @@ export interface SourceBindingWrite {
  */
 export interface CommitLinkedArtifact extends CommitNewArtifact {
   readonly binding: SourceBindingWrite;
+  /** Placement for a capture from a linked folder; omitted links at the root. */
+  readonly folderId?: string;
 }
 
 /**
@@ -725,6 +731,7 @@ export interface IdGenerator {
   commentThreadId(): string;
   contentToken(): string;
   folderId(): string;
+  folderLinkId(): string;
   projectId(): string;
   registeredAgentId(): string;
   stagedFileToken(): string;
@@ -744,4 +751,131 @@ export interface ArtifactPlacementRepository {
     command: PlacementWrite & {readonly artifactId: string; readonly expectedCurrentVersionId: string},
     change: ArtifactPlacementChange,
   ): Promise<ArtifactPlacement>;
+}
+
+/** Values used to create one folder link after the path ladder passed. */
+export interface CreateFolderLink {
+  readonly id: string;
+  readonly installationId: string;
+  readonly projectId: string;
+  readonly folderId: string;
+  readonly path: string;
+  readonly rootDevice: string;
+  readonly ignore: readonly string[];
+  readonly principalId: string;
+  readonly idempotencyKey: string;
+  readonly inputDigest: string;
+  readonly createdAt: string;
+}
+
+/** Owner-controlled changes to one link, guarded by its revision. */
+export interface UpdateFolderLink {
+  readonly installationId: string;
+  readonly folderLinkId: string;
+  readonly expectedRevision: number;
+  readonly paused?: boolean;
+  readonly ignore?: readonly string[];
+}
+
+/** One page of scan observations applied in one short transaction. */
+export interface ApplyScanPage {
+  readonly folderLinkId: string;
+  readonly projectId: string;
+  readonly installationId: string;
+  readonly linkPath: string;
+  readonly generation: number;
+  readonly observations: readonly ScanObservation[];
+  readonly observedAt: string;
+  readonly entryLimit: number;
+}
+
+/** The end of one successful reconciliation walk. */
+export interface FinishScan {
+  readonly folderLinkId: string;
+  readonly linkPath: string;
+  readonly generation: number;
+  readonly completedAt: string;
+  readonly ignoredCount: number;
+  readonly overLimitReason: OverLimitReason | null;
+}
+
+/** One keyset page of a link's inventory. */
+export interface ListInventory {
+  readonly folderLinkId: string;
+  readonly state: InventoryState | null;
+  readonly pendingOnly: boolean;
+  readonly afterRelativePath: string | null;
+  readonly limit: number;
+}
+
+/** One issued untracked-entry live session or bootstrap. */
+export interface EntryLiveGrantWrite {
+  readonly tokenDigest: string;
+  readonly kind: "bootstrap" | "session";
+  readonly principalId: string;
+  readonly projectId: string;
+  readonly folderLinkId: string;
+  readonly entryId: string;
+  readonly contentToken: string;
+  readonly createdAt: string;
+  readonly expiresAt: string;
+}
+
+/** One stored live grant resolved by its token digest. */
+export interface EntryLiveGrant {
+  readonly principalId: string;
+  readonly projectId: string;
+  readonly folderLinkId: string;
+  readonly entryId: string;
+  readonly expiresAt: string;
+}
+
+/**
+ * Linked-folder persistence, implemented only by the local SQLite backend.
+ * Observation (scan pages) writes only inventory rows and existing binding
+ * freshness; it never writes an artifact, version, folder, or action.
+ */
+export interface FolderLinkRepository {
+  createFolderLink(command: CreateFolderLink): Promise<FolderLinkRecord>;
+  findFolderLink(installationId: string, folderLinkId: string): Promise<FolderLinkRecord | null>;
+  findFolderLinkReplay(projectId: string, idempotencyKey: string): Promise<{
+    readonly inputDigest: string;
+    readonly link: FolderLinkRecord;
+  } | null>;
+  listFolderLinks(installationId: string, projectId: string | null): Promise<readonly FolderLinkRecord[]>;
+  updateFolderLink(command: UpdateFolderLink): Promise<FolderLinkRecord>;
+  removeFolderLink(installationId: string, folderLinkId: string, expectedRevision: number): Promise<FolderLinkRecord>;
+  setFolderLinkStatus(
+    folderLinkId: string,
+    status: FolderLinkStatus,
+    overLimitReason: OverLimitReason | null,
+  ): Promise<FolderLinkRecord>;
+  /** Mark every link unverified after a process start, until its scan passes. */
+  markAllFolderLinksUnverified(installationId: string): Promise<void>;
+  beginScan(folderLinkId: string, startedAt: string): Promise<number>;
+  applyScanPage(command: ApplyScanPage): Promise<{readonly overLimit: boolean}>;
+  finishScan(command: FinishScan): Promise<FolderLinkRecord>;
+  listInventory(command: ListInventory): Promise<readonly InventoryEntryRecord[]>;
+  findInventoryEntries(folderLinkId: string, entryIds: readonly string[]): Promise<readonly InventoryEntryRecord[]>;
+  listPendingEntries(folderLinkId: string, limit: number): Promise<readonly InventoryEntryRecord[]>;
+  markEntryTracked(folderLinkId: string, entryId: string, artifactId: string, fingerprint: string | null): Promise<void>;
+  ensureFolderPath(command: PlacementWrite & {
+    readonly rootFolderId: string;
+    readonly segments: readonly FolderName[];
+  }): Promise<string>;
+  readCaptureResults(folderLinkId: string, batchKey: string): Promise<{
+    readonly inputDigest: string;
+    readonly results: readonly CaptureEntryResult[];
+  } | null>;
+  recordCaptureResult(
+    folderLinkId: string,
+    batchKey: string,
+    inputDigest: string,
+    position: number,
+    result: CaptureEntryResult,
+  ): Promise<void>;
+  listLinkBindings(folderLinkId: string): Promise<readonly LinkedBindingSummary[]>;
+  storeEntryLiveGrant(command: EntryLiveGrantWrite): Promise<void>;
+  consumeEntryLiveBootstrap(tokenDigest: string, contentToken: string, now: string): Promise<EntryLiveGrant | null>;
+  findEntryLiveSession(tokenDigest: string, contentToken: string, now: string): Promise<EntryLiveGrant | null>;
 }

@@ -1,4 +1,6 @@
-import {migrateSqliteFolders, writeSqliteCurrentFileMetadata} from "./sqlite-folder-schema.js";
+import {folderSchemaVersion, migrateSqliteFolders, writeSqliteCurrentFileMetadata} from "./sqlite-folder-schema.js";
+import {folderLinkSchemaVersion, migrateSqliteFolderLinks} from "./sqlite-folder-link-schema.js";
+import {SqliteFolderLinks} from "./sqlite-folder-links.js";
 import {SqliteFolders} from "./sqlite-folders.js";
 
 import { DatabaseSync } from "node:sqlite";
@@ -561,6 +563,7 @@ export class SqliteArtifactRepository implements
   readonly #database: DatabaseSync;
   readonly #installationId: string;
   readonly folders: SqliteFolders;
+  readonly folderLinks: SqliteFolderLinks;
 
   constructor(databasePath: string, installationId = "local") {
     this.#installationId = installationId;
@@ -582,6 +585,10 @@ export class SqliteArtifactRepository implements
       this.#database,
       (operation) => this.#transaction(operation),
       (command, folderId) => this.#readArtifactPage(command, folderId),
+    );
+    this.folderLinks = new SqliteFolderLinks(
+      this.#database,
+      (operation) => this.#transaction(operation),
     );
   }
 
@@ -1223,9 +1230,15 @@ export class SqliteArtifactRepository implements
    */
   commitLinkedArtifact(command: CommitLinkedArtifact): Promise<PublishedVersion> {
     return Promise.resolve().then(() =>
-      this.#transaction(() =>
-        this.#applyNewArtifactCommit(command, command.binding)
-      ),
+      this.#transaction(() => {
+        const published = this.#applyNewArtifactCommit(command, command.binding);
+        if (command.folderId !== undefined && !published.replayed) {
+          this.#database
+            .prepare("UPDATE artifacts SET folder_id = ? WHERE project_id = ? AND id = ?")
+            .run(command.folderId, command.projectId, command.artifactId);
+        }
+        return published;
+      }),
     );
   }
 
@@ -4760,7 +4773,7 @@ export class SqliteArtifactRepository implements
       throw new Error("This SQLite database uses a newer schema than this build supports.");
     }
     if (previousSchemaVersion === requiredSqliteSchemaVersion) return;
-    if (previousSchemaVersion === 12) {
+    if (previousSchemaVersion >= 12) {
       this.#migrateFolders();
       return;
     }
@@ -4961,7 +4974,12 @@ export class SqliteArtifactRepository implements
       if (version > requiredSqliteSchemaVersion) {
         throw new Error("This SQLite database uses a newer schema than this build supports.");
       }
-      if (version < requiredSqliteSchemaVersion) migrateSqliteFolders(this.#database);
+      if (version < folderSchemaVersion) migrateSqliteFolders(this.#database);
+    });
+    this.#transaction(() => {
+      if (this.#schemaVersion() < folderLinkSchemaVersion) {
+        migrateSqliteFolderLinks(this.#database);
+      }
     });
   }
 

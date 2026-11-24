@@ -62,10 +62,12 @@ const gitHistoryCapabilitySchema = z.object({
 const deploymentCapabilitiesSchema = z.object({
   gitHistory: gitHistoryCapabilitySchema.default(disabledGitHistoryCapability),
   linkedArtifacts: z.boolean(),
+  linkedFolders: z.boolean().default(false),
   folders: z.boolean().default(false),
 }).default({
   gitHistory: disabledGitHistoryCapability,
   linkedArtifacts: false,
+  linkedFolders: false,
   folders: false,
 });
 

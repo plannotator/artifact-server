@@ -186,8 +186,9 @@ export class SqliteFolders implements FolderRepository, ArtifactPlacementReposit
   private deleteFolder(command: PlacementWrite, current: FolderRecord): FolderRecord {
     const child = this.database.prepare(`
       SELECT 1 FROM folders WHERE parent_folder_id = ? AND project_id = ?
-      UNION ALL SELECT 1 FROM artifacts WHERE folder_id = ? AND project_id = ? LIMIT 1
-    `).get(current.id, current.projectId, current.id, current.projectId);
+      UNION ALL SELECT 1 FROM artifacts WHERE folder_id = ? AND project_id = ?
+      UNION ALL SELECT 1 FROM folder_links WHERE folder_id = ? AND project_id = ? LIMIT 1
+    `).get(current.id, current.projectId, current.id, current.projectId, current.id, current.projectId);
     if (child !== undefined) {
       throw new FolderFailure({reason: "not-empty", message: "Only empty folders can be deleted."});
     }

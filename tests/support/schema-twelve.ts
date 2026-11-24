@@ -1,13 +1,18 @@
 import type {DatabaseSync} from "node:sqlite";
 import {z} from "zod";
 
-/** Remove the schema 13 additions from a populated runtime-built fixture. */
+/** Remove the schema 13 and later additions from a populated runtime-built fixture. */
 export function downgradeToSchemaTwelve(database: DatabaseSync): void {
   const triggers = z.array(z.object({sql: z.string()})).parse(database.prepare(
     "SELECT sql FROM sqlite_schema WHERE type = 'trigger' AND tbl_name = 'idempotency_records'",
   ).all());
   database.exec(`
     BEGIN IMMEDIATE;
+    DROP TABLE IF EXISTS folder_entry_live_grants;
+    DROP TABLE IF EXISTS folder_link_captures;
+    DROP TABLE IF EXISTS folder_inventory;
+    DROP TABLE IF EXISTS folder_links;
+    DROP INDEX IF EXISTS artifacts_source_path;
     DROP INDEX artifacts_folder_catalog;
     ALTER TABLE artifacts DROP COLUMN folder_id;
     ALTER TABLE artifacts DROP COLUMN file_kind;

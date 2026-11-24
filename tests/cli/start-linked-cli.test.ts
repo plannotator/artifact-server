@@ -29,6 +29,7 @@ const sessionSchema = z.object({
     }).strict(),
     folders: z.boolean(),
     linkedArtifacts: z.boolean(),
+    linkedFolders: z.boolean(),
   }).strict(),
 }).loose();
 const linkedPublicationSchema = z.object({

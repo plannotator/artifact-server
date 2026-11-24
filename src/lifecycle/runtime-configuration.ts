@@ -729,6 +729,17 @@ function assertLinkedFilesAreLocalOnly(
   );
 }
 
+/** Parse `ARTIFACT_SERVER_LINKED_FOLDER_WATCH` for the local server (default on). */
+export function parseLinkedFolderWatchMode(
+  environment: NodeJS.ProcessEnv,
+): Effect.Effect<"off" | "on", RuntimeConfigurationError> {
+  return parseRequiredEnvironment(
+    "ARTIFACT_SERVER_LINKED_FOLDER_WATCH",
+    environment["ARTIFACT_SERVER_LINKED_FOLDER_WATCH"] ?? "on",
+    linkedFilesModeSchema,
+  );
+}
+
 /** Parse `ARTIFACT_SERVER_LINK_ROOTS` for any local-server entry point. */
 export function parseLinkRoots(
   environment: NodeJS.ProcessEnv,

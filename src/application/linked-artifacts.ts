@@ -9,6 +9,7 @@ import {
   ContentSessionRequired,
   InvalidLinkPath,
   isArtifactServerFailure,
+  SourceMoved,
   type AuthorizationDenied,
   type BlobStorageFailure,
   type IdempotencyConflict,
@@ -206,6 +207,7 @@ export type LinkedArtifactFailure =
   | PublishConflict
   | SourceDrifted
   | SourceMissing
+  | SourceMoved
   | SourceUnreadable
   | ArtifactRepositoryFailure
   | BlobStorageFailure
@@ -225,11 +227,28 @@ export interface LinkedArtifactReadCommand {
 
 /** Input for linking one server-machine file as a new artifact. */
 export interface LinkArtifactCommand {
+  /**
+   * When set, the canonical path must equal it exactly or the link is refused
+   * as source-moved (a linked-folder capture re-verifying its scan).
+   */
+  readonly expectedCanonicalPath?: string;
+  /** Placement inside the project; omitted links at the project root. */
+  readonly folderId?: string;
   readonly idempotencyKey: string;
   readonly name?: string;
   readonly path: string;
   readonly principal: Principal;
   readonly projectId: string | null;
+}
+
+/** Input for capturing a linked source against whatever version is current. */
+export interface CaptureCurrentCommand extends LinkedArtifactReadCommand {
+  readonly idempotencyKey: string;
+}
+
+/** One capture outcome that says whether history changed. */
+export interface CurrentCapture extends LinkedPublication {
+  readonly changed: boolean;
 }
 
 /** Input for capturing one linked source's current bytes as a version. */
@@ -299,6 +318,9 @@ interface LinkedArtifactOperations {
   readonly captureArtifact: (
     command: CaptureArtifactCommand,
   ) => Effect.Effect<LinkedPublication, LinkedArtifactFailure>;
+  readonly captureCurrent: (
+    command: CaptureCurrentCommand,
+  ) => Effect.Effect<CurrentCapture, LinkedArtifactFailure>;
   readonly captureForComment: (
     command: CaptureForCommentCommand,
   ) => Effect.Effect<
@@ -393,6 +415,7 @@ function makeDisabledLinkedArtifactService(): LinkedArtifactOperations {
   return LinkedArtifactService.of({
     authorizeLiveRead: unavailable,
     captureArtifact: unavailable,
+    captureCurrent: unavailable,
     captureForComment: () => Effect.succeed(null),
     describeCapability: () => Effect.succeed({linkedArtifacts: false}),
     issueLiveBootstrap: unavailable,
@@ -518,6 +541,14 @@ function makeLinkedArtifactService(
       );
       const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
       const canonical = yield* runLadder(command.path);
+      if (
+        command.expectedCanonicalPath !== undefined
+        && canonical !== command.expectedCanonicalPath
+      ) {
+        return yield* new SourceMoved({
+          message: "The source path changed after it was observed.",
+        });
+      }
       const entryPath = fileNameOf(canonical);
       const name = command.name ?? entryPath;
       const inputDigest = linkInputDigest({
@@ -570,7 +601,7 @@ function makeLinkedArtifactService(
             commitTime,
           );
           yield* storeCaptureBlob(capture);
-          return yield* dependencies.bindings.commitLinkedArtifact({
+          const commit: CommitLinkedArtifact = {
             accessSetting: accessSettings.accountRequired,
             artifactId: dependencies.ids.artifactId(),
             authorizedByPrincipalId: command.principal.authorizedByPrincipalId,
@@ -595,7 +626,12 @@ function makeLinkedArtifactService(
             },
             tags: [],
             versionId: dependencies.ids.versionId(),
-          });
+          };
+          return yield* dependencies.bindings.commitLinkedArtifact(
+            command.folderId === undefined
+              ? commit
+              : {...commit, folderId: command.folderId},
+          );
         });
       }
     },
@@ -733,6 +769,49 @@ function makeLinkedArtifactService(
         principal: command.principal,
         projectId: project.id,
       });
+    },
+  );
+
+  const captureCurrent = Effect.fn("LinkedArtifactService.captureCurrent")(
+    function*(command: CaptureCurrentCommand): Effect.fn.Return<
+      CurrentCapture,
+      LinkedArtifactFailure
+    > {
+      yield* authorization.requireVersionPublication(command.principal);
+      const project = yield* resolveProject(
+        command.principal,
+        command.projectId,
+      );
+      const binding = yield* requireBinding(project.id, command.artifactId);
+      const current = yield* dependencies.publication.findCurrentVersion(
+        project.id,
+        command.artifactId,
+      );
+      if (current === null) {
+        return yield* new ArtifactNotFound({
+          message: "The artifact does not exist.",
+        });
+      }
+      const observation = yield* runEngine(() =>
+        dependencies.engine.refreshFreshness(binding.path, binding.fingerprint)
+      );
+      if (observation.freshness === "in-sync") {
+        const refreshed = yield* recordObservation(binding, observation);
+        return {
+          binding: refreshed,
+          changed: false,
+          published: {...current, replayed: true},
+        };
+      }
+      const publication = yield* capturePublication({
+        artifactId: command.artifactId,
+        binding,
+        expectedCurrentVersionId: current.version.id,
+        idempotencyKey: command.idempotencyKey,
+        principal: command.principal,
+        projectId: project.id,
+      });
+      return {...publication, changed: true};
     },
   );
 
@@ -997,6 +1076,7 @@ function makeLinkedArtifactService(
   return LinkedArtifactService.of({
     authorizeLiveRead,
     captureArtifact,
+    captureCurrent,
     captureForComment,
     describeCapability,
     issueLiveBootstrap,

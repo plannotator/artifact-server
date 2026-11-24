@@ -40,6 +40,7 @@ const sessionSchema = z.object({
     gitHistory: z.unknown(),
     folders: z.boolean(),
     linkedArtifacts: z.boolean(),
+    linkedFolders: z.boolean(),
   }).strict(),
 }).loose();
 
