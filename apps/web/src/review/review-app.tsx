@@ -1010,6 +1010,9 @@ function ArtifactReview({
     && session.principal.membershipRole === "administrator"
   ) || session.principal.capabilities.includes("artifact:manage:any");
   const previewKind = reviewPreviewKind(selectedVersion, selectedPath);
+  // Markdown renders in the same review sandbox as HTML, so it annotates too.
+  const previewAnnotatable = previewKind === "html"
+    || reviewEntryIsMarkdown(selectedVersion, selectedPath);
   const download = reviewDownload(
     projectId,
     selectedArtifactId,
@@ -1710,7 +1713,7 @@ function ArtifactReview({
                   inert={focusControlsCollapsed}
                   role="toolbar"
                 >
-                  {previewKind === "html" && canComment ? (
+                  {previewAnnotatable && canComment ? (
                     <button
                       aria-pressed={htmlAnnotateModeActive}
                       className="as-button as-focus-controls__button"
@@ -1845,7 +1848,7 @@ function ArtifactReview({
               )}
             </div>
             <div className="as-preview-header__actions">
-              {previewKind === "html" && canComment ? (
+              {previewAnnotatable && canComment ? (
                 <button
                   aria-label={htmlAnnotateModeActive
                     ? reviewAppText.focus.annotateModeDescription
@@ -2950,6 +2953,20 @@ function reviewPreviewKind(
     return "media";
   }
   return "other";
+}
+
+function reviewEntryIsMarkdown(
+  version: ArtifactVersion | null,
+  selectedPath: string | null,
+): boolean {
+  if (version === null) return false;
+  const path = selectedPath ?? version.manifest.entryPath;
+  const mediaType = version.manifest.entries
+    .find((entry) => entry.path === path)
+    ?.mediaType.split(";", 1)[0]
+    ?.trim()
+    .toLowerCase();
+  return mediaType === "text/markdown" || mediaType === "text/x-markdown";
 }
 
 function compactId(value: string): string {
