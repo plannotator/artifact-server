@@ -246,7 +246,9 @@ export async function createLocalRuntime(
     stagingCleanupPolicy,
   };
   if (foldersAvailable) {
-    applicationAdapters = {...applicationAdapters, folders: repository.folders, trash: repository.trash};
+    applicationAdapters = {
+      ...applicationAdapters, folders: repository.folders, trash: repository.trash, fileCatalog: repository.fileCatalog,
+    };
   }
   if (gitHistoryProvider !== null) {
     Object.assign(applicationAdapters, {gitHistoryProvider});

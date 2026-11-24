@@ -21,6 +21,7 @@ import {
   apiHeaders, createTestInstallation, fetchVersion, removeTestInstallation, reserveLoopbackPort,
   startTestServer, type RunningTestServer, type TestInstallation,
 } from "../support/runtime-harness.js";
+import {requiredSqliteSchemaVersion} from "../../src/storage/sqlite-schema.js";
 import {downgradeToSchemaThirteen} from "../support/schema-thirteen.js";
 import {startStubOidcProvider} from "../support/stub-oidc-provider.js";
 
@@ -429,7 +430,7 @@ describe("recoverable trash, recover and purge", () => {
       database.prepare("UPDATE artifacts SET deleted_at = ? WHERE id = ?").run("2026-11-01T00:00:00.000Z", old.artifact.id);
     });
     server = await startTestServer(installation);
-    expect(readDatabase((database) => database.prepare("PRAGMA user_version").get())).toEqual({user_version: 14});
+    expect(readDatabase((database) => database.prepare("PRAGMA user_version").get())).toEqual({user_version: requiredSqliteSchemaVersion});
     expect((await trash()).items).toMatchObject([{id: old.artifact.id, trashGroupId: null, trashedAt: "2026-11-01T00:00:00.000Z"}]);
     const recovered = artifactRecovery.parse(await (await request(`${routeFor(old)}/recover`, "POST")).json());
     expect(recovered.artifact).toMatchObject({id: old.artifact.id, currentVersionId: second.body.version.id});

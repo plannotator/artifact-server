@@ -29,6 +29,7 @@ import {localOwnerBrowserAccess} from "../core/browser-access.js";
 import {configureLifecycleCommands} from "./lifecycle-commands.js";
 import {configureCliAuthCommands} from "./cli-auth-commands.js";
 import {configureFolderCommands} from "./folder-commands.js";
+import {configureFileCommands} from "./file-commands.js";
 import {configureLinkCommand} from "./link-command.js";
 import {configureMcpOnboardingCommands} from "./mcp-onboarding-commands.js";
 import {configurePublishCommand} from "./publish-command.js";
@@ -80,6 +81,7 @@ configureLinkCommand(program, {
   defaultProfileDirectory: defaultUserDataDirectory,
 });
 configureFolderCommands(program, defaultUserDataDirectory);
+configureFileCommands(program, defaultUserDataDirectory);
 configureOpenManagementCommand(program, defaultUserDataDirectory);
 configureDirectLocalStart(program);
 configureLifecycleCommands(program, {build: productBuild});

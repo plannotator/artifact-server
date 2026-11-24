@@ -1,6 +1,13 @@
 import {ArtifactPlacementService, FolderService} from "../application/folders.js";
 import type {ArtifactLocation} from "../core/folders.js";
 import {TrashService} from "../application/trash.js";
+import {FileCatalogService} from "../application/file-catalog.js";
+import {BatchService} from "../application/batch.js";
+import {batchOperations, maximumBatchItems} from "../core/batch.js";
+import {fileKinds, maximumFilePageSize} from "../core/file-catalog.js";
+import {
+  batchFields, batchResponse, fileListCommand, fileListFields, filePageResponse,
+} from "../http/file-catalog-protocol.js";
 import {decodeTrashCursor, trashPageResponse} from "../http/trash-protocol.js";
 import {maximumTrashPageSize} from "../core/trash.js";
 import {
@@ -90,6 +97,7 @@ import {
 import {
   AgentNotFound,
   ArtifactNotFound,
+  CapabilityUnavailable,
   InvalidComment,
   InvalidDispatch,
   InvalidPagination,
@@ -643,6 +651,12 @@ export function createArtifactMcpServer(
         folders: z.object({available: z.boolean()}),
         crossProjectMove: z.object({available: z.boolean()}),
         trash: z.object({available: z.boolean(), purge: z.literal("human-only")}),
+        fileOverview: z.object({available: z.boolean(), maximumPageSize: z.number().int()}),
+        batch: z.object({
+          available: z.boolean(),
+          maximumItems: z.number().int(),
+          operations: z.array(z.enum(batchOperations)),
+        }),
         projects: z.object({
           omittedProjectRule: z.string(),
           scope: z.literal("project"),
@@ -1082,6 +1096,88 @@ export function createArtifactMcpServer(
       (service) => service.moveToProject({...input, projectId, idempotencyKey, principal: identity.principal}),
     )),
   })));
+
+  const fileItemSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    projectId: z.string(),
+    projectName: z.string(),
+    folderId: z.string().nullable(),
+    folderPath: z.array(z.object({id: z.string(), name: z.string()})),
+    fileKind: z.enum(fileKinds),
+    currentVersionId: z.string(),
+    currentVersionNumber: z.number().int(),
+    size: z.number().int(),
+    entryMediaType: z.string(),
+    tags: z.array(z.string()),
+    commentCount: z.number().int(),
+    versionCount: z.number().int(),
+    accessSetting: accessSettingSchema,
+    linked: z.enum(["in-sync", "modified", "missing", "unreadable"]).nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  });
+  const countSchema = z.number().int().nonnegative();
+
+  registerNudgedTool("file_search", {
+    title: "Search files across projects",
+    description: "List non-trashed artifacts across readable projects, newest change first by default, " +
+      "filtered by project, folder subtree, file kind, tag, linked state, created or updated time, and name. " +
+      "Values of one filter combine with OR; different filters combine with AND. Facet counts describe the same filters.",
+    inputSchema: z.object({...fileListFields, includeFacets: z.boolean().default(true)}).strict(),
+    outputSchema: z.object({
+      items: z.array(fileItemSchema),
+      nextCursor: z.string().nullable(),
+      facets: z.object({
+        total: countSchema,
+        kinds: z.array(z.object({kind: z.enum(fileKinds), count: countSchema})),
+        projects: z.array(z.object({projectId: z.string(), count: countSchema})),
+        tags: z.array(z.object({tag: z.string(), count: countSchema})),
+      }).nullable(),
+    }),
+    annotations: readOnlyAnnotations,
+  }, async ({includeFacets, ...input}) => toolResult(async () => {
+    const command = fileListCommand(identity.principal, input);
+    const page = filePageResponse(await runMcpApplicationEffect(dependencies, FileCatalogService.use(
+      (service) => service.list(command),
+    )));
+    const facets = includeFacets
+      ? await runMcpApplicationEffect(dependencies, FileCatalogService.use((service) => service.facets(command)))
+      : null;
+    return {...page, facets};
+  }));
+
+  registerNudgedTool("batch_apply", {
+    title: "Apply one operation to many items",
+    description: `Apply ${batchOperations.join(", ")} to 1..${maximumBatchItems} distinct artifacts or folders. ` +
+      "Each item runs alone with its own guard (expectedCurrentVersionId or expectedRevision) and reports ok, conflict, not-found, or refused in request order; " +
+      "one failure never undoes the others. Replaying the same idempotencyKey returns the same results. " +
+      "Purge stays human-only and needs confirm set to \"purge <n> items\".",
+    inputSchema: z.object(batchFields).strict(),
+    outputSchema: z.object({
+      operation: z.enum(batchOperations),
+      results: z.array(z.object({
+        index: z.number().int(),
+        item: z.object({kind: z.enum(["artifact", "folder"]), projectId: z.string()}).loose(),
+        status: z.enum(["ok", "conflict", "not-found", "refused"]),
+        result: z.object({}).loose().optional(),
+        error: z.object({code: z.string(), message: z.string()}).loose().optional(),
+      })),
+    }),
+    annotations: destructiveWriteAnnotations,
+  }, async (input) => toolResult(async () => {
+    if (dependencies.folders !== true) {
+      throw new CapabilityUnavailable({message: "The file overview and batch operations are unavailable on this deployment."});
+    }
+    return batchResponse(await runMcpApplicationEffect(dependencies, BatchService.use((service) => service.run({
+      principal: identity.principal,
+      operation: input.operation,
+      items: input.items,
+      parameters: input.params,
+      idempotencyKey: input.idempotencyKey,
+      confirm: input.confirm ?? null,
+    }))));
+  }));
 
   registerNudgedTool(
     "artifact_list",
@@ -2595,6 +2691,8 @@ function capabilities(
     folders: {available: folders},
     crossProjectMove: {available: folders},
     trash: {available: trash, purge: "human-only" as const},
+    fileOverview: {available: folders, maximumPageSize: maximumFilePageSize},
+    batch: {available: folders, maximumItems: maximumBatchItems, operations: [...batchOperations]},
     agentDispatch: {
       bundleThreadRule:
         "1..100 open, undispatched comment threads from one project per bundle",

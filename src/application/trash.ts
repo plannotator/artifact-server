@@ -33,7 +33,10 @@ export type RecoverInput =
   | {readonly kind: "artifact"; readonly artifactId: string}
   | {readonly kind: "folder"; readonly folderId: string; readonly name?: string | undefined};
 
-export type PurgeInput = PurgeTrash;
+/** A purge sent alone always names the item; only a confirmed batch omits it. */
+export type PurgeInput =
+  | {readonly kind: "artifact"; readonly artifactId: string; readonly confirmation: string}
+  | {readonly kind: "folder"; readonly folderId: string; readonly confirmation: string};
 
 /** Lists, recovers, and purges trashed artifacts and folder trash groups (ADR 0030). */
 export class TrashService extends Context.Service<TrashService, ReturnType<typeof trashOperations>>()(
@@ -89,7 +92,7 @@ function trashOperations(
       repository.recover(writeContext(command, project, clock, key, digest(command.principal, ["recover", target])), target));
   });
 
-  const purge = Effect.fn("TrashService.purge")(function*(command: TrashWriteCommand, target: PurgeInput) {
+  const purgeTarget = Effect.fn("TrashService.purgeTarget")(function*(command: TrashWriteCommand, target: PurgeTrash) {
     if (repository === undefined) return yield* unavailable();
     yield* requirePurge(command.principal);
     const project = yield* projects.resolveActiveProject(command);
@@ -98,7 +101,19 @@ function trashOperations(
       repository.purge(writeContext(command, project, clock, key, digest(command.principal, ["purge", target])), target));
   });
 
-  return {list, recover, purge};
+  const purge = Effect.fn("TrashService.purge")(function*(command: TrashWriteCommand, target: PurgeInput) {
+    return yield* purgeTarget(command, target);
+  });
+
+  /** One purge-batch item: the batch's typed count already confirmed every item. */
+  const purgeBatchItem = Effect.fn("TrashService.purgeBatchItem")(function*(
+    command: TrashWriteCommand,
+    target: {readonly kind: "artifact"; readonly artifactId: string} | {readonly kind: "folder"; readonly folderId: string},
+  ) {
+    return yield* purgeTarget(command, {...target, confirmation: null});
+  });
+
+  return {list, recover, purge, purgeBatchItem};
 }
 
 /**

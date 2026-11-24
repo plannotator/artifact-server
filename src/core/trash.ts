@@ -89,6 +89,10 @@ export type RecoverTrash =
   | {readonly kind: "artifact"; readonly artifactId: string}
   | {readonly kind: "folder"; readonly folderId: string; readonly label: FolderName | null};
 
+/**
+ * The typed confirmation is the item's exact name. `null` is reserved for a
+ * purge batch whose typed item count was already matched before any work.
+ */
 export type PurgeTrash =
-  | {readonly kind: "artifact"; readonly artifactId: string; readonly confirmation: string}
-  | {readonly kind: "folder"; readonly folderId: string; readonly confirmation: string};
+  | {readonly kind: "artifact"; readonly artifactId: string; readonly confirmation: string | null}
+  | {readonly kind: "folder"; readonly folderId: string; readonly confirmation: string | null};

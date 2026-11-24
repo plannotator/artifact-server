@@ -2,6 +2,8 @@ import {folderSqliteSchemaVersion, migrateSqliteFolders, writeSqliteCurrentFileM
 import {migrateSqliteTrash, trashSqliteSchemaVersion} from "./sqlite-trash-schema.js";
 import {SqliteFolders} from "./sqlite-folders.js";
 import {SqliteTrash} from "./sqlite-trash.js";
+import {SqliteFileCatalog} from "./sqlite-file-catalog.js";
+import {fileCatalogSqliteSchemaVersion, migrateSqliteFileCatalog} from "./sqlite-file-catalog-schema.js";
 
 import { DatabaseSync } from "node:sqlite";
 
@@ -566,6 +568,7 @@ export class SqliteArtifactRepository implements
   readonly #installationId: string;
   readonly folders: SqliteFolders;
   readonly trash: SqliteTrash;
+  readonly fileCatalog: SqliteFileCatalog;
 
   constructor(databasePath: string, installationId = "local") {
     this.#installationId = installationId;
@@ -595,6 +598,7 @@ export class SqliteArtifactRepository implements
       (projectId, artifactId, createdAt) =>
         this.#queueGitHistoryDeletionIfPresent(projectId, artifactId, createdAt),
     );
+    this.fileCatalog = new SqliteFileCatalog(this.#database);
   }
 
   createProject(command: ProjectRecord): Promise<ProjectRecord> {
@@ -4995,6 +4999,7 @@ export class SqliteArtifactRepository implements
       }
       if (version < folderSqliteSchemaVersion) migrateSqliteFolders(this.#database);
       if (version < trashSqliteSchemaVersion) migrateSqliteTrash(this.#database);
+      if (version < fileCatalogSqliteSchemaVersion) migrateSqliteFileCatalog(this.#database);
     });
   }
 

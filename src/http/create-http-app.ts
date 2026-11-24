@@ -1,5 +1,10 @@
 import {ArtifactPlacementService, FolderService} from "../application/folders.js";
 import {TrashService} from "../application/trash.js";
+import {FileCatalogService} from "../application/file-catalog.js";
+import {BatchService} from "../application/batch.js";
+import {
+  batchRequestSchema, batchResponse, fileListCommand, filePageResponse, parseFileQuery,
+} from "./file-catalog-protocol.js";
 import {
   decodeTrashCursor, folderRecoverSchema, purgeSchema, trashPageQuerySchema, trashPageResponse,
 } from "./trash-protocol.js";
@@ -1051,6 +1056,8 @@ export function createHttpApp(
         folders: dependencies.folders === true,
         crossProjectMove: dependencies.folders === true,
         trash: dependencies.trash === true,
+        fileOverview: dependencies.folders === true,
+        batch: dependencies.folders === true,
       },
       principal: context.get("principal"),
     }));
@@ -1766,6 +1773,38 @@ export function createHttpApp(
       ),
     ));
     return context.json(purge);
+  });
+
+  const fileOverviewUnavailable = (context: Context<HttpEnvironment>, next: Next) =>
+    dependencies.folders === true ? next() : context.json({
+      error: {code: errorCodes.capabilityUnavailable, message: "The file overview and batch operations are unavailable on this deployment."},
+    }, 501);
+
+  app.get("/api/v1/files", fileOverviewUnavailable, async (context) => {
+    const page = await runHttpApplicationEffect(context, dependencies, FileCatalogService.use(
+      (service) => service.list(fileQueryCommand(context)),
+    ));
+    return context.json(filePageResponse(page));
+  });
+
+  app.get("/api/v1/files/facets", fileOverviewUnavailable, async (context) => {
+    const facets = await runHttpApplicationEffect(context, dependencies, FileCatalogService.use(
+      (service) => service.facets(fileQueryCommand(context)),
+    ));
+    return context.json({facets});
+  });
+
+  app.post("/api/v1/batch", fileOverviewUnavailable, boundedJsonBody, async (context) => {
+    const body = batchRequestSchema.parse(await context.req.json());
+    const batch = await runHttpApplicationEffect(context, dependencies, BatchService.use((service) => service.run({
+      principal: context.get("principal"),
+      operation: body.operation,
+      items: body.items,
+      parameters: body.params,
+      idempotencyKey: body.idempotencyKey,
+      confirm: body.confirm ?? null,
+    })));
+    return context.json(batchResponse(batch));
   });
 
   app.patch("/api/v1/artifacts/:artifactId/name", placementUnavailable, boundedJsonBody, async (context) => {
@@ -2768,6 +2807,14 @@ export function createHttpApp(
   });
 
   return app;
+}
+
+/** Decode the overview query string, including repeated filters, for the signed-in principal. */
+function fileQueryCommand(context: Context<HttpEnvironment>) {
+  return fileListCommand(context.get("principal"), parseFileQuery({
+    single: context.req.query(),
+    repeated: (name) => context.req.queries(name) ?? [],
+  }));
 }
 
 function apiBearerChallenge(

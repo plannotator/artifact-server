@@ -278,6 +278,18 @@ export class InvalidPagination extends Schema.TaggedError<InvalidPagination>()(
   messageField,
 ) {}
 
+/** A file overview filter is malformed, such as an unknown time or folder identity. */
+export class InvalidFileFilter extends Schema.TaggedError<InvalidFileFilter>()(
+  "InvalidFileFilter",
+  messageField,
+) {}
+
+/** A batch was refused before any item ran: empty, too large, repeated, or unconfirmed. */
+export class InvalidBatch extends Schema.TaggedError<InvalidBatch>()(
+  "InvalidBatch",
+  messageField,
+) {}
+
 /** A manifest contains no files. */
 export class EmptyManifest extends Schema.TaggedError<EmptyManifest>()(
   "EmptyManifest",
@@ -455,6 +467,8 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
       "listTrash",
       "recoverTrash",
       "purgeTrash",
+      "listFiles",
+      "fileFacets",
       "findTrashedThreadHold",
       "listCommentReplies",
       "listCommentThreads",
@@ -562,6 +576,8 @@ const artifactServerFailureSchema = Schema.Union([
   InvalidArtifactTags,
   InvalidIdempotencyKey,
   InvalidPagination,
+  InvalidFileFilter,
+  InvalidBatch,
   EmptyManifest,
   MissingManifestEntry,
   InvalidManifestFile,

@@ -262,7 +262,7 @@ function mutation(options: FolderOptions, method: string, body?: FolderRequest):
   return body === undefined ? init : {...init, body: JSON.stringify(body)};
 }
 
-async function printRequest(connection: CliServerConnection, path: string, init?: RequestInit): Promise<void> {
+export async function printRequest(connection: CliServerConnection, path: string, init?: RequestInit): Promise<void> {
   console.log(JSON.stringify(await request(connection, path, init), null, 2));
 }
 

@@ -1,5 +1,7 @@
 import type {ArtifactPlacementService, FolderService} from "./folders.js";
 import type {TrashService} from "./trash.js";
+import type {FileCatalogService} from "./file-catalog.js";
+import type {BatchService} from "./batch.js";
 import { Effect, type ManagedRuntime, Result, type Tracer } from "effect";
 
 import type { AgentDispatchService } from "./agent-dispatch.js";
@@ -31,6 +33,8 @@ export type ApplicationServices =
   | ArtifactPlacementService
   | FolderService
   | TrashService
+  | FileCatalogService
+  | BatchService
   | AuthenticationService
   | AuthorizationService
   | CompareArtifactService
