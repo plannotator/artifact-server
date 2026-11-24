@@ -1,3 +1,5 @@
+import {type ArtifactPlacementService, type FolderService, folderPlacementLayer} from "../application/folders.js";
+import type {ArtifactPlacementRepository, FolderRepository} from "../core/ports.js";
 import {createHash, randomUUID, timingSafeEqual} from "node:crypto";
 
 import { DateTime, Effect, Layer, Redacted } from "effect";
@@ -156,6 +158,7 @@ export interface ApplicationAdapters {
   readonly blobs: BlobStore;
   readonly bootstrapAdministratorEmail: string;
   readonly clock: Clock;
+  readonly folders?: FolderRepository & ArtifactPlacementRepository;
   readonly externalApiBearerVerifier: BearerCredentialVerifier | null;
   readonly externalMcpBearerVerifier: BearerCredentialVerifier | null;
   readonly externalMcpOAuthVerifier: ExternalMcpBearerVerifier | null;
@@ -234,6 +237,8 @@ export function createApplicationLayer(
   | AuthenticationService
   | ArtifactCommentService
   | ArtifactManagementService
+  | ArtifactPlacementService
+  | FolderService
   | AuthorizationService
   | CompareArtifactService
   | ContentAccessService
@@ -1171,8 +1176,12 @@ export function createApplicationLayer(
   const comparisonLayer = CompareArtifactService.layer(
     comparisonDependencies,
   ).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)));
+  const foldersLayer = folderPlacementLayer(adapters.folders, adapters.clock, adapters.ids).pipe(
+    Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)),
+  );
   return Layer.mergeAll(
     authenticationLayer,
+    foldersLayer,
     commentLayer,
     dispatchLayer,
     identityLayer,

@@ -1,3 +1,9 @@
+import {ArtifactPlacementService, FolderService} from "../application/folders.js";
+import {
+  artifactMoveSchema, artifactPageItems, artifactRenameSchema, createFolderSchema,
+  decodeFolderCursor, folderContentsResponse, folderCreateKey, folderIdSchema,
+  folderLocationSchema, folderRevisionSchema, updateFolderSchema,
+} from "./folder-protocol.js";
 import {
   buildOAuthProtectedResourceMetadata,
   getOAuthProtectedResourceMetadataUrl,
@@ -5,7 +11,7 @@ import {
   type OAuthMetadata,
 } from "@modelcontextprotocol/server";
 import {Clock, Effect, Exit, Redacted, type Tracer} from "effect";
-import { type Context, Hono } from "hono";
+import { type Context, Hono, type Next } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {routePath} from "hono/route";
@@ -372,6 +378,10 @@ const artifactPageQuerySchema = pageQuerySchema.extend({
   sort: z.enum(["comments", "newest"]).default("newest"),
   tags: z.array(z.string().max(200)).max(20).default([]),
 });
+const folderPageQuerySchema = artifactPageQuerySchema.extend({
+  cursor: z.string().max(8_192).optional(),
+  foldersOnly: z.enum(["true", "false"]).optional(),
+});
 const publicLinksPageQuerySchema = pageQuerySchema.omit({search: true});
 const insightsQuerySchema = z.object({
   window: z.enum(insightWindows).default(defaultInsightWindow),
@@ -495,6 +505,7 @@ export interface HttpAppDependencies {
    * the enforcing guard; this flag only shapes discovery and fast gating.
    */
   readonly linkedArtifacts?: boolean;
+  readonly folders?: boolean;
   readonly mcpOAuthResource?: McpOAuthResourceConfiguration;
   readonly readiness?: ReadinessProbe;
   readonly runtimeLifecycle?: RuntimeLifecycle;
@@ -564,6 +575,7 @@ export function createHttpApp(
     contentDomain: dependencies.contentDomain,
     gitHistory,
     linkedArtifacts: dependencies.linkedArtifacts === true,
+    folders: dependencies.folders === true,
     mode: dependencies.trustedApplicationOrigin === null ? "local" : "remote",
     oauthResource: dependencies.mcpOAuthResource?.resource ?? null,
   });
@@ -1028,6 +1040,7 @@ export function createHttpApp(
       capabilities: {
         gitHistory: gitHistory.read(),
         linkedArtifacts: dependencies.linkedArtifacts === true,
+        folders: dependencies.folders === true,
       },
       principal: context.get("principal"),
     }));
@@ -1618,6 +1631,97 @@ export function createHttpApp(
     });
   });
 
+  const folderCollection = "/api/v1/projects/:projectId/folders";
+  const folderRoute = `${folderCollection}/:folderId` as const;
+  const placementUnavailable = (context: Context<HttpEnvironment>, next: Next) =>
+    dependencies.folders === true ? next() : context.json({
+      error: {code: errorCodes.capabilityUnavailable, message: "Folders and in-project placement are unavailable on this deployment."},
+    }, 501);
+  const folderWriteContext = (context: Context<HttpEnvironment>, id?: string) => ({
+    principal: context.get("principal"),
+    projectId: projectIdSchema.parse(context.req.param("projectId")),
+    idempotencyKey: folderCreateKey(id, context.req.header("idempotency-key")),
+  });
+
+  app.get(folderRoute, placementUnavailable, async (context) => {
+    const query = folderPageQuerySchema.parse({
+      ...context.req.query(),
+      tags: context.req.queries("tag") ?? [],
+    });
+    const page = await runHttpApplicationEffect(context, dependencies, FolderService.use(
+      (service) => service.list({
+        comments: query.comments,
+        cursor: decodeFolderCursor(query.cursor ?? null),
+        folderId: folderLocationSchema.parse(context.req.param("folderId")),
+        foldersOnly: query.foldersOnly === "true",
+        limit: query.limit,
+        principal: context.get("principal"),
+        projectId: projectIdSchema.parse(context.req.param("projectId")),
+        search: query.search ?? null,
+        sort: query.sort,
+        tags: query.tags,
+      }),
+    ));
+    return context.json(folderContentsResponse(responseApplicationUrl(context, dependencies), page));
+  });
+
+  app.post(folderCollection, placementUnavailable, boundedJsonBody, async (context) => {
+    const body = createFolderSchema.strict().parse(await context.req.json());
+    const folder = await runHttpApplicationEffect(context, dependencies, FolderService.use(
+      (service) => service.write(folderWriteContext(context, body.id), {...body, kind: "create"}),
+    ));
+    return context.json({folder}, 201);
+  });
+
+  app.patch(folderRoute, placementUnavailable, boundedJsonBody, async (context) => {
+    const body = updateFolderSchema.strict().parse(await context.req.json());
+    const folder = await runHttpApplicationEffect(context, dependencies, FolderService.use(
+      (service) => service.write(folderWriteContext(context), {
+        ...body, kind: "update", id: folderIdSchema.parse(context.req.param("folderId")),
+      }),
+    ));
+    return context.json({folder});
+  });
+
+  app.delete(folderRoute, placementUnavailable, async (context) => {
+    const folder = await runHttpApplicationEffect(context, dependencies, FolderService.use(
+      (service) => service.write(folderWriteContext(context), {
+        kind: "delete",
+        id: folderIdSchema.parse(context.req.param("folderId")),
+        expectedRevision: z.coerce.number().pipe(folderRevisionSchema).parse(context.req.query("expectedRevision")),
+      }),
+    ));
+    return context.json({folder});
+  });
+
+  app.patch("/api/v1/artifacts/:artifactId/name", placementUnavailable, boundedJsonBody, async (context) => {
+    const body = artifactRenameSchema.strict().parse(await context.req.json());
+    const artifact = await runHttpApplicationEffect(context, dependencies, ArtifactPlacementService.use(
+      (service) => service.write({
+        artifactId: context.req.param("artifactId"),
+        projectId: requestedProjectId(context),
+        principal: context.get("principal"),
+        expectedCurrentVersionId: body.expectedCurrentVersionId,
+        idempotencyKey: requiredIdempotencyKey(context.req.header("idempotency-key")),
+      }, {kind: "rename", name: body.name}),
+    ));
+    return context.json({artifact});
+  });
+
+  app.post("/api/v1/artifacts/:artifactId/move", placementUnavailable, boundedJsonBody, async (context) => {
+    const body = artifactMoveSchema.strict().parse(await context.req.json());
+    const artifact = await runHttpApplicationEffect(context, dependencies, ArtifactPlacementService.use(
+      (service) => service.write({
+        artifactId: context.req.param("artifactId"),
+        projectId: requestedProjectId(context),
+        principal: context.get("principal"),
+        expectedCurrentVersionId: body.expectedCurrentVersionId,
+        idempotencyKey: requiredIdempotencyKey(context.req.header("idempotency-key")),
+      }, {kind: "move", toFolderId: body.toFolderId}),
+    ));
+    return context.json({artifact});
+  });
+
   app.get("/api/v1/artifacts", async (context) => {
     const query = artifactPageQuerySchema.parse({
       ...context.req.query(),
@@ -2183,7 +2287,7 @@ export function createHttpApp(
           })
         ),
       );
-      return context.json(deletionResponse(deletion));
+      return context.json({...deletionResponse(deletion), recoverable: false});
     },
   );
 
@@ -2503,8 +2607,8 @@ export function createHttpApp(
 
   app.onError(async (error, context) => {
     if (isArtifactServerFailure(error)) {
-      const response = httpFailure(error);
-      if (response.status >= 500) {
+      const {status, ...details} = httpFailure(error);
+      if (status >= 500) {
         await logAdapterFailure(
           dependencies.applicationRuntime,
           context.get("requestId"),
@@ -2513,7 +2617,7 @@ export function createHttpApp(
         );
       }
       const headers = new Headers();
-      if (response.status === 401) {
+      if (status === 401) {
         headers.set("Cache-Control", "private, no-store");
       }
       if (error._tag === "AuthenticationRequired") {
@@ -2523,10 +2627,10 @@ export function createHttpApp(
         );
       }
       return Response.json(
-        {error: {code: response.code, message: response.message}},
+        {error: details},
         {
           headers,
-          status: response.status,
+          status,
         },
       );
     }
@@ -2972,18 +3076,7 @@ function artifactPageResponse(
   page: ArtifactPage,
 ) {
   return {
-    artifacts: page.items.map(({commentCount, versionCount, ...artifact}) => ({
-      artifact,
-      commentCount,
-      links: {
-        artifact: artifactBrowserUrl(requestUrl, artifact.id),
-        management: new URL(
-          `/api/v1/artifacts/${artifact.id}`,
-          requestUrl,
-        ).toString(),
-      },
-      versionCount,
-    })),
+    artifacts: artifactPageItems(requestUrl, page.items),
     nextCursor: encodePageCursor(page.nextCursor),
   };
 }

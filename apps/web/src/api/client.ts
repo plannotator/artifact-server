@@ -62,9 +62,11 @@ const gitHistoryCapabilitySchema = z.object({
 const deploymentCapabilitiesSchema = z.object({
   gitHistory: gitHistoryCapabilitySchema.default(disabledGitHistoryCapability),
   linkedArtifacts: z.boolean(),
+  folders: z.boolean().default(false),
 }).default({
   gitHistory: disabledGitHistoryCapability,
   linkedArtifacts: false,
+  folders: false,
 });
 
 const sessionSchema = z.object({
@@ -128,6 +130,11 @@ const projectGitHistoryEstimateSchema = z.object({
 });
 
 const artifactSchema = z.object({
+  folderId: z.string().nullable().optional(),
+  fileKind: z.enum([
+    "site", "html", "markdown", "pdf", "image", "video", "audio", "code", "text", "data", "archive", "other",
+  ]).catch("other").optional(),
+  currentVersionCreatedAt: z.string().optional(),
   accessSetting: accessSettingSchema,
   createdAt: z.string(),
   currentVersionId: z.string(),
@@ -435,6 +442,8 @@ export interface ArtifactAction {
     | "comment_update"
     | "delete"
     | "link"
+    | "move"
+    | "rename"
     | "publish"
     | "relink"
     | "restore";
@@ -495,6 +504,32 @@ const artifactPageSchema: z.ZodType<ArtifactPage> = z.object({
   nextCursor: z.string().nullable(),
 });
 
+const folderSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  parentFolderId: z.string().nullable(),
+  name: z.string(),
+  revision: z.number().int().positive(),
+});
+export type Folder = z.infer<typeof folderSchema>;
+
+const folderMutationSchema = z.object({folder: folderSchema});
+const placementMutationSchema = z.object({artifact: z.object({
+  id: z.string(),
+  projectId: z.string(),
+  folderId: z.string().nullable(),
+  name: z.string(),
+  currentVersionId: z.string(),
+})});
+const folderPageSchema: z.ZodType<FolderPage> = z.intersection(artifactPageSchema, z.object({
+  breadcrumbs: z.array(folderSchema),
+  folders: z.array(folderSchema),
+}));
+export interface FolderPage extends ArtifactPage {
+  readonly breadcrumbs: readonly Folder[];
+  readonly folders: readonly Folder[];
+}
+
 const artifactDetailsSchema: z.ZodType<ArtifactDetails> = z.object({
   artifact: artifactSchema,
   current: artifactVersionSchema,
@@ -534,6 +569,8 @@ const actionSchema: z.ZodType<ArtifactAction> = z.object({
     "comment_update",
     "delete",
     "link",
+    "move",
+    "rename",
     "publish",
     "relink",
     "restore",
@@ -969,6 +1006,10 @@ async function requestNoContent(path: string, init: RequestInit): Promise<void> 
   }
 }
 
+function folderUrl(projectId: string, folderId: string | null): string {
+  return `/api/v1/projects/${encodeURIComponent(projectId)}/folders/${encodeURIComponent(folderId ?? "root")}`;
+}
+
 function projectQuery(projectId: string): string {
   return `projectId=${encodeURIComponent(projectId)}`;
 }
@@ -1100,17 +1141,51 @@ export const api = {
     search = "",
     options: {
       readonly comments?: "all" | "with" | "without";
+      readonly folderId?: string | null | undefined;
       readonly sort?: "comments" | "newest";
     } = {},
-  ) => {
+  ): Promise<ArtifactPage | FolderPage> => {
     const query = new URLSearchParams({ limit: "25", projectId });
     query.set("comments", options.comments ?? "all");
     query.set("sort", options.sort ?? "newest");
     if (cursor !== null) query.set("cursor", cursor);
     for (const tag of tags) query.append("tag", tag);
     if (search.trim() !== "") query.set("search", search.trim());
+    if (options.folderId !== undefined) {
+      return request(folderPageSchema, `${folderUrl(projectId, options.folderId)}?${query}`);
+    }
     return request(artifactPageSchema, `/api/v1/artifacts?${query}`);
   },
+  folders: (projectId: string, folderId: string | null, search = "", cursor: string | null = null) => {
+    const query = new URLSearchParams({foldersOnly: "true", search, limit: "50"});
+    if (cursor !== null) query.set("cursor", cursor);
+    return request(folderPageSchema, `${folderUrl(projectId, folderId)}?${query}`);
+  },
+  createFolder: (projectId: string, parentFolderId: string | null, name: string, key: string) => request(
+    folderMutationSchema,
+    `/api/v1/projects/${encodeURIComponent(projectId)}/folders`,
+    {method: "POST", headers: mutationHeaders(key), body: JSON.stringify({name, parentFolderId})},
+  ),
+  updateFolder: (folder: Folder, change: {name: string} | {parentFolderId: string | null}, key: string) => request(
+    folderMutationSchema,
+    folderUrl(folder.projectId, folder.id),
+    {method: "PATCH", headers: mutationHeaders(key), body: JSON.stringify({...change, expectedRevision: folder.revision})},
+  ),
+  deleteFolder: (folder: Folder, key: string) => request(
+    folderMutationSchema,
+    `${folderUrl(folder.projectId, folder.id)}?expectedRevision=${folder.revision}`,
+    {method: "DELETE", headers: mutationHeaders(key)},
+  ),
+  renameArtifact: (artifact: Artifact, name: string, key: string) => request(
+    placementMutationSchema,
+    `/api/v1/artifacts/${encodeURIComponent(artifact.id)}/name?${projectQuery(artifact.projectId)}`,
+    {method: "PATCH", headers: mutationHeaders(key), body: JSON.stringify({name, expectedCurrentVersionId: artifact.currentVersionId})},
+  ),
+  moveArtifact: (artifact: Artifact, toFolderId: string | null, key: string) => request(
+    placementMutationSchema,
+    `/api/v1/artifacts/${encodeURIComponent(artifact.id)}/move?${projectQuery(artifact.projectId)}`,
+    {method: "POST", headers: mutationHeaders(key), body: JSON.stringify({toFolderId, expectedCurrentVersionId: artifact.currentVersionId})},
+  ),
   artifact: (projectId: string, artifactId: string) => request(
     artifactDetailsSchema,
     `/api/v1/artifacts/${encodeURIComponent(artifactId)}?${projectQuery(projectId)}`,

@@ -1,3 +1,4 @@
+import {readCompactFolderProblems} from "./compact-folder-integrity.js";
 import {createHash} from "node:crypto";
 import {DatabaseSync} from "node:sqlite";
 import path from "node:path";
@@ -67,6 +68,7 @@ export type ProjectReferenceRow = typeof projectReferenceRowSchema.Type;
 
 /** Provider-neutral catalog consumed by the shared integrity checker. */
 export interface IntegrityCatalog {
+  readonly placementProblems?: readonly IntegrityProblem[];
   readonly artifacts: readonly ArtifactRow[];
   readonly entries: readonly EntryRow[];
   readonly projects: readonly ProjectRow[];
@@ -76,6 +78,7 @@ export interface IntegrityCatalog {
 
 /** One concrete inconsistency found without changing installation state. */
 export interface IntegrityProblem {
+  readonly folderId?: string;
   readonly artifactId: string;
   readonly code:
     | "blob_digest_mismatch"
@@ -83,6 +86,12 @@ export interface IntegrityProblem {
     | "blob_size_mismatch"
     | "blob_unreadable"
     | "current_pointer_missing"
+    | "folder_cycle"
+    | "folder_depth_exceeded"
+    | "folder_duplicate_name"
+    | "folder_name_key_invalid"
+    | "folder_placement_mismatch"
+    | "folder_scope_mismatch"
     | "manifest_invalid"
     | "orphan_project"
     | "orphan_entry"
@@ -211,6 +220,7 @@ function readCompactCatalog(databasePath: string): IntegrityCatalog {
   });
   try {
     database.enableDefensive(true);
+    database.exec("BEGIN");
     const quickCheck = database.prepare("PRAGMA quick_check").all();
     if (!quickCheck.some((row) => row["quick_check"] === "ok")) {
       throw new Error("SQLite quick check failed.");
@@ -233,6 +243,7 @@ function readCompactCatalog(databasePath: string): IntegrityCatalog {
         FROM manifest_entries
         ORDER BY version_id, path
       `).all()),
+      placementProblems: readCompactFolderProblems(database),
       projects: decodeProjectRows(database.prepare(`
         SELECT id FROM projects ORDER BY id
       `).all()),
@@ -255,6 +266,11 @@ function readCompactCatalog(databasePath: string): IntegrityCatalog {
         SELECT 'content_session', token_digest, project_id,
           artifact_id, version_id
         FROM content_sessions
+        UNION ALL
+        SELECT 'comment_thread', id, project_id, artifact_id, version_id FROM comment_threads
+        UNION ALL
+        SELECT 'comment_reply', reply.id, reply.project_id, thread.artifact_id, thread.version_id
+        FROM comment_replies reply LEFT JOIN comment_threads thread ON thread.id = reply.thread_id
         ORDER BY kind, id
       `).all()),
       versions: decodeVersionRows(database.prepare(`
@@ -352,7 +368,7 @@ export const checkIntegrityCatalog = Effect.fn("checkIntegrityCatalog")(function
   catalog: IntegrityCatalog,
   blobs: BlobStore,
 ): Effect.fn.Return<IntegrityReport> {
-  const problems: IntegrityProblem[] = [];
+  const problems: IntegrityProblem[] = [...(catalog.placementProblems ?? [])];
   const artifacts = new Map(catalog.artifacts.map((artifact) => [artifact.id, artifact]));
   const projects = new Set(catalog.projects.map((project) => project.id));
   const versions = new Map(catalog.versions.map((version) => [version.id, version]));

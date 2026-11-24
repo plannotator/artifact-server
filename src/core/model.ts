@@ -22,6 +22,8 @@ export const artifactActionKinds = {
   commentUpdate: "comment_update",
   delete: "delete",
   link: "link",
+  move: "move",
+  rename: "rename",
   publish: "publish",
   relink: "relink",
   restore: "restore",
@@ -70,6 +72,9 @@ export interface ProjectRecord {
 }
 
 export interface ArtifactRecord {
+  readonly folderId?: string | null | undefined;
+  readonly fileKind?: string | undefined;
+  readonly currentVersionCreatedAt?: string | undefined;
   readonly accessSetting: AccessSetting;
   readonly createdAt: string;
   readonly currentVersionId: string;

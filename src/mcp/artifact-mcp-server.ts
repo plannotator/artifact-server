@@ -1,3 +1,9 @@
+import {ArtifactPlacementService, FolderService} from "../application/folders.js";
+import {
+  artifactMoveSchema, artifactRenameSchema, createFolderSchema, decodeFolderCursor,
+  folderContentsResponse, folderCreateKey, folderIdSchema, folderLocationSchema,
+  folderRevisionSchema, updateFolderSchema,
+} from "../http/folder-protocol.js";
 import {createHash} from "node:crypto";
 
 import {
@@ -127,6 +133,9 @@ const declaredFileSchema = z.object({
   size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
 }).strict();
 const artifactRecordSchema = z.object({
+  folderId: z.string().nullable().optional(),
+  fileKind: z.string().optional(),
+  currentVersionCreatedAt: z.string().optional(),
   accessSetting: accessSettingSchema,
   createdAt: z.string(),
   currentVersionId: z.string(),
@@ -136,6 +145,25 @@ const artifactRecordSchema = z.object({
   projectId: z.string(),
   tags: z.array(z.string()),
 }).strict();
+const folderRecordSchema = z.object({
+  id: folderIdSchema,
+  installationId: z.string(),
+  projectId: z.string(),
+  parentFolderId: folderIdSchema.nullable(),
+  name: z.string(),
+  nameKey: z.string(),
+  revision: folderRevisionSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+const folderWriteResult = z.object({folder: folderRecordSchema});
+const placementWriteResult = z.object({artifact: artifactRecordSchema.pick({
+  id: true,
+  name: true,
+  projectId: true,
+  currentVersionId: true,
+}).extend({folderId: folderIdSchema.nullable()})});
+
 const versionRecordSchema = z.object({
   artifactId: z.string(),
   contentToken: z.string(),
@@ -381,6 +409,7 @@ export interface ArtifactMcpServerDependencies {
   readonly gitHistory: GitHistoryCapability;
   /** Advertises the local linked-artifact capability in discovery. */
   readonly linkedArtifacts?: boolean;
+  readonly folders?: boolean;
   readonly mode: "local" | "remote";
   readonly requestId: string;
 }
@@ -605,6 +634,7 @@ export function createArtifactMcpServer(
           workflow: z.array(z.string()),
         }),
         linkedArtifacts: z.object({available: z.boolean()}),
+        folders: z.object({available: z.boolean()}),
         projects: z.object({
           omittedProjectRule: z.string(),
           scope: z.literal("project"),
@@ -618,6 +648,7 @@ export function createArtifactMcpServer(
         dependencies.mode,
         dependencies.linkedArtifacts === true,
         dependencies.gitHistory,
+        dependencies.folders === true,
       ),
       "Artifact Server publishes actual files through an upload plan. It does not accept inline HTML, CSS, JavaScript, or base64 content."),
   );
@@ -848,6 +879,114 @@ export function createArtifactMcpServer(
       )
     ),
   );
+
+  const folderWriteFields = {projectId: optionalProjectIdSchema, idempotencyKey: idempotencyKeySchema};
+  const artifactPlacementFields = {...folderWriteFields, artifactId: artifactIdSchema};
+
+  registerNudgedTool("folder_list", {
+    title: "List folder contents",
+    description: "List a project's root or one folder with its breadcrumbs and a continuation cursor.",
+    inputSchema: z.object({
+      projectId: optionalProjectIdSchema,
+      folderId: folderLocationSchema.default(null),
+      foldersOnly: z.boolean().default(false),
+      cursor: z.string().max(8_192).nullable().default(null),
+      limit: z.number().int().min(1).max(maximumListedArtifacts).default(50),
+      search: z.string().max(200).nullable().default(null),
+      comments: z.enum(["all", "with", "without"]).default("all"),
+      sort: z.enum(["newest", "comments"]).default("newest"),
+      tags: z.array(z.string().max(200)).max(20).default([]),
+    }).strict(),
+    outputSchema: z.object({
+      breadcrumbs: z.array(folderRecordSchema),
+      folders: z.array(folderRecordSchema),
+      artifacts: z.array(z.object({
+        artifact: artifactRecordSchema,
+        commentCount: z.number().int().nonnegative(),
+        versionCount: z.number().int().positive(),
+        links: z.object({artifact: z.url(), management: z.url()}),
+      })),
+      nextCursor: z.string().nullable(),
+    }),
+    annotations: readOnlyAnnotations,
+  }, async ({cursor, ...input}) => toolResult(async () => {
+    const page = await runMcpApplicationEffect(dependencies, FolderService.use(
+      (service) => service.list({...input, principal: identity.principal, cursor: decodeFolderCursor(cursor)}),
+    ));
+    return folderContentsResponse(applicationUrl, page);
+  }));
+
+  registerNudgedTool("folder_create", {
+    title: "Create a folder",
+    description: "Create a folder by name. Provide a client-generated folder ID or an idempotency key for retries.",
+    inputSchema: createFolderSchema.extend({
+      ...folderWriteFields, idempotencyKey: idempotencyKeySchema.optional(),
+    }).strict(),
+    outputSchema: folderWriteResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({projectId, idempotencyKey, ...input}) => toolResult(async () => ({
+    folder: await runMcpApplicationEffect(dependencies, FolderService.use(
+      (service) => service.write({
+        projectId,
+        principal: identity.principal,
+        idempotencyKey: folderCreateKey(input.id, idempotencyKey),
+      }, {...input, kind: "create"}),
+    )),
+  })));
+
+  registerNudgedTool("folder_update", {
+    title: "Rename or move a folder",
+    description: "Change a folder label or parent within its project using its current revision.",
+    inputSchema: updateFolderSchema.extend({...folderWriteFields, folderId: folderIdSchema}).strict(),
+    outputSchema: folderWriteResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({projectId, idempotencyKey, folderId, ...input}) => toolResult(async () => ({
+    folder: await runMcpApplicationEffect(dependencies, FolderService.use(
+      (service) => service.write({projectId, idempotencyKey, principal: identity.principal}, {
+        ...input, kind: "update", id: folderId,
+      }),
+    )),
+  })));
+
+  registerNudgedTool("folder_delete", {
+    title: "Delete an empty folder",
+    description: "Remove an empty folder using its current revision.",
+    inputSchema: z.object({
+      ...folderWriteFields, folderId: folderIdSchema, expectedRevision: folderRevisionSchema,
+    }).strict(),
+    outputSchema: folderWriteResult,
+    annotations: destructiveWriteAnnotations,
+  }, async ({projectId, idempotencyKey, folderId, expectedRevision}) => toolResult(async () => ({
+    folder: await runMcpApplicationEffect(dependencies, FolderService.use(
+      (service) => service.write({projectId, idempotencyKey, principal: identity.principal}, {
+        kind: "delete", id: folderId, expectedRevision,
+      }),
+    )),
+  })));
+
+  registerNudgedTool("artifact_rename", {
+    title: "Rename an artifact",
+    description: "Change an artifact label without creating a version.",
+    inputSchema: artifactRenameSchema.extend(artifactPlacementFields).strict(),
+    outputSchema: placementWriteResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({name, ...input}) => toolResult(async () => ({
+    artifact: await runMcpApplicationEffect(dependencies, ArtifactPlacementService.use(
+      (service) => service.write({...input, principal: identity.principal}, {kind: "rename", name}),
+    )),
+  })));
+
+  registerNudgedTool("artifact_move", {
+    title: "Move an artifact within its project",
+    description: "Place an artifact in a folder or set toFolderId to null for the project root.",
+    inputSchema: artifactMoveSchema.extend(artifactPlacementFields).strict(),
+    outputSchema: placementWriteResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({toFolderId, ...input}) => toolResult(async () => ({
+    artifact: await runMcpApplicationEffect(dependencies, ArtifactPlacementService.use(
+      (service) => service.write({...input, principal: identity.principal}, {kind: "move", toFolderId}),
+    )),
+  })));
 
   registerNudgedTool(
     "artifact_list",
@@ -1409,6 +1548,7 @@ export function createArtifactMcpServer(
         artifact: artifactRecordSchema.extend({deletedAt: z.string()}).strict(),
         replayed: z.boolean(),
         retainedVersionCount: z.number().int().nonnegative(),
+        recoverable: z.literal(false),
       }).strict(),
       annotations: destructiveWriteAnnotations,
     },
@@ -1419,7 +1559,7 @@ export function createArtifactMcpServer(
           management.deleteArtifact({...input, principal: identity.principal})
         ),
       );
-      return {...deletion};
+      return {...deletion, recoverable: false as const};
     }),
   );
 
@@ -2342,10 +2482,12 @@ function capabilities(
   mode: "local" | "remote",
   linkedArtifacts: boolean,
   gitHistory: GitHistoryCapability,
+  folders: boolean,
 ) {
   return {
     gitHistory,
     linkedArtifacts: {available: linkedArtifacts},
+    folders: {available: folders},
     agentDispatch: {
       bundleThreadRule:
         "1..100 open, undispatched comment threads from one project per bundle",
@@ -2747,8 +2889,8 @@ function errorProjection(cause: unknown) {
           message: "The server could not complete the request.",
         };
       default:
-        const response = artifactServerFailureResponse(cause);
-        return {code: response.code, message: response.message};
+        const {status: _status, ...response} = artifactServerFailureResponse(cause);
+        return response;
     }
   }
   return {

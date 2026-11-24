@@ -27,6 +27,8 @@ export const commonText = defineMessages({
       commentResolve: "Resolved comment",
       commentUpdate: "Edited comment",
       delete: "Tombstoned artifact",
+      move: "Moved artifact",
+      rename: "Renamed artifact",
       publish: "Published version",
       restore: "Restored version",
     },
@@ -71,6 +73,8 @@ export const commonText = defineMessages({
       commentResolve: "將留言標為已解決",
       commentUpdate: "編輯了留言",
       delete: "刪除了 Artifact",
+      move: "移動了 Artifact",
+      rename: "重新命名了 Artifact",
       publish: "發布了版本",
       restore: "還原了版本",
     },
@@ -97,6 +101,12 @@ export const commonText = defineMessages({
  * the server's own message, so this table exists only for zh-TW.
  */
 const serverErrorText = new Map(Object.entries({
+  FOLDER_NOT_FOUND: "找不到這個資料夾。",
+  FOLDER_CYCLE: "無法將資料夾移到自身或其子資料夾。",
+  FOLDER_LIMIT: "已達資料夾數量或深度上限。",
+  FOLDER_NOT_EMPTY: "只能刪除空資料夾。",
+  FOLDER_REVISION_CONFLICT: "資料夾已有變更，請重新載入後再試一次。",
+  NAME_CONFLICT: "同一層已有同名的資料夾。",
   AGENT_NOT_FOUND: "找不到這個 Agent。",
   ARTIFACT_NOT_FOUND: "找不到這個 Artifact，可能已被刪除。",
   ARTIFACT_MUTATION_CONFLICT: "這個 Artifact 在你開啟後已有變更，請重新載入後再試一次。",

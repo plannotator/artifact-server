@@ -1,3 +1,6 @@
+import {migrateSqliteFolders, writeSqliteCurrentFileMetadata} from "./sqlite-folder-schema.js";
+import {SqliteFolders} from "./sqlite-folders.js";
+
 import { DatabaseSync } from "node:sqlite";
 
 import { z } from "zod";
@@ -180,6 +183,8 @@ const artifactActionKindSchema = z.enum([
   artifactActionKinds.publish,
   artifactActionKinds.relink,
   artifactActionKinds.restore,
+  artifactActionKinds.move,
+  artifactActionKinds.rename,
 ]);
 const sourceFreshnessSchema = z.enum([
   sourceFreshnessStates.inSync,
@@ -231,6 +236,8 @@ const idempotencyRowSchema = z.object({
     "change_access",
     "change_tags",
     "delete",
+    "move",
+    "rename",
     "publish",
     "restore",
   ]),
@@ -249,6 +256,9 @@ const artifactActionRowSchema = z.object({
   versionId: z.string(),
 });
 const artifactRowSchema = z.object({
+  folderId: z.string().nullable().optional(),
+  currentVersionCreatedAt: z.string().nullable().transform((date) => date ?? undefined).optional(),
+  fileKind: z.string().nullable().transform((kind) => kind ?? undefined).optional(),
   accessSetting: accessSettingSchema,
   createdAt: z.string(),
   currentVersionId: z.string(),
@@ -550,6 +560,7 @@ export class SqliteArtifactRepository implements
 {
   readonly #database: DatabaseSync;
   readonly #installationId: string;
+  readonly folders: SqliteFolders;
 
   constructor(databasePath: string, installationId = "local") {
     this.#installationId = installationId;
@@ -561,7 +572,17 @@ export class SqliteArtifactRepository implements
     this.#database.enableDefensive(true);
     this.#database.exec("PRAGMA journal_mode = WAL;");
     this.#database.exec("PRAGMA synchronous = FULL;");
-    this.#migrate(installationId);
+    try {
+      this.#migrate(installationId);
+    } catch (cause) {
+      this.#database.close();
+      throw cause;
+    }
+    this.folders = new SqliteFolders(
+      this.#database,
+      (operation) => this.#transaction(operation),
+      (command, folderId) => this.#readArtifactPage(command, folderId),
+    );
   }
 
   createProject(command: ProjectRecord): Promise<ProjectRecord> {
@@ -1352,6 +1373,7 @@ export class SqliteArtifactRepository implements
     this.#database
       .prepare("UPDATE artifacts SET current_version_id = ? WHERE id = ?")
       .run(command.versionId, command.artifactId);
+    writeSqliteCurrentFileMetadata(this.#database, command.artifactId, command.versionId);
     this.#insertAction(
       command.projectId,
       command.artifactId,
@@ -1456,6 +1478,7 @@ export class SqliteArtifactRepository implements
         message: "The artifact changed during publication.",
       });
     }
+    writeSqliteCurrentFileMetadata(this.#database, command.artifactId, command.versionId);
     if (binding !== null) {
       this.#writeSourceBinding(
         command.projectId,
@@ -1824,99 +1847,107 @@ export class SqliteArtifactRepository implements
   }
 
   listArtifacts(command: ListArtifacts): Promise<ArtifactPage> {
-    return Promise.resolve().then(() => {
-      const cursorCreatedAt = command.cursor?.createdAt ?? null;
-      const cursorId = command.cursor?.id ?? null;
-      const cursorRank = command.cursor?.rank ?? null;
-      const commentFilterSql = command.comments === "with"
-        ? "commentCount > 0"
-        : command.comments === "without"
-          ? "commentCount = 0"
-          : "1 = 1";
-      const cursorSql = command.sort === "comments"
-        ? `(
-          ? IS NULL
-          OR commentCount < ?
-          OR (commentCount = ? AND (
-            createdAt < ? OR (createdAt = ? AND id < ?)
-          ))
-        )`
-        : `(
-          ? IS NULL
-          OR createdAt < ?
-          OR (createdAt = ? AND id < ?)
-        )`;
-      const cursorParameters = command.sort === "comments"
-        ? [cursorRank, cursorRank, cursorRank, cursorCreatedAt, cursorCreatedAt, cursorId]
-        : [cursorCreatedAt, cursorCreatedAt, cursorCreatedAt, cursorId];
-      const orderSql = command.sort === "comments"
-        ? "commentCount DESC, createdAt DESC, id DESC"
-        : "createdAt DESC, id DESC";
-      const tagFilterJson = command.tags.length === 0
-        ? null
-        : JSON.stringify(command.tags);
-      const rows = this.#database
-        .prepare(
-          `SELECT * FROM (
-            SELECT
-              id,
-              project_id AS projectId,
-              name,
-              access_setting AS accessSetting,
-              current_version_id AS currentVersionId,
-              created_at AS createdAt,
-              deleted_at AS deletedAt,
-              (
-                SELECT COUNT(*) FROM comment_threads
-                WHERE comment_threads.project_id = artifacts.project_id
-                  AND comment_threads.artifact_id = artifacts.id
-              ) AS commentCount,
-              (
-                SELECT COUNT(*) FROM versions
-                WHERE versions.project_id = artifacts.project_id
-                  AND versions.artifact_id = artifacts.id
-              ) AS versionCount
-            FROM artifacts
-            WHERE project_id = ?
-              AND deleted_at IS NULL
-              AND (
-                ? IS NULL
-                OR instr(search_name, ?) > 0
-                OR EXISTS (
-                  SELECT 1 FROM artifact_tags searched_tags
-                  WHERE searched_tags.artifact_id = artifacts.id
-                    AND searched_tags.tag = ?
-                )
+    return Promise.resolve().then(() => this.#readArtifactPage(command));
+  }
+
+  #readArtifactPage(command: ListArtifacts, folderId?: string | null): ArtifactPage {
+    const folderFilter = folderId === undefined ? "" : "AND folder_id IS ?";
+    const cursorCreatedAt = command.cursor?.createdAt ?? null;
+    const cursorId = command.cursor?.id ?? null;
+    const cursorRank = command.cursor?.rank ?? null;
+    const commentFilterSql = command.comments === "with"
+      ? "commentCount > 0"
+      : command.comments === "without"
+        ? "commentCount = 0"
+        : "1 = 1";
+    const cursorSql = command.sort === "comments"
+      ? `(
+        ? IS NULL
+        OR commentCount < ?
+        OR (commentCount = ? AND (
+          createdAt < ? OR (createdAt = ? AND id < ?)
+        ))
+      )`
+      : `(
+        ? IS NULL
+        OR createdAt < ?
+        OR (createdAt = ? AND id < ?)
+      )`;
+    const cursorParameters = command.sort === "comments"
+      ? [cursorRank, cursorRank, cursorRank, cursorCreatedAt, cursorCreatedAt, cursorId]
+      : [cursorCreatedAt, cursorCreatedAt, cursorCreatedAt, cursorId];
+    const orderSql = command.sort === "comments"
+      ? "commentCount DESC, createdAt DESC, id DESC"
+      : "createdAt DESC, id DESC";
+    const tagFilterJson = command.tags.length === 0
+      ? null
+      : JSON.stringify(command.tags);
+    const rows = this.#database
+      .prepare(
+        `SELECT * FROM (
+          SELECT
+            id,
+            project_id AS projectId,
+            name,
+            folder_id AS folderId,
+            current_version_created_at AS currentVersionCreatedAt,
+            file_kind AS fileKind,
+            access_setting AS accessSetting,
+            current_version_id AS currentVersionId,
+            created_at AS createdAt,
+            deleted_at AS deletedAt,
+            (
+              SELECT COUNT(*) FROM comment_threads
+              WHERE comment_threads.project_id = artifacts.project_id
+                AND comment_threads.artifact_id = artifacts.id
+            ) AS commentCount,
+            (
+              SELECT COUNT(*) FROM versions
+              WHERE versions.project_id = artifacts.project_id
+                AND versions.artifact_id = artifacts.id
+            ) AS versionCount
+          FROM artifacts
+          WHERE project_id = ?
+            AND deleted_at IS NULL
+            ${folderFilter}
+            AND (
+              ? IS NULL
+              OR instr(search_name, ?) > 0
+              OR EXISTS (
+                SELECT 1 FROM artifact_tags searched_tags
+                WHERE searched_tags.artifact_id = artifacts.id
+                  AND searched_tags.tag = ?
               )
-              AND (
-                ? IS NULL
-                OR EXISTS (
-                  SELECT 1 FROM artifact_tags
-                  WHERE artifact_tags.artifact_id = artifacts.id
-                    AND artifact_tags.tag IN (SELECT value FROM json_each(?))
-                )
+            )
+            AND (
+              ? IS NULL
+              OR EXISTS (
+                SELECT 1 FROM artifact_tags
+                WHERE artifact_tags.artifact_id = artifacts.id
+                  AND artifact_tags.tag IN (SELECT value FROM json_each(?))
               )
-          ) AS artifact_catalog
-          WHERE ${commentFilterSql} AND ${cursorSql}
-          ORDER BY ${orderSql}
-          LIMIT ?`,
-        )
-        .all(
-          command.projectId,
-          command.search ?? null,
-          command.search ?? null,
-          command.search ?? null,
-          tagFilterJson,
-          tagFilterJson,
-          ...cursorParameters,
-          command.limit + 1,
-      );
-      return pageFromRows(
-        this.#withTagsForArtifacts(z.array(artifactListRowSchema).parse(rows)),
-        command.limit,
-        command.sort === "comments" ? ({commentCount}) => commentCount : null,
-      );
-    });
+            )
+        ) AS artifact_catalog
+        WHERE ${commentFilterSql} AND ${cursorSql}
+        ORDER BY ${orderSql}
+        LIMIT ?`,
+      )
+      .all(
+        command.projectId,
+        ...(folderId === undefined ? [] : [folderId]),
+        command.search ?? null,
+        command.search ?? null,
+        command.search ?? null,
+        tagFilterJson,
+        tagFilterJson,
+        ...cursorParameters,
+        command.limit + 1,
+    );
+    return pageFromRows(
+      this.#withTagsForArtifacts(z.array(artifactListRowSchema).parse(rows)),
+      command.limit,
+      command.sort === "comments" ? ({commentCount}) => commentCount : null,
+    );
   }
 
   /** List one bounded installation-wide page of active public-link artifacts. */
@@ -2064,6 +2095,7 @@ export class SqliteArtifactRepository implements
         if (update.changes !== 1) {
           throw changedDuringManagement();
         }
+        writeSqliteCurrentFileMetadata(this.#database, artifact.id, command.versionId);
         this.#insertAction(
           command.projectId,
           command.artifactId,
@@ -2658,6 +2690,8 @@ export class SqliteArtifactRepository implements
           id,
           project_id AS projectId,
           name,
+          folder_id AS folderId,
+          file_kind AS fileKind,
           access_setting AS accessSetting,
           current_version_id AS currentVersionId,
           created_at AS createdAt,
@@ -2680,6 +2714,8 @@ export class SqliteArtifactRepository implements
           id,
           project_id AS projectId,
           name,
+          folder_id AS folderId,
+          file_kind AS fileKind,
           access_setting AS accessSetting,
           current_version_id AS currentVersionId,
           created_at AS createdAt,
@@ -4719,9 +4755,15 @@ export class SqliteArtifactRepository implements
   }
 
   #migrate(installationId: string): void {
-    const previousSchemaVersion = z.object({
-      user_version: z.number().int().nonnegative(),
-    }).parse(this.#database.prepare("PRAGMA user_version").get()).user_version;
+    const previousSchemaVersion = this.#schemaVersion();
+    if (previousSchemaVersion > requiredSqliteSchemaVersion) {
+      throw new Error("This SQLite database uses a newer schema than this build supports.");
+    }
+    if (previousSchemaVersion === requiredSqliteSchemaVersion) return;
+    if (previousSchemaVersion === 12) {
+      this.#migrateFolders();
+      return;
+    }
     this.#database.exec(`
       CREATE TABLE IF NOT EXISTS projects (
         id TEXT PRIMARY KEY,
@@ -4905,7 +4947,22 @@ export class SqliteArtifactRepository implements
       CREATE INDEX IF NOT EXISTS projects_active_created
         ON projects (archived_at, created_at, id);
     `);
-    this.#database.exec(`PRAGMA user_version = ${requiredSqliteSchemaVersion};`);
+    this.#migrateFolders();
+  }
+
+  #schemaVersion(): number {
+    return z.object({user_version: z.number().int().nonnegative()})
+      .parse(this.#database.prepare("PRAGMA user_version").get()).user_version;
+  }
+
+  #migrateFolders(): void {
+    this.#transaction(() => {
+      const version = this.#schemaVersion();
+      if (version > requiredSqliteSchemaVersion) {
+        throw new Error("This SQLite database uses a newer schema than this build supports.");
+      }
+      if (version < requiredSqliteSchemaVersion) migrateSqliteFolders(this.#database);
+    });
   }
 
   #addArtifactSearchNameIfMissing(): void {
@@ -5416,7 +5473,6 @@ export class SqliteArtifactRepository implements
         END;
       `);
     });
-    this.#database.exec(`PRAGMA user_version = ${requiredSqliteSchemaVersion};`);
   }
 
   #addActionAuthorizerColumnIfMissing(): void {

@@ -27,6 +27,7 @@ const sessionSchema = z.object({
       provider: z.literal("cloudflare-artifacts"),
       providerState: z.literal("misconfigured"),
     }).strict(),
+    folders: z.boolean(),
     linkedArtifacts: z.boolean(),
   }).strict(),
 }).loose();

@@ -6,6 +6,7 @@ import {DatabaseSync} from "node:sqlite";
 import {afterEach, beforeEach, describe, expect, test} from "vitest";
 import {z} from "zod";
 
+import {downgradeToSchemaTwelve} from "../support/schema-twelve.js";
 import {publishNew} from "../support/publishing.js";
 import {createManifest} from "../../src/manifest/create-manifest.js";
 import {defaultProjectId} from "../../src/core/model.js";
@@ -316,8 +317,10 @@ describe("local storage migration", () => {
       path.join(installation.dataDirectory, "artifact-server.db"),
     );
     try {
+      downgradeToSchemaTwelve(database);
       database.exec(`
         BEGIN IMMEDIATE;
+        PRAGMA user_version = 7;
         CREATE TABLE idempotency_records_previous (
           idempotency_key TEXT PRIMARY KEY,
           input_digest TEXT NOT NULL,
