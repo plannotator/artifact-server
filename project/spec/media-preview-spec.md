@@ -91,9 +91,9 @@ A body-bearing `GET` succeeds only when all of these conditions hold:
 
 1. The current application session may read the artifact and exact version.
 2. `projectId` matches the artifact's project and `path` exactly matches one manifest entry.
-3. The normalized manifest media type is `image/*` or `video/*`.
+3. The normalized manifest media type is `image/*`, `video/*`, or `audio/*` (audio was added by `PRV-006`; see `file-management-spec.md` section 12).
 4. Fetch Metadata reports `Sec-Fetch-Site: same-origin` and `Sec-Fetch-Mode: no-cors`.
-5. `Sec-Fetch-Dest` is `image` for an image entry or `video` for a video entry.
+5. `Sec-Fetch-Dest` is `image` for an image entry, `video` for a video entry, or `audio` for an audio entry.
 
 Missing Fetch Metadata, `document`, `iframe`, `frame`, `object`, `embed`, `empty`, a cross-site request, or a media-type/destination mismatch is refused before any blob body opens. The stable error code is `MEDIA_PREVIEW_CONTEXT_REQUIRED` for an invalid request context and `MEDIA_PREVIEW_TYPE_UNSUPPORTED` for an ineligible manifest media type. `HEAD` may use `Sec-Fetch-Dest: empty`, but it still requires a same-origin authenticated request and returns no bytes.
 
