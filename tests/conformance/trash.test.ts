@@ -8,11 +8,13 @@ import {promisify} from "node:util";
 import {
   CLIENT_CAPABILITIES_META_KEY, CLIENT_INFO_META_KEY, PROTOCOL_VERSION_META_KEY,
 } from "@modelcontextprotocol/server";
+import {Effect} from "effect";
 import {afterEach, beforeEach, describe, expect, test} from "vitest";
 import {z} from "zod";
 
 import {browserLoginKinds, privateTeamBrowserAccess} from "../../src/core/browser-access.js";
 import {OidcIdentityProvider} from "../../src/identity/oidc-identity-provider.js";
+import {checkCompactIntegrity} from "../../src/lifecycle/integrity-check.js";
 import {ApiClient, issueApiKey, signInAdministrator} from "../support/agent-dispatch.js";
 import {parsePublishResponse, publishNew, publishVersion, type PublishResponse} from "../support/publishing.js";
 import {
@@ -206,6 +208,63 @@ describe("recoverable trash, recover and purge", () => {
     expect((await human(cookies, `${foldersPath}/${doomed.id}/purge`, "POST", {confirm: "Doomed"})).status).toBe(200);
     const rooted = artifactRecovery.parse(await (await request(`${routeFor(orphan)}/recover`, "POST")).json());
     expect(rooted).toMatchObject({artifact: {id: orphan.artifact.id, folderId: null}, placement: "root"});
+    expect((await trash()).items).toEqual([]);
+
+    // A cross-project folder move carries only the live subtree. Trash stays in
+    // the source project: a trashed item directly inside the moved folder drops
+    // to the source root, and a trashed folder keeps its own group intact.
+    const destination = projectResult.parse(await (await request("/api/v1/projects", "POST", {name: "Destination"})).json()).project.id;
+    const outgoing = await createFolder("Outgoing");
+    const staying = await createFolder("Live", outgoing.id);
+    const archive = await createFolder("Archive", outgoing.id);
+    const loose = await publish("Loose report");
+    const kept = await publish("Kept report");
+    const archived = await publish("Archived report");
+    await place(loose, outgoing.id);
+    await place(kept, staying.id);
+    await place(archived, archive.id);
+    await trashArtifact(loose);
+    expect((await request(`${foldersPath}/${archive.id}?expectedRevision=1`, "DELETE")).ok).toBe(true);
+    expect((await request(`${foldersPath}/${outgoing.id}/move-to-project`, "POST", {
+      toProjectId: destination, toParentFolderId: null, expectedRevision: 1,
+    })).status).toBe(200);
+    expect(readDatabase((database) => ({
+      folders: database.prepare("SELECT id, project_id, parent_folder_id FROM folders WHERE id IN (?, ?, ?) ORDER BY name")
+        .all(outgoing.id, staying.id, archive.id),
+      artifacts: database.prepare("SELECT id, project_id, folder_id FROM artifacts WHERE id IN (?, ?, ?) ORDER BY name")
+        .all(loose.artifact.id, kept.artifact.id, archived.artifact.id),
+    }))).toEqual({
+      folders: [
+        {id: archive.id, project_id: defaultProject, parent_folder_id: null},
+        {id: staying.id, project_id: destination, parent_folder_id: outgoing.id},
+        {id: outgoing.id, project_id: destination, parent_folder_id: null},
+      ],
+      artifacts: [
+        {id: archived.artifact.id, project_id: defaultProject, folder_id: archive.id},
+        {id: kept.artifact.id, project_id: destination, folder_id: staying.id},
+        {id: loose.artifact.id, project_id: defaultProject, folder_id: null},
+      ],
+    });
+    const leftBehind = (await trash()).items;
+    expect(leftBehind.map(({id, projectId, location}) => ({id, projectId, path: location.path})).toSorted((a, b) => a.id.localeCompare(b.id)))
+      .toEqual([
+        {id: archive.id, projectId: defaultProject, path: []},
+        {id: loose.artifact.id, projectId: defaultProject, path: []},
+        {id: archived.artifact.id, projectId: defaultProject, path: [{id: archive.id, name: "Archive"}]},
+      ].toSorted((a, b) => a.id.localeCompare(b.id)));
+    const sameName = await createFolder("Archive");
+    // A trashed folder may share a live sibling's name; integrity checks live siblings only.
+    await stop();
+    expect((await Effect.runPromise(checkCompactIntegrity(installation.dataDirectory))).problems).toEqual([]);
+    server = await startTestServer(installation, {linkedFiles: "on", linkRoots: [source.dataDirectory]});
+    const taken = await request(`${foldersPath}/${archive.id}/recover`, "POST", {});
+    expect(taken.status).toBe(409);
+    await expect(taken.json()).resolves.toMatchObject({error: {code: "NAME_CONFLICT", conflictingFolderId: sameName.id}});
+    const regrouped = folderRecovery.parse(await (await request(`${foldersPath}/${archive.id}/recover`, "POST", {name: "Archive (moved)"})).json());
+    expect(regrouped).toMatchObject({folder: {id: archive.id, name: "Archive (moved)", parentFolderId: null}, recoveredArtifactCount: 1});
+    expect(await list(archive.id)).toMatchObject({artifacts: [{artifact: {id: archived.artifact.id}}]});
+    const looseRecovery = artifactRecovery.parse(await (await request(`${routeFor(loose)}/recover?projectId=${defaultProject}`, "POST")).json());
+    expect(looseRecovery).toMatchObject({artifact: {id: loose.artifact.id, folderId: null}});
     expect((await trash()).items).toEqual([]);
   });
 

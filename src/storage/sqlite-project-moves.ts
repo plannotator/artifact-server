@@ -114,7 +114,8 @@ export class SqliteProjectMoves {
         throw new FolderFailure({reason: "limit", message: "Folders can be nested at most 16 levels deep."});
       }
       const sibling = this.database.prepare(`
-        SELECT 1 FROM folders WHERE project_id = ? AND parent_folder_id IS ? AND name_key = ?
+        SELECT 1 FROM folders
+        WHERE project_id = ? AND parent_folder_id IS ? AND name_key = ? AND trashed_at IS NULL
       `).get(command.toProjectId, command.toParentFolderId, current.nameKey);
       if (sibling !== undefined) {
         throw new FolderFailure({reason: "name-conflict", message: "A sibling folder already uses that name."});
@@ -138,11 +139,18 @@ export class SqliteProjectMoves {
           message: `A folder move can carry at most ${maximumProjectMoveArtifacts} artifacts.`,
         });
       }
-      // Tombstones keep their own project; they return to its root if recovered.
+      // Trash never changes project: a move carries only the live subtree.
+      // Trashed or purged items directly inside a moving folder drop to the
+      // source project's root, where recovery returns them; anything inside a
+      // trashed folder keeps its place under it, so the trash group stays whole.
       this.database.prepare(`
         UPDATE artifacts SET folder_id = NULL
         WHERE project_id = ? AND deleted_at IS NOT NULL AND folder_id IN (SELECT value FROM json_each(?))
       `).run(command.projectId, folderIds);
+      this.database.prepare(`
+        UPDATE folders SET parent_folder_id = NULL, revision = revision + 1, updated_at = ?
+        WHERE project_id = ? AND trashed_at IS NOT NULL AND parent_folder_id IN (SELECT value FROM json_each(?))
+      `).run(command.createdAt, command.projectId, folderIds);
       this.rewrite(command, artifacts);
       // One statement re-parents the subtree root as it changes scope, so the
       // sibling-name index never sees it under its old parent in the destination.
@@ -204,7 +212,7 @@ export class SqliteProjectMoves {
         UNION ALL
         SELECT child.id, subtree.level + 1
         FROM folders child JOIN subtree ON child.parent_folder_id = subtree.id
-        WHERE child.project_id = ? AND subtree.level <= ?
+        WHERE child.project_id = ? AND child.trashed_at IS NULL AND subtree.level <= ?
       )
       SELECT id, level FROM subtree
     `).all(id, scope.projectId, maximumFolderDepth));

@@ -12,6 +12,7 @@ const folderRows = z.array(z.object({
   name: z.string(),
   nameKey: z.string(),
   validScope: z.number(),
+  live: z.number(),
 }));
 
 /** Check the compact folder graph and artifact placements in the catalog snapshot. */
@@ -19,9 +20,13 @@ export function readCompactFolderProblems(database: DatabaseSync): IntegrityProb
   if (database.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'folders'").get() === undefined) {
     return [];
   }
+  // Schema 14 adds trash; only live siblings must have distinct names.
+  const trash = database.prepare("SELECT 1 FROM pragma_table_info('folders') WHERE name = 'trashed_at'")
+    .get() !== undefined;
   const folders = folderRows.parse(database.prepare(`
     SELECT folder.id, folder.project_id AS projectId, folder.parent_folder_id AS parentId,
-      folder.name, folder.name_key AS nameKey, (project.id IS NOT NULL) AS validScope
+      folder.name, folder.name_key AS nameKey, (project.id IS NOT NULL) AS validScope,
+      ${trash ? "(folder.trashed_at IS NULL)" : "1"} AS live
     FROM folders folder LEFT JOIN projects project
       ON project.id = folder.project_id AND project.installation_id = folder.installation_id
     ORDER BY folder.id
@@ -35,10 +40,12 @@ export function readCompactFolderProblems(database: DatabaseSync): IntegrityProb
     if (folder.nameKey !== normalized) {
       problems.push(folderProblem("folder_name_key_invalid", folder.id, "The folder name and normalized key disagree."));
     }
-    if (siblingNames.has(name)) {
-      problems.push(folderProblem("folder_duplicate_name", folder.id, "Sibling folders have the same normalized name."));
+    if (folder.live === 1) {
+      if (siblingNames.has(name)) {
+        problems.push(folderProblem("folder_duplicate_name", folder.id, "Live sibling folders have the same normalized name."));
+      }
+      siblingNames.add(name);
     }
-    siblingNames.add(name);
     const ancestry = ancestryProblem(folder, byId);
     if (ancestry !== null) problems.push(ancestry);
   }
