@@ -1,6 +1,6 @@
 import {execFile} from "node:child_process";
 import {randomUUID} from "node:crypto";
-import {cp, readFile, writeFile} from "node:fs/promises";
+import {cp, mkdir, readFile, realpath, writeFile} from "node:fs/promises";
 import path from "node:path";
 import {DatabaseSync} from "node:sqlite";
 import {promisify} from "node:util";
@@ -47,6 +47,7 @@ const folderPage = z.object({
   nextCursor: z.string().nullable(),
 });
 const projectResult = z.object({project: idSchema});
+const filePage = z.object({items: z.array(idSchema.loose()), nextCursor: z.string().nullable()}).loose();
 const actionsResult = z.object({actions: z.array(z.object({
   action: z.string(), principalId: z.string(), versionId: z.string(),
 }).loose())});
@@ -466,18 +467,25 @@ describe("local folders and artifact placement", () => {
     expect(readDatabase((db) => db.prepare("PRAGMA user_version").get())).toMatchObject({user_version: newer});
   });
 
-  test("FLD-007-B: phase-one HTTP, MCP and CLI share folder and placement records", async () => {
-    expect((await tool("artifact_capabilities", {})).structuredContent).toMatchObject({folders: {available: true}});
-    expect(await (await request("/api/v1/session")).json()).toMatchObject({capabilities: {folders: true}});
+  test("FLD-007-B: HTTP, MCP and the CLI share folder, move, trash, overview, batch and linked-folder records", async () => {
+    const surfaces = ["folders", "crossProjectMove", "trash", "fileOverview", "batch", "linkedFolders"] as const;
+    const advertised = z.object(Object.fromEntries(surfaces.map((name) => [name, z.object({available: z.boolean()}).loose()])))
+      .loose().parse((await tool("artifact_capabilities", {})).structuredContent);
+    expect(surfaces.map((name) => advertised[name]?.available)).toEqual(surfaces.map(() => true));
+    expect(await (await request("/api/v1/session")).json()).toMatchObject({
+      capabilities: Object.fromEntries(surfaces.map((name) => [name, true])),
+    });
+    const tokenFile = path.join(installation.dataDirectory, "fixture.key");
+    await writeFile(tokenFile, installation.apiToken, {mode: 0o600});
     const artifact = await publish();
+    const traveller = await publish();
+
+    // Create a folder over MCP, replay it over HTTP, move over the CLI, rename over MCP.
     const id = `fld_${randomUUID()}`;
     const created = await tool("folder_create", {id, name: "Reports"});
     expect(created.isError).not.toBe(true);
     const {folder} = folderResult.parse(created.structuredContent);
-    const overHttp = await createFolder("Reports", null, id);
-    expect(overHttp).toEqual(folder);
-    const tokenFile = path.join(installation.dataDirectory, "fixture.key");
-    await writeFile(tokenFile, installation.apiToken, {mode: 0o600});
+    expect(await createFolder("Reports", null, id)).toEqual(folder);
     const move = await cli(tokenFile, "mv", artifact.artifact.id, id, "--expected-current-version", artifact.version.id);
     expect(move).toMatchObject({artifact: {id: artifact.artifact.id, folderId: id}});
     const rename = await tool("artifact_rename", {
@@ -490,9 +498,77 @@ describe("local folders and artifact placement", () => {
     expect((await tool("folder_list", {folderId: id})).structuredContent).toEqual(http);
     expect(await cli(tokenFile, "ls", id)).toEqual(http);
     expect(await cli(tokenFile, "ls", "Ｒｅｐｏｒｔｓ")).toEqual(http);
-    expect(actionsResult.parse(await (await request(`${routeFor(artifact)}/actions`)).json()).actions)
-      .toEqual(expect.arrayContaining([expect.objectContaining({action: "move"}), expect.objectContaining({action: "rename"})]));
-  }, 45_000);
+
+    // Cross-project move over MCP is visible to HTTP and the CLI file overview.
+    const other = await createProject();
+    const travelled = await tool("artifact_move", {
+      artifactId: traveller.artifact.id, projectId: defaultProject, toProjectId: other, toFolderId: null,
+      expectedCurrentVersionId: traveller.version.id, idempotencyKey: randomUUID(),
+    });
+    expect(travelled.structuredContent).toMatchObject({artifact: {id: traveller.artifact.id, projectId: other}});
+    expect(await (await request(`/api/v1/artifacts/${traveller.artifact.id}/location`)).json())
+      .toMatchObject({location: {projectId: other, folderId: null}});
+    const filesOverHttp = filePage.parse(await (await request(`/api/v1/files?projectId=${other}`)).json());
+    expect(filesOverHttp.items.map(({id: fileId}) => fileId)).toEqual([traveller.artifact.id]);
+    expect(filePage.parse((await tool("file_search", {projectIds: [other], includeFacets: false})).structuredContent).items)
+      .toEqual(filesOverHttp.items);
+    expect(filePage.parse(await cli(tokenFile, "files", "--project", other)).items).toEqual(filesOverHttp.items);
+
+    // Batch over HTTP replays identically over MCP and the CLI.
+    const items = [{kind: "artifact", projectId: defaultProject, artifactId: artifact.artifact.id,
+      expectedCurrentVersionId: artifact.version.id}];
+    const batchBody = {operation: "tag-add", items, params: {tags: ["parity"]}, idempotencyKey: randomUUID()};
+    const batched = await (await request("/api/v1/batch", "POST", batchBody)).json();
+    expect(batched).toMatchObject({operation: "tag-add", results: [{status: "ok"}]});
+    // A replay returns the same per-item results, marked as replayed.
+    const replayed = z.json().parse(JSON.parse(JSON.stringify(batched).replaceAll('"replayed":false', '"replayed":true')));
+    expect((await tool("batch_apply", batchBody)).structuredContent).toEqual(replayed);
+    const itemsFile = path.join(installation.dataDirectory, "batch-items.json");
+    await writeFile(itemsFile, JSON.stringify(items));
+    expect(await cli(tokenFile, "batch", "tag-add", "--items", itemsFile, "--tag", "parity",
+      "--idempotency-key", batchBody.idempotencyKey)).toEqual(replayed);
+    expect(filePage.parse((await tool("file_search", {tags: ["parity"], includeFacets: false})).structuredContent).items
+      .map(({id: fileId}) => fileId)).toEqual([artifact.artifact.id]);
+
+    // Trash over HTTP and the CLI, list over all three, recover over MCP and HTTP.
+    const scoped = `?projectId=${defaultProject}`;
+    const trashed = await request(`${routeFor(artifact)}${scoped}`, "DELETE", {expectedCurrentVersionId: artifact.version.id});
+    expect(await trashed.json()).toMatchObject({recoverable: true});
+    const folderRevision = z.object({breadcrumbs: z.array(folderSchema)})
+      .parse(await (await request(`${foldersPath}/${id}`)).json()).breadcrumbs.at(-1)?.revision;
+    expect(await cli(tokenFile, "rm", "-r", id, "--project", defaultProject, "--expected-revision", String(folderRevision)))
+      .toMatchObject({folder: {id}});
+    const trashOverHttp = await (await request("/api/v1/trash")).json();
+    expect(trashOverHttp).toMatchObject({items: expect.arrayContaining([
+      expect.objectContaining({id: artifact.artifact.id}), expect.objectContaining({id}),
+    ])});
+    expect((await tool("trash_list", {})).structuredContent).toEqual(trashOverHttp);
+    expect(await cli(tokenFile, "trash", "ls")).toEqual(trashOverHttp);
+    const recovered = await tool("artifact_recover", {
+      artifactId: artifact.artifact.id, projectId: defaultProject, idempotencyKey: randomUUID(),
+    });
+    expect(recovered.structuredContent).toMatchObject({artifact: {id: artifact.artifact.id}});
+    expect((await request(`${foldersPath}/${id}/recover`, "POST", {})).status).toBe(200);
+    expect(await (await request("/api/v1/trash")).json()).toMatchObject({items: []});
+    expect(actionsResult.parse(await (await request(`${routeFor(artifact)}/actions${scoped}`)).json()).actions.map(({action}) => action))
+      .toEqual(expect.arrayContaining(["move", "rename", "change_tags", "delete", "recover"]));
+
+    // Link a directory over MCP; HTTP and the CLI read and rescan the same link and inventory.
+    const linkedDirectory = path.join(await realpath(source.dataDirectory), "parity-output");
+    await mkdir(linkedDirectory);
+    await writeFile(path.join(linkedDirectory, "notes.md"), "# Notes\n");
+    const linked = await tool("folder_link", {newFolderName: "Linked output", path: linkedDirectory, projectId: defaultProject});
+    expect(linked.isError).not.toBe(true);
+    const link = z.object({folderLink: z.object({id: z.string(), folderId: z.string()}).loose()})
+      .parse(linked.structuredContent).folderLink;
+    const linkOverHttp = await (await request(`/api/v1/folder-links/${link.id}`)).json();
+    expect(linkOverHttp).toMatchObject({folderLink: {id: link.id, entryCount: 1, pendingCount: 1}});
+    expect(await cli(tokenFile, "link-folder", linkedDirectory, "--scan", "--project", defaultProject))
+      .toMatchObject({folderLink: {id: link.id, entryCount: 1, pendingCount: 1}});
+    const inventoryOverHttp = await (await request(`/api/v1/folder-links/${link.id}/inventory`)).json();
+    expect((await tool("folder_link_inventory", {folderLinkId: link.id})).structuredContent).toEqual(inventoryOverHttp);
+    expect((await list("root")).folders.map(({id: folderId}) => folderId)).toContain(link.folderId);
+  }, 90_000);
 
   test("FLD-007-F: a private-team deployment advertises absent folders and answers stable failures", async () => {
     await createFolder("Read-only fixture");
@@ -531,19 +607,56 @@ describe("local folders and artifact placement", () => {
     } finally {
       await provider.stop();
     }
-    expect(await (await request("/api/v1/session")).json()).toMatchObject({capabilities: {folders: false}});
-    expect((await tool("artifact_capabilities", {})).structuredContent).toMatchObject({folders: {available: false}});
-    await expectFailure(await request(`${foldersPath}/root`), 501, "CAPABILITY_UNAVAILABLE");
-    await expectFailure(await request(foldersPath, "POST", {name: "No folder"}), 501, "CAPABILITY_UNAVAILABLE");
+    const surfaces = ["folders", "crossProjectMove", "trash", "fileOverview", "batch", "linkedFolders"] as const;
+    expect(await (await request("/api/v1/session")).json()).toMatchObject({
+      capabilities: Object.fromEntries(surfaces.map((name) => [name, false])),
+    });
+    expect((await tool("artifact_capabilities", {})).structuredContent).toMatchObject(
+      Object.fromEntries(surfaces.map((name) => [name, {available: false}])),
+    );
+    const artifact = await publish();
+    const unavailableRoutes: readonly (readonly [string, string, Json?])[] = [
+      [`${foldersPath}/root`, "GET"],
+      [foldersPath, "POST", {name: "No folder"}],
+      [`${foldersPath}/fld_${randomUUID()}/move-to-project`, "POST", {toProjectId: defaultProject, toParentFolderId: null, expectedRevision: 1}],
+      [`${routeFor(artifact)}/move`, "POST", {toFolderId: null, expectedCurrentVersionId: artifact.version.id}],
+      [`${routeFor(artifact)}/recover`, "POST"],
+      ["/api/v1/trash", "GET"],
+      [`/api/v1/files?projectId=${defaultProject}`, "GET"],
+      ["/api/v1/files/facets", "GET"],
+      ["/api/v1/batch", "POST", {operation: "trash", items: [], params: {}, idempotencyKey: randomUUID()}],
+      [`/api/v1/projects/${defaultProject}/folder-links`, "POST", {path: installation.dataDirectory}],
+    ];
+    for (const [route, method, body] of unavailableRoutes) {
+      // Each route is checked on its own so a failure names it.
+      // eslint-disable-next-line no-await-in-loop
+      await expectFailure(await request(route, method, body), 501, "CAPABILITY_UNAVAILABLE");
+    }
+    const unavailableTools: readonly (readonly [string, Json])[] = [
+      ["folder_create", {id: `fld_${randomUUID()}`, name: "No folder"}],
+      ["artifact_move", {artifactId: artifact.artifact.id, toFolderId: null,
+        expectedCurrentVersionId: artifact.version.id, idempotencyKey: randomUUID()}],
+      ["trash_list", {}],
+      ["artifact_recover", {artifactId: artifact.artifact.id, idempotencyKey: randomUUID()}],
+      ["file_search", {}],
+      ["batch_apply", {operation: "trash", items: [{kind: "artifact", projectId: defaultProject,
+        artifactId: artifact.artifact.id, expectedCurrentVersionId: artifact.version.id}], params: {}, idempotencyKey: randomUUID()}],
+      ["folder_link", {path: installation.dataDirectory}],
+    ];
+    for (const [name, args] of unavailableTools) {
+      // eslint-disable-next-line no-await-in-loop
+      const result = await tool(name, args);
+      expect({name, result}).toMatchObject({name, result: {isError: true}});
+      expect(JSON.stringify(result.structuredContent)).toContain("CAPABILITY_UNAVAILABLE");
+    }
     const tokenFile = path.join(installation.dataDirectory, "team-fixture.key");
     await writeFile(tokenFile, installation.apiToken, {mode: 0o600});
-    await expect(cli(tokenFile, "ls")).rejects.toMatchObject({
-      stderr: expect.stringContaining("CAPABILITY_UNAVAILABLE"),
-    });
-    expect(await tool("folder_create", {id: `fld_${randomUUID()}`, name: "No folder"})).toMatchObject({
-      isError: true, structuredContent: {error: {code: "CAPABILITY_UNAVAILABLE"}},
-    });
-    const artifact = await publish();
+    for (const args of [["ls"], ["files"], ["trash", "ls"]]) {
+      // eslint-disable-next-line no-await-in-loop
+      await expect(cli(tokenFile, ...args)).rejects.toMatchObject({
+        stderr: expect.stringContaining("CAPABILITY_UNAVAILABLE"),
+      });
+    }
     const deletion = await request(routeFor(artifact), "DELETE", {expectedCurrentVersionId: artifact.version.id});
     expect(deletion.ok).toBe(true);
     await expect(deletion.json()).resolves.toMatchObject({recoverable: false});
