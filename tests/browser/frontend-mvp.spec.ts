@@ -1507,9 +1507,7 @@ test.describe("Artifact Server frontend MVP", () => {
       await fixture.page.goto(
         `${fixture.server.baseUrl}/review?project=prj_default&artifact=${first.body.artifact.id}`,
       );
-      await fixture.page.getByRole("button", {name: "Delete artifact"}).click();
-      await fixture.page.getByRole("textbox", {name: "Artifact name"}).fill("Workflow fixture");
-      await fixture.page.getByRole("button", {name: "Delete artifact", exact: true}).last().click();
+      await fixture.page.getByRole("button", {name: "Move to Trash", exact: true}).click();
       await expect(fixture.page.getByRole("button", {name: /Workflow fixture/u})).toHaveCount(0);
     } finally {
       await stopBrowserFixture(fixture);

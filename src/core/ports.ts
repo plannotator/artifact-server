@@ -3,6 +3,10 @@ import type {
   FolderContents, FolderProjectMove, FolderRecord, ListFolderContents, PlacementWrite,
 } from "./folders.js";
 import type {
+  ArtifactPurge, ArtifactRecovery, FolderPurge, FolderRecovery, ListTrash,
+  PurgeTrash, RecoverTrash, TrashPage, TrashWrite,
+} from "./trash.js";
+import type {
   AccessSetting,
   AgentDispatchCreation,
   AgentDispatchPage,
@@ -186,6 +190,11 @@ export interface DeleteArtifact {
   readonly inputDigest: string;
   readonly principalId: string;
   readonly projectId: string;
+  /**
+   * True where the trash capability keeps the tombstone recoverable, so
+   * Git-repository deletion waits for purge. Adapters without trash ignore it.
+   */
+  readonly recoverable?: boolean;
 }
 
 /** Values used to read one bounded page of active artifacts. */
@@ -725,6 +734,7 @@ export interface IdGenerator {
   commentThreadId(): string;
   contentToken(): string;
   folderId(): string;
+  trashGroupId(): string;
   projectId(): string;
   registeredAgentId(): string;
   stagedFileToken(): string;
@@ -736,6 +746,15 @@ export interface IdGenerator {
 export interface FolderRepository {
   listFolder(command: ListFolderContents): Promise<FolderContents>;
   writeFolder(command: PlacementWrite, change: FolderChange): Promise<FolderRecord>;
+}
+
+/** Trash listing and the recover and purge transitions of a tombstone. */
+export interface TrashRepository {
+  listTrash(command: ListTrash): Promise<TrashPage>;
+  recover(command: TrashWrite, target: RecoverTrash): Promise<ArtifactRecovery | FolderRecovery>;
+  purge(command: TrashWrite, target: PurgeTrash): Promise<ArtifactPurge | FolderPurge>;
+  /** Whether a dispatch holds this thread of a trashed, unpurged artifact. */
+  holdsTrashedThread(projectId: string, artifactId: string, threadId: string): Promise<boolean>;
 }
 
 /** Atomic metadata mutations that preserve the current immutable version. */

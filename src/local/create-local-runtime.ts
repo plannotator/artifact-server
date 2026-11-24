@@ -246,7 +246,7 @@ export async function createLocalRuntime(
     stagingCleanupPolicy,
   };
   if (foldersAvailable) {
-    applicationAdapters = {...applicationAdapters, folders: repository.folders};
+    applicationAdapters = {...applicationAdapters, folders: repository.folders, trash: repository.trash};
   }
   if (gitHistoryProvider !== null) {
     Object.assign(applicationAdapters, {gitHistoryProvider});
@@ -306,6 +306,7 @@ export async function createLocalRuntime(
         fixedGitHistoryCapabilityReader(gitHistory.capability),
       linkedArtifacts: linkedFilesEnabled,
       folders: foldersAvailable,
+      trash: foldersAvailable,
       trustedApplicationOrigin: config.applicationOrigin ?? null,
       webAssets: createNodeWebAssetStore(config.webAssetsRoot),
     };

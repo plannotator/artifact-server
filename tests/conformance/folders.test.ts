@@ -20,6 +20,7 @@ import {
 import type {NodeGitHistoryConfiguration} from "../../src/git-history/node-git-history-configuration.js";
 import {checkCompactIntegrity} from "../../src/lifecycle/integrity-check.js";
 import {SqliteArtifactRepository} from "../../src/storage/sqlite-artifact-repository.js";
+import {requiredSqliteSchemaVersion} from "../../src/storage/sqlite-schema.js";
 import {parsePublishResponse, publishNew, publishVersion, type PublishResponse} from "../support/publishing.js";
 import {
   apiHeaders, createTestInstallation, fetchVersion, removeTestInstallation, reserveLoopbackPort,
@@ -107,7 +108,6 @@ describe("local folders and artifact placement", () => {
       Promise.resolve(root),
     );
     await expectFailure(await request(foldersPath, "POST", {name: "Too deep", parentFolderId: parent.id}), 409, "FOLDER_LIMIT");
-    await expectFailure(await request(`${foldersPath}/${root.id}?expectedRevision=1`, "DELETE"), 409, "FOLDER_NOT_EMPTY");
     expect((await request(`/api/v1/projects/${other}/archive`, "POST")).status).toBe(200);
     await expectFailure(await request(`/api/v1/projects/${other}/folders`, "POST", {name: "Archived"}), 409, "PROJECT_ARCHIVED");
     expect((await list("root")).folders).toEqual([root]);
@@ -460,9 +460,10 @@ describe("local folders and artifact placement", () => {
     server = await startTestServer(installation);
     expect((await list("root")).artifacts).toMatchObject([{artifact: {id: artifact.artifact.id}}]);
     await stop();
-    readDatabase((db) => db.exec("PRAGMA user_version = 14"));
+    const newer = requiredSqliteSchemaVersion + 1;
+    readDatabase((db) => db.exec(`PRAGMA user_version = ${newer}`));
     expect(() => new SqliteArtifactRepository(databasePath())).toThrow(/newer schema/u);
-    expect(readDatabase((db) => db.prepare("PRAGMA user_version").get())).toMatchObject({user_version: 14});
+    expect(readDatabase((db) => db.prepare("PRAGMA user_version").get())).toMatchObject({user_version: newer});
   });
 
   test("FLD-007-B: phase-one HTTP, MCP and CLI share folder and placement records", async () => {

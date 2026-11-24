@@ -1,5 +1,8 @@
 import {ArtifactPlacementService, FolderService} from "../application/folders.js";
 import type {ArtifactLocation} from "../core/folders.js";
+import {TrashService} from "../application/trash.js";
+import {decodeTrashCursor, trashPageResponse} from "../http/trash-protocol.js";
+import {maximumTrashPageSize} from "../core/trash.js";
 import {
   artifactMoveSchema, artifactRenameSchema, createFolderSchema, decodeFolderCursor,
   folderContentsResponse, folderCreateKey, folderIdSchema, folderLocationSchema,
@@ -412,6 +415,7 @@ export interface ArtifactMcpServerDependencies {
   /** Advertises the local linked-artifact capability in discovery. */
   readonly linkedArtifacts?: boolean;
   readonly folders?: boolean;
+  readonly trash?: boolean;
   readonly mode: "local" | "remote";
   readonly requestId: string;
 }
@@ -638,6 +642,7 @@ export function createArtifactMcpServer(
         linkedArtifacts: z.object({available: z.boolean()}),
         folders: z.object({available: z.boolean()}),
         crossProjectMove: z.object({available: z.boolean()}),
+        trash: z.object({available: z.boolean(), purge: z.literal("human-only")}),
         projects: z.object({
           omittedProjectRule: z.string(),
           scope: z.literal("project"),
@@ -652,6 +657,7 @@ export function createArtifactMcpServer(
         dependencies.linkedArtifacts === true,
         dependencies.gitHistory,
         dependencies.folders === true,
+        dependencies.trash === true,
       ),
       "Artifact Server publishes actual files through an upload plan. It does not accept inline HTML, CSS, JavaScript, or base64 content."),
   );
@@ -951,9 +957,9 @@ export function createArtifactMcpServer(
     )),
   })));
 
-  registerNudgedTool("folder_delete", {
-    title: "Delete an empty folder",
-    description: "Remove an empty folder using its current revision.",
+  registerNudgedTool("folder_trash", {
+    title: "Move a folder to the trash",
+    description: "Move a folder and everything still in it to the trash as one group, using its current revision. The group stays recoverable with folder_recover until a person purges it.",
     inputSchema: z.object({
       ...folderWriteFields, folderId: folderIdSchema, expectedRevision: folderRevisionSchema,
     }).strict(),
@@ -966,6 +972,75 @@ export function createArtifactMcpServer(
       }),
     )),
   })));
+
+  const trashItemSchema = z.object({
+    kind: z.enum(["artifact", "folder"]),
+    id: z.string(),
+    projectId: z.string(),
+    name: z.string(),
+    location: z.object({
+      projectId: z.string(),
+      folderId: z.string().nullable(),
+      path: z.array(z.object({id: z.string(), name: z.string()})),
+    }),
+    trashedAt: z.string(),
+    trashedBy: z.string().nullable(),
+    trashGroupId: z.string().nullable(),
+    accessSetting: accessSettingSchema.optional(),
+    currentVersionId: z.string().optional(),
+    fileKind: z.string().nullable().optional(),
+    revision: z.number().int().optional(),
+    artifactCount: z.number().int().optional(),
+  });
+  const recoveryPlacementSchema = z.enum(["original", "root"]);
+
+  registerNudgedTool("trash_list", {
+    title: "List the trash",
+    description: "List trashed artifacts and folder groups across readable projects, newest first, with their original location. Nothing in the trash is served until it is recovered.",
+    inputSchema: z.object({
+      projectIds: z.array(z.string().min(1).max(200)).max(100).default([]),
+      cursor: z.string().max(1_024).nullable().default(null),
+      limit: z.number().int().min(1).max(maximumTrashPageSize).default(50),
+    }).strict(),
+    outputSchema: z.object({items: z.array(trashItemSchema), nextCursor: z.string().nullable()}),
+    annotations: readOnlyAnnotations,
+  }, async ({cursor, ...input}) => toolResult(async () => trashPageResponse(
+    await runMcpApplicationEffect(dependencies, TrashService.use(
+      (service) => service.list({...input, principal: identity.principal, cursor: decodeTrashCursor(cursor)}),
+    )),
+  )));
+
+  registerNudgedTool("artifact_recover", {
+    title: "Recover an artifact from the trash",
+    description: "Return a trashed artifact with the same ID, versions, comments, and tags, in its original folder or the project root. A formerly public artifact comes back account-required; re-share it explicitly.",
+    inputSchema: z.object({...folderWriteFields, artifactId: artifactIdSchema}).strict(),
+    outputSchema: z.object({
+      artifact: artifactRecordSchema,
+      placement: recoveryPlacementSchema,
+      previousAccessSetting: accessSettingSchema,
+      replayed: z.boolean(),
+    }),
+    annotations: idempotentWriteAnnotations,
+  }, async ({artifactId, ...input}) => toolResult(async () => runMcpApplicationEffect(dependencies, TrashService.use(
+    (service) => service.recover({...input, principal: identity.principal}, {kind: "artifact", artifactId}),
+  ))));
+
+  registerNudgedTool("folder_recover", {
+    title: "Recover a folder from the trash",
+    description: "Return a trashed folder and everything trashed with it. Pass a new name when a sibling folder now uses the old one.",
+    inputSchema: z.object({
+      ...folderWriteFields, folderId: folderIdSchema, name: z.string().max(2_000).optional(),
+    }).strict(),
+    outputSchema: z.object({
+      folder: folderRecordSchema,
+      placement: recoveryPlacementSchema,
+      recoveredArtifactCount: z.number().int().nonnegative(),
+      previouslyPublicArtifactIds: z.array(z.string()),
+    }),
+    annotations: idempotentWriteAnnotations,
+  }, async ({folderId, name, ...input}) => toolResult(async () => runMcpApplicationEffect(dependencies, TrashService.use(
+    (service) => service.recover({...input, principal: identity.principal}, {kind: "folder", folderId, name}),
+  ))));
 
   registerNudgedTool("artifact_rename", {
     title: "Rename an artifact",
@@ -1566,7 +1641,7 @@ export function createArtifactMcpServer(
     {
       title: "Delete an artifact",
       description:
-        "Delete one artifact from active listings after an optimistic current-version check. This is destructive; retained immutable version records are reported.",
+        "Delete one artifact from active listings after an optimistic current-version check. Where artifact_capabilities reports trash available, the artifact moves to the trash and recoverable is true; otherwise the deletion is one-way. Retained immutable version records are reported.",
       inputSchema: z.object({
         artifactId: artifactIdSchema,
         expectedCurrentVersionId: expectedVersionSchema,
@@ -1577,7 +1652,7 @@ export function createArtifactMcpServer(
         artifact: artifactRecordSchema.extend({deletedAt: z.string()}).strict(),
         replayed: z.boolean(),
         retainedVersionCount: z.number().int().nonnegative(),
-        recoverable: z.literal(false),
+        recoverable: z.boolean(),
       }).strict(),
       annotations: destructiveWriteAnnotations,
     },
@@ -1588,7 +1663,7 @@ export function createArtifactMcpServer(
           management.deleteArtifact({...input, principal: identity.principal})
         ),
       );
-      return {...deletion, recoverable: false as const};
+      return deletion;
     }),
   );
 
@@ -2512,12 +2587,14 @@ function capabilities(
   linkedArtifacts: boolean,
   gitHistory: GitHistoryCapability,
   folders: boolean,
+  trash: boolean,
 ) {
   return {
     gitHistory,
     linkedArtifacts: {available: linkedArtifacts},
     folders: {available: folders},
     crossProjectMove: {available: folders},
+    trash: {available: trash, purge: "human-only" as const},
     agentDispatch: {
       bundleThreadRule:
         "1..100 open, undispatched comment threads from one project per bundle",

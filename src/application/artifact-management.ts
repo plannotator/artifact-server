@@ -186,6 +186,8 @@ export interface ArtifactManagementRepository {
 export interface ArtifactManagementDependencies {
   readonly clock: ApplicationClock;
   readonly repository: ArtifactManagementRepository;
+  /** True where the trash capability makes a tombstone recoverable (ADR 0030). */
+  readonly recoverableDeletion?: boolean;
 }
 
 /** Expected failures produced by artifact management. */
@@ -210,7 +212,7 @@ interface ArtifactManagementOperations {
   ) => Effect.Effect<ArtifactState, ArtifactManagementFailure>;
   readonly deleteArtifact: (
     command: DeleteArtifactCommand,
-  ) => Effect.Effect<ArtifactDeletion, ArtifactManagementFailure>;
+  ) => Effect.Effect<ArtifactDeletion & {readonly recoverable: boolean}, ArtifactManagementFailure>;
   readonly getArtifact: (
     command: ReadArtifactCommand,
   ) => Effect.Effect<ArtifactDetails, ArtifactManagementFailure>;
@@ -571,7 +573,9 @@ function makeArtifactManagementService(
       yield* authorization.requireArtifactManagement(command.principal);
       const idempotencyKey = yield* parseIdempotencyKey(command.idempotencyKey);
       const createdAt = DateTime.formatIso(yield* dependencies.clock.now);
-      return yield* dependencies.repository.deleteArtifact({
+      const recoverable = dependencies.recoverableDeletion === true;
+      const deletion = yield* dependencies.repository.deleteArtifact({
+        recoverable,
         artifactId: artifact.id,
         authorizedByPrincipalId: command.principal.authorizedByPrincipalId,
         createdAt,
@@ -588,6 +592,7 @@ function makeArtifactManagementService(
         principalId: command.principal.id,
         projectId: project.id,
       });
+      return {...deletion, recoverable};
     },
   );
 

@@ -29,6 +29,7 @@ const sessionSchema = z.object({
     }).strict(),
     folders: z.boolean(),
     crossProjectMove: z.boolean(),
+    trash: z.boolean(),
     linkedArtifacts: z.boolean(),
   }).strict(),
 }).loose();

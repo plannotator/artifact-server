@@ -39,6 +39,9 @@
 | share | 分享 | | |
 | download | 下載 | | |
 | delete | 刪除 | | |
+| trash／move to trash | 垃圾桶／移到垃圾桶 | 資源回收筒 | 可復原的刪除 |
+| recover（垃圾桶）／undo | 復原 | 救回、還原 | 「還原」保留給版本還原 |
+| purge | 永久刪除 | 清除 | 無法復原；目前不會釋出磁碟空間 |
 | move / rename | 移動／重新命名 | | |
 | restore | 還原 | | |
 | make current | 設為目前版本 | | |

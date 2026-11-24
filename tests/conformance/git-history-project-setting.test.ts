@@ -37,6 +37,7 @@ import {
   type TestSiteFile,
 } from "../support/publishing.js";
 import {RecordingGitHistoryProvider} from "../support/git-history-provider.js";
+import {signInAdministrator} from "../support/agent-dispatch.js";
 
 const protocolVersion = "2026-07-28";
 const settingSchema = z.object({
@@ -302,7 +303,7 @@ describe("simple per-project Git history setting", () => {
     expect(provider.commitCalls).toBe(2);
   });
 
-  test("GIT-005-F GIT-009-B: clone access is authorized and bounded, disablement preserves the repository, and artifact deletion removes it", async () => {
+  test("GIT-005-F GIT-009-B: clone access is authorized and bounded, disablement preserves the repository, and purging a trashed artifact removes it", async () => {
     const provider = new RecordingGitHistoryProvider();
     server = await startTestServer(installation, {
       gitHistory: configuredGitHistory(),
@@ -365,6 +366,27 @@ describe("simple per-project Git history setting", () => {
       },
     );
     expect(deletion.status).toBe(200);
+    // A trashed artifact keeps its mirror so recovery finds it intact (ADR 0030).
+    expect(provider.deleteCalls).toBe(0);
+    expect(provider.repositories.has(published.body.artifact.id)).toBe(true);
+    const cookies = await signInAdministrator(server, installation);
+    const purge = await fetch(
+      new URL(`/api/v1/artifacts/${published.body.artifact.id}/purge?projectId=prj_default`, server.baseUrl),
+      {
+        body: JSON.stringify({confirm: published.body.artifact.name}),
+        headers: new Headers({
+          "Content-Type": "application/json",
+          Cookie: cookies.header,
+          Origin: server.baseUrl,
+          "Sec-Fetch-Mode": "cors",
+          "Sec-Fetch-Site": "same-origin",
+          "X-CSRF-Token": cookies.csrf,
+          "Idempotency-Key": "git-history-artifact-purge",
+        }),
+        method: "POST",
+      },
+    );
+    expect(purge.status).toBe(200);
     await expect.poll(() => provider.deleteCalls, {timeout: 8_000}).toBe(1);
     expect(provider.repositories.has(published.body.artifact.id)).toBe(false);
   });

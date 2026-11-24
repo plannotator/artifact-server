@@ -23,6 +23,8 @@ export const artifactActionKinds = {
   delete: "delete",
   link: "link",
   move: "move",
+  purge: "purge",
+  recover: "recover",
   rename: "rename",
   publish: "publish",
   relink: "relink",

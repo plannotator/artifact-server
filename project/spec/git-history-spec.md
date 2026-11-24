@@ -301,6 +301,13 @@ restored; project disablement does not prevent deletion work for an already
 deleted artifact. An explicit purge can complete the same removal before the
 provider is disabled permanently.
 
+**Amended by [ADR 0030](./decisions/0030-trash-is-a-recoverable-tombstone.md):**
+where the `trash` capability is present, the tombstone is recoverable, so the
+`delete-repository` job is queued at **purge** instead of at the tombstone, and
+recovery finds the mirror intact. New clone tokens are refused while the
+artifact is trashed. Where `trash` is absent, the job is queued at deletion as
+described above.
+
 - The worker calls provider `deleteRepository`, marks the artifact's mappings `deleted`, and clears coordinates (`status = 'deleted'`).
 - The job is retried until the provider confirms deletion. Deletion failure is invisible to the artifact deletion itself, which completed when the tombstone committed.
 - Reconciliation is driven only by persisted Artifact Server coordinates and jobs. The product never sweeps the Cloudflare account or namespace. Atomic tombstone/job insertion, deterministic names, and idempotent repository creation let a crash resume without an account-wide list-and-delete operation.

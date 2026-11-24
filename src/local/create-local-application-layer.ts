@@ -1,5 +1,6 @@
 import {type ArtifactPlacementService, type FolderService, folderPlacementLayer} from "../application/folders.js";
-import type {ArtifactPlacementRepository, FolderRepository} from "../core/ports.js";
+import type {ArtifactPlacementRepository, FolderRepository, TrashRepository} from "../core/ports.js";
+import {type TrashService, trashLayer} from "../application/trash.js";
 import {createHash, randomUUID, timingSafeEqual} from "node:crypto";
 
 import { DateTime, Effect, Layer, Redacted } from "effect";
@@ -159,6 +160,8 @@ export interface ApplicationAdapters {
   readonly bootstrapAdministratorEmail: string;
   readonly clock: Clock;
   readonly folders?: FolderRepository & ArtifactPlacementRepository;
+  /** Present only where tombstones are recoverable (ADR 0030). */
+  readonly trash?: TrashRepository;
   readonly externalApiBearerVerifier: BearerCredentialVerifier | null;
   readonly externalMcpBearerVerifier: BearerCredentialVerifier | null;
   readonly externalMcpOAuthVerifier: ExternalMcpBearerVerifier | null;
@@ -239,6 +242,7 @@ export function createApplicationLayer(
   | ArtifactManagementService
   | ArtifactPlacementService
   | FolderService
+  | TrashService
   | AuthorizationService
   | CompareArtifactService
   | ContentAccessService
@@ -492,6 +496,7 @@ export function createApplicationLayer(
   };
   const managementDependencies: ArtifactManagementDependencies = {
     clock,
+    recoverableDeletion: adapters.trash !== undefined,
     repository: {
       changeAccessSetting: (command) =>
         Effect.tryPromise({
@@ -616,6 +621,7 @@ export function createApplicationLayer(
         "versionContainsPath",
         () => adapters.repository.versionContainsPath(projectId, versionId, path),
       ),
+      ...trashThreadHold(adapters.trash),
     },
   };
   const dispatchStore = adapters.dispatches;
@@ -1181,9 +1187,13 @@ export function createApplicationLayer(
   const foldersLayer = folderPlacementLayer(adapters.folders, adapters.clock, adapters.ids).pipe(
     Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)),
   );
+  const trashServiceLayer = trashLayer(adapters.trash, adapters.clock).pipe(
+    Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)),
+  );
   return Layer.mergeAll(
     authenticationLayer,
     foldersLayer,
+    trashServiceLayer,
     commentLayer,
     dispatchLayer,
     identityLayer,
@@ -1462,6 +1472,15 @@ function classifyDispatchFailure(
     return cause;
   }
   return repositoryFailure(operation, cause);
+}
+
+function trashThreadHold(trash: TrashRepository | undefined) {
+  return trash === undefined ? {} : {
+    holdsTrashedThread: (projectId: string, artifactId: string, threadId: string) => commentEffect(
+      "findTrashedThreadHold",
+      () => trash.holdsTrashedThread(projectId, artifactId, threadId),
+    ),
+  };
 }
 
 function commentEffect<A>(

@@ -13,6 +13,10 @@ export const errorCodes = {
   dispatchHeld: "DISPATCH_HELD",
   gitHistoryEnabled: "GIT_HISTORY_ENABLED",
   moveTooLarge: "MOVE_TOO_LARGE",
+  notInTrash: "NOT_IN_TRASH",
+  artifactInTrash: "ARTIFACT_IN_TRASH",
+  purgeConfirmationMismatch: "PURGE_CONFIRMATION_MISMATCH",
+  trashTooLarge: "TRASH_TOO_LARGE",
   agentNotFound: "AGENT_NOT_FOUND",
   artifactNotFound: "ARTIFACT_NOT_FOUND",
   artifactMutationConflict: "ARTIFACT_MUTATION_CONFLICT",
@@ -68,6 +72,7 @@ export class FolderFailure extends Schema.TaggedError<FolderFailure>()(
   {
     ...messageField,
     reason: Schema.Literals(["not-found", "cycle", "limit", "not-empty", "name-conflict", "revision", "invalid-name"]),
+    conflictingFolderId: Schema.optional(Schema.String),
     current: Schema.optional(Schema.Struct({
       id: Schema.String,
       installationId: Schema.String,
@@ -86,6 +91,17 @@ export class FolderFailure extends Schema.TaggedError<FolderFailure>()(
 export class ProjectMoveRefused extends Schema.TaggedError<ProjectMoveRefused>()(
   "ProjectMoveRefused",
   {...messageField, reason: Schema.Literals(["dispatch-held", "git-history-enabled", "too-large"])},
+) {}
+
+/** A trash, recover, or purge command was refused without writing anything. */
+export class TrashFailure extends Schema.TaggedError<TrashFailure>()(
+  "TrashFailure",
+  {
+    ...messageField,
+    reason: Schema.Literals([
+      "not-in-trash", "artifact-in-trash", "dispatch-held", "confirmation-mismatch", "too-large",
+    ]),
+  },
 ) {}
 
 /** The requested artifact does not exist in the installation. */
@@ -436,6 +452,10 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
       "moveArtifactToProject",
       "moveFolderToProject",
       "locateArtifact",
+      "listTrash",
+      "recoverTrash",
+      "purgeTrash",
+      "findTrashedThreadHold",
       "listCommentReplies",
       "listCommentThreads",
       "listInsightActivity",
@@ -517,6 +537,7 @@ export class StagingStorageFailure extends Schema.TaggedError<StagingStorageFail
 const artifactServerFailureSchema = Schema.Union([
   FolderFailure,
   ProjectMoveRefused,
+  TrashFailure,
   AgentDispatchNotFound,
   AgentNotFound,
   ArtifactNotFound,

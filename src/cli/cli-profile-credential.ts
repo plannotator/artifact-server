@@ -55,6 +55,7 @@ const principalSchema = Schema.Struct({
     principalCapabilities.issueContentSession,
     principalCapabilities.manageAnyArtifact,
     principalCapabilities.manageProjects,
+    principalCapabilities.purgeArtifacts,
     principalCapabilities.publishAnyArtifact,
     principalCapabilities.readArtifacts,
     principalCapabilities.writeComments,

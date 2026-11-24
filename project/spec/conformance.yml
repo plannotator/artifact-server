@@ -1191,7 +1191,7 @@ requirements:
       failure: {id: GIT-009-F, description: "A policy or configuration change cannot silently delete remote repositories, discard queued deletion work, or write persisted coordinates through a different provider, account, or namespace; an unsupported replacement reports migration-required while core behavior continues."}
     deployments: *all
     status: implementing
-    proof_gap: Project disablement preserves repositories and durable mappings, same-provider re-enable resumes work, artifact deletion queues repository deletion, and provider identity changes fail as migration-required. Provider-wide disablement during deletion and the complete cross-deployment lifecycle matrix remain unproved.
+    proof_gap: Project disablement preserves repositories and durable mappings, same-provider re-enable resumes work, artifact deletion queues repository deletion (at purge where the trash capability keeps the tombstone recoverable, ADR 0030), and provider identity changes fail as migration-required. Provider-wide disablement during deletion and the complete cross-deployment lifecycle matrix remain unproved.
     depends_on: [GIT-008]
     evidence: []
 
@@ -5076,7 +5076,7 @@ requirements:
       failure: {id: FLD-007-F, description: "Where a capability is absent its routes answer 501 capability-unavailable, its MCP tools return the same coded error, and the web application renders no affordance; delete keeps its one-way contract and reports recoverable false."}
     deployments: [local]
     status: implementing
-    proof_gap: Phase one covers folder and in-project placement parity and capability gating. Trash, recover, and file search remain future phases.
+    proof_gap: Phase one covers folder and in-project placement parity and capability gating; phase two adds trash, folder trash, recover, and capability-gated purge across HTTP, MCP, the CLI, and the web Trash view (proved under TRS-001..005). File search and the Files overview remain future phases.
     depends_on: [FLD-003, TRS-002, FOV-001]
     evidence: []
 
@@ -5103,9 +5103,14 @@ requirements:
       behavior: {id: TRS-001-B, description: "Trash an artifact and a folder subtree; observe them absent from listings, overview, search, and dashboard counts, present in trash with original location and actor, and every version and blob retained."}
       failure: {id: TRS-001-F, description: "After trashing, the stable URL, exact-version routes, content origins, public link, live view, comment writes, and new clone tokens all refuse; a stale expected version or revision changes nothing; a subtree above 10,000 artifacts is refused as trash-too-large."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [ART-001, FLD-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [TRS-001-B, TRS-001-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T09:40:00.000Z"
 
   - id: TRS-002
     kind: behavior
@@ -5116,9 +5121,14 @@ requirements:
       behavior: {id: TRS-002-B, description: "Recover a single artifact, a folder group, and an artifact whose folder was purged; observe identical identities, the original or root placement as reported, a recover action, and the prior public setting reported with access now account-required."}
       failure: {id: TRS-002-F, description: "Recovering a purged item is not-found; recovering a folder whose sibling name is taken answers name-conflict until a new name is given; recovering never re-enables a public link or creates a version."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [TRS-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [TRS-002-B, TRS-002-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T09:40:00.000Z"
 
   - id: TRS-003
     kind: security
@@ -5129,9 +5139,14 @@ requirements:
       behavior: {id: TRS-003-B, description: "Purge a trashed artifact and a trashed folder with the exact confirmation; observe them gone from trash, unrecoverable on every surface, a purge action recorded, and every referenced blob still present."}
       failure: {id: TRS-003-F, description: "Purging an active item, purging without the exact confirmation, purging as a service key without the purge capability, and purging while a queued, claimed, or delivered dispatch holds a thread are all refused with nothing changed."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [TRS-001, CMT-020, ART-007, OPS-007]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [TRS-003-B, TRS-003-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T09:40:00.000Z"
 
   - id: TRS-004
     kind: behavior
@@ -5142,9 +5157,14 @@ requirements:
       behavior: {id: TRS-004-B, description: "Trash items in two projects and page through the trash list without duplicates or gaps; an agent replying on a held thread of a trashed artifact receives artifact-in-trash and can report the dispatch failed."}
       failure: {id: TRS-004-F, description: "Trash listing requires artifact-listing authority, never returns purged items, and a page size above the maximum is refused."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [TRS-001, CMT-020]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [TRS-004-B, TRS-004-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T09:40:00.000Z"
 
   - id: TRS-005
     kind: constraint
@@ -5155,9 +5175,14 @@ requirements:
       behavior: {id: TRS-005-B, description: "Migrate a database with a tombstoned artifact, find it in trash, and recover it with its versions intact; leave trash untouched across restarts and observe nothing purged."}
       failure: {id: TRS-005-F, description: "With the trash capability absent, delete reports recoverable false and recover and purge answer capability-unavailable."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [TRS-002, FLD-006]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [TRS-005-B, TRS-005-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T09:40:00.000Z"
 
   - id: FOV-001
     kind: behavior

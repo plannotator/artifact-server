@@ -151,6 +151,8 @@ test("Review hides placement actions when the live deployment reports folders un
       await expect(page.getByRole("navigation", {name: "Location"})).toHaveCount(0);
       await expect(page.getByRole("button", {name: "Move…", exact: true})).toHaveCount(0);
       await expect(page.locator(".as-inspector").getByRole("button", {name: "Rename", exact: true})).toHaveCount(0);
+      await expect(page.getByRole("link", {name: "Open trash"})).toHaveCount(0);
+      await expect(page.getByRole("button", {name: "Move to Trash", exact: true})).toHaveCount(0);
     } finally {
       await server.stop();
     }
