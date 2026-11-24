@@ -944,6 +944,25 @@ async function requestText(path: string): Promise<string> {
   return await response.text();
 }
 
+/**
+ * Read at most `byteLimit` leading bytes of one download-route entry. The
+ * download route answers `application/octet-stream`, so these bytes are only
+ * ever data to the application; a server that ignores the range is still
+ * clipped to the limit here.
+ */
+async function requestBytes(
+  path: string,
+  byteLimit: number | null,
+): Promise<Uint8Array> {
+  const headers = new Headers();
+  if (byteLimit !== null) headers.set("Range", `bytes=0-${byteLimit - 1}`);
+  const response = await fetch(path, {credentials: "same-origin", headers});
+  notifySessionExpiry(response);
+  if (!response.ok) throw await parseFailure(response);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  return byteLimit === null ? bytes : bytes.subarray(0, byteLimit);
+}
+
 async function requestHead(path: string): Promise<void> {
   const response = await fetch(path, {
     credentials: "same-origin",
@@ -1291,6 +1310,16 @@ export const api = {
     versionId,
     path,
   )),
+  versionFileBytes: (
+    projectId: string,
+    artifactId: string,
+    versionId: string,
+    path: string,
+    byteLimit: number | null,
+  ) => requestBytes(
+    versionAssetUrl("file", projectId, artifactId, versionId, path),
+    byteLimit,
+  ),
   versionFileUrl: (
     projectId: string,
     artifactId: string,

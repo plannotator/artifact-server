@@ -3661,7 +3661,7 @@ async function serveVersionMedia(
   if (mediaKind === null) {
     return mediaPreviewFailure(
       errorCodes.mediaPreviewTypeUnsupported,
-      "This manifest entry is not an image or video preview.",
+      "This manifest entry is not an image, video, or audio preview.",
       415,
     );
   }
@@ -3748,7 +3748,7 @@ function permitsMediaPreviewRequest(
   method: string,
   headers: Headers,
   authenticationMethod: "bearer" | "session",
-  mediaKind: "image" | "video",
+  mediaKind: PreviewMediaKind,
 ): boolean {
   if (
     authenticationMethod !== "session" ||
@@ -3765,10 +3765,14 @@ function permitsMediaPreviewRequest(
     (mode === "cors" || mode === "same-origin" || mode === "no-cors");
 }
 
-function previewMediaKind(mediaType: string): "image" | "video" | null {
+/** The Fetch Metadata destination a native media element sends for its source. */
+type PreviewMediaKind = "audio" | "image" | "video";
+
+function previewMediaKind(mediaType: string): PreviewMediaKind | null {
   const essence = mediaType.split(";", 1)[0]?.trim().toLowerCase();
   if (essence?.startsWith("image/") === true) return "image";
   if (essence?.startsWith("video/") === true) return "video";
+  if (essence?.startsWith("audio/") === true) return "audio";
   return null;
 }
 
@@ -4074,6 +4078,28 @@ function reviewFrameContentSecurityPolicy(contentDomain: string): string {
   ].join("; ");
 }
 
+/**
+ * The trusted application document. Its only cross-origin frame is a PDF
+ * preview, which the browser's own viewer renders from an exact-version
+ * preview-lease host on the content domain. That origin never shares the
+ * application's cookies or storage, so framing it adds no application access.
+ */
+function applicationContentSecurityPolicy(contentDomain: string): string {
+  return [
+    "default-src 'self'",
+    "base-uri 'none'",
+    "connect-src 'self'",
+    "font-src 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    `frame-src 'self' http://*.${contentDomain}:* https://*.${contentDomain}`,
+    "img-src 'self' data:",
+    "object-src 'none'",
+    "script-src 'self'",
+    "style-src 'self'",
+  ].join("; ");
+}
+
 type WebAssetKind = "application-shell" | "review-frame" | "static-asset";
 
 async function serveWebAsset(
@@ -4092,7 +4118,7 @@ async function serveWebAsset(
       : "no-cache, must-revalidate",
     "Content-Security-Policy": kind === "review-frame"
       ? reviewFrameContentSecurityPolicy(dependencies.contentDomain)
-      : "default-src 'self'; base-uri 'none'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self'",
+      : applicationContentSecurityPolicy(dependencies.contentDomain),
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
   });

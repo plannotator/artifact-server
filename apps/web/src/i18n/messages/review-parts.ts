@@ -146,8 +146,8 @@ export const reviewPartsText = defineMessages({
       unsupportedTitle: "Preview not supported",
       unsupportedDescription: "Artifact Server does not preview this declared media type.",
       unavailableTitle: "Preview unavailable",
-      mediaUnavailableTitle: (kind: "image" | "video") =>
-        `${kind === "image" ? "Image" : "Video"} preview unavailable`,
+      mediaUnavailableTitle: (kind: "audio" | "image" | "video") =>
+        `${{audio: "Audio", image: "Image", video: "Video"}[kind]} preview unavailable`,
       mediaUnavailableDescription: (mediaType: string) =>
         `This browser could not decode or deliver the declared ${mediaType} file.`,
       frameTitle: (artifactId: string, versionNumber: number) => `${artifactId} version ${versionNumber}`,
@@ -161,6 +161,31 @@ export const reviewPartsText = defineMessages({
       opening: "Opening…",
       openRaw: "Open raw artifact",
       download: "Download file",
+      pdfUnavailableTitle: "PDF preview unavailable",
+      pdfUnavailableDescription:
+        "This file is declared as a PDF but does not begin like a PDF document, so Review will not load it.",
+      markdownViewLabel: "Markdown view",
+      markdownRendered: "Rendered",
+      markdownSource: "Source",
+      textUnavailableTitle: "Text preview unavailable",
+      textRegionLabel: (path: string) => `Contents of ${path}`,
+      textTruncated: (shown: string, total: string) =>
+        `Showing the first ${shown} of ${total}. Download the file to read the rest.`,
+      dataUnavailableTitle: "Data preview unavailable",
+      dataMalformed: (format: string) =>
+        `This file is not valid ${format}, so Review shows no table or tree for it.`,
+      dataTooLarge: (limit: string) =>
+        `This file is larger than the ${limit} limit for a structured preview.`,
+      dataTimedOut: "Reading this file took longer than the structured preview allows.",
+      dataTableLabel: (path: string) => `Rows of ${path}`,
+      dataTreeLabel: (path: string) => `Structure of ${path}`,
+      dataRowsTruncated: (rows: string) => `Showing the first ${rows} rows.`,
+      dataRecordsTruncated: (records: string) => `Showing the first ${records} records.`,
+      jsonEntries: (count: number, kind: "array" | "object") =>
+        kind === "array"
+          ? `${count} ${count === 1 ? "item" : "items"}`
+          : `${count} ${count === 1 ? "key" : "keys"}`,
+      jsonMore: (count: number) => `${count} more not shown`,
     },
     projectPicker: {
       current: (name: string | null) => `Current project: ${name ?? "none"}`,
@@ -331,8 +356,8 @@ export const reviewPartsText = defineMessages({
       unsupportedTitle: "不支援預覽",
       unsupportedDescription: "Artifact Server 無法預覽這種媒體類型，你可以開啟原始檔或下載檔案。",
       unavailableTitle: "無法預覽",
-      mediaUnavailableTitle: (kind: "image" | "video") =>
-        kind === "image" ? "無法預覽圖片" : "無法預覽影片",
+      mediaUnavailableTitle: (kind: "audio" | "image" | "video") =>
+        ({audio: "無法預覽音訊", image: "無法預覽圖片", video: "無法預覽影片"})[kind],
       mediaUnavailableDescription: (mediaType: string) =>
         `這個瀏覽器無法解碼或載入這個 ${mediaType} 檔案。你可以重新預覽、開啟原始檔或下載檔案。`,
       frameTitle: (artifactId: string, versionNumber: number) => `${artifactId} 第 ${versionNumber} 版`,
@@ -346,6 +371,29 @@ export const reviewPartsText = defineMessages({
       opening: "開啟中…",
       openRaw: "開啟原始檔",
       download: "下載檔案",
+      pdfUnavailableTitle: "無法預覽 PDF",
+      pdfUnavailableDescription:
+        "這個檔案宣告為 PDF，但開頭不是 PDF 文件的格式，所以審閱不會載入它。",
+      markdownViewLabel: "Markdown 顯示方式",
+      markdownRendered: "排版",
+      markdownSource: "原始碼",
+      textUnavailableTitle: "無法預覽文字",
+      textRegionLabel: (path: string) => `${path} 的內容`,
+      textTruncated: (shown: string, total: string) =>
+        `只顯示前 ${shown}（共 ${total}）。下載檔案可以看完整內容。`,
+      dataUnavailableTitle: "無法預覽資料",
+      dataMalformed: (format: string) =>
+        `這個檔案不是有效的 ${format}，所以不顯示表格或樹狀結構。`,
+      dataTooLarge: (limit: string) =>
+        `這個檔案超過結構化預覽的 ${limit} 上限。`,
+      dataTimedOut: "讀取這個檔案的時間超過結構化預覽的上限。",
+      dataTableLabel: (path: string) => `${path} 的資料列`,
+      dataTreeLabel: (path: string) => `${path} 的結構`,
+      dataRowsTruncated: (rows: string) => `只顯示前 ${rows} 列。`,
+      dataRecordsTruncated: (records: string) => `只顯示前 ${records} 筆紀錄。`,
+      jsonEntries: (count: number, kind: "array" | "object") =>
+        kind === "array" ? `${count} 項` : `${count} 個鍵`,
+      jsonMore: (count: number) => `還有 ${count} 項未顯示`,
     },
     projectPicker: {
       current: (name: string | null) => `目前專案：${name ?? "無"}`,

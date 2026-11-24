@@ -220,6 +220,9 @@ importers:
       clsx:
         specifier: 2.1.1
         version: 2.1.1
+      marked:
+        specifier: 17.0.6
+        version: 17.0.6
       motion:
         specifier: 12.43.0
         version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

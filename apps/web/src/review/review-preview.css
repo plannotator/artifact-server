@@ -1,0 +1,225 @@
+/*
+ * Presenters for audio, PDF, Markdown, text, and structured data previews.
+ * Colors come only from the theme tokens; file content is laid out on the
+ * same sheet surface as HTML artifacts.
+ */
+
+.as-media-preview[data-kind="audio"] audio {
+  max-width: 100%;
+  width: min(36rem, 100%);
+}
+
+.as-pdf-frame {
+  background: var(--as-surface);
+}
+
+.as-markdown-preview,
+.as-text-preview,
+.as-data-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+.as-markdown-preview__bar {
+  display: flex;
+  flex: none;
+  gap: 0.35rem;
+  justify-content: flex-end;
+  padding: 0 0 0.6rem;
+}
+
+.as-markdown-preview__bar .as-button {
+  font-size: var(--text-xs);
+  min-height: 1.9rem;
+  padding: 0.2rem 0.6rem;
+}
+
+/* A view choice, not an action: neutral when pressed. */
+.as-markdown-preview__bar .as-button[aria-pressed="true"] {
+  background: var(--as-hover);
+  color: var(--as-text);
+  font-weight: 600;
+}
+
+.as-markdown-preview__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+.as-preview-notice {
+  align-items: center;
+  background: color-mix(in oklab, var(--as-gold) 14%, var(--as-surface));
+  border: 1px solid color-mix(in oklab, var(--as-gold) 40%, var(--as-border));
+  border-radius: var(--as-radius);
+  color: var(--as-text);
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  gap: 0.5rem 0.75rem;
+  justify-content: space-between;
+  margin: 0 0 0.6rem;
+  padding: 0.45rem 0.6rem 0.45rem 0.85rem;
+}
+
+.as-preview-notice a {
+  text-decoration: none;
+}
+
+.as-text-preview__scroll,
+.as-data-table__scroll,
+.as-json-tree {
+  background: var(--as-surface);
+  border: 1px solid var(--as-border);
+  border-bottom: 0;
+  border-radius: var(--as-radius) var(--as-radius) 0 0;
+  color: var(--as-text);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.as-text-preview__scroll {
+  display: flex;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+
+.as-text-preview__scroll:focus-visible,
+.as-data-table__scroll:focus-visible,
+.as-json-tree:focus-visible {
+  outline: 2px solid var(--as-iris);
+  outline-offset: -2px;
+}
+
+.as-text-preview__gutter,
+.as-text-preview__code {
+  margin: 0;
+  padding: 0.85rem 0.75rem 2rem;
+  white-space: pre;
+}
+
+.as-text-preview__gutter {
+  background: var(--as-surface-raised);
+  border-right: 1px solid var(--as-border);
+  color: var(--as-muted);
+  flex: none;
+  min-height: 100%;
+  position: sticky;
+  left: 0;
+  text-align: right;
+  user-select: none;
+}
+
+.as-text-preview__code {
+  flex: 1 0 auto;
+  tab-size: 4;
+}
+
+.as-text-preview__code code {
+  font: inherit;
+}
+
+.as-data-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--text-xs);
+  min-width: 100%;
+}
+
+.as-data-table th,
+.as-data-table td {
+  border-bottom: 1px solid var(--as-border);
+  border-right: 1px solid var(--as-border);
+  box-sizing: border-box;
+  height: 30px;
+  line-height: 29px;
+  max-width: 22rem;
+  overflow: hidden;
+  padding: 0 0.65rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.as-data-table thead th {
+  background: var(--as-surface-raised);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.as-data-table .as-data-table__index {
+  background: var(--as-surface-raised);
+  color: var(--as-subtle);
+  font-family: var(--font-mono);
+  font-weight: 400;
+  left: 0;
+  position: sticky;
+  text-align: right;
+}
+
+.as-data-table thead .as-data-table__index {
+  z-index: 2;
+}
+
+.as-data-table__spacer td {
+  border: 0;
+  padding: 0;
+}
+
+.as-json-tree {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.7;
+  padding: 0.75rem 1rem 2rem;
+}
+
+.as-json-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 1.1rem;
+}
+
+.as-json-tree > ul {
+  padding: 0;
+}
+
+.as-json-tree summary {
+  cursor: pointer;
+}
+
+.as-json-tree__key {
+  color: var(--as-text);
+  font-weight: 600;
+  margin-right: 0.5rem;
+}
+
+.as-json-tree__key::after {
+  content: ":";
+}
+
+.as-json-tree__meta,
+.as-json-tree__more {
+  color: var(--as-subtle);
+}
+
+.as-json-tree__value[data-kind="string"] {
+  color: var(--as-pine);
+}
+
+.as-json-tree__value[data-kind="number"],
+.as-json-tree__value[data-kind="boolean"],
+.as-json-tree__value[data-kind="null"] {
+  color: var(--as-iris);
+}
+
+.as-json-tree__value {
+  overflow-wrap: anywhere;
+}
