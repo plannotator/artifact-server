@@ -1,7 +1,15 @@
+import type {FolderRecord} from "./folders.js";
+
 import { Schema } from "effect";
 
 /** Stable error codes exposed by Artifact Server protocols. */
 export const errorCodes = {
+  folderNotFound: "FOLDER_NOT_FOUND",
+  folderCycle: "FOLDER_CYCLE",
+  folderLimit: "FOLDER_LIMIT",
+  folderNotEmpty: "FOLDER_NOT_EMPTY",
+  folderRevisionConflict: "FOLDER_REVISION_CONFLICT",
+  nameConflict: "NAME_CONFLICT",
   agentNotFound: "AGENT_NOT_FOUND",
   artifactNotFound: "ARTIFACT_NOT_FOUND",
   artifactMutationConflict: "ARTIFACT_MUTATION_CONFLICT",
@@ -50,6 +58,26 @@ export const errorCodes = {
 export type ErrorCode = (typeof errorCodes)[keyof typeof errorCodes];
 
 const messageField = {message: Schema.String};
+
+/** A folder command was refused without writing any metadata. */
+export class FolderFailure extends Schema.TaggedError<FolderFailure>()(
+  "FolderFailure",
+  {
+    ...messageField,
+    reason: Schema.Literals(["not-found", "cycle", "limit", "not-empty", "name-conflict", "revision", "invalid-name"]),
+    current: Schema.optional(Schema.Struct({
+      id: Schema.String,
+      installationId: Schema.String,
+      projectId: Schema.String,
+      parentFolderId: Schema.NullOr(Schema.String),
+      name: Schema.String,
+      nameKey: Schema.String,
+      revision: Schema.Number,
+      createdAt: Schema.String,
+      updatedAt: Schema.String,
+    }) satisfies Schema.Schema<FolderRecord>),
+  },
+) {}
 
 /** The requested artifact does not exist in the installation. */
 export class ArtifactNotFound extends Schema.TaggedError<ArtifactNotFound>()(
@@ -264,7 +292,7 @@ export class IdempotencyConflict extends Schema.TaggedError<IdempotencyConflict>
 /** The artifact's current version changed before the publication committed. */
 export class PublishConflict extends Schema.TaggedError<PublishConflict>()(
   "PublishConflict",
-  messageField,
+  {...messageField, currentVersionId: Schema.optional(Schema.String)},
 ) {}
 
 /** The requested staged upload has already committed. */
@@ -393,6 +421,9 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
       "listAgentDispatches",
       "listArtifactActions",
       "listArtifacts",
+      "listFolder",
+      "writeFolder",
+      "writeArtifactPlacement",
       "listCommentReplies",
       "listCommentThreads",
       "listInsightActivity",
@@ -472,6 +503,7 @@ export class StagingStorageFailure extends Schema.TaggedError<StagingStorageFail
 ) {}
 
 const artifactServerFailureSchema = Schema.Union([
+  FolderFailure,
   AgentDispatchNotFound,
   AgentNotFound,
   ArtifactNotFound,

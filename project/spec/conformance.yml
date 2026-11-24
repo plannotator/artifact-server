@@ -4992,7 +4992,8 @@ requirements:
       behavior: {id: FLD-001-B, description: "Create nested folders, list a folder's children and breadcrumbs, replay an idempotent create with a client-supplied ID, and observe stable IDs and revisions."}
       failure: {id: FLD-001-F, description: "Names that are empty, too long, contain control or bidi-override characters, separators, '.', '..', or leading/trailing dots, and siblings differing only by case or compatibility form, are refused; depth 17, an unknown or foreign parent, and writes in an archived project are refused without creating a record."}
     deployments: [local]
-    status: specified
+    status: implementing
+    proof_gap: Named local behavior and failure tests cover folder identity, keyset listing, depth, and write guards. The generated run report is excluded from this change.
     depends_on: [PRJ-001]
     evidence: []
 
@@ -5005,7 +5006,8 @@ requirements:
       behavior: {id: FLD-002-B, description: "Rename and move a folder holding artifacts with versions, comments, and a public link; observe the new path, an unchanged artifact/version/content-token set, working public and stable URLs, and one folder action per mutation."}
       failure: {id: FLD-002-F, description: "A stale expectedRevision returns the current folder and changes nothing; moving a folder into itself or a descendant is refused as folder-cycle; a destination sibling name collision is refused as name-conflict."}
     deployments: [local]
-    status: specified
+    status: implementing
+    proof_gap: Named local behavior and failure tests cover single-record changes, identity preservation, revision conflicts, and cycles. The generated run report is excluded from this change.
     depends_on: [FLD-001]
     evidence: []
 
@@ -5018,7 +5020,8 @@ requirements:
       behavior: {id: FLD-003-B, description: "Move and rename an artifact; observe the same version list and content tokens, the new placement and name in listings and name search, unchanged comments and public-link delivery, and one move and one rename action."}
       failure: {id: FLD-003-F, description: "A stale expectedCurrentVersionId returns the publish-style conflict with the actual current version; a folder in another project or a trashed folder is refused; replaying the idempotency key returns the original result and a reused key with different input fails."}
     deployments: [local]
-    status: specified
+    status: implementing
+    proof_gap: Named local behavior and failure tests cover artifact metadata changes, optimistic concurrency, and replay. The generated run report is excluded from this change.
     depends_on: [FLD-001, ART-001]
     evidence: []
 
@@ -5057,7 +5060,8 @@ requirements:
       behavior: {id: FLD-006-B, description: "Migrate a populated schema-12 database and observe all artifacts at the root, correct file kinds and sizes, and byte-identical artifact, version, manifest, content-token, action, tag, comment, and binding sets."}
       failure: {id: FLD-006-F, description: "An interrupted migration leaves the database at schema 12 and fully usable, a rerun completes it, and a newer schema is refused at startup."}
     deployments: [local]
-    status: specified
+    status: implementing
+    proof_gap: Named local behavior and failure tests cover populated schema-12 data, transactional rollback, rerun, and newer-schema refusal. The generated run report is excluded from this change.
     depends_on: [FLD-001]
     evidence: []
 
@@ -5070,7 +5074,8 @@ requirements:
       behavior: {id: FLD-007-B, description: "Perform create-folder, move, rename, trash, recover, and file search through HTTP, MCP, and the CLI against one server and observe the same records and action history."}
       failure: {id: FLD-007-F, description: "Where a capability is absent its routes answer 501 capability-unavailable, its MCP tools return the same coded error, and the web application renders no affordance; delete keeps its one-way contract and reports recoverable false."}
     deployments: [local]
-    status: specified
+    status: implementing
+    proof_gap: Phase one covers folder and in-project placement parity and capability gating. Trash, recover, and file search remain future phases.
     depends_on: [FLD-003, TRS-002, FOV-001]
     evidence: []
 
@@ -5083,7 +5088,8 @@ requirements:
       behavior: {id: FLD-008-B, description: "Back up a stopped data directory with nested folders, trash groups, a cross-project-moved artifact, and a folder link; restore it and observe identical records, integrity passing, and the folder link unavailable until a successful scan."}
       failure: {id: FLD-008-F, description: "Seeded corruption of each kind (folder cycle, foreign folder_id, live artifact in purged folder, duplicate sibling key, child row with a stale project_id, tracked entry with a mismatched binding path) fails the integrity check with a specific finding."}
     deployments: [local]
-    status: specified
+    status: implementing
+    proof_gap: Phase one covers stopped-directory restore, folder hierarchy and artifact placement, and comment scope integrity. Trash, cross-project moves, and linked folder inventory remain future phases.
     depends_on: [FLD-006, OPS-003, OPS-004]
     evidence: []
 

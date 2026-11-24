@@ -54,7 +54,7 @@ export const authenticatedCliHttpClientLayer = Layer.merge(
  */
 export async function resolveCliServerConnection(
   options: CliServerConnectionOptions,
-  purpose: "history" | "link" | "publish",
+  purpose: "folders" | "history" | "link" | "publish",
   forceProfileRefresh = false,
 ): Promise<CliServerConnection> {
   const explicitToken = await loadExplicitApiToken(options);
@@ -102,7 +102,7 @@ export async function resolveCliServerConnection(
     );
   }
 
-  if (purpose === "history" || purpose === "publish") {
+  if (purpose !== "link") {
     const state = await runCliEffect(readCliProfileState(profileDataDirectory));
     const defaultProfile = state.profiles.find(
       (profile) => profile.id === state.defaultProfileId,

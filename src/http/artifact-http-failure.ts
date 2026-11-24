@@ -3,9 +3,26 @@ import {
   errorCodes,
 } from "../core/errors.js";
 
+const folderFailureStatus = {
+  "not-found": {code: errorCodes.folderNotFound, status: 404},
+  cycle: {code: errorCodes.folderCycle, status: 409},
+  limit: {code: errorCodes.folderLimit, status: 409},
+  "not-empty": {code: errorCodes.folderNotEmpty, status: 409},
+  "name-conflict": {code: errorCodes.nameConflict, status: 409},
+  revision: {code: errorCodes.folderRevisionConflict, status: 409},
+  "invalid-name": {code: errorCodes.invalidInput, status: 422},
+} as const;
+
 /** Stable protocol-safe projection shared by HTTP and MCP adapters. */
 export function artifactServerFailureResponse(failure: ArtifactServerFailure) {
   switch (failure._tag) {
+    case "FolderFailure": {
+      const response = {
+        ...folderFailureStatus[failure.reason],
+        message: failure.message,
+      };
+      return failure.current === undefined ? response : {...response, current: failure.current};
+    }
     case "AgentNotFound":
       return {code: errorCodes.agentNotFound, message: failure.message, status: 404};
     case "AgentDispatchNotFound":
@@ -59,8 +76,14 @@ export function artifactServerFailureResponse(failure: ArtifactServerFailure) {
       return {code: errorCodes.invalidManifestPath, message: failure.message, status: 422};
     case "IdempotencyConflict":
       return {code: errorCodes.idempotencyConflict, message: failure.message, status: 409};
-    case "PublishConflict":
-      return {code: errorCodes.publishConflict, message: failure.message, status: 409};
+    case "PublishConflict": {
+      const response = {
+        code: errorCodes.publishConflict,
+        message: failure.message,
+        status: 409 as const,
+      };
+      return failure.currentVersionId === undefined ? response : {...response, currentVersionId: failure.currentVersionId};
+    }
     case "ProjectArchived":
       return {code: errorCodes.projectArchived, message: failure.message, status: 409};
     case "ProjectConflict":

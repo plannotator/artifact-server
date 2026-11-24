@@ -14,6 +14,7 @@
 |---|---|---|---|---|
 | ✅ artifact | 231 | Artifact（不翻） | 產出物、成品 | 產品名稱是 Artifact Server，和 Claude 的 Artifact 用法一致 |
 | project | 117 | 專案 | 計畫 | |
+| folder / project root | | 資料夾／專案根目錄 | | |
 | version | 72 | 版本 | | `v3` 這類版本號維持原樣 |
 | current version | 20 | 目前版本 | 最新版本 | 還原舊版之後，「目前」不一定是「最新」 |
 | comment | 131 | 留言 | 註解、評論 | |
@@ -38,6 +39,7 @@
 | share | 分享 | | |
 | download | 下載 | | |
 | delete | 刪除 | | |
+| move / rename | 移動／重新命名 | | |
 | restore | 還原 | | |
 | make current | 設為目前版本 | | |
 | compare | 比較 | 對照 | |

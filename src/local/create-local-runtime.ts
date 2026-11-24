@@ -215,6 +215,7 @@ export async function createLocalRuntime(
       }),
     ),
   );
+  const foldersAvailable = config.browserAccess.mode === browserAccessModes.localOwner;
   let applicationAdapters: Parameters<typeof createLocalApplicationLayer>[0] = {
     apiToken: config.browserAccess.mode === browserAccessModes.localOwner
       ? apiToken
@@ -244,6 +245,9 @@ export async function createLocalRuntime(
     staging,
     stagingCleanupPolicy,
   };
+  if (foldersAvailable) {
+    applicationAdapters = {...applicationAdapters, folders: repository.folders};
+  }
   if (gitHistoryProvider !== null) {
     Object.assign(applicationAdapters, {gitHistoryProvider});
   }
@@ -301,6 +305,7 @@ export async function createLocalRuntime(
       gitHistory: gitHistoryMonitor?.reader ??
         fixedGitHistoryCapabilityReader(gitHistory.capability),
       linkedArtifacts: linkedFilesEnabled,
+      folders: foldersAvailable,
       trustedApplicationOrigin: config.applicationOrigin ?? null,
       webAssets: createNodeWebAssetStore(config.webAssetsRoot),
     };

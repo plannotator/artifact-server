@@ -1,5 +1,5 @@
 import {AxeBuilder} from "@axe-core/playwright";
-import {expect, test, type Page} from "@playwright/test";
+import {expect, test, type Page, type Route} from "@playwright/test";
 
 import {ApiClient, dispatchCreationSchema, dispatchEnvelopeSchema, issueApiKey, signInAdministrator} from "../support/agent-dispatch.js";
 import {publishNew, publishVersion, type PublishResponse} from "../support/publishing.js";
@@ -108,6 +108,13 @@ async function dispatches(fixture: BrowserFixture, published: PublishResponse, s
   }, Promise.resolve());
 }
 
+async function malformDates(route: Route): Promise<void> {
+  const response = await route.fetch();
+  const body: {artifacts: {artifact: {createdAt: string}}[]} = await response.json();
+  for (const item of body.artifacts) item.artifact.createdAt = "unknown date";
+  await route.fulfill({json: body, response});
+}
+
 test.describe("Review interface refinements", () => {
   let fixture: BrowserFixture;
   test.beforeEach(async ({browser}) => {
@@ -191,12 +198,9 @@ test.describe("Review interface refinements", () => {
     await page.reload();
     const time = page.getByRole("button", {name: /Future catalog artifact/u}).locator("time");
     await expect(time).toHaveText(future.artifact.createdAt);
-    await page.route("**/api/v1/artifacts?*", async (route) => {
-      const response = await route.fetch();
-      const body: {artifacts: {artifact: {createdAt: string}}[]} = await response.json();
-      for (const item of body.artifacts) item.artifact.createdAt = "unknown date";
-      await route.fulfill({json: body, response});
-    });
+    // The catalog lists through the folder route when folders are available.
+    await page.route("**/api/v1/artifacts?*", malformDates);
+    await page.route("**/api/v1/projects/*/folders/*?*", malformDates);
     await page.reload();
     await expect(time).toHaveText("unknown date");
   });

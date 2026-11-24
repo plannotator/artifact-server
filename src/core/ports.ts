@@ -1,4 +1,8 @@
 import type {
+  ArtifactPlacement, ArtifactPlacementChange, FolderChange, FolderContents,
+  FolderRecord, ListFolderContents, PlacementWrite,
+} from "./folders.js";
+import type {
   AccessSetting,
   AgentDispatchCreation,
   AgentDispatchPage,
@@ -720,9 +724,24 @@ export interface IdGenerator {
   commentReplyId(): string;
   commentThreadId(): string;
   contentToken(): string;
+  folderId(): string;
   projectId(): string;
   registeredAgentId(): string;
   stagedFileToken(): string;
   uploadId(): string;
   versionId(): string;
+}
+
+/** Atomic folder browsing and attributed mutations within a project. */
+export interface FolderRepository {
+  listFolder(command: ListFolderContents): Promise<FolderContents>;
+  writeFolder(command: PlacementWrite, change: FolderChange): Promise<FolderRecord>;
+}
+
+/** Atomic metadata mutations that preserve the current immutable version. */
+export interface ArtifactPlacementRepository {
+  writeArtifactPlacement(
+    command: PlacementWrite & {readonly artifactId: string; readonly expectedCurrentVersionId: string},
+    change: ArtifactPlacementChange,
+  ): Promise<ArtifactPlacement>;
 }
