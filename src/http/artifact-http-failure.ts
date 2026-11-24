@@ -13,6 +13,14 @@ const folderFailureStatus = {
   "invalid-name": {code: errorCodes.invalidInput, status: 422},
 } as const;
 
+const trashFailureStatus = {
+  "not-in-trash": {code: errorCodes.notInTrash, status: 409},
+  "artifact-in-trash": {code: errorCodes.artifactInTrash, status: 409},
+  "dispatch-held": {code: errorCodes.dispatchHeld, status: 409},
+  "confirmation-mismatch": {code: errorCodes.purgeConfirmationMismatch, status: 422},
+  "too-large": {code: errorCodes.trashTooLarge, status: 409},
+} as const;
+
 /** Stable protocol-safe projection shared by HTTP and MCP adapters. */
 export function artifactServerFailureResponse(failure: ArtifactServerFailure) {
   switch (failure._tag) {
@@ -21,8 +29,13 @@ export function artifactServerFailureResponse(failure: ArtifactServerFailure) {
         ...folderFailureStatus[failure.reason],
         message: failure.message,
       };
-      return failure.current === undefined ? response : {...response, current: failure.current};
+      const withCurrent = failure.current === undefined ? response : {...response, current: failure.current};
+      return failure.conflictingFolderId === undefined
+        ? withCurrent
+        : {...withCurrent, conflictingFolderId: failure.conflictingFolderId};
     }
+    case "TrashFailure":
+      return {...trashFailureStatus[failure.reason], message: failure.message};
     case "AgentNotFound":
       return {code: errorCodes.agentNotFound, message: failure.message, status: 404};
     case "AgentDispatchNotFound":

@@ -25,6 +25,7 @@ export const principalCapabilities = {
   issueContentSession: "content-session:issue",
   manageAnyArtifact: "artifact:manage:any",
   publishAnyArtifact: "artifact:publish:any",
+  purgeArtifacts: "artifact:purge",
   readArtifacts: "artifact:read",
   manageProjects: "project:manage",
   writeComments: "comment:write",

@@ -3,7 +3,7 @@ import {z} from "zod";
 
 import {
   ArtifactNotFound, FolderFailure, IdempotencyConflict, ProjectArchived,
-  ProjectNotFound, PublishConflict,
+  ProjectNotFound, PublishConflict, TrashFailure,
 } from "../core/errors.js";
 import {
   type ArtifactPlacementChange, type FolderChange, type FolderContents,
@@ -11,6 +11,7 @@ import {
   maximumProjectFolders, type PlacementWrite,
 } from "../core/folders.js";
 import type {ArtifactPage} from "../core/model.js";
+import {maximumTrashGroupArtifacts} from "../core/trash.js";
 import type {ArtifactPlacementRepository, FolderRepository, ListArtifacts} from "../core/ports.js";
 
 const folderSchema = z.object({
@@ -78,7 +79,7 @@ export class SqliteFolders implements FolderRepository, ArtifactPlacementReposit
     const folders = cursor?.kind === "artifact" ? [] : z.array(folderSchema).parse(
       this.database.prepare(`SELECT ${folderColumns} FROM folders
         WHERE project_id = ? AND installation_id = ? AND parent_folder_id IS ?
-          AND name_key > ? AND (? IS NULL OR instr(name_key, ?) > 0)
+          AND trashed_at IS NULL AND name_key > ? AND (? IS NULL OR instr(name_key, ?) > 0)
         ORDER BY name_key LIMIT ?`).all(
         command.projectId, command.installationId, command.folderId, after,
         command.search ?? null, command.search ?? null, command.limit + 1,
@@ -130,7 +131,7 @@ export class SqliteFolders implements FolderRepository, ArtifactPlacementReposit
       if (current.revision !== change.expectedRevision) {
         throw new FolderFailure({reason: "revision", current, message: "The folder changed. Reload it and try again."});
       }
-      if (change.kind === "delete") return this.deleteFolder(command, current);
+      if (change.kind === "delete") return this.trashFolder(command, current, change.trashGroupId);
       return this.updateFolder(command, current, change);
     });
   }
@@ -183,15 +184,48 @@ export class SqliteFolders implements FolderRepository, ArtifactPlacementReposit
     return this.recordFolderAction(command, action, this.folder(command, current.id));
   }
 
-  private deleteFolder(command: PlacementWrite, current: FolderRecord): FolderRecord {
-    const child = this.database.prepare(`
-      SELECT 1 FROM folders WHERE parent_folder_id = ? AND project_id = ?
-      UNION ALL SELECT 1 FROM artifacts WHERE folder_id = ? AND project_id = ? LIMIT 1
-    `).get(current.id, current.projectId, current.id, current.projectId);
-    if (child !== undefined) {
-      throw new FolderFailure({reason: "not-empty", message: "Only empty folders can be deleted."});
+  /** Tombstone the folder and its live subtree as one recoverable trash group. */
+  private trashFolder(command: PlacementWrite, current: FolderRecord, trashGroupId: string): FolderRecord {
+    const subtree = JSON.stringify(z.array(z.object({id: z.string()})).parse(this.database.prepare(`
+      WITH RECURSIVE subtree(id, level) AS (
+        SELECT ?, 1
+        UNION ALL
+        SELECT child.id, subtree.level + 1
+        FROM folders child JOIN subtree ON child.parent_folder_id = subtree.id
+        WHERE child.project_id = ? AND child.trashed_at IS NULL AND subtree.level <= ?
+      )
+      SELECT id FROM subtree
+    `).all(current.id, current.projectId, maximumFolderDepth)).map(({id}) => id));
+    const {count} = countSchema.parse(this.database.prepare(`
+      SELECT COUNT(*) AS count FROM artifacts
+      WHERE project_id = ? AND deleted_at IS NULL AND folder_id IN (SELECT value FROM json_each(?))
+    `).get(current.projectId, subtree));
+    if (count > maximumTrashGroupArtifacts) {
+      throw new TrashFailure({
+        reason: "too-large",
+        message: `A folder with more than ${maximumTrashGroupArtifacts} artifacts cannot be moved to the trash at once.`,
+      });
     }
-    this.database.prepare("DELETE FROM folders WHERE id = ? AND project_id = ?").run(current.id, current.projectId);
+    this.database.prepare(`
+      UPDATE folders SET trashed_at = ?, trash_group_id = ?
+      WHERE project_id = ? AND id IN (SELECT value FROM json_each(?))
+    `).run(command.createdAt, trashGroupId, current.projectId, subtree);
+    this.database.prepare(`
+      UPDATE artifacts SET deleted_at = ?, trash_group_id = ?
+      WHERE project_id = ? AND deleted_at IS NULL AND folder_id IN (SELECT value FROM json_each(?))
+    `).run(command.createdAt, trashGroupId, current.projectId, subtree);
+    this.database.prepare(`
+      INSERT INTO actions (
+        id, project_id, artifact_id, version_id, action, principal_id,
+        authorized_by_principal_id, idempotency_key, created_at
+      )
+      SELECT lower(hex(randomblob(16))), project_id, id, current_version_id, 'delete', ?, ?, ?, ?
+      FROM artifacts
+      WHERE project_id = ? AND trash_group_id = ? AND current_version_id IS NOT NULL
+    `).run(
+      command.principalId, command.authorizedByPrincipalId, command.idempotencyKey,
+      command.createdAt, current.projectId, trashGroupId,
+    );
     return this.recordFolderAction(command, "delete", current);
   }
 
@@ -292,7 +326,7 @@ export class SqliteFolders implements FolderRepository, ArtifactPlacementReposit
 
   private folder(scope: FolderScope, id: string): FolderRecord {
     const row = this.database.prepare(`SELECT ${folderColumns} FROM folders
-      WHERE project_id = ? AND installation_id = ? AND id = ?`)
+      WHERE project_id = ? AND installation_id = ? AND id = ? AND trashed_at IS NULL`)
       .get(scope.projectId, scope.installationId, id);
     if (row === undefined) throw new FolderFailure({reason: "not-found", message: "The folder does not exist."});
     return folderSchema.parse(row);
@@ -325,7 +359,7 @@ export class SqliteFolders implements FolderRepository, ArtifactPlacementReposit
         UNION ALL
         SELECT child.id, subtree.level + 1
         FROM folders child JOIN subtree ON child.parent_folder_id = subtree.id
-        WHERE child.project_id = ? AND subtree.level <= ?
+        WHERE child.project_id = ? AND child.trashed_at IS NULL AND subtree.level <= ?
       )
       SELECT MAX(level) AS count FROM subtree
     `).get(id, projectId, maximumFolderDepth);
@@ -335,6 +369,7 @@ export class SqliteFolders implements FolderRepository, ArtifactPlacementReposit
   private checkName(projectId: string, parent: string | null, key: string, id: string): void {
     const sibling = this.database.prepare(`
       SELECT 1 FROM folders WHERE project_id = ? AND parent_folder_id IS ? AND name_key = ? AND id <> ?
+        AND trashed_at IS NULL
     `).get(projectId, parent, key, id);
     if (sibling !== undefined) {
       throw new FolderFailure({reason: "name-conflict", message: "A sibling folder already uses that name."});

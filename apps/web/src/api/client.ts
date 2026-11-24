@@ -10,6 +10,7 @@ const capabilitySchema = z.enum([
   "content-session:issue",
   "artifact:manage:any",
   "artifact:publish:any",
+  "artifact:purge",
   "artifact:read",
   "project:manage",
 ]);
@@ -443,6 +444,8 @@ export interface ArtifactAction {
     | "delete"
     | "link"
     | "move"
+    | "purge"
+    | "recover"
     | "rename"
     | "publish"
     | "relink"
@@ -570,6 +573,8 @@ const actionSchema: z.ZodType<ArtifactAction> = z.object({
     "delete",
     "link",
     "move",
+    "purge",
+    "recover",
     "rename",
     "publish",
     "relink",

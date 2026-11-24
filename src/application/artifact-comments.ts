@@ -25,6 +25,7 @@ import {
   InvalidComment,
   type InvalidIdempotencyKey,
   InvalidPagination,
+  TrashFailure,
   VersionNotFound,
 } from "../core/errors.js";
 import {
@@ -77,6 +78,7 @@ export type CommentRepositoryFailure =
   | DispatchStateConflict
   | IdempotencyConflict
   | InvalidComment
+  | TrashFailure
   | VersionNotFound;
 
 const anchorUnitSchema = Schema.Finite.check(
@@ -208,6 +210,12 @@ export interface ArtifactCommentRepository {
     versionId: string,
     path: string,
   ) => Effect.Effect<boolean, CommentRepositoryFailure>;
+  /** Present where trash exists: whether a dispatch holds this thread of a trashed artifact. */
+  readonly holdsTrashedThread?: (
+    projectId: string,
+    artifactId: string,
+    threadId: string,
+  ) => Effect.Effect<boolean, CommentRepositoryFailure>;
 }
 
 /** Dependencies used to construct comment operations. */
@@ -231,6 +239,7 @@ export type ArtifactCommentFailure =
   | InvalidIdempotencyKey
   | InvalidPagination
   | ProjectManagementFailure
+  | TrashFailure
   | VersionNotFound
   | LinkedCommentCaptureFailure;
 
@@ -314,7 +323,7 @@ function makeArtifactCommentService(
   });
 
   const requireArtifact = Effect.fn("ArtifactCommentService.requireArtifact")(
-    function*(projectId: string, artifactId: string): Effect.fn.Return<
+    function*(projectId: string, artifactId: string, heldThreadId?: string): Effect.fn.Return<
       ArtifactRecord,
       CommentRepositoryFailure
     > {
@@ -323,6 +332,16 @@ function makeArtifactCommentService(
         artifactId,
       );
       if (artifact !== null) return artifact;
+      // An agent answering a dispatch learns why its held thread vanished, so
+      // it can report the dispatch failed instead of retrying (ADR 0030).
+      const holdsTrashedThread = dependencies.repository.holdsTrashedThread;
+      if (heldThreadId !== undefined && holdsTrashedThread !== undefined &&
+        (yield* holdsTrashedThread(projectId, artifactId, heldThreadId))) {
+        return yield* new TrashFailure({
+          reason: "artifact-in-trash",
+          message: "The artifact was moved to the trash while this thread was dispatched. Report the dispatch as failed.",
+        });
+      }
       return yield* new ArtifactNotFound({message: "The artifact does not exist."});
     },
   );
@@ -611,7 +630,7 @@ function makeArtifactCommentService(
         command.projectId,
       );
       yield* authorization.requireCommentWrite(command.principal);
-      const artifact = yield* requireArtifact(project.id, command.artifactId);
+      const artifact = yield* requireArtifact(project.id, command.artifactId, command.threadId);
       const thread = yield* requireThread(
         project.id,
         artifact.id,
@@ -710,7 +729,7 @@ function makeArtifactCommentService(
         command.projectId,
       );
       yield* authorization.requireCommentWrite(command.principal);
-      const artifact = yield* requireArtifact(project.id, command.artifactId);
+      const artifact = yield* requireArtifact(project.id, command.artifactId, command.threadId);
       const thread = yield* requireThread(
         project.id,
         artifact.id,

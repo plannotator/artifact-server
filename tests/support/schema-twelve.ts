@@ -1,8 +1,11 @@
 import type {DatabaseSync} from "node:sqlite";
 import {z} from "zod";
 
+import {downgradeToSchemaThirteen} from "./schema-thirteen.js";
+
 /** Remove the schema 13 additions from a populated runtime-built fixture. */
 export function downgradeToSchemaTwelve(database: DatabaseSync): void {
+  downgradeToSchemaThirteen(database);
   const triggers = z.array(z.object({sql: z.string()})).parse(database.prepare(
     "SELECT sql FROM sqlite_schema WHERE type = 'trigger' AND tbl_name = 'idempotency_records'",
   ).all());

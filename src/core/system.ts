@@ -37,6 +37,10 @@ export class SystemIdGenerator implements IdGenerator {
     return `fld_${randomUUID()}`;
   }
 
+  trashGroupId(): string {
+    return `tgr_${randomUUID()}`;
+  }
+
   /** Create one opaque project identity. */
   projectId(): string {
     return `prj_${randomUUID()}`;

@@ -96,7 +96,7 @@ export function configureFolderCommands(program: Command, profileDirectory: stri
       }
     });
 
-  configure("rmdir", "Delete an empty folder.")
+  configure("rmdir", "Move a folder and its contents to the trash.")
     .argument("<folder-id>")
     .requiredOption("--expected-revision <number>", "revision returned by ls")
     .option("--idempotency-key <key>", "reuse this key when retrying")
@@ -105,6 +105,68 @@ export function configureFolderCommands(program: Command, profileDirectory: stri
       await printRequest(connection, `${folderPath(projectId, id)}?expectedRevision=${revision(options)}`,
         mutation(options, "DELETE"));
     });
+
+  placementOptions(configure("rm", "Move an artifact, or with -r a folder and its contents, to the trash."))
+    .argument("<id>", "artifact or folder ID")
+    .option("-r, --recursive", "trash a folder and everything in it")
+    .action(async (id: string, options: PlacementOptions & {readonly recursive?: boolean}) => {
+      const {connection, projectId} = await folderConnection(options);
+      if (folderIdPattern.test(id)) {
+        if (options.recursive !== true) throw new Error("Pass -r to move a folder and its contents to the trash.");
+        await printRequest(connection, `${folderPath(projectId, id)}?expectedRevision=${revision(options)}`,
+          mutation(options, "DELETE"));
+        return;
+      }
+      await printRequest(connection, `/api/v1/artifacts/${encodeURIComponent(id)}?${new URLSearchParams({projectId})}`,
+        mutation(options, "DELETE", {expectedCurrentVersionId: currentVersion(options)}));
+    });
+
+  const trash = program.command("trash").description("List, recover, or purge trashed artifacts and folders.");
+  const configureTrash = (name: string, description: string) => trash.command(name)
+    .description(description)
+    .option("--project <id>", "project ID; defaults to the only active project")
+    .addOption(new Option("--server <origin>", "Artifact Server origin").env("ARTIFACT_SERVER_URL"))
+    .option("--data <directory>", "local Artifact Server data directory", ".artifact-server")
+    .option("--token-file <path>", "file containing an Artifact Server API token")
+    .option("--profile <name>", "saved Artifact Server profile")
+    .addOption(new Option("--profile-data <directory>", "CLI profile directory")
+      .default(profileDirectory).env("ARTIFACT_SERVER_HOME"));
+
+  configureTrash("ls", "List trashed items across readable projects, newest first.")
+    .option("--cursor <cursor>", "continue a paged listing")
+    .action(async (options: FolderOptions & {readonly cursor?: string}) => {
+      const connection = await resolveCliServerConnection(options, "folders");
+      const query = new URLSearchParams();
+      if (options.project !== undefined) query.set("projectId", options.project);
+      if (options.cursor !== undefined) query.set("cursor", options.cursor);
+      await printRequest(connection, `/api/v1/trash?${query}`);
+    });
+
+  configureTrash("recover", "Recover a trashed artifact or folder group.")
+    .argument("<id>", "artifact or folder ID")
+    .option("--name <name>", "new folder name when a sibling now uses the old one")
+    .option("--idempotency-key <key>", "reuse this key when retrying")
+    .action(async (id: string, options: FolderOptions & {readonly name?: string}) => {
+      const {connection, projectId} = await folderConnection(options);
+      await printRequest(connection, trashPath(projectId, id, "recover"), folderIdPattern.test(id)
+        ? mutation(options, "POST", options.name === undefined ? {} : {name: options.name})
+        : mutation(options, "POST"));
+    });
+
+  configureTrash("purge", "Permanently end recoverability of a trashed item. Frees no disk space yet.")
+    .argument("<id>", "artifact or folder ID")
+    .requiredOption("--confirm <name>", "the item's exact name")
+    .option("--idempotency-key <key>", "reuse this key when retrying")
+    .action(async (id: string, options: FolderOptions & {readonly confirm: string}) => {
+      const {connection, projectId} = await folderConnection(options);
+      await printRequest(connection, trashPath(projectId, id, "purge"), mutation(options, "POST", {confirm: options.confirm}));
+    });
+}
+
+function trashPath(projectId: string, id: string, operation: "recover" | "purge"): string {
+  return folderIdPattern.test(id)
+    ? `${folderPath(projectId, id)}/${operation}`
+    : `/api/v1/artifacts/${encodeURIComponent(id)}/${operation}?${new URLSearchParams({projectId})}`;
 }
 
 function placementOptions(command: Command): Command {
@@ -177,7 +239,10 @@ type FolderRequest =
   | {readonly name: string; readonly expectedRevision: number}
   | {readonly parentFolderId: string | null; readonly expectedRevision: number}
   | {readonly toFolderId: string | null; readonly expectedCurrentVersionId: string}
-  | {readonly name: string; readonly expectedCurrentVersionId: string};
+  | {readonly name: string; readonly expectedCurrentVersionId: string}
+  | {readonly expectedCurrentVersionId: string}
+  | {readonly name?: string}
+  | {readonly confirm: string};
 
 function mutation(options: FolderOptions, method: string, body?: FolderRequest): RequestInit {
   const init = {

@@ -47,6 +47,7 @@ const principalCapabilitySchema = z.enum([
   principalCapabilities.issueContentSession,
   principalCapabilities.manageAnyArtifact,
   principalCapabilities.manageProjects,
+  principalCapabilities.purgeArtifacts,
   principalCapabilities.publishAnyArtifact,
   principalCapabilities.readArtifacts,
   principalCapabilities.writeComments,

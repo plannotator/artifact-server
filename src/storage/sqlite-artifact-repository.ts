@@ -1,5 +1,7 @@
-import {migrateSqliteFolders, writeSqliteCurrentFileMetadata} from "./sqlite-folder-schema.js";
+import {folderSqliteSchemaVersion, migrateSqliteFolders, writeSqliteCurrentFileMetadata} from "./sqlite-folder-schema.js";
+import {migrateSqliteTrash, trashSqliteSchemaVersion} from "./sqlite-trash-schema.js";
 import {SqliteFolders} from "./sqlite-folders.js";
+import {SqliteTrash} from "./sqlite-trash.js";
 
 import { DatabaseSync } from "node:sqlite";
 
@@ -184,6 +186,8 @@ const artifactActionKindSchema = z.enum([
   artifactActionKinds.relink,
   artifactActionKinds.restore,
   artifactActionKinds.move,
+  artifactActionKinds.purge,
+  artifactActionKinds.recover,
   artifactActionKinds.rename,
 ]);
 const sourceFreshnessSchema = z.enum([
@@ -561,6 +565,7 @@ export class SqliteArtifactRepository implements
   readonly #database: DatabaseSync;
   readonly #installationId: string;
   readonly folders: SqliteFolders;
+  readonly trash: SqliteTrash;
 
   constructor(databasePath: string, installationId = "local") {
     this.#installationId = installationId;
@@ -582,6 +587,13 @@ export class SqliteArtifactRepository implements
       this.#database,
       (operation) => this.#transaction(operation),
       (command, folderId) => this.#readArtifactPage(command, folderId),
+    );
+    this.trash = new SqliteTrash(
+      this.#database,
+      (operation) => this.#transaction(operation),
+      (projectId, artifactId) => this.#readArtifactOrNull(projectId, artifactId),
+      (projectId, artifactId, createdAt) =>
+        this.#queueGitHistoryDeletionIfPresent(projectId, artifactId, createdAt),
     );
   }
 
@@ -1756,11 +1768,14 @@ export class SqliteArtifactRepository implements
           "delete",
           artifact.accessSetting,
         );
-        this.#queueGitHistoryDeletionIfPresent(
-          command.projectId,
-          command.artifactId,
-          command.createdAt,
-        );
+        // A recoverable tombstone keeps its Git mirror until purge (ADR 0030).
+        if (command.recoverable !== true) {
+          this.#queueGitHistoryDeletionIfPresent(
+            command.projectId,
+            command.artifactId,
+            command.createdAt,
+          );
+        }
         return this.#readDeletionResult(command.projectId, command.artifactId, false);
       }),
     );
@@ -4760,7 +4775,7 @@ export class SqliteArtifactRepository implements
       throw new Error("This SQLite database uses a newer schema than this build supports.");
     }
     if (previousSchemaVersion === requiredSqliteSchemaVersion) return;
-    if (previousSchemaVersion === 12) {
+    if (previousSchemaVersion >= 12) {
       this.#migrateFolders();
       return;
     }
@@ -4961,7 +4976,8 @@ export class SqliteArtifactRepository implements
       if (version > requiredSqliteSchemaVersion) {
         throw new Error("This SQLite database uses a newer schema than this build supports.");
       }
-      if (version < requiredSqliteSchemaVersion) migrateSqliteFolders(this.#database);
+      if (version < folderSqliteSchemaVersion) migrateSqliteFolders(this.#database);
+      if (version < trashSqliteSchemaVersion) migrateSqliteTrash(this.#database);
     });
   }
 

@@ -48,7 +48,7 @@ function validLabel(label: string): boolean {
     !normalized.endsWith(".") && normalized.trim() === normalized;
 }
 
-const folderLabel = Effect.fnUntraced(function*(input: string) {
+export const folderLabel = Effect.fnUntraced(function*(input: string) {
   const name = input.normalize("NFC");
   if (!validLabel(name) || name === "" || Array.from(graphemes.segment(name)).length > 120) {
     return yield* new FolderFailure({reason: "invalid-name", message: "Enter a folder name of 1–120 characters without separators, control characters, or leading or trailing dots or whitespace."});
@@ -67,7 +67,7 @@ export class ArtifactPlacementService extends Context.Service<ArtifactPlacementS
 export function folderPlacementLayer(
   repository: (FolderRepository & ArtifactPlacementRepository) | undefined,
   clock: Clock,
-  ids: Pick<IdGenerator, "folderId">,
+  ids: Pick<IdGenerator, "folderId" | "trashGroupId">,
 ) {
   return Layer.effect(FolderService, Effect.gen(function*() {
     const authorization = yield* AuthorizationService;
@@ -83,7 +83,7 @@ export function folderPlacementLayer(
 function folderOperations(
   repository: FolderRepository | undefined,
   clock: Clock,
-  ids: Pick<IdGenerator, "folderId">,
+  ids: Pick<IdGenerator, "folderId" | "trashGroupId">,
   authorization: AuthorizationService["Service"],
   projects: ProjectManagementService["Service"],
 ) {
@@ -113,7 +113,10 @@ function folderOperations(
     const project = yield* projects.resolveActiveProject(command);
     const key = yield* parseIdempotencyKey(command.idempotencyKey);
     const change = yield* parseFolderChange(input, ids);
-    const identity = input.kind === "create" && input.id === undefined ? {...change, id: null} : change;
+    // Server-minted identities stay out of the digest so a retry replays.
+    const identity = input.kind === "create" && input.id === undefined
+      ? {...change, id: null}
+      : input.kind === "delete" ? {kind: input.kind, id: input.id, expectedRevision: input.expectedRevision} : change;
     const digest = placementDigest(command.principal, [identity]);
     return yield* repositoryCall("writeFolder", () =>
       repository.writeFolder(writeContext(command, project, clock, key, digest), change));
@@ -123,7 +126,7 @@ function folderOperations(
 
 const parseFolderChange = Effect.fnUntraced(function*(
   input: FolderInput,
-  ids: Pick<IdGenerator, "folderId">,
+  ids: Pick<IdGenerator, "folderId" | "trashGroupId">,
 ): Effect.fn.Return<FolderChange, FolderFailure> {
   if (input.kind === "create") {
     return {
@@ -133,7 +136,9 @@ const parseFolderChange = Effect.fnUntraced(function*(
       label: yield* folderLabel(input.name),
     };
   }
-  if (input.kind === "delete") return {kind: input.kind, id: input.id, expectedRevision: input.expectedRevision};
+  if (input.kind === "delete") {
+    return {kind: input.kind, id: input.id, expectedRevision: input.expectedRevision, trashGroupId: ids.trashGroupId()};
+  }
   const {name, parentFolderId, id, expectedRevision} = input;
   const change = {kind: input.kind, id, expectedRevision};
   if (name === undefined) {
@@ -184,7 +189,7 @@ const parsePlacement = Effect.fnUntraced(function*(input: ArtifactInput): Effect
 });
 
 function placementDigest(
-  principal: Principal, input: readonly (FolderChange | ArtifactPlacementChange | string | {readonly id: null})[],
+  principal: Principal, input: readonly (object | string)[],
 ): string {
   return createHash("sha256").update(JSON.stringify([
     principal.id, principal.authorizedByPrincipalId, input,

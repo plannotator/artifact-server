@@ -52,7 +52,7 @@ export interface FolderName {
 export type FolderChange =
   | {readonly kind: "create"; readonly id: string; readonly parentFolderId: string | null; readonly label: FolderName}
   | {readonly kind: "update"; readonly id: string; readonly expectedRevision: number; readonly parentFolderId?: string | null; readonly label?: FolderName}
-  | {readonly kind: "delete"; readonly id: string; readonly expectedRevision: number};
+  | {readonly kind: "delete"; readonly id: string; readonly expectedRevision: number; readonly trashGroupId: string};
 
 export type ArtifactPlacementChange =
   | {readonly kind: "move"; readonly toFolderId: string | null}

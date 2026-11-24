@@ -39,6 +39,7 @@ const principalSchema = z.object({
     principalCapabilities.issueContentSession,
     principalCapabilities.manageAnyArtifact,
     principalCapabilities.manageProjects,
+    principalCapabilities.purgeArtifacts,
     principalCapabilities.publishAnyArtifact,
     principalCapabilities.readArtifacts,
     principalCapabilities.writeComments,
@@ -63,6 +64,7 @@ export interface McpHttpAdapterDependencies {
   readonly gitHistory: GitHistoryCapabilityReader;
   readonly linkedArtifacts?: boolean;
   readonly folders?: boolean;
+  readonly trash?: boolean;
   readonly mode: ArtifactMcpServerDependencies["mode"];
   readonly oauthResource: string | null;
 }
@@ -90,6 +92,7 @@ export function createMcpHttpAdapter(
         gitHistory: dependencies.gitHistory.read(),
         linkedArtifacts: dependencies.linkedArtifacts === true,
         folders: dependencies.folders === true,
+        trash: dependencies.trash === true,
         mode: dependencies.mode,
         requestId: requestIdFrom(context.requestInfo),
       };

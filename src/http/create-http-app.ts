@@ -1,4 +1,8 @@
 import {ArtifactPlacementService, FolderService} from "../application/folders.js";
+import {TrashService} from "../application/trash.js";
+import {
+  decodeTrashCursor, folderRecoverSchema, purgeSchema, trashPageQuerySchema, trashPageResponse,
+} from "./trash-protocol.js";
 import {
   artifactMoveSchema, artifactPageItems, artifactRenameSchema, createFolderSchema,
   decodeFolderCursor, folderContentsResponse, folderCreateKey, folderIdSchema,
@@ -441,6 +445,7 @@ const principalCapabilitySchema = z.enum([
   principalCapabilities.issueContentSession,
   principalCapabilities.manageAnyArtifact,
   principalCapabilities.manageProjects,
+  principalCapabilities.purgeArtifacts,
   principalCapabilities.publishAnyArtifact,
   principalCapabilities.readArtifacts,
   principalCapabilities.writeComments,
@@ -506,6 +511,8 @@ export interface HttpAppDependencies {
    */
   readonly linkedArtifacts?: boolean;
   readonly folders?: boolean;
+  /** Advertises recoverable trash, recover, and purge (ADR 0030). */
+  readonly trash?: boolean;
   readonly mcpOAuthResource?: McpOAuthResourceConfiguration;
   readonly readiness?: ReadinessProbe;
   readonly runtimeLifecycle?: RuntimeLifecycle;
@@ -576,6 +583,7 @@ export function createHttpApp(
     gitHistory,
     linkedArtifacts: dependencies.linkedArtifacts === true,
     folders: dependencies.folders === true,
+    trash: dependencies.trash === true,
     mode: dependencies.trustedApplicationOrigin === null ? "local" : "remote",
     oauthResource: dependencies.mcpOAuthResource?.resource ?? null,
   });
@@ -1041,6 +1049,7 @@ export function createHttpApp(
         gitHistory: gitHistory.read(),
         linkedArtifacts: dependencies.linkedArtifacts === true,
         folders: dependencies.folders === true,
+        trash: dependencies.trash === true,
       },
       principal: context.get("principal"),
     }));
@@ -1691,7 +1700,71 @@ export function createHttpApp(
         expectedRevision: z.coerce.number().pipe(folderRevisionSchema).parse(context.req.query("expectedRevision")),
       }),
     ));
-    return context.json({folder});
+    return context.json({folder, recoverable: dependencies.trash === true});
+  });
+
+  const trashUnavailable = (context: Context<HttpEnvironment>, next: Next) =>
+    dependencies.trash === true ? next() : context.json({
+      error: {code: errorCodes.capabilityUnavailable, message: "Trash, recover, and purge are unavailable on this deployment."},
+    }, 501);
+  const trashWriteContext = (context: Context<HttpEnvironment>, projectId: string | null) => ({
+    principal: context.get("principal"),
+    projectId,
+    idempotencyKey: requiredIdempotencyKey(context.req.header("idempotency-key")),
+  });
+
+  app.get("/api/v1/trash", trashUnavailable, async (context) => {
+    const query = trashPageQuerySchema.parse(context.req.query());
+    const page = await runHttpApplicationEffect(context, dependencies, TrashService.use(
+      (service) => service.list({
+        principal: context.get("principal"),
+        projectIds: z.array(projectIdSchema).max(100).parse(context.req.queries("projectId") ?? []),
+        cursor: decodeTrashCursor(query.cursor ?? null),
+        limit: query.limit,
+      }),
+    ));
+    return context.json(trashPageResponse(page));
+  });
+
+  app.post("/api/v1/artifacts/:artifactId/recover", trashUnavailable, async (context) => {
+    const recovery = await runHttpApplicationEffect(context, dependencies, TrashService.use(
+      (service) => service.recover(trashWriteContext(context, requestedProjectId(context)), {
+        kind: "artifact", artifactId: z.string().min(1).parse(context.req.param("artifactId")),
+      }),
+    ));
+    return context.json(recovery);
+  });
+
+  app.post("/api/v1/artifacts/:artifactId/purge", trashUnavailable, boundedJsonBody, async (context) => {
+    const body = purgeSchema.strict().parse(await context.req.json());
+    const purge = await runHttpApplicationEffect(context, dependencies, TrashService.use(
+      (service) => service.purge(trashWriteContext(context, requestedProjectId(context)), {
+        kind: "artifact", artifactId: context.req.param("artifactId"), confirmation: body.confirm,
+      }),
+    ));
+    return context.json(purge);
+  });
+
+  app.post(`${folderRoute}/recover`, trashUnavailable, boundedJsonBody, async (context) => {
+    const body = folderRecoverSchema.strict().parse(await context.req.json());
+    const recovery = await runHttpApplicationEffect(context, dependencies, TrashService.use(
+      (service) => service.recover(
+        trashWriteContext(context, projectIdSchema.parse(context.req.param("projectId"))),
+        {kind: "folder", folderId: folderIdSchema.parse(context.req.param("folderId")), name: body.name},
+      ),
+    ));
+    return context.json(recovery);
+  });
+
+  app.post(`${folderRoute}/purge`, trashUnavailable, boundedJsonBody, async (context) => {
+    const body = purgeSchema.strict().parse(await context.req.json());
+    const purge = await runHttpApplicationEffect(context, dependencies, TrashService.use(
+      (service) => service.purge(
+        trashWriteContext(context, projectIdSchema.parse(context.req.param("projectId"))),
+        {kind: "folder", folderId: folderIdSchema.parse(context.req.param("folderId")), confirmation: body.confirm},
+      ),
+    ));
+    return context.json(purge);
   });
 
   app.patch("/api/v1/artifacts/:artifactId/name", placementUnavailable, boundedJsonBody, async (context) => {
@@ -2287,7 +2360,7 @@ export function createHttpApp(
           })
         ),
       );
-      return context.json({...deletionResponse(deletion), recoverable: false});
+      return context.json({...deletionResponse(deletion), recoverable: deletion.recoverable});
     },
   );
 

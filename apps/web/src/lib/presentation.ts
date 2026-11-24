@@ -114,6 +114,10 @@ export function actionLabel(value: ArtifactAction["action"]): string {
       return commonText.action.move;
     case "rename":
       return commonText.action.rename;
+    case "recover":
+      return commonText.action.recover;
+    case "purge":
+      return commonText.action.purge;
     case "publish":
       return commonText.action.publish;
     case "restore":

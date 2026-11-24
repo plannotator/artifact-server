@@ -10,6 +10,11 @@ export const errorCodes = {
   folderNotEmpty: "FOLDER_NOT_EMPTY",
   folderRevisionConflict: "FOLDER_REVISION_CONFLICT",
   nameConflict: "NAME_CONFLICT",
+  notInTrash: "NOT_IN_TRASH",
+  artifactInTrash: "ARTIFACT_IN_TRASH",
+  dispatchHeld: "DISPATCH_HELD",
+  purgeConfirmationMismatch: "PURGE_CONFIRMATION_MISMATCH",
+  trashTooLarge: "TRASH_TOO_LARGE",
   agentNotFound: "AGENT_NOT_FOUND",
   artifactNotFound: "ARTIFACT_NOT_FOUND",
   artifactMutationConflict: "ARTIFACT_MUTATION_CONFLICT",
@@ -65,6 +70,7 @@ export class FolderFailure extends Schema.TaggedError<FolderFailure>()(
   {
     ...messageField,
     reason: Schema.Literals(["not-found", "cycle", "limit", "not-empty", "name-conflict", "revision", "invalid-name"]),
+    conflictingFolderId: Schema.optional(Schema.String),
     current: Schema.optional(Schema.Struct({
       id: Schema.String,
       installationId: Schema.String,
@@ -76,6 +82,17 @@ export class FolderFailure extends Schema.TaggedError<FolderFailure>()(
       createdAt: Schema.String,
       updatedAt: Schema.String,
     }) satisfies Schema.Schema<FolderRecord>),
+  },
+) {}
+
+/** A trash, recover, or purge command was refused without writing anything. */
+export class TrashFailure extends Schema.TaggedError<TrashFailure>()(
+  "TrashFailure",
+  {
+    ...messageField,
+    reason: Schema.Literals([
+      "not-in-trash", "artifact-in-trash", "dispatch-held", "confirmation-mismatch", "too-large",
+    ]),
   },
 ) {}
 
@@ -424,6 +441,10 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
       "listFolder",
       "writeFolder",
       "writeArtifactPlacement",
+      "listTrash",
+      "recoverTrash",
+      "purgeTrash",
+      "findTrashedThreadHold",
       "listCommentReplies",
       "listCommentThreads",
       "listInsightActivity",
@@ -504,6 +525,7 @@ export class StagingStorageFailure extends Schema.TaggedError<StagingStorageFail
 
 const artifactServerFailureSchema = Schema.Union([
   FolderFailure,
+  TrashFailure,
   AgentDispatchNotFound,
   AgentNotFound,
   ArtifactNotFound,
