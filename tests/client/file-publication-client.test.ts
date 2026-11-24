@@ -299,11 +299,21 @@ describe("file publication client", () => {
       mediaTypeForPath("document.pdf"),
       mediaTypeForPath("movie.mp4"),
       mediaTypeForPath("unknown.custom"),
+      mediaTypeForPath("src/app.ts"),
+      mediaTypeForPath("script.PY"),
+      mediaTypeForPath("rows.tsv"),
+      mediaTypeForPath("events.ndjson"),
+      mediaTypeForPath("config.yml"),
     ]).toEqual([
       "text/html; charset=utf-8",
       "application/pdf",
       "video/mp4",
       "application/octet-stream",
+      "text/plain; charset=utf-8",
+      "text/plain; charset=utf-8",
+      "text/tab-separated-values; charset=utf-8",
+      "application/x-ndjson; charset=utf-8",
+      "application/yaml; charset=utf-8",
     ]);
   });
 });
