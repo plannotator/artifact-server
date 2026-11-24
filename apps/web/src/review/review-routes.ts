@@ -17,7 +17,15 @@ export function isDashboardPath(pathname: string): boolean {
   return pathname === dashboardPath || pathname === `${dashboardPath}/`;
 }
 
-/** The Trash view's canonical path, beside the Files page it will live with. */
+/** The Files page: the cross-project overview beside Dashboard and Settings. */
+export const filesPath = "/review/files";
+
+/** Return whether the current document path is the Files page. */
+export function isFilesPath(pathname: string): boolean {
+  return pathname === filesPath || pathname === `${filesPath}/`;
+}
+
+/** The Trash view's canonical path, beside the Files page. */
 export const trashPath = "/review/files/trash";
 
 /** Return whether the current document path is the Trash view. */

@@ -186,7 +186,7 @@ export function FolderDialog({
   );
 }
 
-function FolderDestinationPicker({
+export function FolderDestinationPicker({
   projectId, projectName, excludedId, destination, onNavigate, disabled,
 }: {
   readonly projectId: string;
