@@ -5,8 +5,10 @@ import path from "node:path";
 
 import {afterEach, beforeEach, describe, expect, test} from "vitest";
 
+import {z} from "zod";
+
 import {
-  expectFailure, type FolderLink, historyCounts, LinkedFolderClient, waitFor,
+  defaultProject, expectFailure, type FolderLink, folderLinkSchema, historyCounts, LinkedFolderClient, waitFor,
 } from "../support/linked-folders.js";
 import {
   createTestInstallation, removeTestInstallation, type RunningTestServer, startTestServer,
@@ -108,14 +110,20 @@ describe("linked folders enforce bounded limits and stay responsive", () => {
     });
     const targets = links.slice(0, 3);
     const scans = targets.map((link) => client.scan(link.id));
-    const observed = await waitFor(
-      () => Promise.all(targets.map((link) => client.get(link.id))),
-      (states) => states.filter((link) => link.scanActivity === "scanning").length === 2
-        && states.some((link) => link.scanActivity === "queued"),
-    );
-    expect(observed.filter((link) => link.scanActivity === "scanning")).toHaveLength(2);
-    for (const release of releases) release();
-    gate = null;
+    try {
+      // Indexer scans share the same installation queue, so count every link.
+      const observed = await waitFor(
+        async () => z.object({folderLinks: z.array(folderLinkSchema)}).parse(await (await client.request(
+          `/api/v1/projects/${defaultProject}/folder-links`,
+        )).json()).folderLinks,
+        (states) => states.filter((link) => link.scanActivity === "scanning").length === 2
+          && targets.some((target) => states.find((link) => link.id === target.id)?.scanActivity === "queued"),
+      );
+      expect(observed.filter((link) => link.scanActivity === "scanning")).toHaveLength(2);
+    } finally {
+      for (const release of releases) release();
+      gate = null;
+    }
     const finished = await Promise.all(scans);
     expect(finished.every((link) => link.state === "active")).toBe(true);
 
