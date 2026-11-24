@@ -20,6 +20,7 @@ import {
 import type {NodeGitHistoryConfiguration} from "../../src/git-history/node-git-history-configuration.js";
 import {checkCompactIntegrity} from "../../src/lifecycle/integrity-check.js";
 import {SqliteArtifactRepository} from "../../src/storage/sqlite-artifact-repository.js";
+import {fileCatalogSqliteIndexes} from "../../src/storage/sqlite-file-catalog-schema.js";
 import {requiredSqliteSchemaVersion} from "../../src/storage/sqlite-schema.js";
 import {parsePublishResponse, publishNew, publishVersion, type PublishResponse} from "../support/publishing.js";
 import {
@@ -31,6 +32,7 @@ import {
   ApiClient, dispatchCreationSchema, dispatchEnvelopeSchema, issueApiKey, signInAdministrator,
 } from "../support/agent-dispatch.js";
 import {RecordingGitHistoryProvider} from "../support/git-history-provider.js";
+import {LinkedFolderClient, waitFor} from "../support/linked-folders.js";
 import {downgradeToSchemaTwelve} from "../support/schema-twelve.js";
 
 const defaultProject = "prj_default";
@@ -663,42 +665,99 @@ describe("local folders and artifact placement", () => {
     expect((await request(routeFor(artifact))).status).toBe(404);
   }, 30_000);
 
-  test("FLD-008-B: restoring a stopped compact directory preserves nested placement and immutable bytes", async () => {
+  test("FLD-008-B: restoring a stopped compact directory preserves folders, trash, moves, and links, and the link waits for a scan", async () => {
     const parent = await createFolder("Reports");
     const nested = await createFolder("Final", parent.id);
     const artifact = await publish();
     await place(artifact, nested.id);
-    const folderBefore = await list(nested.id);
-    const before = dbSnapshot(["folders", "folder_actions", "actions", "versions"]);
+    // A recoverable folder trash group, a purged group, and a recovered artifact.
+    const archive = await createFolder("Archive");
+    const archived = await publish();
+    await place(archived, (await createFolder("Old", archive.id)).id);
+    expect((await request(`${foldersPath}/${archive.id}?expectedRevision=1`, "DELETE")).ok).toBe(true);
+    const doomed = await createFolder("Doomed");
+    await place(await publish(), doomed.id);
+    expect((await request(`${foldersPath}/${doomed.id}?expectedRevision=1`, "DELETE")).ok).toBe(true);
+    await purgeFolder(doomed.id, "Doomed");
+    const returned = await publish();
+    await trashArtifact(returned);
+    expect((await request(`${routeFor(returned)}/recover`, "POST")).status).toBe(200);
+    // A recorded cross-project move leaves request-scoped records in the source project.
+    const destination = await createProject();
+    const traveller = await publish();
+    expect((await request(`${routeFor(traveller)}/move?projectId=${defaultProject}`, "POST", {
+      toProjectId: destination, toFolderId: null, expectedCurrentVersionId: traveller.version.id,
+    })).status).toBe(200);
+    // A folder link with one captured entry and a live-preview grant on the other.
+    const linked = await linkDirectory("restored-output", ["a.md", "b.md"]);
+    const [captured] = await linked.client.captureOk(linked.link.id, {entryIds: [linked.entry("a.md").id]});
+    expect((await linked.client.request(`/api/v1/folder-links/${linked.link.id}/entries/${linked.entry("b.md").id}/live-sessions`, "POST")).status).toBe(201);
+    const surfaces = async () => ({
+      folder: await list(nested.id),
+      trash: await (await request("/api/v1/trash")).json(),
+      files: await Promise.all([defaultProject, destination].map(async (projectId) =>
+        filePage.parse(await (await request(`/api/v1/files?projectId=${projectId}`)).json()).items)),
+      moved: (await request(`${routeFor(traveller)}?projectId=${destination}`)).status,
+      recovered: (await request(`${routeFor(returned)}?projectId=${defaultProject}`)).status,
+    });
+    const surfacesBefore = await surfaces();
+    expect(surfacesBefore).toMatchObject({moved: 200, recovered: 200});
     await stop();
+    const before = readDatabase(backupSnapshot);
+    expect({
+      groups: new Set(before["folders"]?.map((row) => row["trash_group_id"]).filter((group) => group !== null)).size,
+      purged: before["artifacts"]?.filter((row) => row["purged_at"] !== null).length,
+      links: before["folder_links"]?.length,
+      captures: before["folder_link_captures"]?.length,
+      grants: before["folder_entry_live_grants"]?.length,
+      overviewIndexes: before["overview_indexes"]?.length,
+    }).toEqual({groups: 2, purged: 1, links: 1, captures: 1, grants: 1, overviewIndexes: fileCatalogSqliteIndexes.length});
+
     const restore = await createTestInstallation();
     try {
       await cp(installation.dataDirectory, restore.dataDirectory, {recursive: true});
+      expect(withDatabaseAt(restore, backupSnapshot)).toEqual(before);
       const report = await Effect.runPromise(checkCompactIntegrity(restore.dataDirectory));
       expect(report.problems).toEqual([]);
-      const restored = await startTestServer(restore);
-      try {
-        const response = await fetch(`${restored.baseUrl}${foldersPath}/${nested.id}`, {headers: apiHeaders(restore, randomUUID())});
-        const decoded = folderPage.parse(await response.json());
-        expect(decoded).toEqual(folderBefore);
-        const restoredVersion = new URL(artifact.links.version);
-        restoredVersion.port = String(restored.port);
-        expect(await (await fetchVersion(restored, restoredVersion.toString())).text()).toBe(content);
-        const database = new DatabaseSync(path.join(restore.dataDirectory, "artifact-server.db"), {readOnly: true});
-        try {
-          expect(snapshot(database, ["folders", "folder_actions", "actions", "versions"])).toEqual(before);
-        } finally {
-          database.close();
-        }
-      } finally {
-        await restored.stop();
+
+      // Folder links are machine-bound: restored where the directory is not linkable, the link stays unavailable.
+      const elsewhere = path.join(await realpath(source.dataDirectory), "elsewhere");
+      await mkdir(elsewhere);
+      server = await startTestServer(restore, {linkedFiles: "on", linkRoots: [elsewhere]});
+      const restoredBytes = new URL(artifact.links.version);
+      restoredBytes.port = String(running().port);
+      expect(await (await fetchVersion(running(), restoredBytes.toString())).text()).toBe(content);
+      expect(await surfaces()).toEqual(surfacesBefore);
+      let client = new LinkedFolderClient(running(), restore.apiToken);
+      const backedUpScan = before["folder_links"]?.[0]?.["last_scan_started_at"];
+      const unavailable = await waitFor(() => client.get(linked.link.id), (current) =>
+        current.scanActivity === "idle" && current.lastScanStartedAt !== backedUpScan);
+      expect(unavailable.state).toBe("unavailable");
+      expect((await client.scan(linked.link.id)).state).toBe("unavailable");
+      await stop();
+
+      server = await startTestServer(restore, {linkedFiles: "on", linkRoots: [source.dataDirectory]});
+      client = new LinkedFolderClient(running(), restore.apiToken);
+      expect(await waitFor(() => client.get(linked.link.id), (current) => current.state === "active"))
+        .toMatchObject({entryCount: 2, folderId: linked.link.folderId, path: linked.directory});
+      expect((await client.inventory(linked.link.id)).map(({artifactId, relativePath, state}) => ({artifactId, relativePath, state})))
+        .toEqual([
+          {artifactId: captured?.artifactId, relativePath: "a.md", state: "tracked"},
+          {artifactId: null, relativePath: "b.md", state: "untracked"},
+        ]);
+      await stop();
+      const scanned = withDatabaseAt(restore, backupSnapshot);
+      for (const table of ["folders", "folder_actions", "actions", "artifacts", "versions", "idempotency_records", "folder_link_captures", "overview_indexes"]) {
+        expect({table, rows: scanned[table]}).toEqual({table, rows: before[table]});
       }
+      expect((await Effect.runPromise(checkCompactIntegrity(restore.dataDirectory))).problems).toEqual([]);
     } finally {
+      if (server !== null) await stop();
       await removeTestInstallation(restore);
     }
-  });
+  }, 60_000);
 
-  test("FLD-008-F: integrity reports folder cycles, duplicate siblings, and foreign placement and child scope", async () => {
+  test("FLD-008-F: integrity reports each kind of folder, trash, move, link, and overview corruption with a specific finding", async () => {
     const parent = await createFolder("Reports");
     const child = await createFolder("Final", parent.id);
     const duplicate = await createFolder("Other", parent.id);
@@ -706,21 +765,92 @@ describe("local folders and artifact placement", () => {
     const foreign = await createFolder("Foreign", null, undefined, other);
     const artifact = await publish();
     await addComment(artifact);
+    const purged = await createFolder("Purged");
+    await place(await publish(), purged.id);
+    expect((await request(`${foldersPath}/${purged.id}?expectedRevision=1`, "DELETE")).ok).toBe(true);
+    await purgeFolder(purged.id, "Purged");
+    const archive = await createFolder("Archive");
+    const grouped = await publish();
+    await place(grouped, archive.id);
+    expect((await request(`${foldersPath}/${archive.id}?expectedRevision=1`, "DELETE")).ok).toBe(true);
+    const marked = await createFolder("Marked");
+    const underPurged = await createFolder("Under purged");
+    const livePlaced = await publish();
+    const traveller = await publish();
+    expect((await request(`${routeFor(traveller)}/move?projectId=${defaultProject}`, "POST", {
+      toProjectId: other, toFolderId: null, expectedCurrentVersionId: traveller.version.id,
+    })).status).toBe(200);
+    const stale = await publish();
+    const linked = await linkDirectory("corrupt-output", ["a.md", "b.md", "c.md"]);
+    const captures = await linked.client.captureOk(linked.link.id, {entryIds: [linked.entry("a.md").id, linked.entry("c.md").id]});
+    const [tracked = "", relinked = ""] = captures.map(({artifactId}) => artifactId ?? "");
+    await linked.client.scan(linked.link.id);
+    expect((await waitFor(() => linked.client.inventory(linked.link.id), (entries) =>
+      entries.filter(({state}) => state === "tracked").length === 2)).map(({artifactId}) => artifactId))
+      .toEqual([tracked, null, relinked]);
+    expect((await linked.client.request(`/api/v1/folder-links/${linked.link.id}/entries/${linked.entry("b.md").id}/live-sessions`, "POST")).status).toBe(201);
+    const target = await linkDirectory("retargeted-output", ["d.md"]);
     await stop();
+    expect((await Effect.runPromise(checkCompactIntegrity(installation.dataDirectory))).problems).toEqual([]);
+
+    const later = new Date(Date.now() + 60_000).toISOString();
     readDatabase((db) => {
+      db.exec("PRAGMA foreign_keys = OFF");
       db.prepare("UPDATE folders SET parent_folder_id = ? WHERE id = ?").run(child.id, parent.id);
       db.prepare("UPDATE folders SET name = ? WHERE id = ?").run("Ｆｉｎａｌ", duplicate.id);
       db.prepare("UPDATE artifacts SET folder_id = ? WHERE id = ?").run(foreign.id, artifact.artifact.id);
       db.prepare("UPDATE comment_threads SET project_id = ? WHERE artifact_id = ?").run(other, artifact.artifact.id);
+      // Trash: a group mark without a tombstone, a group purged without its artifact, live rows under a purged folder.
+      db.prepare("UPDATE folders SET trash_group_id = ? WHERE id = ?").run(randomUUID(), marked.id);
+      db.prepare("UPDATE folders SET purged_at = trashed_at WHERE id = ?").run(archive.id);
+      db.prepare("UPDATE artifacts SET folder_id = ? WHERE id = ?").run(purged.id, livePlaced.artifact.id);
+      db.prepare("UPDATE folders SET parent_folder_id = ? WHERE id = ?").run(purged.id, underPurged.id);
+      // A cross-project move whose record is gone leaves its source-project records unexplained.
+      db.prepare("UPDATE idempotency_records SET placement_result_json = NULL WHERE operation = 'move' AND artifact_id = ?")
+        .run(traveller.artifact.id);
+      // Links: a tracked entry bound elsewhere, an entry without a link, a capture whose artifact is gone,
+      // a grant in another project, and a link whose folder was purged.
+      db.prepare("UPDATE folder_inventory SET disk_path = 'renamed.md' WHERE artifact_id = ?").run(tracked);
+      db.prepare(`
+        INSERT INTO folder_inventory (id, folder_link_id, relative_path, disk_path, observed_at, state, pending, seen_generation)
+        VALUES (?, 'flk_missing', 'lost.md', 'lost.md', ?, 'untracked', 1, 1)
+      `).run(`fle_${randomUUID()}`, later);
+      db.prepare("UPDATE folder_link_captures SET result_json = json_set(result_json, '$.artifactId', 'art_gone') WHERE folder_link_id = ?")
+        .run(linked.link.id);
+      db.prepare("UPDATE folder_entry_live_grants SET project_id = ? WHERE folder_link_id = ?").run(other, linked.link.id);
+      db.prepare("UPDATE folder_links SET folder_id = ? WHERE id = ?").run(purged.id, target.link.id);
+      // A relink after the link's last scan explains its tracked entry's drift.
+      db.prepare("UPDATE artifacts SET source_path = ? WHERE id = ?").run(path.join(linked.directory, "moved.md"), relinked);
+      db.prepare(`
+        INSERT INTO actions (id, project_id, artifact_id, version_id, action, principal_id, idempotency_key, created_at)
+        SELECT ?, project_id, id, current_version_id, 'relink', 'fixture', ?, ? FROM artifacts WHERE id = ?
+      `).run(randomUUID(), randomUUID(), later, relinked);
+      // Overview: a stale denormalized size and a dropped overview index.
+      db.prepare("UPDATE artifacts SET current_size = current_size + 1 WHERE id = ?").run(stale.artifact.id);
+      db.exec("DROP INDEX artifacts_files_size");
     });
     const report = await Effect.runPromise(checkCompactIntegrity(installation.dataDirectory));
+    expect(report.status).toBe("corrupt");
     expect(report.problems).toEqual(expect.arrayContaining([
       expect.objectContaining({code: "folder_cycle", folderId: parent.id}),
       expect.objectContaining({code: "folder_duplicate_name"}),
       expect.objectContaining({code: "folder_placement_mismatch", artifactId: artifact.artifact.id}),
       expect.objectContaining({code: "project_scope_mismatch", artifactId: artifact.artifact.id}),
+      expect.objectContaining({code: "trash_state_invalid", folderId: marked.id}),
+      expect.objectContaining({code: "trash_group_mismatch", artifactId: grouped.artifact.id}),
+      expect.objectContaining({code: "trash_placement_invalid", artifactId: livePlaced.artifact.id}),
+      expect.objectContaining({code: "trash_placement_invalid", folderId: underPurged.id}),
+      expect.objectContaining({code: "project_scope_mismatch", artifactId: traveller.artifact.id}),
+      expect.objectContaining({code: "folder_inventory_binding_mismatch", artifactId: tracked, path: "renamed.md"}),
+      expect.objectContaining({code: "folder_inventory_orphan", folderLinkId: "flk_missing"}),
+      expect.objectContaining({code: "folder_capture_orphan", artifactId: "art_gone", folderLinkId: linked.link.id}),
+      expect.objectContaining({code: "folder_live_grant_invalid", folderLinkId: linked.link.id}),
+      expect.objectContaining({code: "folder_link_target_invalid", folderLinkId: target.link.id}),
+      expect.objectContaining({code: "file_catalog_stale", artifactId: stale.artifact.id}),
+      expect.objectContaining({code: "file_catalog_index_missing", message: expect.stringContaining("artifacts_files_size")}),
     ]));
-  });
+    expect(report.problems.filter(({artifactId}) => artifactId === relinked)).toEqual([]);
+  }, 30_000);
 
   function running(): RunningTestServer {
     if (server === null) throw new Error("Start the fixture server first.");
@@ -812,6 +942,35 @@ describe("local folders and artifact placement", () => {
     expect(result.status).toBe(200);
   }
 
+  async function trashArtifact(artifact: PublishResponse): Promise<void> {
+    const response = await request(`${routeFor(artifact)}?projectId=${artifact.artifact.projectId}`, "DELETE", {
+      expectedCurrentVersionId: artifact.version.id,
+    });
+    expect(response.status).toBe(200);
+  }
+
+  async function purgeFolder(folderId: string, confirm: string): Promise<void> {
+    const cookies = await signInAdministrator(running(), installation);
+    const key = await issueApiKey(running(), cookies, ["artifact:purge", "artifact:read"], "Purge key");
+    const response = await new LinkedFolderClient(running(), key).request(`${foldersPath}/${folderId}/purge`, "POST", {confirm});
+    expect(response.status).toBe(200);
+  }
+
+  async function linkDirectory(name: string, files: readonly string[]) {
+    const directory = path.join(await realpath(source.dataDirectory), name);
+    await mkdir(directory);
+    await Promise.all(files.map((file) => writeFile(path.join(directory, file), `# ${file}\n`)));
+    const client = new LinkedFolderClient(running(), installation.apiToken);
+    const link = await client.linkOk(directory, {key: randomUUID(), name});
+    const entries = await client.inventory(link.id);
+    const entry = (relativePath: string) => {
+      const found = entries.find((candidate) => candidate.relativePath === relativePath);
+      if (found === undefined) throw new Error(`The link has no ${relativePath} entry.`);
+      return found;
+    };
+    return {client, directory, entry, link};
+  }
+
   async function addComment(artifact: PublishResponse): Promise<string> {
     const response = await request(`${routeFor(artifact)}/versions/${artifact.version.id}/comments?projectId=${artifact.artifact.projectId}`, "POST", {body: "Review the saved bytes."});
     expect(response.status).toBe(201);
@@ -901,6 +1060,30 @@ function rootPageQuery(cursor: string | null): string {
   const query = new URLSearchParams({limit: "1", foldersOnly: "true"});
   if (cursor !== null && cursor !== "") query.set("cursor", cursor);
   return `root?${query}`;
+}
+
+const backupTables = [
+  "folders", "folder_actions", "actions", "versions", "artifacts", "idempotency_records",
+  "folder_links", "folder_inventory", "folder_link_captures", "folder_entry_live_grants",
+];
+
+/** Every record a stopped-directory backup must carry for the file-management features. */
+function backupSnapshot(database: DatabaseSync) {
+  return Object.fromEntries([
+    ...backupTables.map((table) => [table, database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()] as const),
+    ["overview_indexes", database.prepare(`
+      SELECT name, sql FROM sqlite_schema WHERE type = 'index' AND name IN (SELECT value FROM json_each(?)) ORDER BY name
+    `).all(JSON.stringify(fileCatalogSqliteIndexes))] as const,
+  ]);
+}
+
+function withDatabaseAt<Result>(target: TestInstallation, operation: (database: DatabaseSync) => Result): Result {
+  const database = new DatabaseSync(path.join(target.dataDirectory, "artifact-server.db"), {readOnly: true});
+  try {
+    return operation(database);
+  } finally {
+    database.close();
+  }
 }
 
 function snapshot(database: DatabaseSync, tables: readonly string[]) {

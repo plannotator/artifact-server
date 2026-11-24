@@ -1,4 +1,7 @@
+import {readCompactFileCatalogProblems} from "./compact-file-catalog-integrity.js";
 import {readCompactFolderProblems, readCompactRelocations} from "./compact-folder-integrity.js";
+import {readCompactLinkedFolderProblems} from "./compact-linked-folder-integrity.js";
+import {readCompactTrashProblems} from "./compact-trash-integrity.js";
 import {createHash} from "node:crypto";
 import {DatabaseSync} from "node:sqlite";
 import path from "node:path";
@@ -81,6 +84,7 @@ export interface IntegrityCatalog {
 /** One concrete inconsistency found without changing installation state. */
 export interface IntegrityProblem {
   readonly folderId?: string;
+  readonly folderLinkId?: string;
   readonly artifactId: string;
   readonly code:
     | "blob_digest_mismatch"
@@ -88,9 +92,16 @@ export interface IntegrityProblem {
     | "blob_size_mismatch"
     | "blob_unreadable"
     | "current_pointer_missing"
+    | "file_catalog_index_missing"
+    | "file_catalog_stale"
+    | "folder_capture_orphan"
     | "folder_cycle"
     | "folder_depth_exceeded"
     | "folder_duplicate_name"
+    | "folder_inventory_binding_mismatch"
+    | "folder_inventory_orphan"
+    | "folder_link_target_invalid"
+    | "folder_live_grant_invalid"
     | "folder_name_key_invalid"
     | "folder_placement_mismatch"
     | "folder_scope_mismatch"
@@ -98,7 +109,10 @@ export interface IntegrityProblem {
     | "orphan_project"
     | "orphan_entry"
     | "orphan_version"
-    | "project_scope_mismatch";
+    | "project_scope_mismatch"
+    | "trash_group_mismatch"
+    | "trash_placement_invalid"
+    | "trash_state_invalid";
   readonly message: string;
   readonly path: string | null;
   readonly versionId: string | null;
@@ -247,7 +261,12 @@ function readCompactCatalog(databasePath: string): IntegrityCatalog {
         FROM manifest_entries
         ORDER BY version_id, path
       `).all()),
-      placementProblems: readCompactFolderProblems(database),
+      placementProblems: [
+        ...readCompactFolderProblems(database),
+        ...readCompactTrashProblems(database),
+        ...readCompactLinkedFolderProblems(database),
+        ...readCompactFileCatalogProblems(database),
+      ],
       relocations: readCompactRelocations(database),
       projects: decodeProjectRows(database.prepare(`
         SELECT id FROM projects ORDER BY id
