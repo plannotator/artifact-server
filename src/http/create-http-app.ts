@@ -2,7 +2,7 @@ import {ArtifactPlacementService, FolderService} from "../application/folders.js
 import {
   artifactMoveSchema, artifactPageItems, artifactRenameSchema, createFolderSchema,
   decodeFolderCursor, folderContentsResponse, folderCreateKey, folderIdSchema,
-  folderLocationSchema, folderRevisionSchema, updateFolderSchema,
+  folderLocationSchema, folderProjectMoveSchema, folderRevisionSchema, updateFolderSchema,
 } from "./folder-protocol.js";
 import {
   buildOAuthProtectedResourceMetadata,
@@ -1041,6 +1041,7 @@ export function createHttpApp(
         gitHistory: gitHistory.read(),
         linkedArtifacts: dependencies.linkedArtifacts === true,
         folders: dependencies.folders === true,
+        crossProjectMove: dependencies.folders === true,
       },
       principal: context.get("principal"),
     }));
@@ -1709,17 +1710,42 @@ export function createHttpApp(
   });
 
   app.post("/api/v1/artifacts/:artifactId/move", placementUnavailable, boundedJsonBody, async (context) => {
-    const body = artifactMoveSchema.strict().parse(await context.req.json());
+    const {toProjectId, ...body} = artifactMoveSchema.strict().parse(await context.req.json());
+    const command = {
+      artifactId: context.req.param("artifactId"),
+      projectId: requestedProjectId(context),
+      principal: context.get("principal"),
+      expectedCurrentVersionId: body.expectedCurrentVersionId,
+      idempotencyKey: requiredIdempotencyKey(context.req.header("idempotency-key")),
+    };
     const artifact = await runHttpApplicationEffect(context, dependencies, ArtifactPlacementService.use(
-      (service) => service.write({
-        artifactId: context.req.param("artifactId"),
-        projectId: requestedProjectId(context),
-        principal: context.get("principal"),
-        expectedCurrentVersionId: body.expectedCurrentVersionId,
-        idempotencyKey: requiredIdempotencyKey(context.req.header("idempotency-key")),
-      }, {kind: "move", toFolderId: body.toFolderId}),
+      (service) => toProjectId === undefined
+        ? service.write(command, {kind: "move", toFolderId: body.toFolderId})
+        : service.moveAcrossProjects({...command, toProjectId}, body.toFolderId),
     ));
     return context.json({artifact});
+  });
+
+  app.post(`${folderRoute}/move-to-project`, placementUnavailable, boundedJsonBody, async (context) => {
+    const body = folderProjectMoveSchema.strict().parse(await context.req.json());
+    const folder = await runHttpApplicationEffect(context, dependencies, FolderService.use(
+      (service) => service.moveToProject({
+        ...folderWriteContext(context),
+        ...body,
+        folderId: folderIdSchema.parse(context.req.param("folderId")),
+      }),
+    ));
+    return context.json({folder});
+  });
+
+  app.get("/api/v1/artifacts/:artifactId/location", placementUnavailable, async (context) => {
+    const location = await runHttpApplicationEffect(context, dependencies, ArtifactPlacementService.use(
+      (service) => service.locate({
+        artifactId: z.string().min(1).parse(context.req.param("artifactId")),
+        principal: context.get("principal"),
+      }),
+    ));
+    return context.json({location});
   });
 
   app.get("/api/v1/artifacts", async (context) => {

@@ -299,8 +299,10 @@ export function createApplicationLayer(
               idempotencyKey,
               inputDigest,
             ),
+          // A key whose artifact has since moved to another project answers
+          // not-found in the project that received it.
           catch: (cause) =>
-            cause instanceof IdempotencyConflict
+            cause instanceof IdempotencyConflict || cause instanceof ArtifactNotFound
               ? cause
               : repositoryFailure("findIdempotentPublication", cause),
         }),

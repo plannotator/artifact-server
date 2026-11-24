@@ -1,6 +1,6 @@
 import type {
-  ArtifactPlacement, ArtifactPlacementChange, FolderChange, FolderContents,
-  FolderRecord, ListFolderContents, PlacementWrite,
+  ArtifactLocation, ArtifactPlacement, ArtifactPlacementChange, ArtifactProjectMove, FolderChange,
+  FolderContents, FolderProjectMove, FolderRecord, ListFolderContents, PlacementWrite,
 } from "./folders.js";
 import type {
   AccessSetting,
@@ -744,4 +744,10 @@ export interface ArtifactPlacementRepository {
     command: PlacementWrite & {readonly artifactId: string; readonly expectedCurrentVersionId: string},
     change: ArtifactPlacementChange,
   ): Promise<ArtifactPlacement>;
+  /** Rewrite one artifact and its child records into another project in one transaction. */
+  moveArtifactToProject(command: ArtifactProjectMove): Promise<ArtifactPlacement>;
+  /** Rewrite a folder subtree and its live artifacts into another project in one transaction. */
+  moveFolderToProject(command: FolderProjectMove): Promise<FolderRecord>;
+  /** Resolve a live or trashed artifact's current placement across every project. */
+  locateArtifact(installationId: string, artifactId: string): Promise<ArtifactLocation | null>;
 }

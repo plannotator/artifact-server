@@ -2,7 +2,7 @@ import {createHash} from "node:crypto";
 import {Context, DateTime, Effect, Layer} from "effect";
 
 import {
-  ArtifactRepositoryFailure, CapabilityUnavailable, FolderFailure, InvalidArtifactName,
+  ArtifactNotFound, ArtifactRepositoryFailure, CapabilityUnavailable, FolderFailure, InvalidArtifactName,
   InvalidPagination, isArtifactServerFailure,
 } from "../core/errors.js";
 import type {ArtifactPlacementChange, FolderChange, ListFolderContents} from "../core/folders.js";
@@ -33,6 +33,13 @@ type ArtifactInput = {readonly kind: "move"; readonly toFolderId: string | null}
 interface ArtifactWrite extends WriteCommand {
   readonly artifactId: string;
   readonly expectedCurrentVersionId: string;
+}
+
+interface FolderProjectMoveCommand extends WriteCommand {
+  readonly folderId: string;
+  readonly expectedRevision: number;
+  readonly toProjectId: string;
+  readonly toParentFolderId: string | null;
 }
 
 type FolderRead = ProjectCommand & Omit<ListFolderContents, "installationId" | "projectId">;
@@ -81,7 +88,7 @@ export function folderPlacementLayer(
 }
 
 function folderOperations(
-  repository: FolderRepository | undefined,
+  repository: (FolderRepository & ArtifactPlacementRepository) | undefined,
   clock: Clock,
   ids: Pick<IdGenerator, "folderId">,
   authorization: AuthorizationService["Service"],
@@ -118,7 +125,33 @@ function folderOperations(
     return yield* repositoryCall("writeFolder", () =>
       repository.writeFolder(writeContext(command, project, clock, key, digest), change));
   });
-  return {list, write};
+
+  /** Move a folder subtree into another project; the same project is an ordinary re-parent. */
+  const moveToProject = Effect.fn("FolderService.moveToProject")(function*(command: FolderProjectMoveCommand) {
+    if (repository === undefined) return yield* unavailable();
+    yield* authorization.requireArtifactManagement(command.principal);
+    const source = yield* projects.resolveActiveProject(command);
+    const destination = yield* projects.resolveActiveProject({...command, projectId: command.toProjectId});
+    if (source.id === destination.id) {
+      return yield* write({...command, projectId: source.id}, {
+        kind: "update", id: command.folderId, expectedRevision: command.expectedRevision,
+        parentFolderId: command.toParentFolderId,
+      });
+    }
+    const key = yield* parseIdempotencyKey(command.idempotencyKey);
+    const digest = placementDigest(command.principal, [
+      "move-folder-to-project", source.id, command.folderId, command.expectedRevision,
+      destination.id, command.toParentFolderId,
+    ]);
+    return yield* repositoryCall("moveFolderToProject", () => repository.moveFolderToProject({
+      ...writeContext(command, source, clock, key, digest),
+      folderId: command.folderId,
+      expectedRevision: command.expectedRevision,
+      toProjectId: destination.id,
+      toParentFolderId: command.toParentFolderId,
+    }));
+  });
+  return {list, write, moveToProject};
 }
 
 const parseFolderChange = Effect.fnUntraced(function*(
@@ -168,7 +201,50 @@ function placementOperations(
         expectedCurrentVersionId: command.expectedCurrentVersionId,
       }, change));
   });
-  return {write};
+
+  /** Move an artifact into another project; the same project is an ordinary folder move. */
+  const moveAcrossProjects = Effect.fn("ArtifactPlacementService.moveAcrossProjects")(function*(
+    command: ArtifactWrite & {readonly toProjectId: string},
+    toFolderId: string | null,
+  ) {
+    if (repository === undefined) return yield* unavailable();
+    yield* authorization.requireArtifactManagement(command.principal);
+    const source = yield* projects.resolveActiveProject(command);
+    const destination = yield* projects.resolveActiveProject({...command, projectId: command.toProjectId});
+    if (source.id === destination.id) return yield* write({...command, projectId: source.id}, {kind: "move", toFolderId});
+    const key = yield* parseIdempotencyKey(command.idempotencyKey);
+    const digest = placementDigest(command.principal, [
+      "move-artifact-to-project", source.id, command.artifactId, command.expectedCurrentVersionId,
+      destination.id, toFolderId,
+    ]);
+    return yield* repositoryCall("moveArtifactToProject", () => repository.moveArtifactToProject({
+      ...writeContext(command, source, clock, key, digest),
+      artifactId: command.artifactId,
+      expectedCurrentVersionId: command.expectedCurrentVersionId,
+      toProjectId: destination.id,
+      toFolderId,
+    }));
+  });
+
+  /**
+   * Resolve an artifact's current project for installation-wide readers. Any
+   * other caller receives the ordinary not-found answer, so nothing is disclosed.
+   */
+  const locate = Effect.fn("ArtifactPlacementService.locate")(function*(command: {
+    readonly principal: Principal;
+    readonly artifactId: string;
+  }) {
+    if (repository === undefined) return yield* unavailable();
+    const notFound = new ArtifactNotFound({message: "The artifact does not exist."});
+    yield* authorization.requireArtifactListing(command.principal).pipe(
+      Effect.catchTag("AuthorizationDenied", () => Effect.fail(notFound)),
+    );
+    const location = yield* repositoryCall("locateArtifact", () =>
+      repository.locateArtifact(command.principal.installationId, command.artifactId));
+    if (location === null) return yield* notFound;
+    return location;
+  });
+  return {write, moveAcrossProjects, locate};
 }
 
 const parsePlacement = Effect.fnUntraced(function*(input: ArtifactInput): Effect.fn.Return<
@@ -183,9 +259,9 @@ const parsePlacement = Effect.fnUntraced(function*(input: ArtifactInput): Effect
   return {kind: "rename", name, searchName: normalizeArtifactSearchText(name)};
 });
 
-function placementDigest(
-  principal: Principal, input: readonly (FolderChange | ArtifactPlacementChange | string | {readonly id: null})[],
-): string {
+type DigestPart = FolderChange | ArtifactPlacementChange | string | number | null | {readonly id: null};
+
+function placementDigest(principal: Principal, input: readonly DigestPart[]): string {
   return createHash("sha256").update(JSON.stringify([
     principal.id, principal.authorizedByPrincipalId, input,
   ])).digest("hex");
@@ -214,7 +290,9 @@ function unavailable(): CapabilityUnavailable {
 }
 
 function repositoryCall<A>(
-  operation: "listFolder" | "writeFolder" | "writeArtifactPlacement",
+  operation:
+    | "listFolder" | "writeFolder" | "writeArtifactPlacement"
+    | "moveArtifactToProject" | "moveFolderToProject" | "locateArtifact",
   run: () => Promise<A>,
 ) {
   return Effect.tryPromise({

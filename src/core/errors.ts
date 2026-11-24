@@ -10,6 +10,9 @@ export const errorCodes = {
   folderNotEmpty: "FOLDER_NOT_EMPTY",
   folderRevisionConflict: "FOLDER_REVISION_CONFLICT",
   nameConflict: "NAME_CONFLICT",
+  dispatchHeld: "DISPATCH_HELD",
+  gitHistoryEnabled: "GIT_HISTORY_ENABLED",
+  moveTooLarge: "MOVE_TOO_LARGE",
   agentNotFound: "AGENT_NOT_FOUND",
   artifactNotFound: "ARTIFACT_NOT_FOUND",
   artifactMutationConflict: "ARTIFACT_MUTATION_CONFLICT",
@@ -77,6 +80,12 @@ export class FolderFailure extends Schema.TaggedError<FolderFailure>()(
       updatedAt: Schema.String,
     }) satisfies Schema.Schema<FolderRecord>),
   },
+) {}
+
+/** A cross-project move was refused before any record changed scope. */
+export class ProjectMoveRefused extends Schema.TaggedError<ProjectMoveRefused>()(
+  "ProjectMoveRefused",
+  {...messageField, reason: Schema.Literals(["dispatch-held", "git-history-enabled", "too-large"])},
 ) {}
 
 /** The requested artifact does not exist in the installation. */
@@ -424,6 +433,9 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
       "listFolder",
       "writeFolder",
       "writeArtifactPlacement",
+      "moveArtifactToProject",
+      "moveFolderToProject",
+      "locateArtifact",
       "listCommentReplies",
       "listCommentThreads",
       "listInsightActivity",
@@ -504,6 +516,7 @@ export class StagingStorageFailure extends Schema.TaggedError<StagingStorageFail
 
 const artifactServerFailureSchema = Schema.Union([
   FolderFailure,
+  ProjectMoveRefused,
   AgentDispatchNotFound,
   AgentNotFound,
   ArtifactNotFound,

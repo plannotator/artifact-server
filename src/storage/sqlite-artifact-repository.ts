@@ -2587,6 +2587,7 @@ export class SqliteArtifactRepository implements
       .get(projectId, idempotencyKey);
     const parsed = idempotencyRowSchema.nullable().parse(row ?? null);
     if (parsed === null) return null;
+    this.#assertReplayInProject(projectId, parsed.artifactId);
     if (
       parsed.inputDigest !== inputDigest ||
       parsed.operation !== operation ||
@@ -2625,6 +2626,7 @@ export class SqliteArtifactRepository implements
       .get(projectId, idempotencyKey);
     const parsed = idempotencyRowSchema.nullable().parse(row ?? null);
     if (parsed === null) return null;
+    this.#assertReplayInProject(projectId, parsed.artifactId);
     if (
       parsed.inputDigest !== inputDigest ||
       parsed.operation !== "change_tags" ||
@@ -2645,6 +2647,20 @@ export class SqliteArtifactRepository implements
       true,
       tags,
     );
+  }
+
+  /**
+   * Idempotency records stay in the project that received the request. After a
+   * cross-project move, replaying a pre-move key there answers exactly as any
+   * artifact outside that project does, without disclosing where it went.
+   */
+  #assertReplayInProject(projectId: string, artifactId: string): void {
+    const row = this.#database
+      .prepare("SELECT 1 FROM artifacts WHERE id = ? AND project_id = ?")
+      .get(artifactId, projectId);
+    if (row === undefined) {
+      throw new ArtifactNotFound({message: "The artifact does not exist."});
+    }
   }
 
   #findIdempotentDeletion(
@@ -2913,6 +2929,7 @@ export class SqliteArtifactRepository implements
       .get(projectId, idempotencyKey);
     const parsed = idempotencyRowSchema.nullable().parse(row ?? null);
     if (parsed === null) return null;
+    this.#assertReplayInProject(projectId, parsed.artifactId);
     if (parsed.inputDigest !== inputDigest || parsed.operation !== "publish") {
       throw new IdempotencyConflict({
         message: "The idempotency key was already used with different input.",

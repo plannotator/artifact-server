@@ -29,9 +29,18 @@ export const artifactRenameSchema = z.object({
   expectedCurrentVersionId: z.string().min(1).max(200),
 });
 
+const destinationProjectIdSchema = z.string().trim().min(1).max(200);
+
 export const artifactMoveSchema = z.object({
   toFolderId: folderIdSchema.nullable(),
+  toProjectId: destinationProjectIdSchema.optional(),
   expectedCurrentVersionId: z.string().min(1).max(200),
+});
+
+export const folderProjectMoveSchema = z.object({
+  toProjectId: destinationProjectIdSchema,
+  toParentFolderId: folderIdSchema.nullable().default(null),
+  expectedRevision: folderRevisionSchema,
 });
 
 const cursorSchema = z.discriminatedUnion("kind", [

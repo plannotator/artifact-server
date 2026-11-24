@@ -1,8 +1,9 @@
 import {ArtifactPlacementService, FolderService} from "../application/folders.js";
+import type {ArtifactLocation} from "../core/folders.js";
 import {
   artifactMoveSchema, artifactRenameSchema, createFolderSchema, decodeFolderCursor,
   folderContentsResponse, folderCreateKey, folderIdSchema, folderLocationSchema,
-  folderRevisionSchema, updateFolderSchema,
+  folderProjectMoveSchema, folderRevisionSchema, updateFolderSchema,
 } from "../http/folder-protocol.js";
 import {createHash} from "node:crypto";
 
@@ -85,6 +86,7 @@ import {
 } from "../core/publishing-limits.js";
 import {
   AgentNotFound,
+  ArtifactNotFound,
   InvalidComment,
   InvalidDispatch,
   InvalidPagination,
@@ -635,6 +637,7 @@ export function createArtifactMcpServer(
         }),
         linkedArtifacts: z.object({available: z.boolean()}),
         folders: z.object({available: z.boolean()}),
+        crossProjectMove: z.object({available: z.boolean()}),
         projects: z.object({
           omittedProjectRule: z.string(),
           scope: z.literal("project"),
@@ -977,14 +980,31 @@ export function createArtifactMcpServer(
   })));
 
   registerNudgedTool("artifact_move", {
-    title: "Move an artifact within its project",
-    description: "Place an artifact in a folder or set toFolderId to null for the project root.",
+    title: "Move an artifact",
+    description: "Place an artifact in a folder or set toFolderId to null for the project root. " +
+      "Set toProjectId to move it into another active project with the same IDs, versions, comments, and links; " +
+      "the move is refused while an agent dispatch holds its comments or Git history is enabled.",
     inputSchema: artifactMoveSchema.extend(artifactPlacementFields).strict(),
     outputSchema: placementWriteResult,
     annotations: idempotentWriteAnnotations,
-  }, async ({toFolderId, ...input}) => toolResult(async () => ({
+  }, async ({toFolderId, toProjectId, ...input}) => toolResult(async () => ({
     artifact: await runMcpApplicationEffect(dependencies, ArtifactPlacementService.use(
-      (service) => service.write({...input, principal: identity.principal}, {kind: "move", toFolderId}),
+      (service) => toProjectId === undefined
+        ? service.write({...input, principal: identity.principal}, {kind: "move", toFolderId})
+        : service.moveAcrossProjects({...input, principal: identity.principal, toProjectId}, toFolderId),
+    )),
+  })));
+
+  registerNudgedTool("folder_move_to_project", {
+    title: "Move a folder to another project",
+    description: "Move a folder, its subfolders, and up to 1,000 artifacts into another active project " +
+      "using the folder's current revision. IDs, versions, comments, and links stay the same.",
+    inputSchema: folderProjectMoveSchema.extend({...folderWriteFields, folderId: folderIdSchema}).strict(),
+    outputSchema: folderWriteResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({projectId, idempotencyKey, ...input}) => toolResult(async () => ({
+    folder: await runMcpApplicationEffect(dependencies, FolderService.use(
+      (service) => service.moveToProject({...input, projectId, idempotencyKey, principal: identity.principal}),
     )),
   })));
 
@@ -1047,6 +1067,15 @@ export function createArtifactMcpServer(
     }),
   );
 
+  /** Where a not-found artifact moved, for callers with installation-wide read. */
+  const movedArtifactLocation = async (artifactId: string, projectId: string | null) => {
+    if (dependencies.folders !== true) return null;
+    const location = await runMcpApplicationEffect(dependencies, ArtifactPlacementService.use(
+      (service) => service.locate({artifactId, principal: identity.principal}),
+    )).catch(() => null);
+    return location === null || location.projectId === projectId ? null : location;
+  };
+
   registerNudgedTool(
     "artifact_get",
     {
@@ -1094,7 +1123,7 @@ export function createArtifactMcpServer(
           artifact: artifactBrowserUrl(applicationUrl, details.artifact.id),
         },
       };
-    }),
+    }, undefined, (cause) => cause instanceof ArtifactNotFound ? movedArtifactLocation(artifactId, projectId) : null),
   );
 
   registerNudgedTool(
@@ -2488,6 +2517,7 @@ function capabilities(
     gitHistory,
     linkedArtifacts: {available: linkedArtifacts},
     folders: {available: folders},
+    crossProjectMove: {available: folders},
     agentDispatch: {
       bundleThreadRule:
         "1..100 open, undispatched comment threads from one project per bundle",
@@ -2806,12 +2836,13 @@ async function authorizedBrowserUrl(
 async function toolResult<Value extends object>(
   operation: () => Promise<Value>,
   summary?: (value: Value) => string,
+  locate?: (cause: unknown) => Promise<ArtifactLocation | null> | null,
 ) {
   try {
     const value = await operation();
     return successResult(value, summary?.(value));
   } catch (cause) {
-    return failureResult(cause);
+    return failureResult(cause, await locate?.(cause) ?? null);
   }
 }
 
@@ -2867,8 +2898,18 @@ function publicationSummary(published: {
   ].join("\n");
 }
 
-function failureResult(cause: unknown) {
+function failureResult(cause: unknown, location: ArtifactLocation | null = null) {
   const failure = errorProjection(cause);
+  if (location !== null) {
+    return {
+      content: [{
+        text: `${failure.code}: ${failure.message} It moved to project ${location.projectId}; retry with that projectId.`,
+        type: "text" as const,
+      }],
+      isError: true,
+      structuredContent: {error: {...failure, location}},
+    };
+  }
   return {
     content: [{text: `${failure.code}: ${failure.message}`, type: "text" as const}],
     isError: true,

@@ -93,3 +93,29 @@ type FolderProblemCode = Extract<IntegrityProblem["code"], `folder_${string}`>;
 function folderProblem(code: FolderProblemCode, folderId: string, message: string): IntegrityProblem {
   return {artifactId: "unknown", folderId, code, message, path: null, versionId: null};
 }
+
+const relocationRows = z.array(z.object({artifactId: z.string(), projectId: z.string()}));
+
+/**
+ * Read every recorded cross-project move as (artifact, source project). A
+ * single-artifact move stores its source in the move's idempotency result; a
+ * folder move stores it in the folder action written by the same transaction
+ * as each artifact's move action.
+ */
+export function readCompactRelocations(database: DatabaseSync): z.infer<typeof relocationRows> {
+  if (database.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'folder_actions'").get() === undefined) {
+    return [];
+  }
+  return relocationRows.parse(database.prepare(`
+    SELECT artifact_id AS artifactId, json_extract(placement_result_json, '$.movedFromProjectId') AS projectId
+    FROM idempotency_records
+    WHERE operation = 'move' AND json_extract(placement_result_json, '$.movedFromProjectId') IS NOT NULL
+    UNION
+    SELECT action.artifact_id, json_extract(folder.result_json, '$.movedFromProjectId')
+    FROM actions action JOIN folder_actions folder
+      ON folder.idempotency_key = action.idempotency_key AND folder.created_at = action.created_at
+        AND folder.action = 'move'
+    WHERE action.action = 'move' AND json_extract(folder.result_json, '$.movedFromProjectId') IS NOT NULL
+    ORDER BY artifactId, projectId
+  `).all());
+}
