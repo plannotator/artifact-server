@@ -27,6 +27,15 @@ const trashFailureStatus = {
   "too-large": {code: errorCodes.trashTooLarge, status: 409},
 } as const;
 
+const folderLinkFailureStatus = {
+  "not-found": {code: errorCodes.folderLinkNotFound, status: 404},
+  "entry-not-found": {code: errorCodes.inventoryEntryNotFound, status: 404},
+  overlap: {code: errorCodes.linkOverlap, status: 409},
+  limit: {code: errorCodes.linkLimit, status: 409},
+  "batch-too-large": {code: errorCodes.captureBatchTooLarge, status: 422},
+  revision: {code: errorCodes.folderLinkRevisionConflict, status: 409},
+} as const;
+
 /** Stable protocol-safe projection shared by HTTP and MCP adapters. */
 export function artifactServerFailureResponse(failure: ArtifactServerFailure) {
   switch (failure._tag) {
@@ -141,6 +150,10 @@ export function artifactServerFailureResponse(failure: ArtifactServerFailure) {
       return {code: errorCodes.sourceMissing, message: failure.message, status: 409};
     case "SourceUnreadable":
       return {code: errorCodes.sourceUnreadable, message: failure.message, status: 409};
+    case "SourceMoved":
+      return {code: errorCodes.sourceMoved, message: failure.message, status: 409};
+    case "FolderLinkFailure":
+      return {...folderLinkFailureStatus[failure.reason], message: failure.message};
     case "CapabilityUnavailable":
       return {
         code: errorCodes.capabilityUnavailable,

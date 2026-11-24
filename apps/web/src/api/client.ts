@@ -63,12 +63,14 @@ const gitHistoryCapabilitySchema = z.object({
 const deploymentCapabilitiesSchema = z.object({
   gitHistory: gitHistoryCapabilitySchema.default(disabledGitHistoryCapability),
   linkedArtifacts: z.boolean(),
+  linkedFolders: z.boolean().default(false),
   folders: z.boolean().default(false),
   crossProjectMove: z.boolean().default(false),
   trash: z.boolean().default(false),
 }).default({
   gitHistory: disabledGitHistoryCapability,
   linkedArtifacts: false,
+  linkedFolders: false,
   folders: false,
   crossProjectMove: false,
   trash: false,
@@ -595,6 +597,64 @@ const linkedPublicationSchema = z.object({
 });
 
 export type LinkedPublication = z.infer<typeof linkedPublicationSchema>;
+
+const folderLinkSchema = z.object({
+  createdAt: z.string(),
+  entryCount: z.number().int(),
+  folderId: z.string(),
+  id: z.string(),
+  ignore: z.array(z.string()),
+  ignoredCount: z.number().int(),
+  lastScanCompletedAt: z.string().nullable(),
+  lastScanStartedAt: z.string().nullable(),
+  overLimitReason: z.enum(["entries", "ignore-file"]).nullable(),
+  path: z.string(),
+  paused: z.boolean(),
+  pendingCount: z.number().int(),
+  projectId: z.string(),
+  revision: z.number().int(),
+  scanActivity: z.enum(["idle", "queued", "scanning"]),
+  skippedCount: z.number().int(),
+  state: z.enum(["active", "paused", "unavailable", "over-limit"]),
+});
+const folderLinkResultSchema = z.object({folderLink: folderLinkSchema});
+const inventoryEntrySchema = z.object({
+  artifactId: z.string().nullable(),
+  freshness: sourceFreshnessSchema.nullable(),
+  id: z.string(),
+  observedAt: z.string(),
+  pending: z.boolean(),
+  relativePath: z.string(),
+  size: z.number().int().nullable(),
+  skipReason: z.string().nullable(),
+  state: z.enum(["untracked", "tracked", "skipped"]),
+});
+const inventoryPageSchema = z.object({entries: z.array(inventoryEntrySchema), nextCursor: z.string().nullable()});
+const captureResultSchema = z.object({
+  artifactId: z.string().nullable(),
+  code: z.string().nullable(),
+  entryId: z.string(),
+  message: z.string().nullable(),
+  relativePath: z.string().nullable(),
+  status: z.enum(["captured", "unchanged", "refused"]),
+  versionId: z.string().nullable(),
+});
+const relinkSuggestionSchema = z.object({
+  artifactId: z.string(),
+  artifactName: z.string(),
+  expectedSha256: z.string(),
+  fromRelativePath: z.string(),
+  toEntryId: z.string(),
+  toRelativePath: z.string(),
+});
+export type FolderLink = z.infer<typeof folderLinkSchema>;
+export type InventoryEntry = z.infer<typeof inventoryEntrySchema>;
+export type CaptureResult = z.infer<typeof captureResultSchema>;
+export type RelinkSuggestion = z.infer<typeof relinkSuggestionSchema>;
+
+function folderLinkUrl(folderLinkId: string, suffix = ""): string {
+  return `/api/v1/folder-links/${encodeURIComponent(folderLinkId)}${suffix}`;
+}
 
 const actionSchema: z.ZodType<ArtifactAction> = z.object({
   action: z.enum([
@@ -1403,6 +1463,68 @@ export const api = {
       headers: mutationHeaders(idempotencyKey),
       method: "POST",
     },
+  ),
+  folderLinks: async (projectId: string) => (await request(
+    z.object({folderLinks: z.array(folderLinkSchema)}),
+    `/api/v1/projects/${encodeURIComponent(projectId)}/folder-links`,
+  )).folderLinks,
+  linkFolder: async (projectId: string, path: string, newFolderName: string | null, key: string) => (await request(
+    folderLinkResultSchema,
+    `/api/v1/projects/${encodeURIComponent(projectId)}/folder-links`,
+    {body: JSON.stringify({folderId: null, ignore: [], newFolderName, path}), headers: mutationHeaders(key), method: "POST"},
+  )).folderLink,
+  updateFolderLink: async (link: FolderLink, change: {readonly paused: boolean} | {readonly ignore: readonly string[]}) => (await request(
+    folderLinkResultSchema,
+    folderLinkUrl(link.id),
+    {body: JSON.stringify({...change, expectedRevision: link.revision}), headers: mutationHeaders(), method: "PATCH"},
+  )).folderLink,
+  unlinkFolder: async (link: FolderLink) => (await request(
+    folderLinkResultSchema,
+    folderLinkUrl(link.id, `?expectedRevision=${link.revision}`),
+    {headers: mutationHeaders(), method: "DELETE"},
+  )).folderLink,
+  scanFolderLink: async (folderLinkId: string) => (await request(
+    folderLinkResultSchema,
+    folderLinkUrl(folderLinkId, "/scan"),
+    {headers: mutationHeaders(), method: "POST"},
+  )).folderLink,
+  folderLinkInventory: (folderLinkId: string, filter: "pending" | "all" | "skipped", cursor: string | null) => {
+    const query = new URLSearchParams({limit: "200"});
+    if (filter === "pending") query.set("pending", "true");
+    if (filter === "skipped") query.set("state", "skipped");
+    if (cursor !== null) query.set("cursor", cursor);
+    return request(inventoryPageSchema, folderLinkUrl(folderLinkId, `/inventory?${query}`));
+  },
+  captureFolderLink: async (folderLinkId: string, entries: readonly string[] | "all", key: string) => (await request(
+    z.object({results: z.array(captureResultSchema)}),
+    folderLinkUrl(folderLinkId, "/capture"),
+    {
+      body: JSON.stringify(entries === "all" ? {all: true} : {entryIds: entries}),
+      headers: mutationHeaders(key),
+      method: "POST",
+    },
+  )).results,
+  relinkSuggestions: async (folderLinkId: string) => (await request(
+    z.object({suggestions: z.array(relinkSuggestionSchema)}),
+    folderLinkUrl(folderLinkId, "/relink-suggestions"),
+  )).suggestions,
+  acceptRelink: (folderLinkId: string, suggestion: RelinkSuggestion, key: string) => request(
+    z.object({sourceBinding: sourceBindingSchema}),
+    folderLinkUrl(folderLinkId, "/relink"),
+    {
+      body: JSON.stringify({
+        artifactId: suggestion.artifactId,
+        entryId: suggestion.toEntryId,
+        expectedSha256: suggestion.expectedSha256,
+      }),
+      headers: mutationHeaders(key),
+      method: "POST",
+    },
+  ),
+  entryLiveSession: (folderLinkId: string, entryId: string) => request(
+    z.object({bootstrapUrl: z.url(), expiresAt: z.string()}),
+    folderLinkUrl(folderLinkId, `/entries/${encodeURIComponent(entryId)}/live-sessions`),
+    {headers: mutationHeaders(), method: "POST"},
   ),
   /**
    * Enter the artifact's live origin: the answer is a one-use bootstrap URL

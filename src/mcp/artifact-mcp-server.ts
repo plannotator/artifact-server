@@ -3,6 +3,12 @@ import type {ArtifactLocation} from "../core/folders.js";
 import {TrashService} from "../application/trash.js";
 import {decodeTrashCursor, trashPageResponse} from "../http/trash-protocol.js";
 import {maximumTrashPageSize} from "../core/trash.js";
+import {LinkedFolderService, type UpdateFolderLinkCommand} from "../application/linked-folders.js";
+import {
+  captureResultOutputSchema, folderLinkIdSchema, folderLinkOutputSchema, folderLinkProjection,
+  folderLinkRevisionSchema, inventoryEntryOutputSchema, inventoryEntryProjection, linkFolderSchema,
+  updateFolderLinkSchema,
+} from "../http/folder-link-protocol.js";
 import {
   artifactMoveSchema, artifactRenameSchema, createFolderSchema, decodeFolderCursor,
   folderContentsResponse, folderCreateKey, folderIdSchema, folderLocationSchema,
@@ -93,6 +99,7 @@ import {
   InvalidComment,
   InvalidDispatch,
   InvalidPagination,
+  CapabilityUnavailable,
   isArtifactServerFailure,
   PublishConflict,
   SourceDrifted,
@@ -414,6 +421,8 @@ export interface ArtifactMcpServerDependencies {
   readonly gitHistory: GitHistoryCapability;
   /** Advertises the local linked-artifact capability in discovery. */
   readonly linkedArtifacts?: boolean;
+  /** Advertises and enables the local linked-folder tools. */
+  readonly linkedFolders?: boolean;
   readonly folders?: boolean;
   readonly trash?: boolean;
   readonly mode: "local" | "remote";
@@ -640,6 +649,7 @@ export function createArtifactMcpServer(
           workflow: z.array(z.string()),
         }),
         linkedArtifacts: z.object({available: z.boolean()}),
+        linkedFolders: z.object({available: z.boolean()}),
         folders: z.object({available: z.boolean()}),
         crossProjectMove: z.object({available: z.boolean()}),
         trash: z.object({available: z.boolean(), purge: z.literal("human-only")}),
@@ -652,13 +662,16 @@ export function createArtifactMcpServer(
       annotations: readOnlyAnnotations,
     },
     () => successResult(
-      capabilities(
-        dependencies.mode,
-        dependencies.linkedArtifacts === true,
-        dependencies.gitHistory,
-        dependencies.folders === true,
-        dependencies.trash === true,
-      ),
+      {
+        ...capabilities(
+          dependencies.mode,
+          dependencies.linkedArtifacts === true,
+          dependencies.gitHistory,
+          dependencies.folders === true,
+          dependencies.trash === true,
+        ),
+        linkedFolders: {available: linkedFoldersAvailable},
+      },
       "Artifact Server publishes actual files through an upload plan. It does not accept inline HTML, CSS, JavaScript, or base64 content."),
   );
 
@@ -1791,6 +1804,118 @@ export function createArtifactMcpServer(
         ),
       })),
   );
+
+  const linkedFoldersAvailable = dependencies.linkedFolders === true && dependencies.mode === "local";
+  const runLinkedFolders = <A, E>(effect: Effect.Effect<A, E, ApplicationServices>) => {
+    if (!linkedFoldersAvailable) {
+      return Promise.reject(new CapabilityUnavailable({message: "Linked folders are not available on this deployment."}));
+    }
+    return runMcpApplicationEffect(dependencies, effect);
+  };
+  const folderLinkResult = z.object({folderLink: folderLinkOutputSchema}).strict();
+  const folderLinkTarget = {folderLinkId: folderLinkIdSchema, projectId: optionalProjectIdSchema};
+
+  registerNudgedTool("folder_link", {
+    title: "Link a directory on this machine to a folder",
+    description:
+      "Link one directory on this server's machine to an Artifact Server folder. The server indexes the directory's files into an inventory but creates no artifact or version until folder_link_capture. Local installations with linked files only; pass an absolute path, never file bytes.",
+    inputSchema: linkFolderSchema.extend({
+      idempotencyKey: idempotencyKeySchema.nullable().default(null),
+      projectId: optionalProjectIdSchema,
+    }).strict(),
+    outputSchema: folderLinkResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({idempotencyKey, projectId, ...input}) => toolResult(async () => ({
+    folderLink: folderLinkProjection(await runLinkedFolders(LinkedFolderService.use((service) => service.linkFolder({
+      ...input,
+      idempotencyKey: idempotencyKey ?? derivedIdempotencyKey(["folder-link", projectId ?? "", input.path]),
+      principal: identity.principal,
+      projectId,
+    })))),
+  })));
+
+  registerNudgedTool("folder_link_update", {
+    title: "Pause, resume, or change a folder link's ignore rules",
+    description: "Change one folder link using its current revision. Pausing stops watching and scheduled scans and keeps the inventory.",
+    inputSchema: updateFolderLinkSchema.extend(folderLinkTarget).strict(),
+    outputSchema: folderLinkResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({folderLinkId, projectId, expectedRevision, ignore, paused}) => toolResult(async () => {
+    let command: UpdateFolderLinkCommand = {expectedRevision, folderLinkId, principal: identity.principal, projectId};
+    if (ignore !== undefined) command = {...command, ignore};
+    if (paused !== undefined) command = {...command, paused};
+    const update = command;
+    return {
+      folderLink: folderLinkProjection(await runLinkedFolders(LinkedFolderService.use((service) =>
+        service.updateFolderLink(update)
+      ))),
+    };
+  }));
+
+  registerNudgedTool("folder_unlink", {
+    title: "Unlink a folder from its directory",
+    description: "Remove one folder link and its inventory. Captured artifacts stay linked individually, and nothing on disk changes.",
+    inputSchema: z.object({...folderLinkTarget, expectedRevision: folderLinkRevisionSchema}).strict(),
+    outputSchema: folderLinkResult,
+    annotations: destructiveWriteAnnotations,
+  }, async ({folderLinkId, projectId, expectedRevision}) => toolResult(async () => ({
+    folderLink: folderLinkProjection(await runLinkedFolders(LinkedFolderService.use((service) =>
+      service.unlinkFolder({expectedRevision, folderLinkId, principal: identity.principal, projectId})
+    ))),
+  })));
+
+  registerNudgedTool("folder_link_scan", {
+    title: "Rescan a linked folder now",
+    description: "Run one reconciliation scan of a linked directory. A scan updates only the inventory and binding freshness.",
+    inputSchema: z.object(folderLinkTarget).strict(),
+    outputSchema: folderLinkResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({folderLinkId, projectId}) => toolResult(async () => ({
+    folderLink: folderLinkProjection(await runLinkedFolders(LinkedFolderService.use((service) =>
+      service.scanNow({folderLinkId, principal: identity.principal, projectId})
+    ))),
+  })));
+
+  registerNudgedTool("folder_link_inventory", {
+    title: "List a linked folder's inventory",
+    description: "List untracked, tracked, and skipped files observed in a linked directory, with pending entries marked.",
+    inputSchema: z.object({
+      ...folderLinkTarget,
+      cursor: z.string().max(8_192).nullable().default(null),
+      limit: z.number().int().min(1).max(500).default(100),
+      pendingOnly: z.boolean().default(false),
+      state: z.enum(["untracked", "tracked", "skipped"]).nullable().default(null),
+    }).strict(),
+    outputSchema: z.object({entries: z.array(inventoryEntryOutputSchema), nextCursor: z.string().nullable()}).strict(),
+    annotations: readOnlyAnnotations,
+  }, async (input) => toolResult(async () => {
+    const page = await runLinkedFolders(LinkedFolderService.use((service) =>
+      service.listInventory({...input, principal: identity.principal})
+    ));
+    return {entries: page.entries.map(inventoryEntryProjection), nextCursor: page.nextCursor};
+  }));
+
+  registerNudgedTool("folder_link_capture", {
+    title: "Capture pending files from a linked folder",
+    description:
+      "Capture up to 100 named inventory entries, or all pending ones, as linked artifacts placed in mirrored subfolders or as new versions of changed tracked files. Results are reported per entry; omitting idempotencyKey derives a stable key so an identical retry replays.",
+    inputSchema: z.object({
+      ...folderLinkTarget,
+      all: z.boolean().default(false),
+      entryIds: z.array(z.string().max(200)).max(1_000).default([]),
+      idempotencyKey: idempotencyKeySchema.nullable().default(null),
+    }).strict(),
+    outputSchema: z.object({results: z.array(captureResultOutputSchema)}).strict(),
+    annotations: idempotentWriteAnnotations,
+  }, async ({all, entryIds, folderLinkId, idempotencyKey, projectId}) => toolResult(async () => ({
+    results: (await runLinkedFolders(LinkedFolderService.use((service) => service.captureInventory({
+      entryIds: all ? "all-pending" : entryIds,
+      folderLinkId,
+      idempotencyKey: idempotencyKey ?? derivedIdempotencyKey(["folder-capture", folderLinkId, all ? "all" : entryIds.join(",")]),
+      principal: identity.principal,
+      projectId,
+    })))).results,
+  })));
 
   registerNudgedTool(
     "comment_list",

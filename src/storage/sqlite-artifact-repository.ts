@@ -1,5 +1,7 @@
 import {folderSqliteSchemaVersion, migrateSqliteFolders, writeSqliteCurrentFileMetadata} from "./sqlite-folder-schema.js";
 import {migrateSqliteTrash, trashSqliteSchemaVersion} from "./sqlite-trash-schema.js";
+import {folderLinkSchemaVersion, migrateSqliteFolderLinks} from "./sqlite-folder-link-schema.js";
+import {SqliteFolderLinks} from "./sqlite-folder-links.js";
 import {SqliteFolders} from "./sqlite-folders.js";
 import {SqliteTrash} from "./sqlite-trash.js";
 
@@ -566,6 +568,7 @@ export class SqliteArtifactRepository implements
   readonly #installationId: string;
   readonly folders: SqliteFolders;
   readonly trash: SqliteTrash;
+  readonly folderLinks: SqliteFolderLinks;
 
   constructor(databasePath: string, installationId = "local") {
     this.#installationId = installationId;
@@ -594,6 +597,10 @@ export class SqliteArtifactRepository implements
       (projectId, artifactId) => this.#readArtifactOrNull(projectId, artifactId),
       (projectId, artifactId, createdAt) =>
         this.#queueGitHistoryDeletionIfPresent(projectId, artifactId, createdAt),
+    );
+    this.folderLinks = new SqliteFolderLinks(
+      this.#database,
+      (operation) => this.#transaction(operation),
     );
   }
 
@@ -1235,9 +1242,15 @@ export class SqliteArtifactRepository implements
    */
   commitLinkedArtifact(command: CommitLinkedArtifact): Promise<PublishedVersion> {
     return Promise.resolve().then(() =>
-      this.#transaction(() =>
-        this.#applyNewArtifactCommit(command, command.binding)
-      ),
+      this.#transaction(() => {
+        const published = this.#applyNewArtifactCommit(command, command.binding);
+        if (command.folderId !== undefined && !published.replayed) {
+          this.#database
+            .prepare("UPDATE artifacts SET folder_id = ? WHERE project_id = ? AND id = ?")
+            .run(command.folderId, command.projectId, command.artifactId);
+        }
+        return published;
+      }),
     );
   }
 
@@ -4995,6 +5008,7 @@ export class SqliteArtifactRepository implements
       }
       if (version < folderSqliteSchemaVersion) migrateSqliteFolders(this.#database);
       if (version < trashSqliteSchemaVersion) migrateSqliteTrash(this.#database);
+      if (version < folderLinkSchemaVersion) migrateSqliteFolderLinks(this.#database);
     });
   }
 

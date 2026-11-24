@@ -63,6 +63,7 @@ export interface McpHttpAdapterDependencies {
   readonly contentDomain: string;
   readonly gitHistory: GitHistoryCapabilityReader;
   readonly linkedArtifacts?: boolean;
+  readonly linkedFolders?: boolean;
   readonly folders?: boolean;
   readonly trash?: boolean;
   readonly mode: ArtifactMcpServerDependencies["mode"];
@@ -91,6 +92,7 @@ export function createMcpHttpAdapter(
         contentDomain: dependencies.contentDomain,
         gitHistory: dependencies.gitHistory.read(),
         linkedArtifacts: dependencies.linkedArtifacts === true,
+        linkedFolders: dependencies.linkedFolders === true,
         folders: dependencies.folders === true,
         trash: dependencies.trash === true,
         mode: dependencies.mode,

@@ -3,6 +3,8 @@ import {TrashService} from "../application/trash.js";
 import {
   decodeTrashCursor, folderRecoverSchema, purgeSchema, trashPageQuerySchema, trashPageResponse,
 } from "./trash-protocol.js";
+import {isEntryLiveContentToken, LinkedFolderService} from "../application/linked-folders.js";
+import {registerFolderLinkRoutes} from "./folder-link-routes.js";
 import {
   artifactMoveSchema, artifactPageItems, artifactRenameSchema, createFolderSchema,
   decodeFolderCursor, folderContentsResponse, folderCreateKey, folderIdSchema,
@@ -481,7 +483,8 @@ const maximumClaimWaitSeconds = 25;
 /** Spacing of the bounded re-checks inside one held claim poll. */
 const claimRecheckIntervalMilliseconds = 1_000;
 
-interface HttpEnvironment {
+/** Values the authenticated request pipeline attaches to every request. */
+export interface HttpEnvironment {
   readonly Variables: {
     readonly authenticationMethod: "bearer" | "session";
     readonly principal: Principal;
@@ -510,6 +513,7 @@ export interface HttpAppDependencies {
    * the enforcing guard; this flag only shapes discovery and fast gating.
    */
   readonly linkedArtifacts?: boolean;
+  readonly linkedFolders?: boolean;
   readonly folders?: boolean;
   /** Advertises recoverable trash, recover, and purge (ADR 0030). */
   readonly trash?: boolean;
@@ -582,6 +586,7 @@ export function createHttpApp(
     contentDomain: dependencies.contentDomain,
     gitHistory,
     linkedArtifacts: dependencies.linkedArtifacts === true,
+    linkedFolders: dependencies.linkedFolders === true,
     folders: dependencies.folders === true,
     trash: dependencies.trash === true,
     mode: dependencies.trustedApplicationOrigin === null ? "local" : "remote",
@@ -733,6 +738,9 @@ export function createHttpApp(
           contentToken,
           dependencies,
         );
+      }
+      if (isEntryLiveContentToken(contentToken)) {
+        return serveEntryLiveContent(context, requestUrl, contentToken, dependencies);
       }
       if (isContentBootstrapRequest(requestUrl)) {
         return exchangeContentBootstrap(
@@ -1048,6 +1056,7 @@ export function createHttpApp(
       capabilities: {
         gitHistory: gitHistory.read(),
         linkedArtifacts: dependencies.linkedArtifacts === true,
+        linkedFolders: dependencies.linkedFolders === true,
         folders: dependencies.folders === true,
         crossProjectMove: dependencies.folders === true,
         trash: dependencies.trash === true,
@@ -2681,6 +2690,15 @@ export function createHttpApp(
     }, 201);
   });
 
+  registerFolderLinkRoutes(app, {
+    applicationUrl: (context) => responseApplicationUrl(context, dependencies),
+    boundedJsonBody,
+    contentDomain: dependencies.contentDomain,
+    enabled: dependencies.linkedFolders === true,
+    isLoopbackHostname,
+    run: (context, effect) => runHttpApplicationEffect(context, dependencies, effect),
+  });
+
   app.get("/artifacts/:artifactId", async (context) => {
     const current = await runHttpApplicationEffect(
       context,
@@ -3633,6 +3651,69 @@ async function serveLiveContent(
     grant.freshness,
     "inline",
   );
+  if (method === "HEAD") {
+    await grant.source.close();
+    return new Response(null, {headers, status: 200});
+  }
+  return new Response(grant.source.stream(), {headers, status: 200});
+}
+
+/**
+ * Serve one untracked inventory entry's current bytes on its per-entry live
+ * origin (`live-fle-<uuid>`), with exactly the linked live-view audience,
+ * `no-store`, and verified-descriptor rules. The bootstrap exchange sets the
+ * ordinary content-session cookie scoped to this host.
+ */
+async function serveEntryLiveContent(
+  context: Context<HttpEnvironment>,
+  requestUrl: URL,
+  contentToken: string,
+  dependencies: HttpAppDependencies,
+): Promise<Response> {
+  const method = context.req.method;
+  if (method !== "GET" && method !== "HEAD") {
+    return Response.json(
+      {error: {code: errorCodes.methodNotAllowed, message: "Only GET and HEAD are supported."}},
+      {status: 405, headers: {Allow: "GET, HEAD"}},
+    );
+  }
+  if (isContentBootstrapRequest(requestUrl)) {
+    const parsed = contentSessionTokenSchema.safeParse(
+      requestUrl.searchParams.get(contentBootstrapQueryParameter),
+    );
+    if (!parsed.success || method !== "GET") {
+      throw new ContentBootstrapRejected({
+        message: "The private-content bootstrap is invalid or no longer available.",
+      });
+    }
+    const issued = await runHttpApplicationEffect(context, dependencies, LinkedFolderService.use((service) =>
+      service.exchangeEntryLiveBootstrap({
+        contentToken,
+        token: Redacted.make(parsed.data, {label: "content-bootstrap-token"}),
+      })
+    ));
+    return new Response(contentSessionExchangeHtml("/"), {
+      headers: {
+        "Cache-Control": "private, no-store",
+        "Content-Security-Policy": "default-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+        "Content-Type": "text/html; charset=utf-8",
+        "Referrer-Policy": "no-referrer",
+        "Set-Cookie": contentSessionCookie(
+          Redacted.value(issued.token),
+          issued.expiresAt,
+          usesSecureContentCookie(requestUrl),
+        ),
+      },
+      status: 200,
+    });
+  }
+  const grant = await runHttpApplicationEffect(context, dependencies, LinkedFolderService.use((service) =>
+    service.authorizeEntryLiveRead({
+      contentToken,
+      sessionToken: contentSessionToken(context.req.header("cookie")),
+    })
+  ));
+  const headers = liveContentHeaders(grant.mediaType, grant.source.size, "untracked", "inline");
   if (method === "HEAD") {
     await grant.source.close();
     return new Response(null, {headers, status: 200});

@@ -31,6 +31,7 @@ const sessionSchema = z.object({
     crossProjectMove: z.boolean(),
     trash: z.boolean(),
     linkedArtifacts: z.boolean(),
+    linkedFolders: z.boolean(),
   }).strict(),
 }).loose();
 const linkedPublicationSchema = z.object({

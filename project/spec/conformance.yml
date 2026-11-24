@@ -5245,9 +5245,14 @@ requirements:
       behavior: {id: LFD-001-B, description: "Link a directory through MCP, HTTP, and the CLI on a local deployment with linked files on, and observe the link record, the folder, a completed first scan, and zero new artifacts, versions, or actions."}
       failure: {id: LFD-001-F, description: "A file path, symlinked directory, out-of-root directory, the data directory, an overlapping directory, a non-loopback origin, an unauthorized principal, and any non-local deployment are refused with the documented codes and no record."}
     deployments: *all
-    status: specified
+    status: behavior_verified
     depends_on: [LNK-001, LNK-006, FLD-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [LFD-001-B, LFD-001-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T09:34:39.283Z"
 
   - id: LFD-002
     kind: behavior
@@ -5258,9 +5263,14 @@ requirements:
       behavior: {id: LFD-002-B, description: "Add, modify, and remove files in a linked directory with the watcher on and off; observe inventory states within the hint budget or after a scan, freshness on tracked entries, and correct state after a server restart with changes made while stopped."}
       failure: {id: LFD-002-F, description: "With the database refusing every artifact, version, folder, and action write, scans and hints still complete; a dropped or overflowed watcher event is repaired by periodic reconciliation."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [LFD-001, LNK-003]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [LFD-002-B, LFD-002-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T09:34:39.283Z"
 
   - id: LFD-003
     kind: security
@@ -5271,9 +5281,14 @@ requirements:
       behavior: {id: LFD-003-B, description: "Scan a fixture tree containing ignored patterns, a re-included default, an .artifactignore, and per-link patterns, and observe exactly the documented indexed and ignored sets."}
       failure: {id: LFD-003-F, description: "Symlinks to files, to directories, and to outside the root, a FIFO, a socket, a mounted volume, the data directory nested inside the link, a .git directory, a control-character name, and an over-limit .artifactignore are never indexed as capturable and never descended into."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [LFD-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [LFD-003-B, LFD-003-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T09:34:39.283Z"
 
   - id: LFD-004
     kind: behavior
@@ -5284,9 +5299,14 @@ requirements:
       behavior: {id: LFD-004-B, description: "Capture all pending entries in a nested linked directory and observe one linked artifact per untracked file in matching subfolders, one new version per modified tracked file, capture actions attributed to the caller, and the same results on replay."}
       failure: {id: LFD-004-F, description: "An entry whose path changed after the scan (including a parent swapped for a symlink) is refused as source-moved, a mid-read change aborts that entry with the retryable drift error, and neither affects other entries."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [LFD-002, LNK-002, LNK-004]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [LFD-004-B, LFD-004-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T09:34:39.283Z"
 
   - id: LFD-005
     kind: behavior
@@ -5297,9 +5317,14 @@ requirements:
       behavior: {id: LFD-005-B, description: "Delete one tracked file and rename another on disk; observe the first artifact missing and unchanged, a relink suggestion for the second, and acceptance preserving the artifact ID, versions, and comments."}
       failure: {id: LFD-005-F, description: "A same-size file with different content produces no suggestion, accepting a stale suggestion fails the expected-hash check, and no disk event ever changes artifact state other than binding freshness."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [LFD-002, LNK-005]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [LFD-005-B, LFD-005-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T09:34:39.283Z"
 
   - id: LFD-006
     kind: constraint
@@ -5310,9 +5335,14 @@ requirements:
       behavior: {id: LFD-006-B, description: "Link a 20,000-file tree, observe the full inventory built in bounded pages, then add files past the limit and observe over-limit with existing entries intact and a narrowing hint."}
       failure: {id: LFD-006-F, description: "A 51st link is refused as link-limit, scans beyond the concurrency limit queue rather than run, and a capture request above 100 entries is refused before any work."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [LFD-002]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [LFD-006-B, LFD-006-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T09:34:39.283Z"
 
   - id: LFD-007
     kind: security
@@ -5323,9 +5353,14 @@ requirements:
       behavior: {id: LFD-007-B, description: "As an admitted local member, read link and inventory paths and open an untracked entry's live preview with no-store caching on its per-entry live origin."}
       failure: {id: LFD-007-F, description: "Public-link, anonymous, non-member, and version-session callers never receive a path or a live entry byte, logs and metrics contain no directory or relative path, and a forged entry or link ID from another project answers not-found."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [LFD-001, LNK-007]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [LFD-007-B, LFD-007-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T09:34:39.283Z"
 
   - id: LFD-008
     kind: behavior
@@ -5336,7 +5371,8 @@ requirements:
       behavior: {id: LFD-008-B, description: "Pause and resume a link, trash and recover its folder (observing a fresh scan), unlink it and observe captured artifacts still linked individually, and restore a backup with the link unavailable until a successful scan."}
       failure: {id: LFD-008-F, description: "No pause, unlink, trash, purge, rename, or move operation creates, edits, moves, or deletes any file under the linked directory, verified by a full before/after tree hash."}
     deployments: [local]
-    status: specified
+    status: implementing
+    proof_gap: The LFD-008-B and LFD-008-F tests prove pause and resume, unlink keeping captured artifacts linked individually, backup restore staying unavailable until a successful scan, and an unchanged linked-directory tree hash across pause, scan, capture, artifact rename and move, folder rename, refused linked-folder delete, and unlink. Trash, recover, and purge of a linked folder depend on TRS-001 (ARTSV-5.2), which this branch does not contain, so those clauses are not exercised and no evidence is attached.
     depends_on: [LFD-001, TRS-001, FLD-008]
     evidence: []
 

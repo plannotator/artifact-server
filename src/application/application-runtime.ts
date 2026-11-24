@@ -15,6 +15,7 @@ import type { CompareArtifactService } from "./compare-artifact.js";
 import type { InstallationAccessService } from "./installation-access.js";
 import type { InteractiveLoginService } from "./interactive-login.js";
 import type { LinkedArtifactService } from "./linked-artifacts.js";
+import type {LinkedFolderService} from "./linked-folders.js";
 import type {ProjectManagementService} from "./project-management.js";
 import type {ProjectGitHistoryService} from "./project-git-history.js";
 import type {ExpiredStagingCleanupService} from "./expired-staging-cleanup.js";
@@ -40,6 +41,7 @@ export type ApplicationServices =
   | InstallationAccessService
   | InteractiveLoginService
   | LinkedArtifactService
+  | LinkedFolderService
   | PublishArtifactService
   | ProjectManagementService
   | ProjectGitHistoryService

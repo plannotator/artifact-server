@@ -41,6 +41,10 @@ export class SystemIdGenerator implements IdGenerator {
     return `tgr_${randomUUID()}`;
   }
 
+  folderLinkId(): string {
+    return `flk_${randomUUID()}`;
+  }
+
   /** Create one opaque project identity. */
   projectId(): string {
     return `prj_${randomUUID()}`;

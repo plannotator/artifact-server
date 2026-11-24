@@ -15,6 +15,7 @@ import {z} from "zod";
 import {browserLoginKinds, privateTeamBrowserAccess} from "../../src/core/browser-access.js";
 import {OidcIdentityProvider} from "../../src/identity/oidc-identity-provider.js";
 import {checkCompactIntegrity} from "../../src/lifecycle/integrity-check.js";
+import {requiredSqliteSchemaVersion} from "../../src/storage/sqlite-schema.js";
 import {ApiClient, issueApiKey, signInAdministrator} from "../support/agent-dispatch.js";
 import {parsePublishResponse, publishNew, publishVersion, type PublishResponse} from "../support/publishing.js";
 import {
@@ -429,7 +430,8 @@ describe("recoverable trash, recover and purge", () => {
       database.prepare("UPDATE artifacts SET deleted_at = ? WHERE id = ?").run("2026-11-01T00:00:00.000Z", old.artifact.id);
     });
     server = await startTestServer(installation);
-    expect(readDatabase((database) => database.prepare("PRAGMA user_version").get())).toEqual({user_version: 14});
+    expect(readDatabase((database) => database.prepare("PRAGMA user_version").get()))
+      .toEqual({user_version: requiredSqliteSchemaVersion});
     expect((await trash()).items).toMatchObject([{id: old.artifact.id, trashGroupId: null, trashedAt: "2026-11-01T00:00:00.000Z"}]);
     const recovered = artifactRecovery.parse(await (await request(`${routeFor(old)}/recover`, "POST")).json());
     expect(recovered.artifact).toMatchObject({id: old.artifact.id, currentVersionId: second.body.version.id});

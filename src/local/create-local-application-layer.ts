@@ -1,5 +1,7 @@
 import {type ArtifactPlacementService, type FolderService, folderPlacementLayer} from "../application/folders.js";
-import type {ArtifactPlacementRepository, FolderRepository, TrashRepository} from "../core/ports.js";
+import type {
+  ArtifactPlacementRepository, FolderLinkRepository, FolderRepository, TrashRepository,
+} from "../core/ports.js";
 import {type TrashService, trashLayer} from "../application/trash.js";
 import {createHash, randomUUID, timingSafeEqual} from "node:crypto";
 
@@ -58,6 +60,11 @@ import {
   type LinkedSourceEngineOperations,
   LinkedArtifactService,
 } from "../application/linked-artifacts.js";
+import {
+  disabledLinkedFolderLayer,
+  type LinkedDirectoryEngineOperations,
+  LinkedFolderService,
+} from "../application/linked-folders.js";
 import {
   type PublishArtifactDependencies,
   PublishArtifactService,
@@ -186,6 +193,12 @@ export interface ApplicationAdapters {
    */
   readonly linked?: LinkedApplicationAdapters;
   /**
+   * Linked-folder adapters, present only on a local deployment with linked
+   * files and folders on. Absent, the disabled layer answers
+   * capability-unavailable.
+   */
+  readonly linkedFolders?: LinkedFolderApplicationAdapters;
+  /**
    * Dashboard insights queries, present only where the persistence adapter
    * implements them. Absent, every runtime still provides the insights
    * service through its disabled layer.
@@ -213,6 +226,12 @@ export interface LinkedApplicationAdapters {
   readonly bindings: SourceBindingRepository;
   readonly configuration: LinkedArtifactConfiguration;
   readonly engine: LinkedSourceEngineOperations;
+}
+
+/** Node-only linked-folder adapters supplied by the local deployment. */
+export interface LinkedFolderApplicationAdapters {
+  readonly directories: LinkedDirectoryEngineOperations;
+  readonly repository: FolderLinkRepository;
 }
 
 /** Promise-shaped dashboard queries implemented by a persistence adapter. */
@@ -251,6 +270,7 @@ export function createApplicationLayer(
   | InstallationAccessService
   | InteractiveLoginService
   | LinkedArtifactService
+  | LinkedFolderService
   | PublishArtifactService
   | ProjectGitHistoryService
   | ProjectManagementService
@@ -1190,10 +1210,24 @@ export function createApplicationLayer(
   const trashServiceLayer = trashLayer(adapters.trash, adapters.clock).pipe(
     Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)),
   );
+  const linkedFolders = adapters.linkedFolders;
+  const linkedFolderLayer = linked === undefined || linkedFolders === undefined
+    ? disabledLinkedFolderLayer
+    : LinkedFolderService.layer({
+      clock,
+      directories: linkedFolders.directories,
+      ids: adapters.ids,
+      installationId: adapters.installationId,
+      linkRoots: linked.configuration.linkRoots,
+      repository: linkedFolders.repository,
+      secrets: contentDependencies.secrets,
+      sources: linked.engine,
+    }).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer, linkedLayer, foldersLayer)));
   return Layer.mergeAll(
     authenticationLayer,
     foldersLayer,
     trashServiceLayer,
+    linkedFolderLayer,
     commentLayer,
     dispatchLayer,
     identityLayer,
