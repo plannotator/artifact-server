@@ -64,10 +64,12 @@ const deploymentCapabilitiesSchema = z.object({
   gitHistory: gitHistoryCapabilitySchema.default(disabledGitHistoryCapability),
   linkedArtifacts: z.boolean(),
   folders: z.boolean().default(false),
+  trash: z.boolean().default(false),
 }).default({
   gitHistory: disabledGitHistoryCapability,
   linkedArtifacts: false,
   folders: false,
+  trash: false,
 });
 
 const sessionSchema = z.object({
@@ -515,6 +517,33 @@ const folderSchema = z.object({
   revision: z.number().int().positive(),
 });
 export type Folder = z.infer<typeof folderSchema>;
+
+const trashLocationSchema = z.object({
+  projectId: z.string(),
+  folderId: z.string().nullable(),
+  path: z.array(z.object({id: z.string(), name: z.string()})),
+});
+const trashedItemFields = {
+  id: z.string(),
+  projectId: z.string(),
+  name: z.string(),
+  location: trashLocationSchema,
+  trashedAt: z.string(),
+  trashedBy: z.string().nullable(),
+  trashGroupId: z.string().nullable(),
+};
+const trashedItemSchema = z.discriminatedUnion("kind", [
+  z.object({...trashedItemFields, kind: z.literal("artifact"), fileKind: z.string().nullable()}),
+  z.object({...trashedItemFields, kind: z.literal("folder"), artifactCount: z.number().int().nonnegative()}),
+]);
+export type TrashedItem = z.infer<typeof trashedItemSchema>;
+const trashPageSchema = z.object({items: z.array(trashedItemSchema), nextCursor: z.string().nullable()});
+const recoverySchema = z.object({
+  placement: z.enum(["original", "root"]),
+  previousAccessSetting: accessSettingSchema.optional(),
+  previouslyPublicArtifactIds: z.array(z.string()).optional(),
+});
+export type Recovery = z.infer<typeof recoverySchema>;
 
 const folderMutationSchema = z.object({folder: folderSchema});
 const placementMutationSchema = z.object({artifact: z.object({
@@ -1195,6 +1224,27 @@ export const api = {
     folderUrl(folder.projectId, folder.id),
     {method: "PATCH", headers: mutationHeaders(key), body: JSON.stringify({...change, expectedRevision: folder.revision})},
   ),
+  trash: (cursor: string | null) => {
+    const query = new URLSearchParams({limit: "50"});
+    if (cursor !== null) query.set("cursor", cursor);
+    return request(trashPageSchema, `/api/v1/trash?${query}`);
+  },
+  recoverTrashed: (item: Pick<TrashedItem, "kind" | "id" | "projectId">, key: string, name?: string) => request(
+    recoverySchema,
+    item.kind === "artifact"
+      ? `/api/v1/artifacts/${encodeURIComponent(item.id)}/recover?${projectQuery(item.projectId)}`
+      : `${folderUrl(item.projectId, item.id)}/recover`,
+    item.kind === "artifact"
+      ? {method: "POST", headers: mutationHeaders(key)}
+      : {method: "POST", headers: mutationHeaders(key), body: JSON.stringify(name === undefined ? {} : {name})},
+  ),
+  purgeTrashed: (item: Pick<TrashedItem, "kind" | "id" | "projectId">, confirm: string, key: string) => request(
+    z.object({}).loose(),
+    item.kind === "artifact"
+      ? `/api/v1/artifacts/${encodeURIComponent(item.id)}/purge?${projectQuery(item.projectId)}`
+      : `${folderUrl(item.projectId, item.id)}/purge`,
+    {method: "POST", headers: mutationHeaders(key), body: JSON.stringify({confirm})},
+  ),
   deleteFolder: (folder: Folder, key: string) => request(
     folderMutationSchema,
     `${folderUrl(folder.projectId, folder.id)}?expectedRevision=${folder.revision}`,
@@ -1305,6 +1355,7 @@ export const api = {
   ) => request(
     z.object({
       artifact: artifactSchema.extend({ deletedAt: z.string() }),
+      recoverable: z.boolean().default(false),
       replayed: z.boolean(),
       retainedVersionCount: z.number(),
     }),

@@ -39,6 +39,7 @@ import {
   RefreshIcon,
   Search01Icon,
   DashboardSquare01Icon,
+  Delete02Icon,
   Settings02Icon,
   Sun03Icon,
   Tick02Icon,
@@ -87,7 +88,9 @@ import {
 import { ReviewPreview } from "./review-preview.tsx";
 import {readReviewTheme, type ReviewTheme} from "./review-theme.ts";
 import {ReviewProjectPicker} from "./review-project-picker.tsx";
-import {dashboardPath, isDashboardPath, isSettingsPath} from "./review-routes.ts";
+import {dashboardPath, isDashboardPath, isSettingsPath, isTrashPath, trashPath} from "./review-routes.ts";
+import {MoveToTrashButton, TrashPage, useTrashUndo} from "./review-trash.tsx";
+import {trashText} from "@/i18n/messages/trash";
 import {ReviewSettings} from "./review-settings.tsx";
 import {ReviewPanelEdge} from "./review-panel-edge.tsx";
 import {AgentLogos, ReviewShareControl} from "./review-share.tsx";
@@ -489,6 +492,16 @@ export function ReviewApp() {
           theme={theme}
         />
       </Suspense>
+    );
+  }
+
+  if (session.capabilities.trash && isTrashPath(window.location.pathname)) {
+    return (
+      <TrashPage
+        onThemeChange={() => setTheme((current) => current === "moon" ? "dawn" : "moon")}
+        projects={projects}
+        theme={theme}
+      />
     );
   }
 
@@ -1059,6 +1072,11 @@ function ArtifactReview({
     setSelectedVersionId(versionId ?? null);
     setSelectedPath(null);
   }, []);
+  const trashUndo = useTrashUndo(async (artifact) => {
+    if (artifact.projectId !== projectId) return;
+    await loadArtifacts(null, true);
+    selectArtifact(artifact.id);
+  });
   const selectProject = (nextProjectId: string): void => {
     if (nextProjectId !== projectId) {
       setCatalogKnownTags([]);
@@ -1228,6 +1246,9 @@ function ArtifactReview({
         crypto.randomUUID(),
       );
       setItems((current) => current.filter(({artifact}) => artifact.id !== details.artifact.id));
+      if (session.capabilities.trash) {
+        trashUndo.trashed({id: details.artifact.id, name: details.artifact.name, projectId: details.artifact.projectId});
+      }
       setSelectedArtifactId(null);
       setSelectedVersionId(null);
       setSelectedPath(null);
@@ -1571,6 +1592,11 @@ function ArtifactReview({
             >
               <HugeiconsIcon icon={DashboardSquare01Icon} strokeWidth={1.8} />
             </a>
+            {session.capabilities.trash ? (
+              <a aria-label={trashText.open} className="as-icon-button" href={trashPath} title={trashText.open}>
+                <HugeiconsIcon icon={Delete02Icon} strokeWidth={1.8} />
+              </a>
+            ) : null}
             <a
               aria-label={reviewAppText.catalog.openSettings}
               className="as-icon-button"
@@ -2185,6 +2211,7 @@ function ArtifactReview({
                 canManage={canManageArtifacts}
                 details={details}
                 linkedArtifacts={session.capabilities.linkedArtifacts}
+                trashAvailable={session.capabilities.trash}
                 placement={foldersAvailable ? (
                   <ArtifactFolderLocation artifact={details.artifact}
                     key={`${details.artifact.id}:${details.artifact.folderId ?? "root"}:${folderChanges}`}
@@ -2303,6 +2330,7 @@ function ArtifactReview({
             )}
           </ReviewKeyboardDialog>
         )}
+        {trashUndo.element}
       </main>
     </div>
   );
@@ -2395,6 +2423,7 @@ function DetailsInspector({
   onTagsChange,
   onTombstone,
   placement,
+  trashAvailable,
   version,
 }: {
   readonly canManage: boolean;
@@ -2405,6 +2434,7 @@ function DetailsInspector({
   readonly onTagsChange: (tags: readonly string[]) => Promise<void>;
   readonly onTombstone: () => Promise<boolean>;
   readonly placement?: ReactNode;
+  readonly trashAvailable: boolean;
   readonly version: ArtifactVersion;
 }) {
   const linkedDriftDescription = details.sourceBinding === undefined
@@ -2458,7 +2488,9 @@ function DetailsInspector({
       )}
       {canManage ? (
         <InspectorSection count={0} title={reviewAppText.details.dangerZone}>
-          <TombstoneArtifactControl artifact={details.artifact} onConfirm={onTombstone} />
+          {trashAvailable
+            ? <MoveToTrashButton onTrash={onTombstone} />
+            : <TombstoneArtifactControl artifact={details.artifact} onConfirm={onTombstone} />}
         </InspectorSection>
       ) : null}
     </div>

@@ -17,6 +17,14 @@ export function isDashboardPath(pathname: string): boolean {
   return pathname === dashboardPath || pathname === `${dashboardPath}/`;
 }
 
+/** The Trash view's canonical path, beside the Files page it will live with. */
+export const trashPath = "/review/files/trash";
+
+/** Return whether the current document path is the Trash view. */
+export function isTrashPath(pathname: string): boolean {
+  return pathname === trashPath || pathname === `${trashPath}/`;
+}
+
 /** Return whether the current document path belongs to the settings mode. */
 export function isSettingsPath(pathname: string): boolean {
   return pathname === "/review/settings"
