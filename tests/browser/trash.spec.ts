@@ -48,7 +48,7 @@ test("Review moves an artifact to the trash with Undo, and Trash recovers and pu
 
     await page.getByRole("link", {name: "Open trash"}).click();
     await expect(page).toHaveURL(/\/review\/files\/trash$/u);
-    await expect(page.getByRole("heading", {name: "Trash", exact: true})).toBeVisible();
+    await expect(page.getByRole("heading", {level: 1, name: "Trash", exact: true})).toBeVisible();
     const row = page.getByRole("row").filter({hasText: "Doomed report"});
     await expect(row).toContainText("Default");
     const accessibility = await new AxeBuilder({page}).withTags(["wcag2a", "wcag2aa"]).analyze();
