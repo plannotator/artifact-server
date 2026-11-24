@@ -49,6 +49,7 @@
     "dev:server": "tsx watch src/cli/main.ts start",
     "lint": "oxlint --type-aware --type-check --deny-warnings --ignore-pattern 'apps/site/**' --ignore-pattern 'deploy/cloudflare/**' .",
     "perf:baseline": "node --expose-gc --import tsx project/performance/run-local-baseline.ts",
+    "perf:file-overview": "node --import tsx project/performance/run-file-overview-baseline.ts",
     "perf:capacity": "pnpm build && node --import tsx project/performance/run-server-capacity-baseline.ts",
     "perf:external-storage-baseline": "bash scripts/run-external-storage-performance-baseline.sh",
     "predev": "pnpm --filter @artifact-server/web build",

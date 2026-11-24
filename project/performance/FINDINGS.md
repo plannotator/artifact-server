@@ -31,6 +31,34 @@ utility without addressing a confirmed failure. External-storage and managed
 provider capacity must be measured separately before Kubernetes or hosted
 resource defaults claim the same 100-user envelope.
 
+## File overview baseline (FOV-003)
+
+`pnpm perf:file-overview` seeds a temporary compact database with the file
+management spec's section 13 data set (100,000 artifacts across 20 projects and
+2,000 folders, one folder holding 10,000 artifacts) and times the storage paths
+behind the Files page with 5 warm-up and 40 measured iterations. It writes
+`project/evidence/file-overview-baseline.json`.
+
+Machine: Apple M5 Max, Node.js 24, local APFS storage, November 24, 2026.
+
+| Operation | p50 | p95 | Section 13 budget (p95) |
+| --- | ---: | ---: | ---: |
+| `listFiles`, first page of 100, default sort, no filter | 1.9 ms | 3.3 ms | 150 ms |
+| `listFiles` with kind + tag + updated-time filters | 22.5 ms | 25.4 ms | 200 ms |
+| `listFolder`, one page of a 10,000-artifact folder | 0.4 ms | 0.5 ms | 50 ms |
+| 100 sequential per-item move transactions | 12.4 ms | 12.8 ms | 1.5 s |
+| `fileFacets`, no filter | 218 ms | 229 ms | none |
+
+Every budgeted path is far inside its budget because schema 16 indexes the
+denormalized current-version columns, so a page never sorts or joins version
+tables per row. The open risk is facets: an unfiltered facet read scans every
+live artifact once for kind and project counts and once more for tags, about
+220 ms at 100,000 artifacts. The Files page requests facets beside every page,
+so a filter change waits on that scan. If it becomes noticeable, cache facets
+per filter for a short time or drop tag facets from the unfiltered view. Folder
+rename, cross-project move, folder trash, and linked-folder scans are not in
+this baseline yet.
+
 ## Measured baseline
 
 Machine: Apple M5 Max, Node.js 24.15.0, local APFS storage.

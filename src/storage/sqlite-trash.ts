@@ -283,7 +283,7 @@ export class SqliteTrash implements TrashRepository {
     return result;
   }
 
-  private purgeArtifact(command: TrashWrite, artifactId: string, confirmation: string): ArtifactPurge {
+  private purgeArtifact(command: TrashWrite, artifactId: string, confirmation: string | null): ArtifactPurge {
     const replay = this.artifactReplay(command, "purge", artifactPurgeSchema);
     if (replay !== null) return replay;
     const current = this.trashedArtifact(command.projectId, artifactId);
@@ -301,7 +301,7 @@ export class SqliteTrash implements TrashRepository {
     return result;
   }
 
-  private purgeFolder(command: TrashWrite, folderId: string, confirmation: string): FolderPurge {
+  private purgeFolder(command: TrashWrite, folderId: string, confirmation: string | null): FolderPurge {
     const replay = this.folderReplay(command, "purge", folderPurgeSchema);
     if (replay !== null) return replay;
     const folder = this.trashedGroupRoot(command, folderId);
@@ -522,8 +522,9 @@ export class SqliteTrash implements TrashRepository {
   }
 }
 
-function requireConfirmation(confirmation: string, name: string): void {
-  if (confirmation !== name) {
+/** `null` means a purge batch already matched its typed item count before any item ran. */
+function requireConfirmation(confirmation: string | null, name: string): void {
+  if (confirmation !== null && confirmation !== name) {
     throw new TrashFailure({
       reason: "confirmation-mismatch",
       message: "Type the item's exact name to purge it.",

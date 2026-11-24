@@ -91,9 +91,11 @@ import { ReviewPreview } from "./review-preview.tsx";
 import {readReviewTheme, type ReviewTheme} from "./review-theme.ts";
 import {ReviewProjectPicker} from "./review-project-picker.tsx";
 import {
-  dashboardPath, isDashboardPath, isLinkedFoldersPath, isSettingsPath, isTrashPath, linkedFoldersPath,
-  trashPath,
+  dashboardPath, filesPath, isDashboardPath, isFilesPath, isLinkedFoldersPath, isSettingsPath, isTrashPath,
+  linkedFoldersPath, trashPath,
 } from "./review-routes.ts";
+import {FilesPage} from "./review-files.tsx";
+import {filesText} from "@/i18n/messages/files";
 import {MoveToTrashButton, TrashPage, useTrashUndo} from "./review-trash.tsx";
 import {trashText} from "@/i18n/messages/trash";
 import {linkedFolderText} from "@/i18n/messages/linked-folders";
@@ -503,6 +505,17 @@ export function ReviewApp() {
           theme={theme}
         />
       </Suspense>
+    );
+  }
+
+  if (session.capabilities.fileOverview && isFilesPath(window.location.pathname)) {
+    return (
+      <FilesPage
+        onThemeChange={() => setTheme((current) => current === "moon" ? "dawn" : "moon")}
+        projects={projects}
+        session={session}
+        theme={theme}
+      />
     );
   }
 
@@ -1645,6 +1658,16 @@ function ArtifactReview({
             >
               <HugeiconsIcon icon={DashboardSquare01Icon} strokeWidth={1.8} />
             </a>
+            {session.capabilities.fileOverview ? (
+              <a
+                aria-label={filesText.open}
+                className="as-icon-button"
+                href={selectedProject === null ? filesPath : `${filesPath}?${new URLSearchParams({project: selectedProject.id})}`}
+                title={filesText.open}
+              >
+                <HugeiconsIcon icon={Folder01Icon} strokeWidth={1.8} />
+              </a>
+            ) : null}
             {session.capabilities.trash ? (
               <a aria-label={trashText.open} className="as-icon-button" href={trashPath} title={trashText.open}>
                 <HugeiconsIcon icon={Delete02Icon} strokeWidth={1.8} />

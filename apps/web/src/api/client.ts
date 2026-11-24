@@ -67,6 +67,8 @@ const deploymentCapabilitiesSchema = z.object({
   folders: z.boolean().default(false),
   crossProjectMove: z.boolean().default(false),
   trash: z.boolean().default(false),
+  fileOverview: z.boolean().default(false),
+  batch: z.boolean().default(false),
 }).default({
   gitHistory: disabledGitHistoryCapability,
   linkedArtifacts: false,
@@ -74,6 +76,8 @@ const deploymentCapabilitiesSchema = z.object({
   folders: false,
   crossProjectMove: false,
   trash: false,
+  fileOverview: false,
+  batch: false,
 });
 
 const sessionSchema = z.object({
@@ -541,6 +545,58 @@ const trashedItemSchema = z.discriminatedUnion("kind", [
   z.object({...trashedItemFields, kind: z.literal("folder"), artifactCount: z.number().int().nonnegative()}),
 ]);
 export type TrashedItem = z.infer<typeof trashedItemSchema>;
+export const fileKinds = [
+  "site", "html", "markdown", "pdf", "image", "video", "audio", "data", "code", "archive", "text", "other",
+] as const;
+export type FileKind = (typeof fileKinds)[number];
+const fileItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  projectId: z.string(),
+  projectName: z.string(),
+  folderId: z.string().nullable(),
+  folderPath: z.array(z.object({id: z.string(), name: z.string()})),
+  fileKind: z.enum(fileKinds).catch("other"),
+  currentVersionId: z.string(),
+  currentVersionNumber: z.number().int(),
+  size: z.number().int().nonnegative(),
+  entryMediaType: z.string(),
+  tags: z.array(z.string()),
+  commentCount: z.number().int().nonnegative(),
+  versionCount: z.number().int().nonnegative(),
+  accessSetting: accessSettingSchema,
+  linked: sourceFreshnessSchema.nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type FileItem = z.infer<typeof fileItemSchema>;
+const filePageSchema = z.object({items: z.array(fileItemSchema), nextCursor: z.string().nullable()});
+const countSchema = z.number().int().nonnegative();
+const fileFacetsSchema = z.object({
+  facets: z.object({
+    total: countSchema,
+    kinds: z.array(z.object({kind: z.enum(fileKinds).catch("other"), count: countSchema})),
+    projects: z.array(z.object({projectId: z.string(), count: countSchema})),
+    tags: z.array(z.object({tag: z.string(), count: countSchema})),
+  }),
+});
+export type FileFacets = z.infer<typeof fileFacetsSchema>["facets"];
+
+/** One batch item, guarded as if it were sent alone. */
+export type BatchItem =
+  | {readonly kind: "artifact"; readonly projectId: string; readonly artifactId: string; readonly expectedCurrentVersionId: string}
+  | {readonly kind: "folder"; readonly projectId: string; readonly folderId: string; readonly expectedRevision: number};
+export type BatchOperation = "move" | "trash" | "recover" | "purge" | "tag-add" | "tag-remove";
+const batchResultSchema = z.object({
+  operation: z.string(),
+  results: z.array(z.object({
+    index: z.number().int(),
+    status: z.enum(["ok", "conflict", "not-found", "refused"]),
+    error: z.object({code: z.string(), message: z.string(), currentVersionId: z.string().optional()}).loose().optional(),
+  }).loose()),
+});
+export type BatchResult = z.infer<typeof batchResultSchema>;
+
 const trashPageSchema = z.object({items: z.array(trashedItemSchema), nextCursor: z.string().nullable()});
 const recoverySchema = z.object({
   placement: z.enum(["original", "root"]),
@@ -1293,6 +1349,17 @@ export const api = {
     folderUrl(folder.projectId, folder.id),
     {method: "PATCH", headers: mutationHeaders(key), body: JSON.stringify({...change, expectedRevision: folder.revision})},
   ),
+  files: (query: URLSearchParams) => request(filePageSchema, `/api/v1/files?${query}`),
+  fileFacets: (query: URLSearchParams) =>
+    request(fileFacetsSchema, `/api/v1/files/facets?${query}`).then(({facets}) => facets),
+  batch: (body: {
+    readonly operation: BatchOperation;
+    readonly items: readonly BatchItem[];
+    readonly params: {readonly toFolderId?: string | null; readonly toProjectId?: string; readonly tags?: readonly string[]};
+    readonly idempotencyKey: string;
+  }) => request(batchResultSchema, "/api/v1/batch", {
+    method: "POST", headers: mutationHeaders(body.idempotencyKey), body: JSON.stringify(body),
+  }),
   trash: (cursor: string | null) => {
     const query = new URLSearchParams({limit: "50"});
     if (cursor !== null) query.set("cursor", cursor);

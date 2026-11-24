@@ -1,8 +1,10 @@
 import {type ArtifactPlacementService, type FolderService, folderPlacementLayer} from "../application/folders.js";
 import type {
-  ArtifactPlacementRepository, FolderLinkRepository, FolderRepository, TrashRepository,
+  ArtifactPlacementRepository, FileCatalogRepository, FolderLinkRepository, FolderRepository, TrashRepository,
 } from "../core/ports.js";
 import {type TrashService, trashLayer} from "../application/trash.js";
+import {type FileCatalogService, fileCatalogLayer} from "../application/file-catalog.js";
+import {type BatchService, batchLayer} from "../application/batch.js";
 import {createHash, randomUUID, timingSafeEqual} from "node:crypto";
 
 import { DateTime, Effect, Layer, Redacted } from "effect";
@@ -169,6 +171,8 @@ export interface ApplicationAdapters {
   readonly folders?: FolderRepository & ArtifactPlacementRepository;
   /** Present only where tombstones are recoverable (ADR 0030). */
   readonly trash?: TrashRepository;
+  /** Present only where the cross-project file overview is offered (FOV-001). */
+  readonly fileCatalog?: FileCatalogRepository;
   readonly externalApiBearerVerifier: BearerCredentialVerifier | null;
   readonly externalMcpBearerVerifier: BearerCredentialVerifier | null;
   readonly externalMcpOAuthVerifier: ExternalMcpBearerVerifier | null;
@@ -262,6 +266,8 @@ export function createApplicationLayer(
   | ArtifactPlacementService
   | FolderService
   | TrashService
+  | FileCatalogService
+  | BatchService
   | AuthorizationService
   | CompareArtifactService
   | ContentAccessService
@@ -1223,11 +1229,19 @@ export function createApplicationLayer(
       secrets: contentDependencies.secrets,
       sources: linked.engine,
     }).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer, linkedLayer, foldersLayer)));
+  const fileCatalogServiceLayer = fileCatalogLayer(adapters.fileCatalog).pipe(
+    Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)),
+  );
+  const batchServiceLayer = batchLayer.pipe(
+    Layer.provideMerge(Layer.mergeAll(foldersLayer, trashServiceLayer, managementLayer, linkedLayer)),
+  );
   return Layer.mergeAll(
     authenticationLayer,
     foldersLayer,
     trashServiceLayer,
     linkedFolderLayer,
+    fileCatalogServiceLayer,
+    batchServiceLayer,
     commentLayer,
     dispatchLayer,
     identityLayer,

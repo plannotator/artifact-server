@@ -1,3 +1,4 @@
+import type {FileFacets, FileFilters, FilePage, ListFiles} from "./file-catalog.js";
 import type {
   CaptureEntryResult, FolderLinkRecord, FolderLinkStatus, InventoryEntryRecord, InventoryState,
   LinkedBindingSummary, OverLimitReason, ScanObservation,
@@ -762,6 +763,12 @@ export interface TrashRepository {
   purge(command: TrashWrite, target: PurgeTrash): Promise<ArtifactPurge | FolderPurge>;
   /** Whether a dispatch holds this thread of a trashed, unpurged artifact. */
   holdsTrashedThread(projectId: string, artifactId: string, threadId: string): Promise<boolean>;
+}
+
+/** Cross-project file overview: filtered keyset listing and bounded facet counts. */
+export interface FileCatalogRepository {
+  listFiles(command: ListFiles): Promise<FilePage>;
+  fileFacets(command: FileFilters): Promise<FileFacets>;
 }
 
 /** Atomic metadata mutations that preserve the current immutable version. */

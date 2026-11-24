@@ -4,6 +4,8 @@ import {folderLinkSchemaVersion, migrateSqliteFolderLinks} from "./sqlite-folder
 import {SqliteFolderLinks} from "./sqlite-folder-links.js";
 import {SqliteFolders} from "./sqlite-folders.js";
 import {SqliteTrash} from "./sqlite-trash.js";
+import {SqliteFileCatalog} from "./sqlite-file-catalog.js";
+import {fileCatalogSqliteSchemaVersion, migrateSqliteFileCatalog} from "./sqlite-file-catalog-schema.js";
 
 import { DatabaseSync } from "node:sqlite";
 
@@ -569,6 +571,7 @@ export class SqliteArtifactRepository implements
   readonly folders: SqliteFolders;
   readonly trash: SqliteTrash;
   readonly folderLinks: SqliteFolderLinks;
+  readonly fileCatalog: SqliteFileCatalog;
 
   constructor(databasePath: string, installationId = "local") {
     this.#installationId = installationId;
@@ -602,6 +605,7 @@ export class SqliteArtifactRepository implements
       this.#database,
       (operation) => this.#transaction(operation),
     );
+    this.fileCatalog = new SqliteFileCatalog(this.#database);
   }
 
   createProject(command: ProjectRecord): Promise<ProjectRecord> {
@@ -5009,6 +5013,7 @@ export class SqliteArtifactRepository implements
       if (version < folderSqliteSchemaVersion) migrateSqliteFolders(this.#database);
       if (version < trashSqliteSchemaVersion) migrateSqliteTrash(this.#database);
       if (version < folderLinkSchemaVersion) migrateSqliteFolderLinks(this.#database);
+      if (version < fileCatalogSqliteSchemaVersion) migrateSqliteFileCatalog(this.#database);
     });
   }
 

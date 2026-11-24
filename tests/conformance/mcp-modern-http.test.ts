@@ -204,6 +204,8 @@ describe("modern MCP HTTP", () => {
       "artifact_rename",
       "artifact_move",
       "folder_move_to_project",
+      "file_search",
+      "batch_apply",
       "artifact_list",
       "artifact_get",
       "artifact_open",

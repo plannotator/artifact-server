@@ -282,7 +282,7 @@ New routes follow the code's actual convention: artifact routes are `/api/v1/art
 | Purge | `POST /api/v1/artifacts/:artifactId/purge`, `.../folders/:folderId/purge` `{confirm: <exact name>}` | **None by default** (open question 8) | `artifactserver trash purge --confirm <name>` |
 | File overview | `GET /api/v1/files?projectId*&folderId=&recursive=&kind*&tag*&linked=&createdAfter=&createdBefore=&updatedAfter=&updatedBefore=&search=&sort=&cursor=&limit=` | `file_search` | `artifactserver files` |
 | Facets | `GET /api/v1/files/facets?…same filters` | (included in `file_search` output) | — |
-| Batch | `POST /api/v1/batch` `{operation, items[], params, idempotencyKey}` | `batch_apply` | via `--batch` on `mv`, `rm`, `tag` |
+| Batch | `POST /api/v1/batch` `{operation, items[], params, idempotencyKey}` | `batch_apply` | `artifactserver batch <operation> --items <file>` (shipped as one command instead of `--batch` on `mv`, `rm`, `tag`) |
 | Link folder | `POST /api/v1/projects/:projectId/folder-links` `{path, folderId \| newFolderName, ignore?, idempotencyKey}` | `folder_link` | `artifactserver link-folder <dir>` |
 | Update / pause / unlink | `PATCH` / `DELETE /api/v1/folder-links/:folderLinkId` | `folder_link_update`, `folder_unlink` | `artifactserver link-folder --pause/--unlink` |
 | Scan now | `POST /api/v1/folder-links/:folderLinkId/scan` | `folder_link_scan` | `artifactserver link-folder --scan` |

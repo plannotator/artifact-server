@@ -1,21 +1,19 @@
 import type {DatabaseSync} from "node:sqlite";
 import {z} from "zod";
 
+import {downgradeToSchemaFourteen} from "./schema-fourteen.js";
+
 /**
- * Remove the schema 15 folder-link additions and the schema 14 trash additions
- * from a populated runtime-built fixture.
+ * Remove every addition after schema 13 (file-overview indexes, folder links,
+ * then the trash columns and operations) from a populated runtime-built fixture.
  */
 export function downgradeToSchemaThirteen(database: DatabaseSync): void {
+  downgradeToSchemaFourteen(database);
   const triggers = z.array(z.object({sql: z.string()})).parse(database.prepare(
     "SELECT sql FROM sqlite_schema WHERE type = 'trigger' AND tbl_name = 'idempotency_records'",
   ).all());
   database.exec(`
     BEGIN IMMEDIATE;
-    DROP TABLE folder_entry_live_grants;
-    DROP TABLE folder_link_captures;
-    DROP TABLE folder_inventory;
-    DROP TABLE folder_links;
-    DROP INDEX artifacts_source_path;
     DROP INDEX artifacts_trash;
     DROP INDEX artifacts_trash_group;
     ALTER TABLE artifacts DROP COLUMN trash_group_id;

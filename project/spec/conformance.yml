@@ -5048,9 +5048,14 @@ requirements:
       behavior: {id: FLD-005-B, description: "Run a 100-item move with one stale item and observe 99 moved, one conflict with the current state, and an identical result on replay of the same batch key."}
       failure: {id: FLD-005-F, description: "An empty batch, more than 100 items, a repeated item, or a purge batch without the matching confirmation is refused before any work; each item is authorized as if sent alone, so an unauthorized item fails without affecting the others."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [FLD-003, TRS-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [FLD-005-B, FLD-005-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T10:30:00.000Z"
 
   - id: FLD-006
     kind: constraint
@@ -5076,7 +5081,7 @@ requirements:
       failure: {id: FLD-007-F, description: "Where a capability is absent its routes answer 501 capability-unavailable, its MCP tools return the same coded error, and the web application renders no affordance; delete keeps its one-way contract and reports recoverable false."}
     deployments: [local]
     status: implementing
-    proof_gap: Phase one covers folder and in-project placement parity and capability gating; phase two adds trash, folder trash, recover, and capability-gated purge across HTTP, MCP, the CLI, and the web Trash view (proved under TRS-001..005). File search and the Files overview remain future phases.
+    proof_gap: Phase one covers folder and in-project placement parity and capability gating; phase two adds trash, folder trash, recover, and capability-gated purge across HTTP, MCP, the CLI, and the web Trash view (proved under TRS-001..005); phase three adds file search and batch parity (GET /api/v1/files, file_search, artifactserver files; POST /api/v1/batch, batch_apply, artifactserver batch) and the Files page, proved under FOV-001, FLD-005, and FOV-004. A single FLD-007 test across every operation is still to be written.
     depends_on: [FLD-003, TRS-002, FOV-001]
     evidence: []
 
@@ -5193,9 +5198,14 @@ requirements:
       behavior: {id: FOV-001-B, description: "Seed artifacts across projects, folders, kinds, tags, and times; apply each filter alone and combined; page through every sort without duplicates; and observe facet counts matching the filtered set."}
       failure: {id: FOV-001-F, description: "Trashed and purged artifacts never appear, an unknown project or folder answers not-found without disclosure, malformed filters answer INVALID_INPUT, and a caller without listing authority is denied."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [FLD-001, ART-002]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [FOV-001-B, FOV-001-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T10:30:00.000Z"
 
   - id: FOV-002
     kind: constraint
@@ -5206,9 +5216,14 @@ requirements:
       behavior: {id: FOV-002-B, description: "Publish one fixture per kind, plus a multi-file site and an octet-stream .md file, and observe the documented kinds; restore an earlier version and observe the kind follow the current version."}
       failure: {id: FOV-002-F, description: "A file labeled octet-stream with an .html or .svg extension is classified for filtering but still renders only through the typed fallback, never as an inline document."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [MAN-001, PRV-005]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [FOV-002-B, FOV-002-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T10:30:00.000Z"
 
   - id: FOV-003
     kind: constraint
@@ -5219,7 +5234,8 @@ requirements:
       behavior: {id: FOV-003-B, description: "Run the perf baseline on the 100,000-artifact and 20,000-file fixtures and record p95 values within the section 13 budgets."}
       failure: {id: FOV-003-F, description: "During a full linked-folder scan, read and publish p95 latency stays within 10% of the idle baseline, and no scan page holds the write transaction beyond one page."}
     deployments: [local]
-    status: specified
+    status: implementing
+    proof_gap: "`pnpm perf:file-overview` seeds the section 13 data set (100,000 artifacts, 20 projects, 2,000 folders, one 10,000-artifact folder) and records listFiles default and filtered, folder listing, and a 100-move batch within budget (see project/performance/FINDINGS.md). Folder rename, cross-project move, and folder-trash timings are not yet in the baseline, and the 20,000-file linked-folder scan (FOV-003-F) waits for linked folders (LFD-006), so neither acceptance test is claimed."
     depends_on: [FOV-001, LFD-006]
     evidence: []
 
@@ -5232,9 +5248,14 @@ requirements:
       behavior: {id: FOV-004-B, description: "In a browser, filter Files, reload and keep the filters, select a range, move it via the dialog, trash it, undo, purge one item with typed confirmation, and drill into a folder in Review via breadcrumb and keyboard."}
       failure: {id: FOV-004-F, description: "A batch with per-item failures shows each failure with a reason and retry; an absent capability renders no affordance; Review gains no permanent sidebar; a narrow viewport has no horizontal page overflow."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [FOV-001, TRS-004, FLD-005]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [FOV-004-B, FOV-004-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-24T10:30:00.000Z"
 
   - id: LFD-001
     kind: constraint

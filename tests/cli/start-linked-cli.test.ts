@@ -30,6 +30,8 @@ const sessionSchema = z.object({
     folders: z.boolean(),
     crossProjectMove: z.boolean(),
     trash: z.boolean(),
+    fileOverview: z.boolean(),
+    batch: z.boolean(),
     linkedArtifacts: z.boolean(),
     linkedFolders: z.boolean(),
   }).strict(),

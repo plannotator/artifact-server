@@ -43,6 +43,17 @@ pnpm perf:baseline --publications 100 --reads 500 --concurrency 8 --payload-kib 
 
 Publications are capped at 500, reads at 5,000, concurrency at 16, and payload size at 1 MiB. In addition, the measured publication payload is capped at 128 MiB, the measured read payload at 256 MiB, and the real file-client workload at 32 MiB, so combining maximum settings cannot accidentally create a stress test.
 
+## File overview baseline
+
+`pnpm perf:file-overview` seeds a temporary compact database at the file
+management spec's section 13 scale (100,000 artifacts, 20 projects, 2,000
+folders) and times overview listing, filtered listing, facets, one folder page,
+and a 100-item move batch against the section 13 budgets. Seeding writes rows
+directly so the run measures reads and per-item writes at scale, not
+publication. `--artifacts` is bounded to 1,000..200,000 and `--iterations` to
+5..200. The report is written to `project/evidence/file-overview-baseline.json`;
+current results are in `FINDINGS.md`.
+
 ## Server-only concurrency matrix
 
 `pnpm perf:capacity` builds the product, starts the normal compiled local CLI in
