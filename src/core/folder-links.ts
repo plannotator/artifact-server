@@ -12,7 +12,7 @@ export const maximumLinkEntries = 20_000;
 /** Directory depth below the linked directory that a scan descends into. */
 export const maximumLinkDepth = 16;
 /** Directory entries one scan page reads before it yields and commits. */
-export const scanPageEntries = 2_000;
+export const scanPageEntries = 250;
 /** Scans that may run at once in one installation; more queue. */
 export const maximumConcurrentScans = 2;
 /** Inventory entries one capture request may name. */

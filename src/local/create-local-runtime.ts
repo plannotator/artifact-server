@@ -28,6 +28,7 @@ import { LocalStagingStore } from "../storage/local-staging-store.js";
 import { SqliteArtifactInsightsStore } from "../storage/sqlite-artifact-insights.js";
 import { SqliteArtifactRepository } from "../storage/sqlite-artifact-repository.js";
 import { SqliteIdentityRepository } from "../storage/sqlite-identity-repository.js";
+import { SqliteScanPageWriter } from "../storage/sqlite-scan-page-writer.js";
 import {
   createLocalApplicationLayer,
   type LinkedApplicationAdapters,
@@ -155,7 +156,9 @@ export async function createLocalRuntime(
   let applicationGitHistory = fixedGitHistoryCapabilityReader(
     gitHistory.capability,
   );
-  const repository = new SqliteArtifactRepository(databasePath, installationId);
+  const linkedFilesEnabled = config.linkedFiles === "on";
+  const scanPageWriter = linkedFilesEnabled ? new SqliteScanPageWriter(databasePath) : null;
+  const repository = new SqliteArtifactRepository(databasePath, installationId, scanPageWriter?.apply);
   const insights = new SqliteArtifactInsightsStore(databasePath, installationId);
   const identityRepository = new SqliteIdentityRepository(databasePath);
   const configuredGitHistory = configuredNodeGitHistory(gitHistory);
@@ -190,7 +193,6 @@ export async function createLocalRuntime(
     repository.close();
     throw cause;
   }
-  const linkedFilesEnabled = config.linkedFiles === "on";
   const selfProtectedPaths = {
     databasePath,
     dataDirectory: config.dataDirectory,
@@ -233,8 +235,10 @@ export async function createLocalRuntime(
         identityRepository,
         insights,
         repository,
+        scanPageWriter,
       }),
-      (owned) => Effect.sync(() => {
+      (owned) => Effect.promise(async () => {
+        await owned.scanPageWriter?.close();
         owned.gitHistoryIdentityStore?.close();
         owned.identityRepository.close();
         owned.insights.close();

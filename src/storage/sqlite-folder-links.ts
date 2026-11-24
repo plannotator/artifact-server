@@ -125,7 +125,7 @@ function sameEntry(prior: PriorEntry, next: ObservedEntry): boolean {
 const idSchema = z.object({id: z.string()});
 
 /**
- * SQLite folder links share the catalog connection and its write transaction.
+ * SQLite folder links use the catalog connection for request-side operations.
  * Every scan page is one short transaction; nothing here writes an artifact,
  * version, folder, or action except `ensureFolderPath`, which runs only inside
  * an explicit, attributed capture.
@@ -133,10 +133,16 @@ const idSchema = z.object({id: z.string()});
 export class SqliteFolderLinks implements FolderLinkRepository {
   private readonly database: DatabaseSync;
   private readonly transaction: <A>(operation: () => A) => A;
+  private readonly writeScanPage: FolderLinkRepository["applyScanPage"] | undefined;
 
-  constructor(database: DatabaseSync, transaction: SqliteFolderLinks["transaction"]) {
+  constructor(
+    database: DatabaseSync,
+    transaction: SqliteFolderLinks["transaction"],
+    writeScanPage?: FolderLinkRepository["applyScanPage"],
+  ) {
     this.database = database;
     this.transaction = transaction;
+    this.writeScanPage = writeScanPage;
   }
 
   async createFolderLink(command: CreateFolderLink): Promise<FolderLinkRecord> {
@@ -271,10 +277,13 @@ export class SqliteFolderLinks implements FolderLinkRepository {
   }
 
   async applyScanPage(command: ApplyScanPage): Promise<{readonly overLimit: boolean}> {
+    if (this.writeScanPage !== undefined) return this.writeScanPage(command);
     return this.transaction(() => {
       if (this.database.prepare("SELECT 1 FROM folder_links WHERE id = ?").get(command.folderLinkId) === undefined) {
         throw linkNotFound();
       }
+      const observations = this.stampUnchangedUntrackedEntries(command);
+      if (observations.length === 0) return {overLimit: false};
       let entries = countSchema.parse(this.database.prepare(`
         SELECT COUNT(*) AS count FROM folder_inventory
         WHERE folder_link_id = ? AND state IN ('untracked', 'tracked')
@@ -326,7 +335,7 @@ export class SqliteFolderLinks implements FolderLinkRepository {
           command.observedAt, next.state, next.skipReason, next.artifactId, next.pending, command.generation,
         );
       };
-      for (const observation of command.observations) {
+      for (const observation of observations) {
         const priorRow = existingEntry.get(command.folderLinkId, observation.diskPath);
         const prior = priorRow === undefined ? null : priorEntrySchema.parse(priorRow);
         if (observation.kind === "skipped") {
@@ -376,6 +385,52 @@ export class SqliteFolderLinks implements FolderLinkRepository {
       }
       return {overLimit};
     });
+  }
+
+  /**
+   * Stamp the common warm-scan case in one statement. Changed, skipped, and
+   * bound files still go through the ordered reconciliation and entry limit.
+   * Checking bindings in this transaction also catches a file linked since
+   * its last observation, even when its fingerprint has not changed.
+   */
+  private stampUnchangedUntrackedEntries(command: ApplyScanPage): ApplyScanPage["observations"] {
+    const paths = new Set<string>();
+    const candidates: [diskPath: string, fingerprint: string, size: number][] = [];
+    for (const observation of command.observations) {
+      // If a walk observed a path twice, preserve the original observation order.
+      if (paths.has(observation.diskPath)) return command.observations;
+      paths.add(observation.diskPath);
+      if (observation.kind === "file" && observation.diskPath === observation.diskPath.normalize("NFC")) {
+        candidates.push([observation.diskPath, observation.fingerprint, observation.size]);
+      }
+    }
+    if (candidates.length === 0) return command.observations;
+    const stamped = this.database.prepare(`
+      UPDATE folder_inventory SET seen_generation = :generation
+      WHERE rowid IN (
+        SELECT inventory.rowid FROM json_each(:candidates) AS observation
+        CROSS JOIN folder_inventory AS inventory
+        WHERE inventory.folder_link_id = :folderLinkId
+          AND inventory.disk_path = observation.value ->> 0
+          AND inventory.relative_path = inventory.disk_path
+          AND inventory.fingerprint = observation.value ->> 1
+          AND inventory.size = observation.value ->> 2
+          AND inventory.state = 'untracked' AND inventory.pending = 1 AND inventory.artifact_id IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM artifacts
+            WHERE source_path = :linkPath || '/' || inventory.disk_path AND deleted_at IS NULL
+          )
+      )
+      RETURNING disk_path AS diskPath
+    `).all({
+      candidates: JSON.stringify(candidates),
+      folderLinkId: command.folderLinkId,
+      generation: command.generation,
+      linkPath: command.linkPath,
+    });
+    if (stamped.length === command.observations.length) return [];
+    const stampedPaths = new Set(stamped.map((row) => row["diskPath"]));
+    return command.observations.filter((observation) => !stampedPaths.has(observation.diskPath));
   }
 
   async finishScan(command: FinishScan): Promise<FolderLinkRecord> {

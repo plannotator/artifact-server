@@ -67,40 +67,60 @@ filter for a short time or drop tag facets from the unfiltered view.
 
 ## Linked-folder scan baseline (FOV-003)
 
-`pnpm perf:linked-folder-scan` links a 20,000-file directory (20 directories of
-1,000 small files) on a real in-process local server, then runs five warm full
-rescans. Before each scan it sends the same sequential request mix (four reads
-of the current exact version for every publish of a new version) for an idle
-window of the same length, so drift between windows cancels out.
+`pnpm perf:linked-folder-scan` links 20,000 files in 20 directories on a real
+local server. Each of seven standalone runs compares five warm full scans with
+paired idle windows using one sequential client. The client reads the current
+exact version four times per staged publication. Both windows time the same
+operations, including all three publication requests. The machine was an Apple M5 Max
+running Node.js 24.15.0 on local APFS (November 24, 2026).
 
-| Measure | Result | Budget |
-| --- | ---: | ---: |
-| First scan (inside the link request) | 0.89 s | — |
-| Warm full scan, maximum of 5 | 1.20 s | 5 s |
-| Read p95, idle → during scan | 0.68 → 0.58 ms | within 10% |
-| Publish p95, idle → during scan | 22.2 → 30.6 ms (+38%) | within 10% |
-| Write lock free between pages | 160 of 160 samples | every sample |
-| Pages visible one commit at a time | 10 partial counts | — |
+| Run | Read p95, idle → scan | Publish p95, idle → scan | Longest warm scan |
+| --- | ---: | ---: | ---: |
+| 1 | 0.711 → 0.642 ms (−9.70%) | 23.106 → 23.826 ms (+3.12%) | 1.407 s |
+| 2 | 0.654 → 0.632 ms (−3.36%) | 22.574 → 24.473 ms (+8.41%) | 1.432 s |
+| 3 | 0.696 → 0.653 ms (−6.18%) | 22.731 → 23.886 ms (+5.08%) | 1.406 s |
+| 4 | 0.653 → 0.622 ms (−4.75%) | 22.960 → 24.142 ms (+5.15%) | 1.384 s |
+| 5 | 0.646 → 0.643 ms (−0.46%) | 22.510 → 23.980 ms (+6.53%) | 1.426 s |
+| 6 | 0.686 → 0.674 ms (−1.75%) | 23.569 → 24.326 ms (+3.21%) | 1.406 s |
+| 7 | 0.852 → 0.900 ms (+5.63%) | 23.524 → 25.116 ms (+6.77%) | 1.562 s |
+| Section 13 budget | +10% | +10% | 5 s |
 
-Full scans are a quarter of their budget, reads are unaffected, and scan pages
-never hold the write transaction across pages. **Publish latency during a scan
-misses the 10% budget**: across repeated runs the publish p95 rose 35–40%.
-The cause is the synchronous page transaction. Each 2,000-entry page is one
-SQLite transaction on the shared connection, and while it runs (about 10 ms
-warm, longer when the commit triggers a WAL checkpoint) the event loop serves
-nothing. A publish is three requests over about 22 ms, so roughly one in six
-overlaps a page and waits for it. Reads are short enough that few collide.
+The earlier baseline was 22.2 → 30.6 ms (+38%) for publication. Two
+unmodified runs in this worktree measured 27.103 → 34.150 ms (+26.00%) and
+22.746 → 31.675 ms (+39.26%). A synchronous 2,000-entry page transaction
+blocked the shared event loop, with occasional additional time spent
+checkpointing the WAL. Set-based updates alone brought a 2,000-entry run to
++18%. Using that SQL with 500- or 250-entry pages on the main connection still
+produced runs beyond +10%.
 
-This iteration cut the warm page from about 17 ms to 11 ms: a rescan that
-re-observes an unchanged entry now stamps only its scan generation, which no
-index covers, instead of rewriting the row and its three indexes (publish p95
-during scans went from +72% to +35–40%). Splitting each page into 250-entry
-transactions did not help, so the remaining cost is not proportional to the
-page size alone. Options to close the gap: apply scan pages on a dedicated
-SQLite connection in a worker thread, so the request path never waits on them;
-batch the per-entry inventory and binding lookups into set-based statements;
-or tune WAL auto-checkpointing so a scan commit never runs a checkpoint inline.
-Until one of these lands, FOV-003-F stays unproved.
+The local runtime now sends each page of at most 250 entries to one worker.
+Its SQLite connection uses the same WAL database, foreign-key enforcement,
+full synchronization, and five-second busy timeout as the catalog. The worker
+commits before acknowledging the page. An unchanged, untracked file with no
+active source binding takes one set-based generation update alongside the
+other matching entries. The remaining observations use the existing ordered
+reconciliation in the same transaction. SQLite serializes competing writes,
+and restart reconciliation still re-observes the directory before pruning.
+The LFD-002 failure test forces the second insert in a page to abort and
+checks that both entries are absent until a successful rescan after restart.
+A compiled-server probe interrupted a 300-file scan with SIGKILL after the
+first page committed. Restart completed the inventory and preserved all 250
+committed entry IDs.
+
+In each of the seven runs an independent connection acquired the write lock
+without waiting at all 82 boundaries of an unmeasured warm scan. It observed
+80 distinct partial inventory counts and all 20,000 generation stamps, with
+at most 250 new stamps between consecutive boundaries. This observation is
+separate from the timed traffic windows.
+
+`tests/smoke/file-management-performance.test.ts` checks the transaction
+boundaries and the gross full-scan budget during ordinary runs. The relative
+p95 checks run in isolation with
+`ARTIFACT_SERVER_CHECK_LINKED_SCAN_LATENCY=1 pnpm exec vitest run tests/smoke/file-management-performance.test.ts`.
+Section 13 defines a controlled local baseline. Shared CI timing and other
+parallel test files can move an idle p95 enough to misclassify a small
+absolute change, so the ordinary smoke run leaves the relative threshold to
+the isolated test and the repeated baseline above.
 
 ## Measured baseline
 

@@ -573,7 +573,7 @@ export class SqliteArtifactRepository implements
   readonly folderLinks: SqliteFolderLinks;
   readonly fileCatalog: SqliteFileCatalog;
 
-  constructor(databasePath: string, installationId = "local") {
+  constructor(databasePath: string, installationId = "local", writeScanPage?: SqliteFolderLinks["applyScanPage"]) {
     this.#installationId = installationId;
     this.#database = new DatabaseSync(databasePath, {
       allowExtension: false,
@@ -604,6 +604,7 @@ export class SqliteArtifactRepository implements
     this.folderLinks = new SqliteFolderLinks(
       this.#database,
       (operation) => this.#transaction(operation),
+      writeScanPage,
     );
     this.fileCatalog = new SqliteFileCatalog(this.#database);
   }

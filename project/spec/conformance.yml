@@ -5264,8 +5264,7 @@ requirements:
       behavior: {id: FOV-003-B, description: "Run the perf baseline on the 100,000-artifact and 20,000-file fixtures and record p95 values within the section 13 budgets."}
       failure: {id: FOV-003-F, description: "During a full linked-folder scan, read and publish p95 latency stays within 10% of the idle baseline, and no scan page holds the write transaction beyond one page."}
     deployments: [local]
-    status: behavior_verified
-    proof_gap: "`tests/smoke/file-management-performance.test.ts` (FOV-003-B) runs `pnpm perf:file-overview` and `pnpm perf:linked-folder-scan` at the section 13 scale and proves every p95 budget: overview default and filtered, folder page, folder rename, cross-project move of a 200-version, 500-thread artifact, folder trash of 10,000 artifacts in one transaction, a 100-move batch, and a full warm scan of 20,000 files. FOV-003-F is not claimed: scan pages commit one page per transaction and leave the write lock free between pages, and read p95 stays within 10% of idle, but publish p95 during a scan rose 35-40% because each synchronous page transaction blocks the shared event loop (see project/performance/FINDINGS.md)."
+    status: verified
     depends_on: [FOV-001, LFD-006]
     evidence:
       - deployment: local
@@ -5273,6 +5272,11 @@ requirements:
         result: pass
         run: project/evidence/local-foundation.json
         recorded_at: "2026-11-24T10:40:36.000Z"
+      - deployment: local
+        tests: [FOV-003-F]
+        result: pass
+        run: project/performance/FINDINGS.md
+        recorded_at: "2026-11-24T12:22:11.000Z"
 
   - id: FOV-004
     kind: behavior

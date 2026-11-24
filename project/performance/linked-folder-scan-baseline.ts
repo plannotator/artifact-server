@@ -38,12 +38,14 @@ export const linkedFolderScanBudgets = {
 
 /** What a second connection observed while scans ran (FOV-003-F). */
 export interface ScanTransactionObservation {
-  /** Samples taken between server turns while a scan was in flight. */
+  /** Samples taken before each page and after completion. */
   readonly samples: number;
   /** Samples in which another connection took and released the write lock with no wait. */
   readonly writeLockFree: number;
   /** Distinct partial counts of entries already stamped with the running scan's generation. */
   readonly partialPageCounts: readonly number[];
+  /** Rows newly visible to the observer after each page returns. */
+  readonly committedEntriesPerPage: readonly number[];
   readonly pageEntries: number;
 }
 
@@ -65,8 +67,6 @@ export interface LinkedFolderScanBaselineReport {
   };
 }
 
-const sampleIntervalMilliseconds = 10;
-
 type Json = z.infer<ReturnType<typeof z.json>>;
 
 /** Latency samples of one traffic window, by request kind. */
@@ -77,6 +77,7 @@ interface TrafficRecord {
 
 /** One observation from the second connection. */
 interface ObserverSample {
+  readonly generation: number;
   readonly writeLockFree: boolean;
   readonly stamped: number;
 }
@@ -108,7 +109,7 @@ const folderLinkSchema = z.object({
  * Link a 20,000-file directory on a real local server and time warm full
  * scans, then compare read and publish latency while scans run against the
  * same operations on the idle server. A second SQLite connection samples the
- * database between server turns: it must always take the write lock without
+ * database at page boundaries: it must always take the write lock without
  * waiting and must see each scan's pages land one committed page at a time.
  */
 export async function runLinkedFolderScanBaseline(
@@ -118,11 +119,16 @@ export async function runLinkedFolderScanBaseline(
   const linkRoot = await mkdtemp(path.join(await realpath(tmpdir()), "artifact-server-scan-baseline-"));
   const installation = await createTestInstallation();
   let server: RunningTestServer | null = null;
+  let observePageBoundary: (() => void) | undefined;
   try {
     const directory = path.join(linkRoot, "output");
     await writeTree(directory, config);
     server = await startTestServer(installation, {
       linkedFiles: "on",
+      linkedFolderHooks: {beforeScanPage: () => {
+        observePageBoundary?.();
+        return Promise.resolve();
+      }},
       linkedFolderReconcileIntervalMilliseconds: 3_600_000,
       linkedFolderWatch: "off",
       linkRoots: [linkRoot],
@@ -140,34 +146,30 @@ export async function runLinkedFolderScanBaseline(
     const target = await client.seedArtifact();
     const traffic = new RequestTraffic(client, target);
 
-    // Unmeasured warm scans: a second connection samples the database between
-    // server turns. Its queries block the shared event loop, so it never runs
-    // while latency is measured.
+    // The observer runs only during warmup so its queries cannot affect the
+    // timed traffic. Sample on each page boundary instead of relying on timers
+    // to catch changes between commits.
     const observer = new DatabaseSync(path.join(installation.dataDirectory, "artifact-server.db"), {timeout: 0});
-    const sampled = {samples: 0, writeLockFree: 0, partial: new Set<number>()};
-    let windowMilliseconds = 0;
+    const samples: ObserverSample[] = [];
+    const warmUpStarted = performance.now();
     try {
       const sample = observerSample(observer, link.id);
-      const warmUpStarted = performance.now();
-      const observed = client.scan(link.id);
-      await Promise.all([observed, sampleUntil(observed, () => {
-        const result = sample();
-        sampled.samples += 1;
-        if (result.writeLockFree) sampled.writeLockFree += 1;
-        if (result.stamped > 0 && result.stamped < config.files) sampled.partial.add(result.stamped);
-      })]);
-      windowMilliseconds = Math.max(250, performance.now() - warmUpStarted);
+      observePageBoundary = () => { samples.push(sample()); };
+      await client.scan(link.id);
+      observePageBoundary();
     } finally {
+      observePageBoundary = undefined;
       observer.close();
     }
+    const windowMilliseconds = Math.max(250, performance.now() - warmUpStarted);
     await traffic.run(windowMilliseconds / 4, null);
 
     const scanDurations: number[] = [];
     const idleTraffic: TrafficRecord = {reads: [], publishes: []};
     const scanTraffic: TrafficRecord = {reads: [], publishes: []};
     for (let scan = 0; scan < config.warmScans; scan += 1) {
-      // Each scan is paired with an idle window of the same length and
-      // request mix just before it, so drift between windows cancels out.
+      // Interleave scans with idle windows sized from the warmup and send
+      // the same request mix in both to limit drift between comparisons.
       // eslint-disable-next-line no-await-in-loop
       await traffic.run(windowMilliseconds, idleTraffic);
       const scanStarted = performance.now();
@@ -179,12 +181,7 @@ export async function runLinkedFolderScanBaseline(
     const idle = {read: summarizeLatencies(idleTraffic.reads), publish: summarizeLatencies(idleTraffic.publishes)};
     const during = {read: summarizeLatencies(scanTraffic.reads), publish: summarizeLatencies(scanTraffic.publishes)};
     const warmScan = summarizeLatencies(scanDurations);
-    const transactions: ScanTransactionObservation = {
-      samples: sampled.samples,
-      writeLockFree: sampled.writeLockFree,
-      partialPageCounts: [...sampled.partial].toSorted((left, right) => left - right),
-      pageEntries: scanPageEntries,
-    };
+    const transactions = summarizeTransactions(samples, config.files);
     return {
       configuration: config,
       environment: {node: process.version, platform: process.platform, arch: process.arch},
@@ -201,7 +198,9 @@ export async function runLinkedFolderScanBaseline(
         publishDuringScan:
           during.publish.p95Milliseconds <= idle.publish.p95Milliseconds * linkedFolderScanBudgets.requestRegressionRatio,
         onePagePerTransaction: transactions.samples > 0 && transactions.writeLockFree === transactions.samples
-          && transactions.partialPageCounts.length > 0,
+          && transactions.partialPageCounts.length > 1
+          && transactions.committedEntriesPerPage.every((count) => count >= 0 && count <= scanPageEntries)
+          && transactions.committedEntriesPerPage.reduce((total, count) => total + count, 0) === config.files,
       },
     };
   } finally {
@@ -320,10 +319,13 @@ class ScanClient {
  */
 function observerSample(observer: DatabaseSync, folderLinkId: string) {
   const stamped = observer.prepare(`
-    SELECT COUNT(*) AS count FROM folder_inventory i JOIN folder_links l ON l.id = i.folder_link_id
-    WHERE l.id = ? AND i.seen_generation = l.scan_generation
+    SELECT l.scan_generation AS generation, (
+      SELECT COUNT(*) FROM folder_inventory i WHERE i.folder_link_id = l.id
+        AND i.seen_generation = l.scan_generation
+    ) AS stamped
+    FROM folder_links l WHERE l.id = ?
   `);
-  const countSchema = z.object({count: z.number().int()});
+  const stampSchema = z.object({generation: z.number().int(), stamped: z.number().int()});
   return (): ObserverSample => {
     let writeLockFree = true;
     try {
@@ -331,7 +333,23 @@ function observerSample(observer: DatabaseSync, folderLinkId: string) {
     } catch {
       writeLockFree = false;
     }
-    return {writeLockFree, stamped: countSchema.parse(stamped.get(folderLinkId)).count};
+    return {writeLockFree, ...stampSchema.parse(stamped.get(folderLinkId))};
+  };
+}
+
+function summarizeTransactions(samples: readonly ObserverSample[], files: number): ScanTransactionObservation {
+  // Startup reconciliation may also run during warmup. Use only the
+  // generation that the explicit scan just completed.
+  const generation = samples.at(-1)?.generation;
+  const pageBoundaries = samples.filter((sample) => sample.generation === generation);
+  return {
+    samples: pageBoundaries.length,
+    writeLockFree: pageBoundaries.filter((sample) => sample.writeLockFree).length,
+    partialPageCounts: [...new Set(pageBoundaries.map((sample) => sample.stamped)
+      .filter((count) => count > 0 && count < files))],
+    committedEntriesPerPage: pageBoundaries.slice(1)
+      .map((sample, index) => sample.stamped - (pageBoundaries[index]?.stamped ?? 0)),
+    pageEntries: scanPageEntries,
   };
 }
 
@@ -373,16 +391,6 @@ class RequestTraffic {
       // eslint-disable-next-line no-await-in-loop
       await this.#next(record);
     }
-  }
-}
-
-/** Sample on a short timer, so the observer does not slow the scan it observes. */
-async function sampleUntil(scan: Promise<unknown>, onSample: () => void): Promise<void> {
-  const state = settlementOf(scan);
-  while (!state.settled) {
-    onSample();
-    // eslint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => setTimeout(resolve, sampleIntervalMilliseconds));
   }
 }
 

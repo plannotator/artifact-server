@@ -415,7 +415,7 @@ Applied in order. The first exclusion wins.
 | --- | --- | --- |
 | Inventory entries per link (non-ignored regular files) | 20,000 | Link becomes `over-limit`. Existing entries stay, new files are not indexed, and the UI shows how to narrow the link with ignore rules or a subdirectory. |
 | Directory depth below the link | 16 | Deeper entries become `skipped: too-deep` and are counted. |
-| Scan page | 2,000 directory entries per `scanPage`, one SQLite transaction per page, yielding between pages | — (a scan of 20,000 files is about 10 short transactions) |
+| Scan page | Up to 250 directory entries per `scanPage`, one SQLite transaction per page, yielding between pages | — (a scan of 20,000 files is about 80 short transactions) |
 | Concurrent scans | 1 per link, 2 per installation | Queued |
 | Per-file capture size | The existing publish per-file limit | `skipped: too-large` (still listed) |
 | Capture batch | 100 entries per call. "Capture all" pages through. | — |
