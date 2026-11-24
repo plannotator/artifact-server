@@ -5113,17 +5113,21 @@ requirements:
 
   - id: FLD-008
     kind: constraint
-    behavior: Backup and restore preserve folders, placement, trash and purge state, and folder links, and the integrity check rejects cycles, cross-project placement, live items in purged folders, duplicate sibling keys, mis-scoped child rows, and inconsistent tracked inventory.
+    behavior: Backup and restore preserve folders, placement, trash and purge state, recorded cross-project moves, folder links with their inventory, capture records, and live-preview grants, and the file-overview columns and indexes, and the integrity check rejects cycles, cross-project placement, inconsistent trash groups, live items in trashed or purged folders, duplicate sibling keys, mis-scoped child rows, unrecorded moves, orphaned or mis-targeted link records, inconsistent tracked inventory, and stale overview columns or missing overview indexes.
     owner: operations
     source: {file: file-management-spec.md, anchor: proposed-ledger-entries}
     acceptance:
-      behavior: {id: FLD-008-B, description: "Back up a stopped data directory with nested folders, trash groups, a cross-project-moved artifact, and a folder link; restore it and observe identical records, integrity passing, and the folder link unavailable until a successful scan."}
-      failure: {id: FLD-008-F, description: "Seeded corruption of each kind (folder cycle, foreign folder_id, live artifact in purged folder, duplicate sibling key, child row with a stale project_id, tracked entry with a mismatched binding path) fails the integrity check with a specific finding."}
+      behavior: {id: FLD-008-B, description: "Back up a stopped data directory with nested folders, a recoverable and a purged trash group, a recovered artifact, a cross-project-moved artifact, and a folder link with a capture and a live-preview grant; restore it and observe identical records, overview indexes, listings, trash, and file pages, integrity passing, and the folder link unavailable until a successful scan."}
+      failure: {id: FLD-008-F, description: "Seeded corruption of each kind (folder cycle, foreign folder_id, duplicate sibling key, child row with a stale project_id, trash mark without a tombstone, grouped artifact live in a purged group, live artifact or folder in a purged folder, unrecorded cross-project move, tracked entry with a mismatched binding path, inventory entry without a link, capture whose artifact is gone, live grant in another project, link to a purged folder, stale overview size, missing overview index) fails the integrity check with a specific finding, while a relink after the last scan is accepted."}
     deployments: [local]
-    status: implementing
-    proof_gap: Phase one covers stopped-directory restore, folder hierarchy and artifact placement, and comment scope integrity. Trash, cross-project moves, and linked folder inventory remain future phases.
+    status: verified
     depends_on: [FLD-006, OPS-003, OPS-004]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [FLD-008-B, FLD-008-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T10:58:57.111Z"
 
   - id: TRS-001
     kind: behavior
