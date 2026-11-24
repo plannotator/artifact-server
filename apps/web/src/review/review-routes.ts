@@ -12,6 +12,14 @@ export type SettingsRoute =
 /** The dashboard's one canonical path inside the application. */
 export const dashboardPath = "/review/dashboard";
 
+/** The linked-folders page's one canonical path inside the application. */
+export const linkedFoldersPath = "/review/linked-folders";
+
+/** Return whether the current document path is the linked-folders page. */
+export function isLinkedFoldersPath(pathname: string): boolean {
+  return pathname === linkedFoldersPath || pathname === `${linkedFoldersPath}/`;
+}
+
 /** Return whether the current document path is the dashboard. */
 export function isDashboardPath(pathname: string): boolean {
   return pathname === dashboardPath || pathname === `${dashboardPath}/`;

@@ -39,6 +39,7 @@ import {
   RefreshIcon,
   Search01Icon,
   DashboardSquare01Icon,
+  FolderSyncIcon,
   Settings02Icon,
   Sun03Icon,
   Tick02Icon,
@@ -87,13 +88,21 @@ import {
 import { ReviewPreview } from "./review-preview.tsx";
 import {readReviewTheme, type ReviewTheme} from "./review-theme.ts";
 import {ReviewProjectPicker} from "./review-project-picker.tsx";
-import {dashboardPath, isDashboardPath, isSettingsPath} from "./review-routes.ts";
+import {
+  dashboardPath, isDashboardPath, isLinkedFoldersPath, isSettingsPath, linkedFoldersPath,
+} from "./review-routes.ts";
+import {linkedFolderText} from "@/i18n/messages/linked-folders";
 import {ReviewSettings} from "./review-settings.tsx";
 import {ReviewPanelEdge} from "./review-panel-edge.tsx";
 import {AgentLogos, ReviewShareControl} from "./review-share.tsx";
 import {useReviewPanelMotion} from "./use-review-panel-motion.ts";
 import {useReviewResizablePanel} from "./use-review-resizable-panel.ts";
 import {useWebmcp, type WebmcpBindings} from "./webmcp.tsx";
+
+// The linked-folders page loads only when someone opens it.
+const LinkedFoldersPage = lazy(async () => ({
+  default: (await import("./linked-folders-page.tsx")).LinkedFoldersPage,
+}));
 
 // The dashboard and its chart library load only when someone opens it.
 const DashboardPage = lazy(async () => ({
@@ -484,6 +493,18 @@ export function ReviewApp() {
       <Suspense fallback={null}>
         <DashboardPage
           principalId={session.principal.id}
+          onThemeChange={() => setTheme((current) => current === "moon" ? "dawn" : "moon")}
+          projects={projects}
+          theme={theme}
+        />
+      </Suspense>
+    );
+  }
+
+  if (isLinkedFoldersPath(window.location.pathname) && session.capabilities.linkedFolders) {
+    return (
+      <Suspense fallback={null}>
+        <LinkedFoldersPage
           onThemeChange={() => setTheme((current) => current === "moon" ? "dawn" : "moon")}
           projects={projects}
           theme={theme}
@@ -1571,6 +1592,18 @@ function ArtifactReview({
             >
               <HugeiconsIcon icon={DashboardSquare01Icon} strokeWidth={1.8} />
             </a>
+            {session.capabilities.linkedFolders ? (
+              <a
+                aria-label={linkedFolderText.openPage}
+                className="as-icon-button"
+                href={selectedProject === null
+                  ? linkedFoldersPath
+                  : `${linkedFoldersPath}?${new URLSearchParams({project: selectedProject.id})}`}
+                title={linkedFolderText.openPage}
+              >
+                <HugeiconsIcon icon={FolderSyncIcon} strokeWidth={1.8} />
+              </a>
+            ) : null}
             <a
               aria-label={reviewAppText.catalog.openSettings}
               className="as-icon-button"

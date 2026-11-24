@@ -111,7 +111,22 @@
 | 7 days／30 days／90 days／all time | 7 天／30 天／90 天／全部 | |
 | readings | 讀數 | 指標 |
 
-## 七、寫作規則
+## 七、連結的資料夾（2026-11-24 加入）
+
+| 英文 | 建議 | 備註 |
+|---|---|---|
+| linked folder | 連結的資料夾 | 動作是「連結資料夾」 |
+| unlink | 取消連結 | 不會動到磁碟上的檔案 |
+| inventory / files | 檔案（清單） | 介面只說「檔案」 |
+| pending | 待擷取 | 新檔案或已修改的已擷取檔案 |
+| untracked / tracked / skipped | 新檔案／已擷取／已略過 | |
+| scan / scan now | 掃描／立即掃描 | |
+| pause / resume | 暫停／繼續 | |
+| over limit / unavailable | 超過上限／無法使用 | 連結狀態 |
+| ignore rules | 忽略規則 | `.artifactignore` 維持原樣 |
+| relink suggestion | 重新連結建議 | 介面標題用「搬移過的檔案」 |
+
+## 八、寫作規則
 
 1. ✅ 稱呼：全站用「你」。
 2. ✅ 中文和英文、數字之間加半形空格（例如「3 個版本」「Artifact 名稱」）。
