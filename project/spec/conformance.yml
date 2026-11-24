@@ -4992,10 +4992,14 @@ requirements:
       behavior: {id: FLD-001-B, description: "Create nested folders, list a folder's children and breadcrumbs, replay an idempotent create with a client-supplied ID, and observe stable IDs and revisions."}
       failure: {id: FLD-001-F, description: "Names that are empty, too long, contain control or bidi-override characters, separators, '.', '..', or leading/trailing dots, and siblings differing only by case or compatibility form, are refused; depth 17, an unknown or foreign parent, and writes in an archived project are refused without creating a record."}
     deployments: [local]
-    status: implementing
-    proof_gap: Named local behavior and failure tests cover folder identity, keyset listing, depth, and write guards. The generated run report is excluded from this change.
+    status: verified
     depends_on: [PRJ-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [FLD-001-B, FLD-001-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T10:40:36.000Z"
 
   - id: FLD-002
     kind: behavior
@@ -5006,10 +5010,14 @@ requirements:
       behavior: {id: FLD-002-B, description: "Rename and move a folder holding artifacts with versions, comments, and a public link; observe the new path, an unchanged artifact/version/content-token set, working public and stable URLs, and one folder action per mutation."}
       failure: {id: FLD-002-F, description: "A stale expectedRevision returns the current folder and changes nothing; moving a folder into itself or a descendant is refused as folder-cycle; a destination sibling name collision is refused as name-conflict."}
     deployments: [local]
-    status: implementing
-    proof_gap: Named local behavior and failure tests cover single-record changes, identity preservation, revision conflicts, and cycles. The generated run report is excluded from this change.
+    status: verified
     depends_on: [FLD-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [FLD-002-B, FLD-002-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T10:40:36.000Z"
 
   - id: FLD-003
     kind: behavior
@@ -5020,10 +5028,14 @@ requirements:
       behavior: {id: FLD-003-B, description: "Move and rename an artifact; observe the same version list and content tokens, the new placement and name in listings and name search, unchanged comments and public-link delivery, and one move and one rename action."}
       failure: {id: FLD-003-F, description: "A stale expectedCurrentVersionId returns the publish-style conflict with the actual current version; a folder in another project or a trashed folder is refused; replaying the idempotency key returns the original result and a reused key with different input fails."}
     deployments: [local]
-    status: implementing
-    proof_gap: Named local behavior and failure tests cover artifact metadata changes, optimistic concurrency, and replay. The generated run report is excluded from this change.
+    status: verified
     depends_on: [FLD-001, ART-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [FLD-003-B, FLD-003-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T10:40:36.000Z"
 
   - id: FLD-004
     kind: behavior
@@ -5034,10 +5046,14 @@ requirements:
       behavior: {id: FLD-004-B, description: "Move an artifact and a folder subtree to another project; observe identical artifact, version, thread, and content-token IDs, the stable URL and public link still serving, every child row scoped to the destination, a move action in the destination, and the location endpoint redirecting an old Review URL."}
       failure: {id: FLD-004-F, description: "The move is refused with nothing changed when a thread is held by a queued, claimed, or delivered dispatch, when either project is archived, when Git history is enabled or coordinates exist, or above 1,000 artifacts; the location endpoint answers not-found to callers without installation-wide read; a pre-move idempotency key replayed in the source project discloses nothing."}
     deployments: [local]
-    status: implementing
-    proof_gap: Named local behavior and failure tests cover the one-transaction scope rewrite over HTTP, MCP, and the CLI, the location lookup and Review link redirect, and the dispatch-held, archived, Git-history, size-bound, foreign-reader, and pre-move replay refusals. The generated run report is excluded from this change.
+    status: verified
     depends_on: [FLD-003, PRJ-002, DSP-003, CMT-020]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [FLD-004-B, FLD-004-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T10:40:36.000Z"
 
   - id: FLD-005
     kind: behavior
@@ -5066,10 +5082,14 @@ requirements:
       behavior: {id: FLD-006-B, description: "Migrate a populated schema-12 database and observe all artifacts at the root, correct file kinds and sizes, and byte-identical artifact, version, manifest, content-token, action, tag, comment, and binding sets."}
       failure: {id: FLD-006-F, description: "An interrupted migration leaves the database at schema 12 and fully usable, a rerun completes it, and a newer schema is refused at startup."}
     deployments: [local]
-    status: implementing
-    proof_gap: Named local behavior and failure tests cover populated schema-12 data, transactional rollback, rerun, and newer-schema refusal. The generated run report is excluded from this change.
+    status: verified
     depends_on: [FLD-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [FLD-006-B, FLD-006-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T10:40:36.000Z"
 
   - id: FLD-007
     kind: behavior
@@ -5080,10 +5100,16 @@ requirements:
       behavior: {id: FLD-007-B, description: "Perform create-folder, move, rename, trash, recover, and file search through HTTP, MCP, and the CLI against one server and observe the same records and action history."}
       failure: {id: FLD-007-F, description: "Where a capability is absent its routes answer 501 capability-unavailable, its MCP tools return the same coded error, and the web application renders no affordance; delete keeps its one-way contract and reports recoverable false."}
     deployments: [local]
-    status: implementing
-    proof_gap: Phase one covers folder and in-project placement parity and capability gating; phase two adds trash, folder trash, recover, and capability-gated purge across HTTP, MCP, the CLI, and the web Trash view (proved under TRS-001..005); phase three adds file search and batch parity (GET /api/v1/files, file_search, artifactserver files; POST /api/v1/batch, batch_apply, artifactserver batch) and the Files page, proved under FOV-001, FLD-005, and FOV-004. A single FLD-007 test across every operation is still to be written.
+    # The web half of FLD-007-F (no affordance without the capability) is proved by
+    # tests/browser/folders.spec.ts, FOV-004-F, and tests/browser/linked-folders.spec.ts.
+    status: verified
     depends_on: [FLD-003, TRS-002, FOV-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [FLD-007-B, FLD-007-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T10:40:36.000Z"
 
   - id: FLD-008
     kind: constraint
@@ -5234,10 +5260,15 @@ requirements:
       behavior: {id: FOV-003-B, description: "Run the perf baseline on the 100,000-artifact and 20,000-file fixtures and record p95 values within the section 13 budgets."}
       failure: {id: FOV-003-F, description: "During a full linked-folder scan, read and publish p95 latency stays within 10% of the idle baseline, and no scan page holds the write transaction beyond one page."}
     deployments: [local]
-    status: implementing
-    proof_gap: "`pnpm perf:file-overview` seeds the section 13 data set (100,000 artifacts, 20 projects, 2,000 folders, one 10,000-artifact folder) and records listFiles default and filtered, folder listing, and a 100-move batch within budget (see project/performance/FINDINGS.md). Folder rename, cross-project move, and folder-trash timings are not yet in the baseline, and the 20,000-file linked-folder scan (FOV-003-F) waits for linked folders (LFD-006), so neither acceptance test is claimed."
+    status: behavior_verified
+    proof_gap: "`tests/smoke/file-management-performance.test.ts` (FOV-003-B) runs `pnpm perf:file-overview` and `pnpm perf:linked-folder-scan` at the section 13 scale and proves every p95 budget: overview default and filtered, folder page, folder rename, cross-project move of a 200-version, 500-thread artifact, folder trash of 10,000 artifacts in one transaction, a 100-move batch, and a full warm scan of 20,000 files. FOV-003-F is not claimed: scan pages commit one page per transaction and leave the write lock free between pages, and read p95 stays within 10% of idle, but publish p95 during a scan rose 35-40% because each synchronous page transaction blocks the shared event loop (see project/performance/FINDINGS.md)."
     depends_on: [FOV-001, LFD-006]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [FOV-003-B]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T10:40:36.000Z"
 
   - id: FOV-004
     kind: behavior
