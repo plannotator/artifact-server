@@ -106,6 +106,44 @@ test.describe("Linked folders", () => {
     }
   });
 
+  test("the Files page counts pending linked-folder entries and filters captured linked files", async ({browser}) => {
+    const fixture = await startFixture(browser, "on");
+    try {
+      const output = path.join(fixture.linkRoot, "notes-output");
+      await mkdir(output, {recursive: true});
+      await writeFile(path.join(output, "alpha.md"), "# Alpha\n");
+      await writeFile(path.join(output, "beta.md"), "# Beta\n");
+      await writeFile(path.join(output, "gamma.md"), "# Gamma\n");
+      await localLogin(fixture);
+      await fixture.page.getByRole("link", {name: "Linked folders"}).click();
+      await fixture.page.getByRole("button", {name: "Link a folder"}).click();
+      await fixture.page.getByLabel("Directory path").fill(output);
+      await fixture.page.getByRole("button", {name: "Link", exact: true}).click();
+      const inventory = fixture.page.getByRole("region", {name: /Files · notes-output/u});
+      await inventory.getByRole("checkbox", {name: "Select alpha.md"}).click();
+      await inventory.getByRole("button", {name: "Capture 1 selected"}).click();
+      await expect(inventory.getByRole("listitem").filter({hasText: "alpha.md"})).toContainText("Captured");
+
+      await fixture.page.goto(new URL("/review/files", fixture.server.baseUrl).toString());
+      const banner = fixture.page.getByRole("complementary", {name: "Pending in linked folders"});
+      await expect(banner).toContainText("2 pending in 1 linked folder");
+      await expect(fixture.page.locator("tbody tr")).toHaveCount(1);
+      await fixture.page.getByRole("combobox", {name: "Linked files"}).selectOption("not-linked");
+      await expect(fixture.page.getByRole("heading", {name: "No files match these filters"})).toBeVisible();
+      await fixture.page.getByRole("combobox", {name: "Linked files"}).selectOption("linked");
+      await expect(fixture.page).toHaveURL(/linked=linked/u);
+      await expect(fixture.page.locator("tbody tr")).toHaveCount(1);
+      await expect(fixture.page.locator("tbody tr")).toContainText("In sync");
+      await expectAccessible(fixture.page);
+
+      await banner.getByRole("link", {name: "Review pending"}).click();
+      await expect(fixture.page).toHaveURL(/\/review\/linked-folders/u);
+      await expect(fixture.page.getByRole("region", {name: "notes-output"}).getByText("2 pending")).toBeVisible();
+    } finally {
+      await fixture.stop();
+    }
+  });
+
   test("the Traditional Chinese page labels states, and an absent capability shows no entry", async ({browser}) => {
     const fixture = await startFixture(browser, "off");
     try {

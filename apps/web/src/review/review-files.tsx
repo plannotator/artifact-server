@@ -26,7 +26,7 @@ import {reviewAppText} from "@/i18n/messages/review-app";
 import {errorMessage, formatBytes, formatTimestamp, sourceFreshnessLabel} from "@/lib/presentation";
 import {ArtifactMark} from "./artifact-mark.tsx";
 import {FolderDestinationPicker, visibleArtifactName} from "./review-folders.tsx";
-import {filesPath, trashPath} from "./review-routes.ts";
+import {filesPath, linkedFoldersPath, trashPath} from "./review-routes.ts";
 
 const sorts = ["updated", "created", "name", "size", "comments"] as const;
 type Sort = (typeof sorts)[number];
@@ -116,6 +116,13 @@ interface Failure {
   readonly currentVersionId: string | null;
 }
 
+/** Untracked linked-folder entries are not files; the Files header only counts them (spec section 11.1). */
+interface LinkedPending {
+  readonly entries: number;
+  readonly folders: number;
+  readonly projectId: string | null;
+}
+
 interface BatchOutcome {
   readonly succeeded: readonly FileItem[];
   readonly failures: readonly Failure[];
@@ -151,6 +158,7 @@ export function FilesPage({
   const [dialog, setDialog] = useState<Dialogs | null>(null);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<{readonly text: string; readonly undo?: readonly FileItem[]} | null>(null);
+  const [linkedPending, setLinkedPending] = useState<LinkedPending | null>(null);
   const canBatch = session.capabilities.batch;
   const projectNames = useMemo(() => new Map(projects.map(({id, name}) => [id, name])), [projects]);
 
@@ -177,6 +185,28 @@ export function FilesPage({
     })();
     return () => { current = false; };
   }, [filters, attempt]);
+
+  useEffect(() => {
+    if (!session.capabilities.linkedFolders) return undefined;
+    let current = true;
+    const projectIds = filters.project === "" ? projects.map(({id}) => id) : [filters.project];
+    void (async () => {
+      const links = (await Promise.all(projectIds.map(async (projectId) => {
+        try {
+          return await api.folderLinks(projectId);
+        } catch {
+          return [];
+        }
+      }))).flat().filter((link) => !link.inTrash && link.pendingCount > 0);
+      if (!current) return;
+      setLinkedPending(links.length === 0 ? null : {
+        entries: links.reduce((sum, link) => sum + link.pendingCount, 0),
+        folders: links.length,
+        projectId: filters.project === "" ? null : filters.project,
+      });
+    })();
+    return () => { current = false; };
+  }, [session.capabilities.linkedFolders, projects, filters.project, attempt]);
 
   useEffect(() => {
     if (searchDraft === filters.search) return undefined;
@@ -279,6 +309,20 @@ export function FilesPage({
       </header>
       <main className="mx-auto grid w-full max-w-[90rem] min-w-0 grid-cols-1 gap-6 px-4 pt-6 pb-24 sm:px-6" id="main-content">
         <PageHeader description={filesText.description} title={filesText.title} />
+        {linkedPending === null ? null : (
+          <aside aria-label={filesText.linkedPendingLabel} className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/40 px-4 py-3 text-sm">
+            <span>{filesText.linkedPending(linkedPending.entries, linkedPending.folders)}</span>
+            <ButtonLink
+              href={linkedPending.projectId === null
+                ? linkedFoldersPath
+                : `${linkedFoldersPath}?${new URLSearchParams({project: linkedPending.projectId})}`}
+              size="sm"
+              variant="outline"
+            >
+              {filesText.reviewPending}
+            </ButtonLink>
+          </aside>
+        )}
         <section aria-label={filesText.filters} className="flex min-w-0 flex-wrap items-end gap-3">
           <label className="grid min-w-0 gap-1 text-xs text-muted-foreground">
             {filesText.search}
