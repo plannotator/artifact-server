@@ -92,7 +92,7 @@ Linking is the one place the product accepts a filesystem path from a caller, so
 
 ### 4.4 Surfaces — protocol first
 
-Linking is **API-first**: the canonical way a file becomes an artifact is an explicit protocol call — the MCP tool or the HTTP endpoint below, mirroring v0's `artifact_link` — typically issued by an agent. Nothing is ever linked implicitly: no directory scanning, no watching, no UI-driven bulk import. The web application's link affordance is a secondary convenience over the same endpoint, optional in v1, and every rule of section 4.3 applies identically regardless of which surface makes the call. The CLI gains `artifactserver link <path> --project <project>` over the same endpoint. MCP accepts the link path only on the local deployment, consistent with the product rule that a remote MCP server never accepts an arbitrary client filesystem path.
+Linking is **API-first**: the canonical way a file becomes an artifact is an explicit protocol call — the MCP tool or the HTTP endpoint below, mirroring v0's `artifact_link` — typically issued by an agent. Nothing is ever linked implicitly: no directory scanning, no watching, no UI-driven bulk import. (Amended by [ADR 0031](./decisions/0031-linked-folders-index-automatically-and-capture-explicitly.md): a linked *folder* is scanned and watched into an inventory, but capture stays one explicit, attributed call.) The web application's link affordance is a secondary convenience over the same endpoint, optional in v1, and every rule of section 4.3 applies identically regardless of which surface makes the call. The CLI gains `artifactserver link <path> --project <project>` over the same endpoint. MCP accepts the link path only on the local deployment, consistent with the product rule that a remote MCP server never accepts an arbitrary client filesystem path.
 
 | Surface | Contract |
 | --- | --- |
@@ -247,7 +247,7 @@ Edits reuse existing tables entirely (staging uploads, versions, manifest entrie
 ## 11. Non-goals
 
 - **Automatic capture on file change** (a filesystem watcher publishing versions). v1 is lazy drift detection plus explicit capture; a debounced, attributed watch mode may layer on later as its own decision.
-- **Linking directories.** v1 links single regular files only.
+- **Linking directories.** v1 links single regular files only. Linked folders later added directory discovery with explicit capture; see [ADR 0031](./decisions/0031-linked-folders-index-automatically-and-capture-explicitly.md).
 - **Linked artifacts anywhere but the local deployment** — including bind-mounted directories under compact Compose. If demand appears, that is a separate gate with its own container-boundary analysis.
 - **Column management, swimlanes, board-level webhooks, or cross-project boards.** Four fixed columns.
 - **A WYSIWYG or multi-file editor.** One text entry per edit commit.
