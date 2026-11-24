@@ -1,4 +1,5 @@
 import {expect, test} from "@playwright/test";
+import {z} from "zod";
 
 import {browserLoginKinds, privateTeamBrowserAccess} from "../../src/core/browser-access.js";
 import {OidcIdentityProvider} from "../../src/identity/oidc-identity-provider.js";
@@ -70,6 +71,46 @@ test("Review drills into folders, moves an artifact, and renames both records", 
     } finally {
       await zhContext.close();
     }
+  } finally {
+    await stopBrowserFixture(fixture);
+  }
+});
+
+test("Review moves an artifact to another project and follows its old Review link", async ({browser}) => {
+  const fixture = await startBrowserFixture(browser);
+  try {
+    const published = await publishNew(fixture.server, fixture.installation, {
+      accessSetting: "account_required",
+      content: "<main>Travelling artifact</main>",
+      idempotencyKey: "cross-project-review-fixture",
+      name: "Travel report",
+    });
+    const created = await fetch(`${fixture.server.baseUrl}/api/v1/projects`, {
+      method: "POST",
+      headers: apiHeaders(fixture.installation, "cross-project-review-project"),
+      body: JSON.stringify({name: "Archive"}),
+    });
+    expect(created.status).toBe(201);
+    const {project} = z.object({project: z.object({id: z.string()})}).parse(await created.json());
+    await localLogin(fixture);
+    const {page} = fixture;
+    const inspector = page.locator(".as-inspector");
+    await expect(page.getByRole("heading", {name: "Travel report", exact: true})).toBeVisible();
+    await inspector.getByRole("button", {name: "Move…", exact: true}).click();
+    const dialog = page.getByRole("dialog", {name: "Move Travel report"});
+    await dialog.getByRole("combobox", {name: "Project"}).selectOption({label: "Archive"});
+    await expect(dialog.getByText(/keeps the same IDs, versions, comments, and links/u)).toBeVisible();
+    await expect(dialog.getByRole("navigation", {name: "Location"})).toContainText("Archive");
+    await dialog.getByRole("button", {name: "Move here"}).click();
+    await expect(dialog).toBeHidden();
+    await expect(page).toHaveURL(new RegExp(`project=${project.id}`, "u"));
+    await expect(page.getByRole("heading", {name: "Travel report", exact: true})).toBeVisible();
+
+    await page.goto(`${fixture.server.baseUrl}/review?project=prj_default&artifact=${published.body.artifact.id}`);
+    await expect(page).toHaveURL(new RegExp(`project=${project.id}.*artifact=${published.body.artifact.id}`, "u"));
+    await expect(page.getByRole("heading", {name: "Travel report", exact: true})).toBeVisible();
+    await expect(page.frameLocator(".as-artifact-frame").frameLocator("iframe").getByText("Travelling artifact"))
+      .toBeVisible();
   } finally {
     await stopBrowserFixture(fixture);
   }

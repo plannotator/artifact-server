@@ -1,7 +1,8 @@
 import {folderText} from "@/i18n/messages/folders";
 import type {Folder} from "@/api/client";
 import {
-  ArtifactFolderLocation, FolderBreadcrumbs, FolderDialog, type FolderDialogAction, visibleArtifactName,
+  ArtifactFolderLocation, FolderBreadcrumbs, FolderDialog, type FolderDialogAction, locateMovedArtifact,
+  visibleArtifactName,
 } from "./review-folders.tsx";
 import {
   lazy,
@@ -838,6 +839,18 @@ function ArtifactReview({
     void loadArtifacts(null, true);
   }, [loadArtifacts]);
 
+  const crossProjectMove = session.capabilities.crossProjectMove;
+  // A cross-project move keeps every ID, so Review follows the artifact or
+  // folder to its new project instead of showing an old project-scoped miss.
+  const openMovedLocation = useCallback((nextProjectId: string, nextFolderId: string | null, artifactId: string | null): void => {
+    setCatalogKnownTags([]);
+    setCatalogTagFilters([]);
+    setProjectId(nextProjectId);
+    setFolderId(foldersAvailable ? nextFolderId : null);
+    setSelectedArtifactId(artifactId);
+    setDetailError(null);
+  }, [foldersAvailable]);
+
   useEffect(() => {
     if (selectedArtifactId === null || projectId === "") {
       setDetails(null);
@@ -869,6 +882,14 @@ function ArtifactReview({
         });
       } catch (caught) {
         if (!current) return;
+        const moved = crossProjectMove && caught instanceof ApiError && caught.code === "ARTIFACT_NOT_FOUND"
+          ? await locateMovedArtifact(selectedArtifactId, projectId)
+          : null;
+        if (!current) return;
+        if (moved !== null) {
+          openMovedLocation(moved.projectId, moved.folderId, moved.artifactId);
+          return;
+        }
         setDetails(null);
         setVersions([]);
         setSelectedVersion(null);
@@ -882,7 +903,7 @@ function ArtifactReview({
     return () => {
       current = false;
     };
-  }, [projectId, selectedArtifactId, session.principal.id]);
+  }, [crossProjectMove, openMovedLocation, projectId, selectedArtifactId, session.principal.id]);
 
   const refreshLinkedDetails = useCallback(async (): Promise<void> => {
     if (selectedArtifactId === null || projectId === "") return;
@@ -1509,8 +1530,18 @@ function ArtifactReview({
 
       {folderDialog === null ? null : (
         <FolderDialog action={folderDialog} projectId={projectId} projectName={selectedProject?.name ?? folderText.root}
-          onClose={() => setFolderDialog(null)} onChanged={(artifact) => {
+          projects={crossProjectMove ? projects.filter(({archivedAt}) => archivedAt === null) : []}
+          onClose={() => setFolderDialog(null)} onChanged={(result) => {
             setFolderChanges((current) => current + 1);
+            if (result?.kind === "artifact" && result.artifact.projectId !== projectId) {
+              openMovedLocation(result.artifact.projectId, result.artifact.folderId, result.artifact.id);
+              return;
+            }
+            if (result?.kind === "folder" && result.folder.projectId !== projectId) {
+              openMovedLocation(result.folder.projectId, result.folder.id, null);
+              return;
+            }
+            const artifact = result?.kind === "artifact" ? result.artifact : undefined;
             if (artifact !== undefined && details?.artifact.id === artifact.id) {
               updateArtifact({...details.artifact, ...artifact});
               setActions([]);
