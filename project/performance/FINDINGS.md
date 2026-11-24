@@ -35,29 +35,72 @@ resource defaults claim the same 100-user envelope.
 
 `pnpm perf:file-overview` seeds a temporary compact database with the file
 management spec's section 13 data set (100,000 artifacts across 20 projects and
-2,000 folders, one folder holding 10,000 artifacts) and times the storage paths
-behind the Files page with 5 warm-up and 40 measured iterations. It writes
+2,000 folders, one leaf folder holding 10,000 artifacts, and one artifact with
+200 versions and 500 comment threads) and times the storage paths behind the
+Files page and folder operations with 5 warm-up and 40 measured iterations
+(5 for folder trash, 20 for the cross-project move). It writes
 `project/evidence/file-overview-baseline.json`.
 
-Machine: Apple M5 Max, Node.js 24, local APFS storage, November 24, 2026.
+Machine: Apple M5 Max, Node.js 24.15, local APFS storage, November 24, 2026.
 
 | Operation | p50 | p95 | Section 13 budget (p95) |
 | --- | ---: | ---: | ---: |
-| `listFiles`, first page of 100, default sort, no filter | 1.9 ms | 3.3 ms | 150 ms |
-| `listFiles` with kind + tag + updated-time filters | 22.5 ms | 25.4 ms | 200 ms |
-| `listFolder`, one page of a 10,000-artifact folder | 0.4 ms | 0.5 ms | 50 ms |
-| 100 sequential per-item move transactions | 12.4 ms | 12.8 ms | 1.5 s |
-| `fileFacets`, no filter | 218 ms | 229 ms | none |
+| `listFiles`, first page of 100, default sort, no filter | 2.1 ms | 3.2 ms | 150 ms |
+| `listFiles` with kind + tag + updated-time filters | 29.2 ms | 32.2 ms | 200 ms |
+| `listFolder`, one page of a 10,000-artifact folder | 0.4 ms | 0.6 ms | 50 ms |
+| Rename the 10,000-artifact folder | 0.1 ms | 0.2 ms | 20 ms |
+| Move the 200-version, 500-thread artifact across projects | 16.7 ms | 18.3 ms | 250 ms |
+| Trash the 10,000-artifact folder subtree (one transaction) | 390 ms | 415 ms | 2 s |
+| 100 sequential per-item move transactions | 19.0 ms | 19.9 ms | 1.5 s |
+| `fileFacets`, no filter | 253 ms | 260 ms | none |
 
-Every budgeted path is far inside its budget because schema 16 indexes the
-denormalized current-version columns, so a page never sorts or joins version
-tables per row. The open risk is facets: an unfiltered facet read scans every
-live artifact once for kind and project counts and once more for tags, about
-220 ms at 100,000 artifacts. The Files page requests facets beside every page,
-so a filter change waits on that scan. If it becomes noticeable, cache facets
-per filter for a short time or drop tag facets from the unfiltered view. Folder
-rename, cross-project move, folder trash, and linked-folder scans are not in
-this baseline yet.
+Every budgeted path is inside its budget. Schema 16 indexes the denormalized
+current-version columns, so a page never sorts or joins version tables per row;
+a folder rename is one row; the cross-project move rewrites child rows by
+artifact ID. Folder trash is the slowest budgeted write at about a fifth of its
+budget, because it stamps every artifact in the subtree inside one transaction.
+The open risk is facets: an unfiltered facet read scans every live artifact
+once for kind and project counts and once more for tags, about 255 ms at
+100,000 artifacts. The Files page requests facets beside every page, so a
+filter change waits on that scan. If it becomes noticeable, cache facets per
+filter for a short time or drop tag facets from the unfiltered view.
+
+## Linked-folder scan baseline (FOV-003)
+
+`pnpm perf:linked-folder-scan` links a 20,000-file directory (20 directories of
+1,000 small files) on a real in-process local server, then runs five warm full
+rescans. Before each scan it sends the same sequential request mix (four reads
+of the current exact version for every publish of a new version) for an idle
+window of the same length, so drift between windows cancels out.
+
+| Measure | Result | Budget |
+| --- | ---: | ---: |
+| First scan (inside the link request) | 0.89 s | — |
+| Warm full scan, maximum of 5 | 1.20 s | 5 s |
+| Read p95, idle → during scan | 0.68 → 0.58 ms | within 10% |
+| Publish p95, idle → during scan | 22.2 → 30.6 ms (+38%) | within 10% |
+| Write lock free between pages | 160 of 160 samples | every sample |
+| Pages visible one commit at a time | 10 partial counts | — |
+
+Full scans are a quarter of their budget, reads are unaffected, and scan pages
+never hold the write transaction across pages. **Publish latency during a scan
+misses the 10% budget**: across repeated runs the publish p95 rose 35–40%.
+The cause is the synchronous page transaction. Each 2,000-entry page is one
+SQLite transaction on the shared connection, and while it runs (about 10 ms
+warm, longer when the commit triggers a WAL checkpoint) the event loop serves
+nothing. A publish is three requests over about 22 ms, so roughly one in six
+overlaps a page and waits for it. Reads are short enough that few collide.
+
+This iteration cut the warm page from about 17 ms to 11 ms: a rescan that
+re-observes an unchanged entry now stamps only its scan generation, which no
+index covers, instead of rewriting the row and its three indexes (publish p95
+during scans went from +72% to +35–40%). Splitting each page into 250-entry
+transactions did not help, so the remaining cost is not proportional to the
+page size alone. Options to close the gap: apply scan pages on a dedicated
+SQLite connection in a worker thread, so the request path never waits on them;
+batch the per-entry inventory and binding lookups into set-based statements;
+or tune WAL auto-checkpointing so a scan commit never runs a checkpoint inline.
+Until one of these lands, FOV-003-F stays unproved.
 
 ## Measured baseline
 

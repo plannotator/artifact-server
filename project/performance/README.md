@@ -48,11 +48,29 @@ Publications are capped at 500, reads at 5,000, concurrency at 16, and payload s
 `pnpm perf:file-overview` seeds a temporary compact database at the file
 management spec's section 13 scale (100,000 artifacts, 20 projects, 2,000
 folders) and times overview listing, filtered listing, facets, one folder page,
-and a 100-item move batch against the section 13 budgets. Seeding writes rows
+renaming the 10,000-artifact folder, moving a 200-version, 500-thread artifact
+across projects, trashing the 10,000-artifact folder in one transaction, and a
+100-item move batch against the section 13 budgets. Seeding writes rows
 directly so the run measures reads and per-item writes at scale, not
 publication. `--artifacts` is bounded to 1,000..200,000 and `--iterations` to
 5..200. The report is written to `project/evidence/file-overview-baseline.json`;
 current results are in `FINDINGS.md`.
+
+## Linked-folder scan baseline
+
+`pnpm perf:linked-folder-scan` links a 20,000-file directory on a real local
+server, times the first scan and warm full rescans against the 5 s budget, and
+compares read and publish p95 while a scan runs with an idle window of the same
+length and request mix taken just before it. A second SQLite connection samples
+an unmeasured scan between server turns: it must take the write lock without
+waiting and must see pages land one commit at a time. `--files` is bounded to
+2,000..20,000 and `--scans` to 1..10. The report is written to
+`project/evidence/linked-folder-scan-baseline.json`.
+
+`tests/smoke/file-management-performance.test.ts` runs both baselines at the
+section 13 scale and asserts the spec's budgets (`FOV-003-B`) and the
+one-page-per-transaction behavior. It does not gate the request-latency ratio,
+which is too noisy for CI; that comparison is recorded here and in `FINDINGS.md`.
 
 ## Server-only concurrency matrix
 

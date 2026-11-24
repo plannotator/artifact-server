@@ -102,6 +102,26 @@ const grantSchema = z.object({
   expiresAt: z.string(),
 });
 const countSchema = z.object({count: z.number().int()});
+const priorEntrySchema = z.object({
+  id: z.string(),
+  relativePath: z.string(),
+  fingerprint: z.string().nullable(),
+  size: z.number().int().nullable(),
+  state: z.enum(["untracked", "tracked", "skipped"]),
+  skipReason: z.string().nullable(),
+  artifactId: z.string().nullable(),
+  pending: z.number().int(),
+});
+type PriorEntry = z.infer<typeof priorEntrySchema>;
+type ObservedEntry = Omit<PriorEntry, "id">;
+
+/** Whether an observation would leave every indexed and reported column of its entry unchanged. */
+function sameEntry(prior: PriorEntry, next: ObservedEntry): boolean {
+  return prior.relativePath === next.relativePath && prior.fingerprint === next.fingerprint
+    && prior.size === next.size && prior.state === next.state && prior.skipReason === next.skipReason
+    && prior.artifactId === next.artifactId && prior.pending === next.pending;
+}
+
 const idSchema = z.object({id: z.string()});
 
 /**
@@ -260,9 +280,11 @@ export class SqliteFolderLinks implements FolderLinkRepository {
         WHERE folder_link_id = ? AND state IN ('untracked', 'tracked')
       `).get(command.folderLinkId)).count;
       let overLimit = false;
-      const existingEntry = this.database.prepare(
-        "SELECT state FROM folder_inventory WHERE folder_link_id = ? AND disk_path = ?",
-      );
+      const existingEntry = this.database.prepare(`
+        SELECT id, relative_path AS relativePath, fingerprint, size, state, skip_reason AS skipReason,
+          artifact_id AS artifactId, pending
+        FROM folder_inventory WHERE folder_link_id = ? AND disk_path = ?
+      `);
       const findBinding = this.database.prepare(`
         SELECT id, project_id AS projectId, source_fingerprint AS fingerprint, source_status AS freshness
         FROM artifacts
@@ -291,29 +313,42 @@ export class SqliteFolderLinks implements FolderLinkRepository {
           pending = excluded.pending,
           seen_generation = excluded.seen_generation
       `);
+      // A warm rescan mostly re-observes unchanged entries. Those only take
+      // the scan generation, which no index covers, so a page stays short.
+      const stamp = this.database.prepare("UPDATE folder_inventory SET seen_generation = ? WHERE id = ?");
+      const write = (prior: PriorEntry | null, diskPath: string, next: ObservedEntry) => {
+        if (prior !== null && sameEntry(prior, next)) {
+          stamp.run(command.generation, prior.id);
+          return;
+        }
+        upsert.run(
+          `fle_${randomUUID()}`, command.folderLinkId, next.relativePath, diskPath, next.fingerprint, next.size,
+          command.observedAt, next.state, next.skipReason, next.artifactId, next.pending, command.generation,
+        );
+      };
       for (const observation of command.observations) {
-        const prior = existingEntry.get(command.folderLinkId, observation.diskPath);
+        const priorRow = existingEntry.get(command.folderLinkId, observation.diskPath);
+        const prior = priorRow === undefined ? null : priorEntrySchema.parse(priorRow);
         if (observation.kind === "skipped") {
-          upsert.run(
-            `fle_${randomUUID()}`, command.folderLinkId,
-            observation.reason === "hostile-name"
+          write(prior, observation.diskPath, {
+            relativePath: observation.reason === "hostile-name"
               ? escapeDisplayPath(observation.diskPath)
               : observation.diskPath.normalize("NFC"),
-            observation.diskPath, null, observation.size, command.observedAt, "skipped",
-            observation.reason, null, 0, command.generation,
-          );
+            fingerprint: null, size: observation.size, state: "skipped", skipReason: observation.reason,
+            artifactId: null, pending: 0,
+          });
           continue;
         }
+        const relativePath = observation.diskPath.normalize("NFC");
         const absolute = `${command.linkPath}/${observation.diskPath}`;
         const bindingRow = findBinding.get(absolute, command.projectId);
         const binding = bindingRow === undefined ? null : bindingRowSchema.parse(bindingRow);
-        const counted = prior !== undefined && (prior["state"] === "untracked" || prior["state"] === "tracked");
+        const counted = prior !== null && (prior.state === "untracked" || prior.state === "tracked");
         if (binding !== null && binding.projectId !== command.projectId) {
-          upsert.run(
-            `fle_${randomUUID()}`, command.folderLinkId, observation.diskPath.normalize("NFC"),
-            observation.diskPath, observation.fingerprint, observation.size, command.observedAt,
-            "skipped", "bound-elsewhere", binding.id, 0, command.generation,
-          );
+          write(prior, observation.diskPath, {
+            relativePath, fingerprint: observation.fingerprint, size: observation.size, state: "skipped",
+            skipReason: "bound-elsewhere", artifactId: binding.id, pending: 0,
+          });
           if (counted) entries -= 1;
           continue;
         }
@@ -325,21 +360,19 @@ export class SqliteFolderLinks implements FolderLinkRepository {
           entries += 1;
         }
         if (binding === null) {
-          upsert.run(
-            `fle_${randomUUID()}`, command.folderLinkId, observation.diskPath.normalize("NFC"),
-            observation.diskPath, observation.fingerprint, observation.size, command.observedAt,
-            "untracked", null, null, 1, command.generation,
-          );
+          write(prior, observation.diskPath, {
+            relativePath, fingerprint: observation.fingerprint, size: observation.size, state: "untracked",
+            skipReason: null, artifactId: null, pending: 1,
+          });
           continue;
         }
         const modified = binding.fingerprint !== observation.fingerprint;
         const freshness = modified ? "modified" : "in-sync";
         refreshFreshness.run(freshness, command.observedAt, binding.id, freshness);
-        upsert.run(
-          `fle_${randomUUID()}`, command.folderLinkId, observation.diskPath.normalize("NFC"),
-          observation.diskPath, observation.fingerprint, observation.size, command.observedAt,
-          "tracked", null, binding.id, modified ? 1 : 0, command.generation,
-        );
+        write(prior, observation.diskPath, {
+          relativePath, fingerprint: observation.fingerprint, size: observation.size, state: "tracked",
+          skipReason: null, artifactId: binding.id, pending: modified ? 1 : 0,
+        });
       }
       return {overLimit};
     });
