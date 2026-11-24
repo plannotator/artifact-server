@@ -60,10 +60,16 @@ import {
 import {
   actionLabel,
   formatBytes,
+  formatRelativeTime,
   formatTimestamp,
   sourceDriftDescription,
   sourceFreshnessLabel,
   displayError} from "@/lib/presentation";
+import {refinementText} from "@/i18n/messages/review-refinements";
+import {recordReviewVisit} from "@/lib/review-visits";
+import {ReviewCommandPalette, ReviewKeyboardDialog} from "./review-command-palette.tsx";
+import {ComparisonPreview} from "./comparison-preview.tsx";
+import {useCatalogOpenCounts} from "./use-catalog-open-counts.ts";
 import {reviewAppText} from "@/i18n/messages/review-app";
 import artifactServerAnimationUrl from "./assets/artifact-server.svg";
 import {ArtifactMark} from "./artifact-mark.tsx";
@@ -73,6 +79,7 @@ import {
   type ReviewCommentsInspectorHandle,
 } from "./review-comments.tsx";
 import { ReviewPreview } from "./review-preview.tsx";
+import {readReviewTheme, type ReviewTheme} from "./review-theme.ts";
 import {ReviewProjectPicker} from "./review-project-picker.tsx";
 import {dashboardPath, isDashboardPath, isSettingsPath} from "./review-routes.ts";
 import {ReviewSettings} from "./review-settings.tsx";
@@ -87,7 +94,6 @@ const DashboardPage = lazy(async () => ({
   default: (await import("../dashboard/dashboard-page.tsx")).DashboardPage,
 }));
 
-type ReviewTheme = "dawn" | "moon";
 type InspectorTab = "activity" | "comments" | "compare" | "details" | "files" | "versions";
 type ArtifactListLoadResult = "failed" | "loaded" | "skipped";
 type CatalogCommentFilter = "all" | "with" | "without";
@@ -103,14 +109,7 @@ const inspectorGapPixels = 12;
 const catalogRefreshConfirmationMilliseconds = 1_600;
 
 function reviewShortcutBlocked(event: KeyboardEvent): boolean {
-  if (
-    event.defaultPrevented
-    || event.isComposing
-    || event.altKey
-    || event.ctrlKey
-    || event.metaKey
-    || event.shiftKey
-  ) {
+  if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.altKey) {
     return true;
   }
 
@@ -155,6 +154,7 @@ interface ReviewLocation {
   readonly projectId: string | null;
   readonly versionId: string | null;
   readonly view: "focus" | null;
+  readonly threadId?: string | null;
 }
 
 function CatalogFilters({
@@ -295,72 +295,51 @@ function CatalogFilters({
 
 function ReviewKeyboardShortcuts() {
   return (
-    <Popover.Root>
-      <Popover.Trigger
-        render={(
-          <button
-            aria-label={reviewAppText.shortcuts.title}
-            className="as-keyboard-shortcuts__trigger"
-            title={reviewAppText.shortcuts.title}
-            type="button"
-          />
-        )}
-      >
-        <HugeiconsIcon aria-hidden="true" icon={KeyboardIcon} strokeWidth={1.8} />
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Positioner
-          align="end"
-          className="as-keyboard-shortcuts__positioner"
-          side="top"
-          sideOffset={8}
-        >
-          <Popover.Popup className="as-keyboard-shortcuts">
-            <Popover.Title className="as-keyboard-shortcuts__title">
-              {reviewAppText.shortcuts.title}
-            </Popover.Title>
-            <section aria-labelledby="review-shortcuts-navigation">
-              <h3 id="review-shortcuts-navigation">{reviewAppText.shortcuts.navigate}</h3>
-              <dl>
-                <div>
-                  <dt>{reviewAppText.shortcuts.previousArtifact}</dt>
-                  <dd><kbd>K</kbd><span>{reviewAppText.shortcuts.or}</span><kbd>↑</kbd></dd>
-                </div>
-                <div>
-                  <dt>{reviewAppText.shortcuts.nextArtifact}</dt>
-                  <dd><kbd>J</kbd><span>{reviewAppText.shortcuts.or}</span><kbd>↓</kbd></dd>
-                </div>
-              </dl>
-            </section>
-            <section aria-labelledby="review-shortcuts-layout">
-              <h3 id="review-shortcuts-layout">{reviewAppText.shortcuts.layout}</h3>
-              <dl>
-                <div>
-                  <dt>{reviewAppText.shortcuts.catalog}</dt>
-                  <dd><kbd>[</kbd></dd>
-                </div>
-                <div>
-                  <dt>{reviewAppText.shortcuts.inspectorOrComments}</dt>
-                  <dd><kbd>]</kbd></dd>
-                </div>
-                <div>
-                  <dt>{reviewAppText.shortcuts.fullScreen}</dt>
-                  <dd><kbd>F</kbd></dd>
-                </div>
-                <div>
-                  <dt>{reviewAppText.shortcuts.backOrClose}</dt>
-                  <dd><kbd>Esc</kbd></dd>
-                </div>
-                <div>
-                  <dt>{reviewAppText.shortcuts.revealControls}</dt>
-                  <dd><kbd>⌘ / Ctrl</kbd><span>+</span><kbd>\</kbd></dd>
-                </div>
-              </dl>
-            </section>
-          </Popover.Popup>
-        </Popover.Positioner>
-      </Popover.Portal>
-    </Popover.Root>
+    <div className="as-keyboard-shortcuts">
+      <section aria-labelledby="review-shortcuts-navigation">
+        <h3 id="review-shortcuts-navigation">{reviewAppText.shortcuts.navigate}</h3>
+        <dl>
+          <div>
+            <dt>{reviewAppText.shortcuts.previousArtifact}</dt>
+            <dd><kbd>K</kbd><span>{reviewAppText.shortcuts.or}</span><kbd>↑</kbd></dd>
+          </div>
+          <div>
+            <dt>{reviewAppText.shortcuts.nextArtifact}</dt>
+            <dd><kbd>J</kbd><span>{reviewAppText.shortcuts.or}</span><kbd>↓</kbd></dd>
+          </div>
+        </dl>
+      </section>
+      <section aria-labelledby="review-shortcuts-layout">
+        <h3 id="review-shortcuts-layout">{reviewAppText.shortcuts.layout}</h3>
+        <dl>
+          <div>
+            <dt>{reviewAppText.shortcuts.catalog}</dt>
+            <dd><kbd>[</kbd></dd>
+          </div>
+          <div>
+            <dt>{reviewAppText.shortcuts.inspectorOrComments}</dt>
+            <dd><kbd>]</kbd></dd>
+          </div>
+          <div>
+            <dt>{reviewAppText.shortcuts.fullScreen}</dt>
+            <dd><kbd>F</kbd></dd>
+          </div>
+          <div>
+            <dt>{reviewAppText.shortcuts.backOrClose}</dt>
+            <dd><kbd>Esc</kbd></dd>
+          </div>
+          <div>
+            <dt>{reviewAppText.shortcuts.revealControls}</dt>
+            <dd><kbd>⌘ / Ctrl</kbd><span>+</span><kbd>\</kbd></dd>
+          </div>
+        </dl>
+      </section>
+      <dl>
+        <div><dt>{refinementText.palette.title}</dt><dd><kbd>⌘K / Ctrl+K</kbd></dd></div>
+        <div><dt>{refinementText.palette.submit}</dt><dd><kbd>⌘↵ / Ctrl+Enter</kbd></dd></div>
+        <div><dt>{reviewAppText.shortcuts.title}</dt><dd><kbd>?</kbd></dd></div>
+      </dl>
+    </div>
   );
 }
 
@@ -377,7 +356,7 @@ export function ReviewApp() {
     "loading" | "ready" | "unauthenticated"
   >("loading");
   const [error, setError] = useState<Error | null>(null);
-  const [theme, setTheme] = useState<ReviewTheme>(readInitialTheme);
+  const [theme, setTheme] = useState<ReviewTheme>(readReviewTheme);
 
   const bootstrap = useCallback(async (): Promise<void> => {
     if (bootstrapInFlightRef.current) return;
@@ -444,7 +423,11 @@ export function ReviewApp() {
   useEffect(() => {
     document.documentElement.dataset["reviewTheme"] = theme;
     document.documentElement.classList.toggle("dark", theme === "moon");
-    window.localStorage.setItem("artifact-review-theme", theme);
+    try {
+      window.localStorage.setItem("artifact-review-theme", theme);
+    } catch {
+      // The active theme still applies when storage is blocked.
+    }
   }, [theme]);
 
   const createProject = useCallback(async (name: string): Promise<Project> => {
@@ -493,6 +476,7 @@ export function ReviewApp() {
     return (
       <Suspense fallback={null}>
         <DashboardPage
+          principalId={session.principal.id}
           onThemeChange={() => setTheme((current) => current === "moon" ? "dawn" : "moon")}
           projects={projects}
           theme={theme}
@@ -571,19 +555,46 @@ function ArtifactReview({
   const [actionNextCursor, setActionNextCursor] = useState<string | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState<Error | null>(null);
+  const [sideBySide, setSideBySide] = useState(false);
   const [comparison, setComparison] = useState<ArtifactComparison | null>(null);
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [comparisonError, setComparisonError] = useState<Error | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<ArtifactVersion | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<Error | null>(null);
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("details");
+  const [linkedThreadId, setLinkedThreadId] = useState(initialLocation.threadId ?? null);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>(linkedThreadId === null ? "details" : "comments");
+  const [keyboardDialog, setKeyboardDialog] = useState<"palette" | "shortcuts" | null>(null);
+  const [sendRequested, setSendRequested] = useState(false);
+  const keyboardReturnFocus = useRef<HTMLElement | null>(null);
+  const openKeyboardDialog = useCallback((dialog: "palette" | "shortcuts"): void => {
+    keyboardReturnFocus.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement : null;
+    setKeyboardDialog(dialog);
+  }, []);
   const [catalogOpen, setCatalogOpen] = useState(true);
-  const [inspectorOpen, setInspectorOpen] = useState(readInitialInspectorOpen);
+  const [inspectorOpen, setInspectorOpen] = useState(() => linkedThreadId !== null || readInitialInspectorOpen());
   const [opening, setOpening] = useState(false);
   const [focusMode, setFocusMode] = useState(initialLocation.view === "focus");
   const [focusCommentsOpen, setFocusCommentsOpen] = useState(false);
-  const [focusControlsCollapsed, setFocusControlsCollapsed] = useState(false);
+  const [focusControlsCollapsed, setFocusControlsCollapsed] = useState(true);
+  const [initialFocusCollapse, setInitialFocusCollapse] = useState(true);
+  const [focusHint, setFocusHint] = useState(false);
+  const hintShown = useRef(false);
+  useEffect(() => {
+    if (!focusMode) return;
+    setFocusControlsCollapsed(true);
+    setInitialFocusCollapse(true);
+    if (hintShown.current) return;
+    hintShown.current = true;
+    try {
+      if (window.localStorage.getItem("artifact-review-focus-hint") === "seen") return;
+      window.localStorage.setItem("artifact-review-focus-hint", "seen");
+    } catch {
+      // In-memory state still limits the hint to once during this page visit.
+    }
+    setFocusHint(true);
+  }, [focusMode]);
   const [focusControlsHoverArmed, setFocusControlsHoverArmed] = useState(true);
   const [focusControlsInstant, setFocusControlsInstant] = useState(false);
   const [htmlAnnotateModeActive, setHtmlAnnotateModeActive] = useState(true);
@@ -635,6 +646,7 @@ function ArtifactReview({
   }, []);
   const comments = useReviewComments({
     artifactId: selectedArtifactId,
+    onPathChanged: setSelectedPath,
     onVersionChanged: followCommentVersion,
     projectId,
     versionId: selectedVersionId,
@@ -712,6 +724,9 @@ function ArtifactReview({
   const selectedIndex = catalogItems.findIndex(
     ({artifact}) => artifact.id === selectedArtifactId,
   );
+  const catalogOpenCounts = useCatalogOpenCounts({
+    comments: comments.threads, items: catalogItems, projectId, selectedArtifactId,
+  });
   const selectedItem = selectedIndex < 0 ? null : catalogItems[selectedIndex] ?? null;
   const loadArtifacts = useCallback(async (
     cursor: string | null,
@@ -814,6 +829,7 @@ function ArtifactReview({
           api.versions(projectId, selectedArtifactId),
         ]);
         if (!current) return;
+        recordReviewVisit(session.principal.id, loadedDetails.artifact.id);
         setDetails(loadedDetails);
         setVersions(loadedVersions);
         setSelectedVersionId((selected) => {
@@ -834,7 +850,7 @@ function ArtifactReview({
     return () => {
       current = false;
     };
-  }, [projectId, selectedArtifactId]);
+  }, [projectId, selectedArtifactId, session.principal.id]);
 
   const refreshLinkedDetails = useCallback(async (): Promise<void> => {
     if (selectedArtifactId === null || projectId === "") return;
@@ -912,11 +928,12 @@ function ArtifactReview({
       path: selectedPath,
       projectId,
       versionId: selectedVersionId,
+      threadId: linkedThreadId,
       view: focusMode ? "focus" : null,
     });
     window.history.replaceState(null, "", href);
     window.sessionStorage.setItem("artifact-review-return-url", href);
-  }, [focusMode, projectId, selectedArtifactId, selectedPath, selectedVersionId]);
+  }, [focusMode, linkedThreadId, projectId, selectedArtifactId, selectedPath, selectedVersionId]);
 
   useEffect(() => {
     const restoreLocation = (): void => {
@@ -929,6 +946,12 @@ function ArtifactReview({
       setSelectedArtifactId(restored.artifactId);
       setSelectedVersionId(restored.versionId);
       setSelectedPath(restored.path);
+      setLinkedThreadId(restored.threadId ?? null);
+      if (restored.threadId !== null && restored.threadId !== undefined) {
+        setInspectorTab("comments");
+        setInspectorOpen(true);
+      }
+      setFocusHint(false);
       setFocusMode(restored.view === "focus");
     };
     window.addEventListener("popstate", restoreLocation);
@@ -993,6 +1016,7 @@ function ArtifactReview({
     selectedVersion,
   );
   const selectArtifact = useCallback((artifactId: string, versionId?: string): void => {
+    setLinkedThreadId(null);
     setDetailError(null);
     setSelectedArtifactId(artifactId);
     setSelectedVersionId(versionId ?? null);
@@ -1002,6 +1026,7 @@ function ArtifactReview({
     if (nextProjectId !== projectId) {
       setCatalogKnownTags([]);
       setCatalogTagFilters([]);
+      setLinkedThreadId(null);
       setSelectedArtifactId(null);
       setSelectedVersionId(null);
       setSelectedPath(null);
@@ -1087,6 +1112,7 @@ function ArtifactReview({
     setComparisonLoading(true);
     setComparisonError(null);
     try {
+      setSideBySide(false);
       setComparison(await api.comparison(
         details.artifact.projectId,
         details.artifact.id,
@@ -1173,7 +1199,7 @@ function ArtifactReview({
       view: "focus",
     }));
     setFocusCommentsOpen(false);
-    setFocusControlsCollapsed(false);
+    setFocusControlsCollapsed(true);
     setFocusMode(true);
   }, [projectId, selectedArtifactId, selectedPath, selectedVersionId]);
   const exitFocusMode = useCallback((): void => {
@@ -1185,14 +1211,26 @@ function ArtifactReview({
       view: null,
     }));
     setFocusCommentsOpen(false);
-    setFocusControlsCollapsed(false);
+    setFocusHint(false);
     setFocusMode(false);
   }, [projectId, selectedArtifactId, selectedPath, selectedVersionId]);
   useEffect(() => {
     const handleReviewShortcut = (event: KeyboardEvent): void => {
-      if (homeOpen || reviewShortcutBlocked(event)) return;
+      if (homeOpen || keyboardDialog !== null || reviewShortcutBlocked(event)) return;
 
       const key = event.key.toLowerCase();
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && key === "k") {
+        event.preventDefault();
+        openKeyboardDialog("palette");
+        return;
+      }
+      if (event.metaKey || event.ctrlKey) return;
+      if (key === "?") {
+        event.preventDefault();
+        openKeyboardDialog("shortcuts");
+        return;
+      }
+      if (event.shiftKey) return;
       if (key === "escape") {
         if (focusCommentsOpen) {
           event.preventDefault();
@@ -1251,12 +1289,15 @@ function ArtifactReview({
     focusMode,
     homeOpen,
     htmlAnnotateModeActive,
+    keyboardDialog,
+    openKeyboardDialog,
     selectArtifact,
     selectedIndex,
     selectedVersionId,
   ]);
   const hideFocusControls = (event: ReactMouseEvent<HTMLButtonElement>): void => {
     previewPanelRef.current?.focus({preventScroll: true});
+    setInitialFocusCollapse(false);
     setFocusControlsHoverArmed(event.detail === 0);
     setFocusControlsCollapsed(true);
     if (event.detail === 0) {
@@ -1266,6 +1307,7 @@ function ArtifactReview({
     }
   };
   const showFocusControls = (): void => {
+    setFocusHint(false);
     setFocusControlsHoverArmed(true);
     setFocusControlsCollapsed(false);
     window.requestAnimationFrame(() => focusCommentsButtonRef.current?.focus({preventScroll: true}));
@@ -1287,6 +1329,7 @@ function ArtifactReview({
         return;
       }
       event.preventDefault();
+      setFocusHint(false);
       setFocusControlsInstant(true);
       setFocusControlsCollapsed(false);
       window.requestAnimationFrame(() => {
@@ -1546,9 +1589,10 @@ function ArtifactReview({
             />
           ) : null}
           {catalogItems.map(({artifact, commentCount, versionCount}) => {
-            const displayedCommentCount = artifact.id === selectedArtifactId && !comments.loading
-              ? comments.threads.length
-              : commentCount;
+            const openCount = catalogOpenCounts.get(artifact.id) ?? 0;
+            const timestamp = artifact.createdAt;
+            const now = Date.now();
+            const relative = Date.parse(timestamp) <= now ? formatRelativeTime(timestamp, now) : timestamp;
             return (
               <button
                 aria-current={artifact.id === selectedArtifactId ? "true" : undefined}
@@ -1560,19 +1604,22 @@ function ArtifactReview({
               >
                 <span className="as-artifact-card__title-row">
                   <span className="as-artifact-card__name">{artifact.name}</span>
-                  <AccessPill access={artifact.accessSetting} />
+                  {artifact.accessSetting === "account_required" ? null : <AccessPill access={artifact.accessSetting} />}
                 </span>
                 <span className="as-artifact-card__meta">
                   <span className="as-artifact-card__history">
                     <span>{reviewAppText.catalog.versionCount(versionCount)}</span>
-                    <time dateTime={artifact.createdAt}>{formatTimestamp(artifact.createdAt)}</time>
+                    <time aria-label={timestamp} dateTime={timestamp} title={timestamp}>{relative}</time>
                   </span>
-                  <span className="as-artifact-card__counts">
-                    <span>
-                      <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
-                      {reviewAppText.catalog.commentCount(displayedCommentCount)}
+                  {openCount === 0 && commentCount === 0 ? null : (
+                    <span className="as-artifact-card__counts">
+                      <span aria-label={openCount > 0 ? refinementText.openThreads(openCount) : undefined}
+                        data-open-count={openCount > 0 ? openCount : undefined}>
+                        <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
+                        {openCount > 0 ? openCount : reviewAppText.catalog.commentCount(commentCount)}
+                      </span>
                     </span>
-                  </span>
+                  )}
                 </span>
               </button>
             );
@@ -1617,7 +1664,11 @@ function ArtifactReview({
                 {listLoading ? reviewAppText.general.loading : reviewAppText.general.loadMore}
               </button>
             )}
-            <ReviewKeyboardShortcuts />
+            <button aria-label={reviewAppText.shortcuts.title} aria-keyshortcuts="?"
+              className="as-keyboard-shortcuts__trigger" onClick={() => openKeyboardDialog("shortcuts")}
+              title={reviewAppText.shortcuts.title} type="button">
+              <HugeiconsIcon aria-hidden="true" icon={KeyboardIcon} strokeWidth={1.8} />
+            </button>
           </div>
         </footer>
             </motion.aside>
@@ -1645,6 +1696,7 @@ function ArtifactReview({
               <div
                 className="as-focus-controls-dock"
                 data-collapsed={focusControlsCollapsed}
+                data-initial-collapse={initialFocusCollapse}
                 data-comments-open={focusCommentsOpen}
                 data-hover-armed={focusControlsHoverArmed}
                 data-instant={focusControlsInstant}
@@ -1723,7 +1775,7 @@ function ArtifactReview({
                 <button
                   aria-hidden={!focusControlsCollapsed}
                   aria-keyshortcuts="Meta+\\ Control+\\"
-                  aria-label={reviewAppText.focus.showControls}
+                  aria-label={refinementText.focusRestore(reviewAppText.focus.showControls, openCommentCount)}
                   className="as-focus-controls__restore"
                   onClick={showFocusControls}
                   ref={focusControlsRestoreRef}
@@ -1732,7 +1784,9 @@ function ArtifactReview({
                   type="button"
                 >
                   <HugeiconsIcon aria-hidden="true" icon={ArrowLeft01Icon} strokeWidth={1.8} />
+                  <span className="as-focus-controls__count">{openCommentCount}</span>
                 </button>
+                {focusHint && focusControlsCollapsed ? <p className="as-focus-controls__hint">{refinementText.focusHint}</p> : null}
               </div>
               <aside
                 aria-hidden={!focusCommentsOpen}
@@ -1761,6 +1815,9 @@ function ArtifactReview({
                   <ReviewCommentsInspector
                     canComment={canComment}
                     canDeleteAny={canDeleteAnyComment}
+                    linkedThreadId={linkedThreadId}
+                    onSendRequestHandled={() => setSendRequested(false)}
+                    sendRequested={sendRequested && focusCommentsOpen}
                     principalId={session.principal.id}
                     ref={commentsInspectorRef}
                     session={comments}
@@ -1861,7 +1918,10 @@ function ArtifactReview({
             {detailError === null ? null : (
               <div className="as-preview-error" role="alert">{displayError(detailError)}</div>
             )}
-            {selectedArtifactId === null ? (
+            {!focusMode && inspectorTab === "compare" && comparison !== null && sideBySide
+              && comparison.from.artifactId === selectedArtifactId ? (
+              <ComparisonPreview comparison={comparison} isLight={theme === "dawn"} key={`${comparison.from.id}:${comparison.to.id}`} />
+            ) : selectedArtifactId === null ? (
               <PreviewWelcome />
             ) : detailLoading && details === null ? (
               <PreviewWelcome description={reviewAppText.preview.readingDescription} title={reviewAppText.preview.readingTitle} />
@@ -1914,6 +1974,7 @@ function ArtifactReview({
                 opening={opening}
                 projectId={projectId}
                 readOnly={!canComment}
+                selectionAttempt={comments.selectionAttempt}
                 selectedThreadId={comments.selectedThreadId}
                 selectedPath={selectedPath}
                 version={selectedVersion}
@@ -2042,8 +2103,11 @@ function ArtifactReview({
               <ReviewCommentsInspector
                 canComment={canComment}
                 canDeleteAny={canDeleteAnyComment}
+                linkedThreadId={linkedThreadId}
+                onSendRequestHandled={() => setSendRequested(false)}
                 principalId={session.principal.id}
                 ref={commentsInspectorRef}
+                sendRequested={sendRequested}
                 session={comments}
                 versionId={selectedVersionId}
               />
@@ -2077,13 +2141,58 @@ function ArtifactReview({
                 onLoadMore={() => void loadActions(actionNextCursor)}
               />
             ) : (
-              <ComparisonInspector comparison={comparison} error={comparisonError} />
+              <ComparisonInspector
+                comparison={comparison}
+                error={comparisonError}
+                onViewChange={setSideBySide}
+                sideBySide={sideBySide}
+              />
             )}
           </div>
               </motion.aside>
             </motion.div>
           </div>
         ) : null}
+        {keyboardDialog === null ? null : (
+          <ReviewKeyboardDialog
+            close={() => setKeyboardDialog(null)}
+            restoreFocus={keyboardReturnFocus.current}
+            title={keyboardDialog === "palette" ? refinementText.palette.title : reviewAppText.shortcuts.title}
+          >
+            {keyboardDialog === "shortcuts" ? <ReviewKeyboardShortcuts /> : (
+              <ReviewCommandPalette
+                commands={[
+                  {label: refinementText.palette.switchVersion, run: () => {
+                    exitFocusMode();
+                    setInspectorOpen(true);
+                    setInspectorTab("versions");
+                  }},
+                  {label: refinementText.palette.annotate, run: () => setHtmlAnnotateModeActive(true)},
+                  {label: refinementText.palette.send, run: () => {
+                    if (focusMode) setFocusCommentsOpen(true);
+                    else {
+                      setInspectorOpen(true);
+                      setInspectorTab("comments");
+                    }
+                    setSendRequested(true);
+                  }},
+                  {label: refinementText.palette.compare, run: () => {
+                    exitFocusMode();
+                    setInspectorOpen(true);
+                    setInspectorTab(comparison === null ? "versions" : "compare");
+                  }},
+                  {label: refinementText.palette.theme, run: onThemeChange},
+                ]}
+                onClose={() => setKeyboardDialog(null)}
+                onSelect={(artifactId, versionId) => {
+                  exitFocusMode();
+                  selectArtifact(artifactId, versionId);
+                }}
+                projectId={projectId}
+              />
+            )}
+          </ReviewKeyboardDialog>
+        )}
       </main>
     </div>
   );
@@ -2478,9 +2587,13 @@ function ActivityInspector({
 function ComparisonInspector({
   comparison,
   error,
+  onViewChange,
+  sideBySide,
 }: {
   readonly comparison: ArtifactComparison | null;
   readonly error: Error | null;
+  readonly onViewChange: (sideBySide: boolean) => void;
+  readonly sideBySide: boolean;
 }) {
   if (error !== null) return <InlineState description={displayError(error)} title={reviewAppText.comparison.unavailableTitle} />;
   if (comparison === null) return <InlineState description={reviewAppText.comparison.noneDescription} title={reviewAppText.comparison.noneTitle} />;
@@ -2492,6 +2605,14 @@ function ComparisonInspector({
   ];
   return (
     <div className="as-inspector-stack">
+      <div aria-label={refinementText.compare.label} className="as-comparison-view" role="group">
+        <button aria-pressed={!sideBySide} className="as-button" onClick={() => onViewChange(false)} type="button">
+          {refinementText.compare.files}
+        </button>
+        <button aria-pressed={sideBySide} className="as-button" onClick={() => onViewChange(true)} type="button">
+          {refinementText.compare.sideBySide}
+        </button>
+      </div>
       <InspectorSection count={2} title={reviewAppText.comparison.title(comparison.from.number, comparison.to.number)}>
         <div className="as-comparison-summary">
           <span>{reviewAppText.comparison.addedCount(comparison.added.length)}</span>
@@ -2501,7 +2622,7 @@ function ComparisonInspector({
           <span>{reviewAppText.comparison.unchangedCount(comparison.unchangedCount)}</span>
         </div>
       </InspectorSection>
-      <InspectorSection count={changedEntries.length} title={reviewAppText.comparison.changedFiles}>
+      {sideBySide ? null : <InspectorSection count={changedEntries.length} title={reviewAppText.comparison.changedFiles}>
         {changedEntries.length === 0 ? <p className="as-inspector-empty">{reviewAppText.comparison.sameFiles}</p> : (
           <ol className="as-comparison-list">
             {changedEntries.map((entry) => (
@@ -2509,7 +2630,7 @@ function ComparisonInspector({
             ))}
           </ol>
         )}
-      </InspectorSection>
+      </InspectorSection>}
     </div>
   );
 }
@@ -2784,12 +2905,6 @@ function ReviewGate({
   );
 }
 
-function readInitialTheme(): ReviewTheme {
-  return window.localStorage.getItem("artifact-review-theme") === "dawn"
-    ? "dawn"
-    : "moon";
-}
-
 function readInitialInspectorOpen(): boolean {
   return window.matchMedia("(min-width: 1181px)").matches;
 }
@@ -2800,6 +2915,7 @@ function readReviewLocation(): ReviewLocation {
     artifactId: search.get("artifact"),
     path: search.get("path"),
     projectId: search.get("project"),
+    threadId: search.get("thread"),
     versionId: search.get("version"),
     view: search.get("view") === "focus" ? "focus" : null,
   };
@@ -2813,6 +2929,7 @@ function reviewHref(location: ReviewLocation): string {
   if (location.artifactId !== null) search.set("artifact", location.artifactId);
   if (location.versionId !== null) search.set("version", location.versionId);
   if (location.path !== null) search.set("path", location.path);
+  if (location.threadId !== null && location.threadId !== undefined) search.set("thread", location.threadId);
   if (location.view !== null) search.set("view", location.view);
   return search.size === 0 ? "/review" : `/review?${search}`;
 }

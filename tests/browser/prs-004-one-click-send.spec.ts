@@ -133,8 +133,9 @@ test.describe("PRS-004 one-click send and undo", () => {
 
       // A single card is the secondary path. A send the agent already
       // delivered refuses the undo, and says so.
-      await cards.filter({hasText: bodies.second})
-        .getByRole("button", {name: "Send to solo"}).click();
+      const secondCard = cards.filter({hasText: bodies.second});
+      await secondCard.focus();
+      await secondCard.getByRole("button", {name: "Send to solo"}).click();
       await expect(page.getByText("Sent 1 thread to solo")).toBeVisible();
       const claimed = await agent.client.claim(agent.agentId, 2);
       expect(claimed.status).toBe(200);
@@ -184,6 +185,7 @@ test.describe("PRS-004 one-click send and undo", () => {
         localStorageKeys: [
           "artifact-review-locale",
           "artifact-review-theme",
+          "artifact-review-visits",
           expect.stringMatching(/^dispatch-default:/u),
         ],
         sessionStorageKeys: ["artifact-review-return-url"],

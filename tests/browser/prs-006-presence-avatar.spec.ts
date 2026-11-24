@@ -223,8 +223,7 @@ test.describe("PRS-006 presence avatar", () => {
         versionId: published.version.id,
       });
       await page.getByRole("button", {name: "Reload"}).click();
-      await expect(page.getByText("pres disconnected — pick another"))
-        .toBeVisible();
+      await expect(page.getByRole("link", {name: "Connect an agent"})).toBeVisible();
 
       // A second agent connects; the disconnected one keeps its hollow ring
       // and its row refuses selection, stating when it was last seen.
@@ -232,6 +231,7 @@ test.describe("PRS-006 presence avatar", () => {
         connectionKey: "prs-006-backup-connection-key",
         name: "backup",
       });
+      await expect(page.getByText("pres disconnected — pick another")).toBeVisible();
       await page.getByRole("button", {
         name: "Choose agent or send with a note",
       }).first().click();
@@ -270,6 +270,7 @@ test.describe("PRS-006 presence avatar", () => {
         localStorageKeys: [
           "artifact-review-locale",
           "artifact-review-theme",
+          "artifact-review-visits",
           expect.stringMatching(/^dispatch-default:/u),
         ],
         sessionStorageKeys: ["artifact-review-return-url"],

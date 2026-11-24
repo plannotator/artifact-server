@@ -11,6 +11,7 @@ import {ToggleGroup, ToggleGroupItem} from "@/components/ui/toggle-group";
 import {LanguageSwitch} from "@/i18n/language-switch";
 import {dashboardText} from "@/i18n/messages/dashboard";
 import {ArtifactMark} from "../review/artifact-mark.tsx";
+import {DashboardAttention} from "./dashboard-attention.tsx";
 import {ActivitySection} from "./dashboard-activity.tsx";
 import {dashboardWindows} from "./dashboard-format.ts";
 import {
@@ -37,10 +38,12 @@ const text = dashboardText.page;
 /** Read-only overview of artifacts, review, storage, and activity. */
 export function DashboardPage({
   onThemeChange,
+  principalId,
   projects,
   theme,
 }: {
   readonly onThemeChange: () => void;
+  readonly principalId: string;
   readonly projects: readonly Project[];
   readonly theme: "dawn" | "moon";
 }) {
@@ -48,6 +51,7 @@ export function DashboardPage({
   const [state, setState] = useState<InsightsState>({status: "loading"});
   const [attempt, setAttempt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  const projectIds = useMemo(() => projects.map((project) => project.id), [projects]);
   const projectNames = useMemo(
     () => new Map(projects.map((project) => [project.id, project.name])),
     [projects],
@@ -155,9 +159,7 @@ export function DashboardPage({
         {state.status === "ready"
           ? (
             <>
-              {/* The trail leads; readings, one chart and one table follow it. */}
-              {/* Two columns that stack on their own, so no panel stretches to
-                  a neighbour's height and leaves a dead band. */}
+              <DashboardAttention principalId={principalId} projectId={selection.projectId} projectIds={projectIds} />
               <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-12">
                 <div className="grid min-w-0 gap-6 xl:col-span-8">
                   <ActivitySection
@@ -166,7 +168,6 @@ export function DashboardPage({
                     projectNames={projectNames}
                     window={selection.window}
                   />
-                  <StorageSection insights={state.insights} projectNames={projectNames} />
                 </div>
                 <div className="grid min-w-0 gap-6 xl:col-span-4">
                   <DashboardHeadline insights={state.insights} />
@@ -174,6 +175,14 @@ export function DashboardPage({
                 </div>
                 <div className="min-w-0 xl:col-span-12">
                   <OverviewSection insights={state.insights} now={now} projectNames={projectNames} />
+                </div>
+                <div className="min-w-0 xl:col-span-12">
+                  <details className="rounded-[var(--radius-card)] border border-border bg-card p-4">
+                    <summary className="cursor-pointer font-medium">{dashboardText.storage.title}</summary>
+                    <div className="mt-3">
+                      <StorageSection insights={state.insights} projectNames={projectNames} />
+                    </div>
+                  </details>
                 </div>
               </div>
             </>

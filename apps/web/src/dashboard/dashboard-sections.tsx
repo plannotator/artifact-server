@@ -47,8 +47,7 @@ function Reading({
 }
 
 /**
- * The readings panel: one value set large (what the installation holds),
- * then three counted readings, cut from one surface with hairline seams.
+ * The dashboard overview readings in a compact grid.
  */
 export function DashboardHeadline({insights}: {readonly insights: Insights}) {
   const {overview, review, storage} = insights;
@@ -60,16 +59,12 @@ export function DashboardHeadline({insights}: {readonly insights: Insights}) {
       aria-label={readingsText.label}
       className="grid min-w-0 gap-px self-start overflow-hidden rounded-[var(--radius-card)] border border-border bg-border"
     >
-      <div className="grid gap-1 bg-card px-6 py-5">
-        <h2 className="text-sm font-medium text-muted-foreground">{readingsText.stored}</h2>
-        <p className="font-mono text-4xl leading-none tabular-nums slashed-zero">
-          {formatBytes(storage.storedBytes)}
-        </p>
-        <p className="text-sm text-muted-foreground">
-          {readingsText.acrossEveryVersion(formatBytes(storage.logicalBytes))}
-        </p>
-      </div>
       <dl className="grid gap-px">
+        <Reading
+          detail={readingsText.acrossEveryVersion(formatBytes(storage.logicalBytes))}
+          label={readingsText.stored}
+          value={formatBytes(storage.storedBytes)}
+        />
         <Reading
           detail={readingsText.versionsDetail(overview.versionCount, overview.versionsInWindow, inWindow)}
           label={readingsText.artifacts}
@@ -261,7 +256,7 @@ export function ReviewSection({
             : reviewText.oldestOpened(formatRelativeTime(review.oldestOpenThreadAt, now))}
         </Quiet>
       </div>
-      <div className="grid min-w-0 grid-cols-1 gap-3">
+      <div className="grid min-w-0 grid-cols-1 gap-3" id="dispatches">
         <Subheading>{reviewText.dispatches}</Subheading>
         <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
           {dispatchStates.map((entry) => (

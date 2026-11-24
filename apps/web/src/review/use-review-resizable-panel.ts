@@ -47,12 +47,23 @@ function readStoredWidth(
   minWidth: number,
   maxWidth: number,
 ): number {
-  const storedValue = window.localStorage.getItem(storageKey);
-  if (storedValue === null) return clamp(defaultWidth, minWidth, maxWidth);
-  const stored = Number(storedValue);
-  return Number.isFinite(stored)
-    ? clamp(stored, minWidth, maxWidth)
-    : clamp(defaultWidth, minWidth, maxWidth);
+  const fallback = clamp(defaultWidth, minWidth, maxWidth);
+  try {
+    const storedValue = window.localStorage.getItem(storageKey);
+    if (storedValue === null) return fallback;
+    const stored = Number(storedValue);
+    return Number.isFinite(stored) ? clamp(stored, minWidth, maxWidth) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function rememberWidth(storageKey: string, width: number): void {
+  try {
+    window.localStorage.setItem(storageKey, String(width));
+  } catch {
+    // A blocked store does not affect the active panel.
+  }
 }
 
 /**
@@ -173,7 +184,7 @@ export function useReviewResizablePanel({
           onClickRef.current();
         } else {
           setWidth(widthRef.current);
-          window.localStorage.setItem(storageKey, String(widthRef.current));
+          rememberWidth(storageKey, widthRef.current);
         }
       }
       cleanup();
@@ -198,7 +209,7 @@ export function useReviewResizablePanel({
     widthRef.current = nextWidth;
     applyRef.current(nextWidth);
     setWidth(nextWidth);
-    window.localStorage.setItem(storageKey, String(nextWidth));
+    rememberWidth(storageKey, nextWidth);
   }, [maxWidth, minWidth, storageKey]);
 
   return {

@@ -1,0 +1,96 @@
+{
+  "target": "local",
+  "success": true,
+  "recordedAt": "2026-11-24T08:23:54.746Z",
+  "command": "npx -y pnpm@10.34.3 exec playwright test",
+  "fullRunPassedTests": 45,
+  "numPassedTests": 16,
+  "numFailedTests": 0,
+  "testResults": [
+    {
+      "name": "tests/browser/uxr-review-refinements.spec.ts",
+      "assertionResults": [
+        {
+          "title": "UXR-001-B: dashboard links each attention item and groups consecutive publishes",
+          "status": "passed",
+          "duration": 2588
+        },
+        {
+          "title": "UXR-001-F: blocked storage leaves counts and the dashboard available",
+          "status": "passed",
+          "duration": 1017
+        },
+        {
+          "title": "UXR-002-B: catalog rows show non-default access, open counts, and exact relative times",
+          "status": "passed",
+          "duration": 574
+        },
+        {
+          "title": "UXR-002-F: future and malformed dates fall back to the supplied timestamp",
+          "status": "passed",
+          "duration": 545
+        },
+        {
+          "title": "UXR-003-B: an addressed open thread carries its chip and leaves Awaiting you when resolved",
+          "status": "passed",
+          "duration": 714
+        },
+        {
+          "title": "UXR-003-F: other dispatch states and resolved threads stay out of Awaiting you",
+          "status": "passed",
+          "duration": 600
+        },
+        {
+          "title": "UXR-004-B: click and Enter reveal anchors, and disconnected reviewers get a connection link",
+          "status": "passed",
+          "duration": 2370
+        },
+        {
+          "title": "UXR-004-F: focused cards expose the entire split button and a keyboard-reachable reply",
+          "status": "passed",
+          "duration": 570
+        },
+        {
+          "title": "UXR-005-B: modifier Enter posts a comment and reply once and clears their drafts",
+          "status": "passed",
+          "duration": 692
+        },
+        {
+          "title": "UXR-005-F: blank, oversized and composing input cannot submit",
+          "status": "passed",
+          "duration": 2536
+        },
+        {
+          "title": "UXR-006-B: palette finds artifacts and commands, and the shortcut sheet lists bindings",
+          "status": "passed",
+          "duration": 668
+        },
+        {
+          "title": "UXR-006-F: editable fields keep their keys and dialogs trap and restore focus",
+          "status": "passed",
+          "duration": 471
+        },
+        {
+          "title": "UXR-007-B: side-by-side comparison renders both versions and synchronizes scrolling",
+          "status": "passed",
+          "duration": 1013
+        },
+        {
+          "title": "UXR-007-F: mixed entries show unavailable while HTML stays in an opaque sandbox",
+          "status": "passed",
+          "duration": 810
+        },
+        {
+          "title": "UXR-008-B: focus mode starts collapsed, shows the count, and teaches the shortcut once",
+          "status": "passed",
+          "duration": 901
+        },
+        {
+          "title": "UXR-008-F: blocked storage does not disable the focus hint or controls",
+          "status": "passed",
+          "duration": 654
+        }
+      ]
+    }
+  ]
+}
