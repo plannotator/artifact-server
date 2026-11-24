@@ -56,6 +56,7 @@ export const errorCodes = {
   linkLimit: "LINK_LIMIT",
   captureBatchTooLarge: "CAPTURE_BATCH_TOO_LARGE",
   folderLinkRevisionConflict: "FOLDER_LINK_REVISION_CONFLICT",
+  folderLinkInTrash: "FOLDER_LINK_IN_TRASH",
   publishConflict: "PUBLISH_CONFLICT",
   projectArchived: "PROJECT_ARCHIVED",
   projectConflict: "PROJECT_CONFLICT",
@@ -419,7 +420,7 @@ export class FolderLinkFailure extends Schema.TaggedError<FolderLinkFailure>()(
   {
     ...messageField,
     reason: Schema.Literals([
-      "not-found", "entry-not-found", "overlap", "limit", "batch-too-large", "revision",
+      "not-found", "entry-not-found", "overlap", "limit", "batch-too-large", "revision", "in-trash",
     ]),
   },
 ) {}

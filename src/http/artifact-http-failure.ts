@@ -34,6 +34,7 @@ const folderLinkFailureStatus = {
   limit: {code: errorCodes.linkLimit, status: 409},
   "batch-too-large": {code: errorCodes.captureBatchTooLarge, status: 422},
   revision: {code: errorCodes.folderLinkRevisionConflict, status: 409},
+  "in-trash": {code: errorCodes.folderLinkInTrash, status: 409},
 } as const;
 
 /** Stable protocol-safe projection shared by HTTP and MCP adapters. */

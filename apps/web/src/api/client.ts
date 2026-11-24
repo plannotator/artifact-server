@@ -605,6 +605,7 @@ const folderLinkSchema = z.object({
   id: z.string(),
   ignore: z.array(z.string()),
   ignoredCount: z.number().int(),
+  inTrash: z.boolean(),
   lastScanCompletedAt: z.string().nullable(),
   lastScanStartedAt: z.string().nullable(),
   overLimitReason: z.enum(["entries", "ignore-file"]).nullable(),

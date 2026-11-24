@@ -282,6 +282,7 @@ function LinkCard({link, now, onChanged, onSelect, selected}: {
           ? link.lastScanCompletedAt === null ? text.neverScanned : text.lastScan(formatRelativeTime(link.lastScanCompletedAt, now))
           : text.scanActivity[link.scanActivity]}
       </p>
+      {link.inTrash ? <p className="text-xs text-muted-foreground">{text.inTrashHint}</p> : null}
       {link.state === "unavailable" ? <p className="text-xs text-destructive">{text.unavailableHint}</p> : null}
       {link.state === "over-limit" ? (
         <p className="text-xs text-destructive">
@@ -290,24 +291,28 @@ function LinkCard({link, now, onChanged, onSelect, selected}: {
       ) : null}
       {error === null ? null : <p className="text-xs text-destructive" role="alert">{displayError(error)}</p>}
       <div className="flex flex-wrap gap-2">
-        <Button
-          disabled={busy}
-          onClick={() => void run(() => api.scanFolderLink(link.id))}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          {text.scanNow}
-        </Button>
-        <Button
-          disabled={busy}
-          onClick={() => void run(() => api.updateFolderLink(link, {paused: !link.paused}))}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          {link.paused ? text.resume : text.pause}
-        </Button>
+        {link.inTrash ? null : (
+          <>
+            <Button
+              disabled={busy}
+              onClick={() => void run(() => api.scanFolderLink(link.id))}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {text.scanNow}
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={() => void run(() => api.updateFolderLink(link, {paused: !link.paused}))}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {link.paused ? text.resume : text.pause}
+            </Button>
+          </>
+        )}
         <Dialog onOpenChange={setConfirmUnlink} open={confirmUnlink}>
           <DialogTrigger render={<Button disabled={busy} size="sm" type="button" variant="ghost" />}>{text.unlink}</DialogTrigger>
           <DialogContent>
@@ -438,10 +443,15 @@ function InventoryPanel({link, onChanged}: {
         </div>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button disabled={capturing || link.pendingCount === 0} onClick={() => void capture("all")} size="sm" type="button">
+        <Button
+          disabled={capturing || link.inTrash || link.pendingCount === 0}
+          onClick={() => void capture("all")}
+          size="sm"
+          type="button"
+        >
           {capturing ? text.capturing : text.captureAll}
         </Button>
-        {selected.size === 0 ? null : (
+        {selected.size === 0 || link.inTrash ? null : (
           <Button disabled={capturing} onClick={() => void capture([...selected])} size="sm" type="button" variant="outline">
             {text.captureSelected(selected.size)}
           </Button>

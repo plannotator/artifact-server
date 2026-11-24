@@ -281,6 +281,21 @@ function makeLinkedFolderService(
   });
 
   /**
+   * Find a link the caller may change, scan, or capture through. A link whose
+   * folder is in Trash stays paused until the folder is recovered (section 10.6).
+   */
+  const requireLiveLink = Effect.fnUntraced(function*(command: LinkCommand) {
+    const link = yield* requireLink(command);
+    if (link.inTrash) {
+      return yield* new FolderLinkFailure({
+        reason: "in-trash",
+        message: "The linked folder is in Trash. Recover the folder to resume the link.",
+      });
+    }
+    return link;
+  });
+
+  /**
    * The path ladder of section 9.2 for one already canonical path. A linked
    * directory may be a configured root itself; files must sit below one.
    */
@@ -394,8 +409,8 @@ function makeLinkedFolderService(
       if (link === null) {
         return yield* new FolderLinkFailure({reason: "not-found", message: "The folder link does not exist."});
       }
-      // A scheduled scan queued before a pause never runs after it.
-      if (scheduled && link.paused) return link;
+      // A scheduled scan queued before a pause or a trash never runs after it.
+      if (link.inTrash || (scheduled && link.paused)) return link;
       return yield* scanLink(link);
     });
     return yield* linkQueue.withPermits(1)(installationScans.withPermits(1)(scan)).pipe(
@@ -468,7 +483,7 @@ function makeLinkedFolderService(
     command: UpdateFolderLinkCommand,
   ) {
     yield* authorization.requireArtifactCreation(command.principal);
-    const link = yield* requireLink(command);
+    const link = yield* requireLiveLink(command);
     const ignore = command.ignore === undefined ? undefined : yield* parseIgnore(command.ignore);
     let change: UpdateFolderLink = {
       expectedRevision: command.expectedRevision,
@@ -498,7 +513,7 @@ function makeLinkedFolderService(
 
   const scanNow = Effect.fn("LinkedFolderService.scanNow")(function*(command: LinkCommand) {
     yield* authorization.requireArtifactCreation(command.principal);
-    const link = yield* requireLink(command);
+    const link = yield* requireLiveLink(command);
     return view(yield* runScan(link.id));
   });
 
@@ -599,7 +614,7 @@ function makeLinkedFolderService(
         });
       }
     }
-    const link = yield* requireLink(command);
+    const link = yield* requireLiveLink(command);
     const batchKey = yield* parseIdempotencyKey(command.idempotencyKey);
     const inputDigest = digest(["capture", command.principal.id, link.id, command.entryIds]);
     const stored = yield* call(() => repository.readCaptureResults(link.id, batchKey));
@@ -681,7 +696,7 @@ function makeLinkedFolderService(
 
   const acceptRelink = Effect.fn("LinkedFolderService.acceptRelink")(function*(command: AcceptRelinkCommand) {
     yield* authorization.requireArtifactCreation(command.principal);
-    const link = yield* requireLink(command);
+    const link = yield* requireLiveLink(command);
     const [entry] = yield* call(() => repository.findInventoryEntries(link.id, [command.entryId]));
     if (entry === undefined || entry.state !== "untracked") {
       return yield* new FolderLinkFailure({reason: "entry-not-found", message: "The inventory entry does not exist."});
@@ -711,7 +726,7 @@ function makeLinkedFolderService(
     command: LinkCommand & {readonly entryId: string},
   ) {
     yield* authorization.requireArtifactCreation(command.principal);
-    const link = yield* requireLink(command);
+    const link = yield* requireLiveLink(command);
     const entry = yield* requireUntrackedEntry(link, command.entryId);
     const contentToken = entryLiveContentToken(entry.id);
     if (contentToken === null) {
@@ -773,7 +788,7 @@ function makeLinkedFolderService(
     ));
     if (grant === null) return yield* sessionRequired;
     const link = yield* call(() => repository.findFolderLink(dependencies.installationId, grant.folderLinkId));
-    if (link === null || link.projectId !== grant.projectId) return yield* sessionRequired;
+    if (link === null || link.inTrash || link.projectId !== grant.projectId) return yield* sessionRequired;
     const entry = yield* requireUntrackedEntry(link, grant.entryId);
     const path = yield* verifyEntryPath(link, entry);
     const source = yield* call(() => dependencies.sources.openVerifiedSource(path));
@@ -785,8 +800,14 @@ function makeLinkedFolderService(
     return view(yield* runScan(folderLinkId, true));
   });
 
+  /**
+   * Links the indexer watches and scans. A link whose folder is in Trash is
+   * left out, so its watcher stops; once the folder is recovered the indexer
+   * meets it as new and runs a fresh scan.
+   */
   const indexerLinks = Effect.fn("LinkedFolderService.indexerLinks")(function*() {
-    return yield* call(() => repository.listFolderLinks(dependencies.installationId, null));
+    const links = yield* call(() => repository.listFolderLinks(dependencies.installationId, null));
+    return links.filter((link) => !link.inTrash);
   });
 
   /** After a process start, no link is trusted until its own scan passes (section 8). */

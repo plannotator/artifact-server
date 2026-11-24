@@ -429,6 +429,9 @@ A file renamed on disk appears as the old entry `missing` and a new entry `untra
 - **Pause** stops watching and scheduled scans and keeps the inventory.
 - **Unlink** removes the link and its inventory. Captured artifacts stay as ordinary linked artifacts with their individual bindings, and they stay in their folders.
 - **Trashing** the linked folder pauses the link. Recovering the folder resumes it with a fresh scan. Purging the folder removes the link.
+  - While the folder is in Trash, the link reads as `paused` with `inTrash: true`, its watcher stops, and no scheduled scan runs. Resume, ignore changes, explicit scans, captures, relink acceptance, and live previews answer `folder-link-in-trash`. Unlink and inventory reads still work. An owner's own pause is kept: a recovered folder resumes the link only if the owner had not paused it.
+  - Purging the folder deletes the link with its inventory, capture records, and live grants. Captured artifacts in the purged group are purged with it; nothing on disk changes.
+  - A cross-project move of a linked folder carries the link into the destination project and ends its live-preview grants.
 
 ### 10.7 Artifact Server never writes to the linked directory
 

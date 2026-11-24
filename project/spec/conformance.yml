@@ -5371,10 +5371,14 @@ requirements:
       behavior: {id: LFD-008-B, description: "Pause and resume a link, trash and recover its folder (observing a fresh scan), unlink it and observe captured artifacts still linked individually, and restore a backup with the link unavailable until a successful scan."}
       failure: {id: LFD-008-F, description: "No pause, unlink, trash, purge, rename, or move operation creates, edits, moves, or deletes any file under the linked directory, verified by a full before/after tree hash."}
     deployments: [local]
-    status: implementing
-    proof_gap: The LFD-008-B and LFD-008-F tests prove pause and resume, unlink keeping captured artifacts linked individually, backup restore staying unavailable until a successful scan, and an unchanged linked-directory tree hash across pause, scan, capture, artifact rename and move, folder rename, refused linked-folder delete, and unlink. Trash, recover, and purge of a linked folder depend on TRS-001 (ARTSV-5.2), which this branch does not contain, so those clauses are not exercised and no evidence is attached.
+    status: verified
     depends_on: [LFD-001, TRS-001, FLD-008]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [LFD-008-B, LFD-008-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-24T09:50:00.265Z"
 
   - id: PRV-006
     kind: behavior

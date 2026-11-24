@@ -322,6 +322,15 @@ export class SqliteTrash implements TrashRepository {
       UPDATE artifacts SET purged_at = ?
       WHERE project_id = ? AND trash_group_id = ? AND deleted_at IS NOT NULL AND purged_at IS NULL
     `).run(command.createdAt, command.projectId, folder.trashGroupId);
+    // Purging a linked folder removes its folder link (file-management-spec.md
+    // section 10.6); inventory, capture records, and live grants cascade with it.
+    // Nothing under the linked directory is touched.
+    this.database.prepare(`
+      DELETE FROM folder_links
+      WHERE project_id = ? AND folder_id IN (
+        SELECT id FROM folders WHERE project_id = ? AND trash_group_id = ? AND purged_at IS NULL
+      )
+    `).run(command.projectId, command.projectId, folder.trashGroupId);
     this.database.prepare(`
       UPDATE folders SET purged_at = ? WHERE project_id = ? AND trash_group_id = ? AND purged_at IS NULL
     `).run(command.createdAt, command.projectId, folder.trashGroupId);

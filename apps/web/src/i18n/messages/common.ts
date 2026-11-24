@@ -157,6 +157,7 @@ const serverErrorText = new Map(Object.entries({
   LINK_LIMIT: "已達連結資料夾的數量上限。",
   CAPTURE_BATCH_TOO_LARGE: "一次最多擷取 100 個不重複的項目。",
   FOLDER_LINK_REVISION_CONFLICT: "這個連結已有變更，請重新載入後再試一次。",
+  FOLDER_LINK_IN_TRASH: "這個連結的資料夾在垃圾桶裡。從垃圾桶復原資料夾後，連結才會繼續。",
   PUBLISH_CONFLICT: "這個 Artifact 在你開啟後已有變更，請重新載入後再試一次。",
   PROJECT_ARCHIVED: "這個專案已封存。既有的 Artifact 仍可查看，但無法新增內容。",
   PROJECT_CONFLICT: "已經有同名的專案。",

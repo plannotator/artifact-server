@@ -26,6 +26,7 @@ const linkRowSchema = z.object({
   ignoreJson: z.string(),
   status: z.enum(["active", "unavailable", "over-limit"]),
   paused: z.number().int(),
+  inTrash: z.number().int(),
   overLimitReason: z.enum(["entries", "ignore-file"]).nullable(),
   lastScanStartedAt: z.string().nullable(),
   lastScanCompletedAt: z.string().nullable(),
@@ -40,6 +41,7 @@ const linkRowSchema = z.object({
 
 const linkColumns = `id, installation_id AS installationId, project_id AS projectId,
   folder_id AS folderId, path, root_device AS rootDevice, ignore_json AS ignoreJson, status, paused,
+  EXISTS (SELECT 1 FROM folders f WHERE f.id = folder_links.folder_id AND f.trashed_at IS NOT NULL) AS inTrash,
   over_limit_reason AS overLimitReason, last_scan_started_at AS lastScanStartedAt,
   last_scan_completed_at AS lastScanCompletedAt,
   (SELECT COUNT(*) FROM folder_inventory i WHERE i.folder_link_id = folder_links.id
@@ -132,7 +134,7 @@ export class SqliteFolderLinks implements FolderLinkRepository {
       }
       this.assertProjectActive(command.installationId, command.projectId);
       const folder = this.database.prepare(
-        "SELECT id FROM folders WHERE id = ? AND project_id = ? AND installation_id = ?",
+        "SELECT id FROM folders WHERE id = ? AND project_id = ? AND installation_id = ? AND trashed_at IS NULL",
       ).get(command.folderId, command.projectId, command.installationId);
       if (folder === undefined) {
         throw new FolderFailure({reason: "not-found", message: "The folder does not exist."});
@@ -414,7 +416,8 @@ export class SqliteFolderLinks implements FolderLinkRepository {
       let depth = this.folderDepth(command.projectId, parentId);
       for (const segment of command.segments) {
         const child = this.database.prepare(`
-          SELECT id FROM folders WHERE project_id = ? AND parent_folder_id = ? AND name_key = ?
+          SELECT id FROM folders
+          WHERE project_id = ? AND parent_folder_id = ? AND name_key = ? AND trashed_at IS NULL
         `).get(command.projectId, parentId, segment.nameKey);
         if (child !== undefined) {
           parentId = idSchema.parse(child).id;
@@ -592,8 +595,13 @@ export class SqliteFolderLinks implements FolderLinkRepository {
 }
 
 function toLinkRecord(row: z.infer<typeof linkRowSchema>): FolderLinkRecord {
-  const {ignoreJson, paused, ...rest} = row;
-  return {...rest, ignore: z.array(z.string()).parse(JSON.parse(ignoreJson)), paused: paused === 1};
+  const {ignoreJson, inTrash, paused, ...rest} = row;
+  return {
+    ...rest,
+    ignore: z.array(z.string()).parse(JSON.parse(ignoreJson)),
+    inTrash: inTrash === 1,
+    paused: paused === 1,
+  };
 }
 
 function toEntryRecord(row: z.infer<typeof entryRowSchema>): InventoryEntryRecord {

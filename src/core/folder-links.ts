@@ -59,6 +59,11 @@ export interface FolderLinkRecord {
   readonly ignore: readonly string[];
   readonly status: FolderLinkStatus;
   readonly paused: boolean;
+  /**
+   * The linked Artifact Server folder is in Trash. A trashed link is paused
+   * (no watching, scheduled scans, or captures) until the folder is recovered.
+   */
+  readonly inTrash: boolean;
   readonly overLimitReason: OverLimitReason | null;
   readonly lastScanStartedAt: string | null;
   readonly lastScanCompletedAt: string | null;
@@ -156,8 +161,8 @@ export interface LinkedBindingSummary {
 }
 
 /** The state a reader sees for one link record. */
-export function folderLinkState(link: Pick<FolderLinkRecord, "paused" | "status">): FolderLinkState {
-  return link.paused ? "paused" : link.status;
+export function folderLinkState(link: Pick<FolderLinkRecord, "inTrash" | "paused" | "status">): FolderLinkState {
+  return link.paused || link.inTrash ? "paused" : link.status;
 }
 
 // Names that cannot be shown or addressed safely: control characters,

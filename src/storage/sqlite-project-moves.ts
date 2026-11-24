@@ -152,6 +152,7 @@ export class SqliteProjectMoves {
         WHERE project_id = ? AND trashed_at IS NOT NULL AND parent_folder_id IN (SELECT value FROM json_each(?))
       `).run(command.createdAt, command.projectId, folderIds);
       this.rewrite(command, artifacts);
+      this.moveFolderLinks(command, folderIds);
       // One statement re-parents the subtree root as it changes scope, so the
       // sibling-name index never sees it under its old parent in the destination.
       this.database.prepare(`
@@ -177,6 +178,29 @@ export class SqliteProjectMoves {
       );
       return result;
     });
+  }
+
+  /**
+   * A folder link follows its live folder into the destination project, so its
+   * scans keep tracking the moved captures. Live-preview grants were issued
+   * for the source project and end with the move.
+   */
+  private moveFolderLinks(command: FolderProjectMove, folderIds: string): void {
+    const links = `SELECT id FROM folder_links WHERE project_id = ? AND folder_id IN (SELECT value FROM json_each(?))`;
+    const collision = this.database.prepare(`
+      SELECT 1 FROM folder_links moving JOIN folder_links taken
+        ON taken.project_id = ? AND taken.idempotency_key = moving.idempotency_key
+      WHERE moving.id IN (${links})
+    `).get(command.toProjectId, command.projectId, folderIds);
+    if (collision !== undefined) {
+      throw new IdempotencyConflict({
+        message: "A folder link in the destination project already uses this link's idempotency key.",
+      });
+    }
+    this.database.prepare(`DELETE FROM folder_entry_live_grants WHERE folder_link_id IN (${links})`)
+      .run(command.projectId, folderIds);
+    this.database.prepare(`UPDATE folder_links SET project_id = ? WHERE id IN (${links})`)
+      .run(command.toProjectId, command.projectId, folderIds);
   }
 
   async locateArtifact(installationId: string, artifactId: string): Promise<ArtifactLocation | null> {
