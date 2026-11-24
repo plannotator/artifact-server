@@ -66,6 +66,7 @@ export const hostMessageSchema = z.discriminatedUnion("type", [
   z.object({
     annotateModeActive: z.boolean().optional(),
     annotations: z.array(reviewAnnotationSchema),
+    comparison: z.boolean().optional(),
     baseHref: z.string().nullable(),
     entryPath: z.string(),
     html: z.string(),
@@ -92,6 +93,11 @@ export const hostMessageSchema = z.discriminatedUnion("type", [
     v: versionSchema,
   }),
   z.object({
+    progress: z.number().min(0).max(1),
+    type: z.literal("as-review-scroll"),
+    v: versionSchema,
+  }),
+  z.object({
     threadId: z.string().nullable(),
     type: z.literal("as-review-focus"),
     v: versionSchema,
@@ -106,6 +112,11 @@ export type ReviewTheme = Extract<HostMessage, {type: "as-review-theme"}>;
 
 /** Every message the review frame sends back to the host. */
 export const frameMessageSchema = z.discriminatedUnion("type", [
+  z.object({
+    progress: z.number().min(0).max(1),
+    type: z.literal("as-comparison-scrolled"),
+    v: versionSchema,
+  }),
   z.object({
     type: z.literal("as-review-ready"),
     v: versionSchema,
@@ -151,3 +162,9 @@ export function reviewAnchorFrom(
   }
   return anchor;
 }
+
+/** An opaque artifact frame can report only its normalized comparison position. */
+export const comparisonScrollSchema = z.object({
+  progress: z.number().min(0).max(1),
+  type: z.literal("as-comparison-scrolled"),
+});

@@ -60,8 +60,10 @@ test.describe("DRF-001 draft durability", () => {
       await page.goto(reviewUrl);
       await page.getByRole("tab", {name: "Comments"}).click();
 
+      const thread = page.getByRole("article").filter({hasText: "Seeded thread for the reply draft."});
       const newThread = page.getByLabel("Add a comment");
-      await page.getByRole("button", {exact: true, name: "Reply"}).click();
+      await thread.focus();
+      await thread.getByRole("button", {exact: true, name: "Reply"}).click();
       const reply = page.getByLabel("Reply", {exact: true});
       const newText = "A careful multi-paragraph thought about the heading.";
       const replyText = "Reply in progress, do not lose me.";
@@ -69,7 +71,8 @@ test.describe("DRF-001 draft durability", () => {
       await reply.fill(replyText);
       await page.getByRole("button", {exact: true, name: "Cancel"}).click();
       await expect(page.getByRole("textbox", {exact: true, name: "Reply"})).toHaveCount(0);
-      await page.getByRole("button", {exact: true, name: "Reply"}).click();
+      await thread.focus();
+      await thread.getByRole("button", {exact: true, name: "Reply"}).click();
       await expect(page.getByRole("textbox", {exact: true, name: "Reply"}))
         .toHaveValue(replyText);
       await page.waitForTimeout(mirrorSettle);
@@ -104,7 +107,8 @@ test.describe("DRF-001 draft durability", () => {
       await page.getByRole("button", {name: "Post reply"}).click();
       await expect(page.getByText(replyText)).toBeVisible();
       await expect(page.getByLabel("Reply", {exact: true})).toHaveCount(0);
-      await expect(page.getByRole("button", {exact: true, name: "Reply"})).toBeVisible();
+      await thread.focus();
+      await expect(thread.getByRole("button", {exact: true, name: "Reply"})).toBeVisible();
 
       // Discarding the new-thread draft empties it; neither survives a reload.
       await page.getByRole("button", {name: "Discard"}).click();
@@ -113,7 +117,8 @@ test.describe("DRF-001 draft durability", () => {
       await page.getByRole("tab", {name: "Comments"}).click();
       await expect(page.getByLabel("Add a comment")).toHaveValue("");
       await expect(page.getByLabel("Reply", {exact: true})).toHaveCount(0);
-      await expect(page.getByRole("button", {exact: true, name: "Reply"})).toBeVisible();
+      await thread.focus();
+      await expect(thread.getByRole("button", {exact: true, name: "Reply"})).toBeVisible();
       await expect(page.locator("[data-draft-marker]")).toHaveCount(0);
     } finally {
       await stopBrowserFixture(fixture);

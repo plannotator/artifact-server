@@ -5408,9 +5408,14 @@ requirements:
       behavior: {id: UXR-001-B, description: "With one addressed open thread, one failed dispatch, and one artifact published after its last visit, the band shows 1/1/1 with links that open each item; three consecutive publishes by one actor show as one expandable row."}
       failure: {id: UXR-001-F, description: "With storage that throws, the unseen-versions count reads as unknown and the rest of the dashboard still renders; zero counts render as zero, never as missing."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [DSH-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [UXR-001-B, UXR-001-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-24T08:23:54.746Z"
 
   - id: UXR-002
     kind: behavior
@@ -5421,9 +5426,14 @@ requirements:
       behavior: {id: UXR-002-B, description: "A private artifact with no comments shows neither pill nor count; a public-link artifact shows its pill; an artifact with two open threads shows a highlighted 2; the time reads relative and its accessible name carries the exact timestamp."}
       failure: {id: UXR-002-F, description: "A future or invalid timestamp never renders a negative or NaN relative time and falls back to the exact timestamp."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: []
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [UXR-002-B, UXR-002-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-24T08:23:54.746Z"
 
   - id: UXR-003
     kind: behavior
@@ -5434,9 +5444,14 @@ requirements:
       behavior: {id: UXR-003-B, description: "After an agent marks a dispatch addressed, its open threads appear under Awaiting you with an Addressed chip, and resolving one removes it from the filter and its count."}
       failure: {id: UXR-003-F, description: "Queued, claimed, delivered, failed, or canceled dispatches and resolved threads never appear under Awaiting you."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [SND-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [UXR-003-B, UXR-003-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-24T08:23:54.746Z"
 
   - id: UXR-004
     kind: behavior
@@ -5447,9 +5462,14 @@ requirements:
       behavior: {id: UXR-004-B, description: "Activating a card by click or Enter selects it and scrolls its anchor into view; reply and send controls are reachable by keyboard on the focused card; with no agent the panel shows the connect prompt."}
       failure: {id: UXR-004-F, description: "Hidden actions are never removed from the keyboard order of the focused card, and no control label is truncated at the default inspector width."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [CMT-019]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [UXR-004-B, UXR-004-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-24T08:23:54.746Z"
 
   - id: UXR-005
     kind: behavior
@@ -5460,9 +5480,14 @@ requirements:
       behavior: {id: UXR-005-B, description: "Typing a comment and pressing Control-Enter posts it once and clears the draft; the same works in a reply composer."}
       failure: {id: UXR-005-F, description: "An empty or over-limit body does not submit, and Enter during IME composition never submits."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [DRF-001]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [UXR-005-B, UXR-005-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-24T08:23:54.746Z"
 
   - id: UXR-006
     kind: behavior
@@ -5473,9 +5498,14 @@ requirements:
       behavior: {id: UXR-006-B, description: "Control-K, typing part of an artifact name, and Enter opens that artifact; a command entry enters annotate mode; ? opens the sheet listing J/K, F, [, ], Esc, Command-backslash, Command-K, and Command-Enter."}
       failure: {id: UXR-006-F, description: "Neither opens while typing in an input or composer, Escape closes and restores focus to the previous element, and an empty search shows no results without errors."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: []
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [UXR-006-B, UXR-006-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-24T08:23:54.746Z"
 
   - id: UXR-007
     kind: behavior
@@ -5486,9 +5516,14 @@ requirements:
       behavior: {id: UXR-007-B, description: "Comparing v1 and v2 and choosing Side by side shows both versions' entry documents in two frames labeled with their version numbers; synchronized scrolling keeps both scrolled together."}
       failure: {id: UXR-007-F, description: "Each frame keeps the opaque-origin sandbox of single-version review, and a version without an HTML entry shows a clear unavailable state instead of a blank frame."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [CMT-014]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [UXR-007-B, UXR-007-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-24T08:23:54.746Z"
 
   - id: UXR-008
     kind: behavior
@@ -5499,6 +5534,11 @@ requirements:
       behavior: {id: UXR-008-B, description: "Pressing F shows only the restore button with the open count and a hint; Command-backslash or the button expands the toolbar; the hint does not appear on the second entry."}
       failure: {id: UXR-008-F, description: "With storage that throws the hint still shows and focus mode works; existing focus-mode tests for downloading and commenting still pass."}
     deployments: [local]
-    status: specified
+    status: verified
     depends_on: [PUB-013]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [UXR-008-B, UXR-008-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-24T08:23:54.746Z"

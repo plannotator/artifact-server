@@ -5,6 +5,7 @@ import {ErrorPanel} from "@/components/product";
 import {Button} from "@/components/ui/button";
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
 import {Skeleton} from "@/components/ui/skeleton";
+import {refinementText} from "@/i18n/messages/review-refinements";
 import {dashboardText} from "@/i18n/messages/dashboard";
 import {formatRelativeTime, formatTimestamp} from "@/lib/presentation";
 import {activityActorLabel, activityLabel, artifactReviewHref} from "./dashboard-format.ts";
@@ -100,14 +101,29 @@ export function ActivitySection({
                 ? <p className="text-sm text-muted-foreground">{text.empty}</p>
                 : (
                   <ol aria-label={text.trail} className="ml-1 grid border-l border-[var(--color-rule-2)]">
-                    {state.events.map((event) => (
-                      <ActivityRow
-                        event={event}
-                        key={event.id}
-                        now={now}
-                        projectName={projectId === null ? projectNames.get(event.projectId) ?? null : null}
-                      />
-                    ))}
+                    {groupActivity(state.events).map(([first, ...repeated]) => {
+                      const row = (event: InsightActivityEvent) => (
+                        <ActivityRow
+                          event={event}
+                          key={event.id}
+                          now={now}
+                          projectName={projectId === null ? projectNames.get(event.projectId) ?? null : null}
+                        />
+                      );
+                      if (repeated.length === 0) return row(first);
+                      const label = activityLabel(first.kind);
+                      const verb = (label.lead || label.trail).trim();
+                      return (
+                        <li className="py-2.5 pl-6 text-sm" key={first.id}>
+                          <details>
+                            <summary className="cursor-pointer font-medium">
+                              {refinementText.activityGroup(activityActorLabel(first.actor) ?? "", verb, repeated.length + 1)}
+                            </summary>
+                            <ol className="ml-2 border-l border-border">{[first, ...repeated].map(row)}</ol>
+                          </details>
+                        </li>
+                      );
+                    })}
                   </ol>
                 )}
               {state.nextCursor === null
@@ -132,6 +148,20 @@ export function ActivitySection({
       </CardContent>
     </Card>
   );
+}
+
+function groupActivity(events: readonly InsightActivityEvent[]): [InsightActivityEvent, ...InsightActivityEvent[]][] {
+  const groups: [InsightActivityEvent, ...InsightActivityEvent[]][] = [];
+  for (const event of events) {
+    const previous = groups.at(-1);
+    if (previous !== undefined && event.actor !== null
+      && previous[0].actor?.principalId === event.actor.principalId && previous[0].kind === event.kind) {
+      previous.push(event);
+    } else {
+      groups.push([event]);
+    }
+  }
+  return groups;
 }
 
 function ActivityRow({

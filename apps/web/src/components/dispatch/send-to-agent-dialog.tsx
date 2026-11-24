@@ -50,15 +50,15 @@ const rememberedAgentSchema = z.object({
 });
 
 function readRememberedAgent(storageKey: string): RememberedAgent | null {
-  const stored = window.localStorage.getItem(storageKey);
-  if (stored === null) return null;
   try {
+    const stored = window.localStorage.getItem(storageKey);
+    if (stored === null) return null;
     const parsed = rememberedAgentSchema.safeParse(JSON.parse(stored));
     if (parsed.success) return parsed.data;
+    window.localStorage.removeItem(storageKey);
   } catch {
     // Invalid local convenience state is disposable; it is never authority.
   }
-  window.localStorage.removeItem(storageKey);
   return null;
 }
 
@@ -189,7 +189,11 @@ export function SendToAgentControl({
 
   useEffect(() => {
     if (!rememberedDefaultMissing) return;
-    window.localStorage.removeItem(storageKey);
+    try {
+      window.localStorage.removeItem(storageKey);
+    } catch {
+      // The stale destination still clears from this mount.
+    }
     setRememberedPreference({agent: null, storageKey});
   }, [rememberedDefaultMissing, storageKey]);
 
@@ -225,7 +229,11 @@ export function SendToAgentControl({
 
   const rememberAgent = (agent: AgentPresence): void => {
     const next = {displayName: agent.displayName, id: agent.id};
-    window.localStorage.setItem(storageKey, JSON.stringify(next));
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(next));
+    } catch {
+      // The destination remains remembered for this mount.
+    }
     setRememberedPreference({agent: next, storageKey});
   };
 

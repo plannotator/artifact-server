@@ -122,6 +122,7 @@ test.describe("Artifact Server Review wave three", () => {
         .filter({hasText: "Agent reply already in this conversation"});
       await expect(agentReply.getByRole("button", {name: "Edit"})).toHaveCount(0);
 
+      await conversation.focus();
       await conversation.getByRole("button", {exact: true, name: "Reply"}).click();
       await conversation.getByRole("textbox", {exact: true, name: "Reply"})
         .fill("Human follow-up");

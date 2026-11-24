@@ -43,20 +43,25 @@ export function CommentComposer({
 }) {
   const [body, setBody] = useState(initialBody);
   const [pending, setPending] = useState(false);
+  const submitting = useRef(false);
   const attemptKey = useRef<string | null>(null);
   const trimmed = body.trim();
   const tooLong = trimmed.length > maximumCharacters;
 
   const submit = async () => {
-    if (trimmed === "" || tooLong) return;
-    attemptKey.current ??= crypto.randomUUID();
+    if (trimmed === "" || tooLong || submitting.current) return;
+    const key = attemptKey.current ??= crypto.randomUUID();
+    submitting.current = true;
     setPending(true);
-    const accepted = await onSubmit(trimmed, attemptKey.current);
-    setPending(false);
-    if (!accepted) return;
-    attemptKey.current = null;
-    setBody("");
-    onBodyChange?.("");
+    try {
+      if (!await onSubmit(trimmed, key)) return;
+      attemptKey.current = null;
+      setBody("");
+      onBodyChange?.("");
+    } finally {
+      submitting.current = false;
+      setPending(false);
+    }
   };
 
   const discardDraft = () => {
@@ -96,6 +101,15 @@ export function CommentComposer({
         onChange={(event) => {
           setBody(event.currentTarget.value);
           onBodyChange?.(event.currentTarget.value);
+        }}
+        onKeyDown={(event) => {
+          if (
+            event.key === "Enter" && (event.metaKey || event.ctrlKey)
+            && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229
+          ) {
+            event.preventDefault();
+            void submit();
+          }
         }}
         placeholder={text.placeholder}
         value={body}

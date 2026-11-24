@@ -5,6 +5,7 @@ import { installDraftGuard } from "@/components/comments/comment-drafts";
 
 import { htmlLang } from "@/i18n/locale";
 
+import {readReviewTheme} from "./review-theme.ts";
 import { ReviewApp } from "./review-app.tsx";
 import "../index.css";
 import "./review.css";
@@ -19,9 +20,7 @@ document.documentElement.lang = htmlLang;
 // logout purge must not depend on which screen is mounted.
 installDraftGuard();
 
-const initialTheme = window.localStorage.getItem("artifact-review-theme") === "dawn"
-  ? "dawn"
-  : "moon";
+const initialTheme = readReviewTheme();
 document.documentElement.dataset["reviewTheme"] = initialTheme;
 // The colour palette is a theme class (src/themes/); Plannotator is the default.
 document.documentElement.classList.add("theme-plannotator");

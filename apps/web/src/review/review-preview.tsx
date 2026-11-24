@@ -43,7 +43,7 @@ type FrameDocumentRenderer = (
   documentBaseHref: string,
 ) => {readonly baseHref: string | null; readonly html: string};
 
-const htmlFrameDocument: FrameDocumentRenderer = (source, documentBaseHref) => ({
+export const htmlFrameDocument: FrameDocumentRenderer = (source, documentBaseHref) => ({
   baseHref: documentBaseHref,
   html: source,
 });
@@ -73,6 +73,7 @@ export function ReviewPreview({
   opening,
   projectId,
   readOnly,
+  selectionAttempt,
   selectedThreadId,
   selectedPath,
   version,
@@ -94,6 +95,7 @@ export function ReviewPreview({
   readonly opening: boolean;
   readonly projectId: string;
   readonly readOnly: boolean;
+  readonly selectionAttempt: number;
   readonly selectedThreadId: string | null;
   readonly selectedPath: string | null;
   readonly version: ArtifactVersion | null;
@@ -145,6 +147,7 @@ export function ReviewPreview({
     onUnanchoredChange,
     projectId,
     readOnly,
+    selectionAttempt,
     selectedThreadId,
     version,
   };
@@ -283,7 +286,9 @@ function EntryDataPreview({
   );
 }
 
-type FrameProps = Omit<Parameters<typeof HtmlPreview>[0], "renderDocument">;
+type FrameProps = Omit<Parameters<typeof HtmlPreview>[0], "actions" | "renderDocument"> & {
+  readonly actions: PreviewActions;
+};
 
 /**
  * Markdown renders inside the same opaque-origin review sandbox as HTML, with
@@ -453,11 +458,12 @@ function entryContentUrl(versionBaseUrl: string, entryPath: string): string {
   ).toString();
 }
 
-function HtmlPreview({
+export function HtmlPreview({
   actions,
   annotateModeActive,
   annotations,
   artifactId,
+  comparison,
   entry,
   isLight,
   onAnnotateModeChange,
@@ -467,13 +473,19 @@ function HtmlPreview({
   projectId,
   readOnly,
   renderDocument,
+  selectionAttempt = 0,
   selectedThreadId,
   version,
 }: {
-  readonly actions: PreviewActions;
+  readonly actions?: PreviewActions;
   readonly annotateModeActive: boolean;
   readonly annotations: readonly ReviewAnnotation[];
   readonly artifactId: string;
+  readonly comparison?: {
+    readonly onScroll: (progress: number) => void;
+    readonly position: {readonly progress: number} | null;
+    readonly title: string;
+  };
   readonly entry: PreviewEntry;
   readonly isLight: boolean;
   readonly onAnnotateModeChange: (active: boolean) => void;
@@ -487,6 +499,7 @@ function HtmlPreview({
   readonly projectId: string;
   readonly readOnly: boolean;
   readonly renderDocument: FrameDocumentRenderer;
+  readonly selectionAttempt?: number;
   readonly selectedThreadId: string | null;
   readonly version: ArtifactVersion;
 }) {
@@ -559,6 +572,11 @@ function HtmlPreview({
         setFrameReady(true);
         return;
       }
+      if (message.type === "as-comparison-scrolled") {
+        comparison?.onScroll(message.progress);
+        return;
+      }
+      if (comparison !== undefined) return;
       if (message.type === "as-review-select") {
         onSelectAnnotation(message.threadId);
         return;
@@ -586,6 +604,7 @@ function HtmlPreview({
     return () => window.removeEventListener("message", onMessage);
   }, [
     annotations,
+    comparison,
     entry.path,
     onAnnotateModeChange,
     onSelectAnnotation,
@@ -601,6 +620,7 @@ function HtmlPreview({
       annotateModeActive,
       annotations: [...annotations],
       baseHref: previewDocument.baseHref,
+      comparison: comparison !== undefined,
       entryPath: previewDocument.entryPath,
       html: previewDocument.html,
       isLight,
@@ -609,7 +629,7 @@ function HtmlPreview({
       type: "as-review-init",
       v: reviewProtocolVersion,
     });
-  }, [annotateModeActive, annotations, frameReady, isLight, postToFrame, previewDocument, readOnly]);
+  }, [annotateModeActive, annotations, comparison, frameReady, isLight, postToFrame, previewDocument, readOnly]);
 
   useEffect(() => {
     if (!initialisedRef.current) return;
@@ -649,7 +669,17 @@ function HtmlPreview({
       type: "as-review-focus",
       v: reviewProtocolVersion,
     });
-  }, [postToFrame, selectedThreadId]);
+  }, [frameReady, postToFrame, selectionAttempt, selectedThreadId]);
+
+  const comparisonPosition = comparison?.position ?? null;
+  useEffect(() => {
+    if (!frameReady || comparisonPosition === null) return;
+    postToFrame({
+      progress: comparisonPosition.progress,
+      type: "as-review-scroll",
+      v: reviewProtocolVersion,
+    });
+  }, [comparisonPosition, frameReady, postToFrame]);
 
   if (loading) {
     return (
@@ -660,6 +690,9 @@ function HtmlPreview({
     );
   }
   if (error !== null) {
+    if (actions === undefined) {
+      return <PreviewState description={displayError(error)} title={text.unavailableTitle} />;
+    }
     return (
       <TerminalPreviewState
         actions={actions}
@@ -676,7 +709,7 @@ function HtmlPreview({
       className="as-artifact-frame"
       ref={frameRef}
       src="/review-frame"
-      title={text.frameTitle(version.version.artifactId, version.version.number)}
+      title={comparison?.title ?? text.frameTitle(version.version.artifactId, version.version.number)}
     />
   );
 }

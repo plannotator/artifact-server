@@ -5,8 +5,10 @@ import {
 } from "@plannotator/ui/components/html-viewer";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import {withComparisonScroll} from "./comparison-scroll.ts";
 import { withBaseHref } from "./base-href.ts";
 import {
+  comparisonScrollSchema,
   hostMessageSchema,
   reviewAnchorFrom,
   reviewProtocolVersion,
@@ -19,6 +21,7 @@ import {
 interface ReviewSession {
   readonly annotateModeActive: boolean;
   readonly annotations: Annotation[];
+  readonly comparison: boolean;
   readonly entryPath: string;
   readonly html: string;
   readonly readOnly: boolean;
@@ -47,11 +50,13 @@ function toAnnotation(review: ReviewAnnotation): Annotation {
 }
 
 function sessionFrom(init: ReviewInit): ReviewSession {
+  const html = withBaseHref(init.html, init.baseHref);
   return {
     annotateModeActive: init.annotateModeActive ?? true,
     annotations: init.annotations.map(toAnnotation),
+    comparison: init.comparison === true,
     entryPath: init.entryPath,
-    html: withBaseHref(init.html, init.baseHref),
+    html: init.comparison === true ? withComparisonScroll(html) : html,
     readOnly: init.readOnly,
     supportsAnnotateMode: init.annotateModeActive !== undefined,
   };
@@ -75,6 +80,10 @@ function applyTheme(theme: ReviewInit | ReviewTheme): void {
 export function ReviewFrame(): React.ReactNode {
   const [session, setSession] = useState<ReviewSession | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const comparePaneRef = useRef<HTMLDivElement>(null);
+  const comparisonActive = useRef(false);
+  const previousFocus = useRef<string | null>(null);
+  const focusFrame = useRef(0);
   const viewerRef = useRef<ViewerHandle | null>(null);
   const paintedIdsRef = useRef<ReadonlySet<string>>(new Set<string>());
 
@@ -87,6 +96,12 @@ export function ReviewFrame(): React.ReactNode {
     // no host to authenticate against, so it never listens and never speaks.
     const framed = window.parent !== window;
     const onMessage = (event: MessageEvent<unknown>): void => {
+      const pane = comparePaneRef.current?.querySelector("iframe")?.contentWindow;
+      if (pane !== undefined && pane !== null && event.source === pane && event.origin === "null") {
+        const scroll = comparisonScrollSchema.safeParse(event.data);
+        if (scroll.success) send({...scroll.data, v: reviewProtocolVersion});
+        return;
+      }
       if (event.source !== window.parent) return;
       if (event.origin !== window.location.origin) return;
       const parsed = hostMessageSchema.safeParse(event.data);
@@ -94,6 +109,7 @@ export function ReviewFrame(): React.ReactNode {
       const message = parsed.data;
       if (message.type === "as-review-init") {
         applyTheme(message);
+        comparisonActive.current = message.comparison === true;
         paintedIdsRef.current = new Set(
           message.annotations.map((annotation) => annotation.threadId),
         );
@@ -119,13 +135,25 @@ export function ReviewFrame(): React.ReactNode {
         );
         return;
       }
-      setSelectedThreadId(message.threadId);
+      if (message.type === "as-review-scroll") {
+        if (comparisonActive.current) pane?.postMessage({type: "as-comparison-scroll-to", progress: message.progress}, "*");
+        return;
+      }
+      window.cancelAnimationFrame(focusFrame.current);
+      if (message.threadId !== null && previousFocus.current === message.threadId) {
+        setSelectedThreadId(null);
+        focusFrame.current = window.requestAnimationFrame(() => setSelectedThreadId(message.threadId));
+      } else {
+        setSelectedThreadId(message.threadId);
+      }
+      previousFocus.current = message.threadId;
     };
     if (framed) {
       window.addEventListener("message", onMessage);
       send({type: "as-review-ready", v: reviewProtocolVersion});
     }
     return () => {
+      window.cancelAnimationFrame(focusFrame.current);
       window.removeEventListener("message", onMessage);
     };
   }, [send]);
@@ -169,6 +197,7 @@ export function ReviewFrame(): React.ReactNode {
   }, [send]);
 
   const handleSelect = useCallback((threadId: string | null): void => {
+    previousFocus.current = threadId;
     setSelectedThreadId(threadId);
     send({threadId, type: "as-review-select", v: reviewProtocolVersion});
   }, [send]);
@@ -193,7 +222,7 @@ export function ReviewFrame(): React.ReactNode {
     );
   }
 
-  return (
+  const viewer = (
     <HtmlViewer
       annotateModeActive={session.annotateModeActive}
       annotations={session.annotations}
@@ -217,4 +246,5 @@ export function ReviewFrame(): React.ReactNode {
       title={`Artifact review: ${session.entryPath}`}
     />
   );
+  return session.comparison ? <div ref={comparePaneRef}>{viewer}</div> : viewer;
 }

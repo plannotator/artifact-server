@@ -113,7 +113,7 @@ test.describe("Artifact Server frontend MVP", () => {
         catalogFooterBox.x + catalogFooterBox.width / 2,
       );
       await shortcutTrigger.click();
-      const shortcutMap = fixture.page.locator(".as-keyboard-shortcuts[data-open]");
+      const shortcutMap = fixture.page.getByRole("dialog", {name: "Keyboard shortcuts"});
       await expect(shortcutMap).toBeVisible();
       await expect(shortcutMap).toContainText("Previous artifact");
       await expect(shortcutMap).toContainText("Inspector or comments");
@@ -128,6 +128,9 @@ test.describe("Artifact Server frontend MVP", () => {
         "Esc",
         "⌘ / Ctrl",
         "\\",
+        "⌘K / Ctrl+K",
+        "⌘↵ / Ctrl+Enter",
+        "?",
       ]);
       await fixture.page.keyboard.press("Escape");
       await expect(shortcutMap).toBeHidden();
@@ -308,7 +311,7 @@ test.describe("Artifact Server frontend MVP", () => {
         name: "Reload",
       })).toBeVisible();
       await expect(fixture.page.getByRole("button", {
-        name: /Review fixture.*2 versions.*1 comment/u,
+        name: /Review fixture.*2 versions.*1 open thread/u,
       })).toBeVisible();
       await expect(async () => {
         const stored = await listThreadsOverApi(
@@ -456,6 +459,7 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(fullScreen).toHaveAttribute("aria-keyshortcuts", "F");
       await fixture.page.locator(".as-preview-panel").focus();
       await fixture.page.keyboard.press("f");
+      await fixture.page.getByRole("button", {name: /Show viewer controls/u}).click();
       await expect(fixture.page.getByRole("button", {name: "Exit full screen"})).toBeVisible();
       await expect(fixture.page.getByRole("button", {name: "Annotate mode", exact: true}))
         .toHaveAttribute("aria-pressed", "true");
@@ -545,6 +549,7 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(fixture.page.getByRole("complementary", {name: "Artifact catalog"}))
         .toBeVisible();
       await fixture.page.keyboard.press("f");
+      await fixture.page.getByRole("button", {name: /Show viewer controls/u}).click();
       await expect(fixture.page.getByRole("button", {name: "Exit full screen"})).toBeVisible();
       await fixture.page.keyboard.press("f");
       await expect(fixture.page.getByRole("button", {name: "Full screen"})).toBeVisible();
@@ -704,6 +709,7 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(fixture.page.getByRole("complementary", {name: "Artifact inspector"}))
         .toBeVisible();
       await fixture.page.getByRole("button", {name: "Full screen"}).click();
+      await fixture.page.getByRole("button", {name: /Show viewer controls/u}).click();
       await fixture.page.getByRole("button", {name: /Comments/u}).click();
       expect(await fixture.page.locator(".as-focus-comments").evaluate((node) => ({
         transform: getComputedStyle(node).transform,
@@ -797,6 +803,7 @@ test.describe("Artifact Server frontend MVP", () => {
       });
       await localLogin(fixture);
       await fixture.page.goto(published.body.links.review);
+      await fixture.page.getByRole("button", {name: /Show viewer controls/u}).click();
 
       await expect(fixture.page.getByRole("button", {name: "Exit full screen"}))
         .toBeVisible();
@@ -830,12 +837,14 @@ test.describe("Artifact Server frontend MVP", () => {
       await restoreFocusViewer.click();
       await expect(focusViewerControls).toBeVisible();
       await fixture.page.reload();
+      await fixture.page.getByRole("button", {name: /Show viewer controls/u}).click();
       await expect(fixture.page.getByRole("button", {name: "Exit full screen"}))
         .toBeVisible();
 
       await fixture.page.getByRole("button", {name: "Exit full screen"}).click();
       expect(new URL(fixture.page.url()).searchParams.has("view")).toBe(false);
       await fixture.page.goBack();
+      await fixture.page.getByRole("button", {name: /Show viewer controls/u}).click();
       await expect(fixture.page.getByRole("button", {name: "Exit full screen"}))
         .toBeVisible();
       expect(new URL(fixture.page.url()).searchParams.get("version"))
@@ -880,6 +889,7 @@ test.describe("Artifact Server frontend MVP", () => {
       );
 
       await fixture.page.getByRole("button", {name: "Full screen"}).click();
+      await fixture.page.getByRole("button", {name: /Show viewer controls/u}).click();
       const focusControls = fixture.page.getByRole("toolbar", {
         name: "Artifact viewer controls",
       });
@@ -970,6 +980,7 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(preview.getByRole("heading", {name: "Historical exact target"}))
         .toBeVisible();
 
+      await fixture.page.getByRole("button", {name: /Show viewer controls/u}).click();
       await fixture.page.getByRole("button", {name: "Exit full screen"}).click();
       await expect(fixture.page.getByRole("heading", {
         exact: true,
@@ -1198,6 +1209,7 @@ test.describe("Artifact Server frontend MVP", () => {
       await share.getByRole("button", {name: "Close Share"}).click();
 
       await fixture.page.getByRole("button", {name: "Full screen"}).click();
+      await fixture.page.getByRole("button", {name: /Show viewer controls/u}).click();
       const focusControls = fixture.page.getByRole("toolbar", {
         name: "Artifact viewer controls",
       });
@@ -1256,6 +1268,7 @@ test.describe("Artifact Server frontend MVP", () => {
       await fixture.page.locator(".as-file-list button")
         .filter({hasText: "media/preview.png"}).click();
       await fixture.page.getByRole("button", {name: "Full screen"}).click();
+      await fixture.page.getByRole("button", {name: /Show viewer controls/u}).click();
       await expect(fixture.page.getByRole("img", {
         name: "Review media fixture — media/preview.png",
       })).toBeVisible();
@@ -1480,7 +1493,7 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(fixture.page.getByText(secretValue ?? "missing-secret")).toHaveCount(0);
       expect(await browserStorage(fixture.page)).toEqual({
         indexedDatabaseNames: [],
-        localStorageKeys: ["artifact-review-locale", "artifact-review-theme"],
+        localStorageKeys: ["artifact-review-locale", "artifact-review-theme", "artifact-review-visits"],
         sessionStorageKeys: ["artifact-review-return-url"],
       });
 

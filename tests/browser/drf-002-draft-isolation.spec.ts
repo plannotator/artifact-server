@@ -47,8 +47,11 @@ test.describe("DRF-002 draft isolation", () => {
       await page.goto(reviewUrl);
       await page.getByRole("tab", {name: "Comments"}).click();
 
+      const thread = page.getByRole("article").filter({hasText: "Seeded thread."});
+
       // Only a reply draft exists; the new-thread composer must stay empty.
-      await page.getByRole("button", {exact: true, name: "Reply"}).click();
+      await thread.focus();
+      await thread.getByRole("button", {exact: true, name: "Reply"}).click();
       await page.getByLabel("Reply", {exact: true}).fill("Reply-only draft.");
       await page.waitForTimeout(mirrorSettle);
       const keys = await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("draft:")));
@@ -85,7 +88,8 @@ test.describe("DRF-002 draft isolation", () => {
       await page.goto(reviewUrl);
       await page.getByRole("tab", {name: "Comments"}).click();
       await expect(page.getByLabel("Reply", {exact: true})).toHaveCount(0);
-      await expect(page.getByRole("button", {exact: true, name: "Reply"})).toBeVisible();
+      await thread.focus();
+      await expect(thread.getByRole("button", {exact: true, name: "Reply"})).toBeVisible();
       await expect(page.getByLabel("Add a comment")).toHaveValue("");
 
       // Closing the tab over a non-empty draft asks first.
