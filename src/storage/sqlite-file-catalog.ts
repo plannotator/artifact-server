@@ -40,9 +40,7 @@ const detailRowSchema = z.object({
 });
 const tagRowSchema = z.object({artifactId: z.string(), tag: z.string()});
 const folderRowSchema = z.object({id: z.string(), name: z.string(), parentFolderId: z.string().nullable()});
-const countSchema = z.object({count: z.number().int()});
-const kindCountSchema = z.object({kind: z.string().nullable(), count: z.number().int()});
-const projectCountSchema = z.object({projectId: z.string(), count: z.number().int()});
+const groupCountSchema = z.object({projectId: z.string(), kind: z.string().nullable(), count: z.number().int()});
 const tagCountSchema = z.object({tag: z.string(), count: z.number().int()});
 
 const commentCountSql = `(SELECT COUNT(*) FROM comment_threads thread
@@ -103,19 +101,21 @@ export class SqliteFileCatalog implements FileCatalogRepository {
       const where = this.filterClauses(command);
       const parameters = Object.fromEntries(where.parameters);
       const base = `FROM artifacts a JOIN projects p ON p.id = a.project_id WHERE ${where.clauses.join(" AND ")}`;
-      const total = countSchema.parse(this.database.prepare(`SELECT COUNT(*) AS count ${base}`)
-        .get(parameters)).count;
-      const kinds = new Map<FileKind, number>();
-      for (const row of z.array(kindCountSchema).parse(this.database.prepare(`
-        SELECT a.file_kind AS kind, COUNT(*) AS count ${base} GROUP BY a.file_kind
-      `).all(parameters))) {
-        const kind = asFileKind(row.kind);
-        kinds.set(kind, (kinds.get(kind) ?? 0) + row.count);
-      }
-      const projects = z.array(projectCountSchema).parse(this.database.prepare(`
-        SELECT a.project_id AS projectId, COUNT(*) AS count ${base}
-        GROUP BY a.project_id ORDER BY count DESC, a.project_id ASC
+      // One grouped scan yields the total, the kind counts, and the project counts.
+      const groups = z.array(groupCountSchema).parse(this.database.prepare(`
+        SELECT a.project_id AS projectId, a.file_kind AS kind, COUNT(*) AS count ${base}
+        GROUP BY a.project_id, a.file_kind
       `).all(parameters));
+      const kinds = new Map<FileKind, number>();
+      const projectCounts = new Map<string, number>();
+      for (const group of groups) {
+        const kind = asFileKind(group.kind);
+        kinds.set(kind, (kinds.get(kind) ?? 0) + group.count);
+        projectCounts.set(group.projectId, (projectCounts.get(group.projectId) ?? 0) + group.count);
+      }
+      const total = groups.reduce((sum, {count}) => sum + count, 0);
+      const projects = [...projectCounts].map(([projectId, count]) => ({projectId, count}))
+        .toSorted((left, right) => right.count - left.count || left.projectId.localeCompare(right.projectId));
       const tags = z.array(tagCountSchema).parse(this.database.prepare(`
         SELECT tag.tag AS tag, COUNT(*) AS count
         FROM artifact_tags tag
