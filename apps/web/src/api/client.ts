@@ -1327,6 +1327,29 @@ export const api = {
     `/api/v1/members/${encodeURIComponent(memberId)}/deactivate`,
     { headers: mutationHeaders(), method: "POST" },
   ).then(({ member }) => member),
+  activateMember: (memberId: string) => request(
+    z.object({ member: memberSchema }),
+    `/api/v1/members/${encodeURIComponent(memberId)}/activate`,
+    { headers: mutationHeaders(), method: "POST" },
+  ).then(({ member }) => member),
+  updateMemberDisplayName: (memberId: string, displayName: string) => request(
+    z.object({ member: memberSchema }),
+    `/api/v1/members/${encodeURIComponent(memberId)}`,
+    {
+      body: JSON.stringify({ displayName }),
+      headers: mutationHeaders(),
+      method: "PATCH",
+    },
+  ).then(({ member }) => member),
+  setMemberRole: (memberId: string, role: "administrator" | "member") => request(
+    z.object({ member: memberSchema }),
+    `/api/v1/members/${encodeURIComponent(memberId)}/role`,
+    {
+      body: JSON.stringify({ role }),
+      headers: mutationHeaders(),
+      method: "POST",
+    },
+  ).then(({ member }) => member),
   apiKeys: () => request(
     z.object({ apiKeys: z.array(apiKeySchema) }),
     "/api/v1/api-keys",

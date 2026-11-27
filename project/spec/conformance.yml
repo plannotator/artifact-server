@@ -1710,6 +1710,60 @@ requirements:
     depends_on: [AUTH-001, AUTH-023, AUTH-025]
     evidence: []
 
+  - id: AUTH-029
+    kind: behavior
+    behavior: Installation administration can reactivate a deactivated member, restoring sign-in eligibility while sessions and API keys revoked by the deactivation stay revoked.
+    owner: authorization
+    source: {file: local-owner-and-private-team-access-spec.md, anchor: conformance-requirements}
+    acceptance:
+      behavior: {id: AUTH-029-B, description: "Deactivate a member, reactivate them through installation administration, and confirm they are active again while their previously revoked API key still fails authentication."}
+      failure: {id: AUTH-029-F, description: "Refuse member reactivation from a non-administrator principal and reactivation of an unknown member without changing membership state."}
+    deployments: *all
+    status: behavior_verified
+    depends_on: [AUTH-001, AUTH-028]
+    evidence:
+      - deployment: local
+        tests: [AUTH-029-B, AUTH-029-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-27T00:00:00.000Z"
+
+  - id: AUTH-030
+    kind: behavior
+    behavior: Installation administration can edit a member's display name, and the new name serves on the member list and subsequent attribution surfaces.
+    owner: authorization
+    source: {file: local-owner-and-private-team-access-spec.md, anchor: conformance-requirements}
+    acceptance:
+      behavior: {id: AUTH-030-B, description: "Rename a member through installation administration and confirm the member list serves the new display name."}
+      failure: {id: AUTH-030-F, description: "Refuse display-name edits from a non-administrator principal and edits without a valid non-empty display name."}
+    deployments: *all
+    status: behavior_verified
+    depends_on: [AUTH-001]
+    evidence:
+      - deployment: local
+        tests: [AUTH-030-B, AUTH-030-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-27T00:00:00.000Z"
+
+  - id: AUTH-031
+    kind: behavior
+    behavior: Installation administration can change a member's role between member and administrator without leaving the installation without an active administrator.
+    owner: authorization
+    source: {file: local-owner-and-private-team-access-spec.md, anchor: conformance-requirements}
+    acceptance:
+      behavior: {id: AUTH-031-B, description: "Promote a member to administrator and demote another administrator to member while at least one active administrator remains."}
+      failure: {id: AUTH-031-F, description: "Refuse role changes from a non-administrator principal, current-member self role changes, and demotions that would remove the last active administrator."}
+    deployments: *all
+    status: behavior_verified
+    depends_on: [AUTH-001, AUTH-028]
+    evidence:
+      - deployment: local
+        tests: [AUTH-031-B, AUTH-031-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-27T00:00:00.000Z"
+
   - id: SEC-001
     kind: security
     behavior: Published websites are treated as untrusted arbitrary browser JavaScript.

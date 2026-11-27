@@ -770,6 +770,15 @@ export function createApplicationLayer(
     localLoginAttemptLifetimeMilliseconds: 60 * 1_000,
     protectBootstrapAdministrator: adapters.protectBootstrapAdministrator,
     repository: {
+      activateMember: (installationId, memberId, updatedAt) =>
+        identityEffectWithNotFound(
+          "activateMember",
+          () => identityRepository.activateMember(
+            installationId,
+            memberId,
+            updatedAt,
+          ),
+        ),
       admitMember: (command) => identityEffectWithConflict(
         "admitMember",
         () => identityRepository.admitMember(command),
@@ -805,6 +814,26 @@ export function createApplicationLayer(
           () => identityRepository.deactivateMember(
             installationId,
             memberId,
+            updatedAt,
+          ),
+        ),
+      updateMemberDisplayName: (installationId, memberId, displayName, updatedAt) =>
+        identityEffectWithNotFound(
+          "updateMemberDisplayName",
+          () => identityRepository.updateMemberDisplayName(
+            installationId,
+            memberId,
+            displayName,
+            updatedAt,
+          ),
+        ),
+      updateMemberRole: (installationId, memberId, role, updatedAt) =>
+        identityEffectWithConflictOrNotFound(
+          "updateMemberRole",
+          () => identityRepository.updateMemberRole(
+            installationId,
+            memberId,
+            role,
             updatedAt,
           ),
         ),

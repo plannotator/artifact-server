@@ -45,6 +45,14 @@ const allCapabilities = Object.values(principalCapabilities);
 const localBrowserLoginProvider = "artifact-server-local";
 
 export interface InstallationIdentityRepository {
+  readonly activateMember: (
+    installationId: string,
+    memberId: string,
+    updatedAt: string,
+  ) => Effect.Effect<
+    InstallationMember,
+    IdentityNotFound | IdentityRepositoryFailure
+  >;
   readonly admitMember: (
     command: {
       readonly createdAt: string;
@@ -147,6 +155,24 @@ export interface InstallationIdentityRepository {
     ManagedApiKey,
     IdentityConflict | IdentityNotFound | IdentityRepositoryFailure
   >;
+  readonly updateMemberDisplayName: (
+    installationId: string,
+    memberId: string,
+    displayName: string,
+    updatedAt: string,
+  ) => Effect.Effect<
+    InstallationMember,
+    IdentityNotFound | IdentityRepositoryFailure
+  >;
+  readonly updateMemberRole: (
+    installationId: string,
+    memberId: string,
+    role: MembershipRole,
+    updatedAt: string,
+  ) => Effect.Effect<
+    InstallationMember,
+    IdentityConflict | IdentityNotFound | IdentityRepositoryFailure
+  >;
 }
 
 export interface IdentitySecretProvider {
@@ -241,6 +267,29 @@ export interface InstallationAccessOperations {
   readonly deactivateMember: (
     principal: Principal,
     memberId: string,
+  ) => Effect.Effect<
+    InstallationMember,
+    AuthorizationDenied | IdentityConflict | IdentityNotFound | IdentityRepositoryFailure
+  >;
+  readonly activateMember: (
+    principal: Principal,
+    memberId: string,
+  ) => Effect.Effect<
+    InstallationMember,
+    AuthorizationDenied | IdentityConflict | IdentityNotFound | IdentityRepositoryFailure
+  >;
+  readonly updateMemberDisplayName: (
+    principal: Principal,
+    memberId: string,
+    displayName: string,
+  ) => Effect.Effect<
+    InstallationMember,
+    AuthorizationDenied | IdentityConflict | IdentityNotFound | IdentityRepositoryFailure
+  >;
+  readonly updateMemberRole: (
+    principal: Principal,
+    memberId: string,
+    role: MembershipRole,
   ) => Effect.Effect<
     InstallationMember,
     AuthorizationDenied | IdentityConflict | IdentityNotFound | IdentityRepositoryFailure
@@ -643,6 +692,61 @@ function makeInstallationAccessService(
     return member;
   });
 
+  const activateMember = Effect.fn(
+    "InstallationAccessService.activateMember",
+  )(function*(principal: Principal, memberId: string) {
+    yield* requireAdministrator(principal, dependencies.installationId);
+    const member = yield* dependencies.repository.activateMember(
+      dependencies.installationId,
+      memberId,
+      dependencies.clock.now().toISOString(),
+    );
+    // Session entries are keyed by token digest, not member, so this rare
+    // administrative mutation clears the whole cache instead of indexing it.
+    sessionCache?.clear();
+    apiKeyCache?.clear();
+    return member;
+  });
+
+  const updateMemberDisplayName = Effect.fn(
+    "InstallationAccessService.updateMemberDisplayName",
+  )(function*(principal: Principal, memberId: string, displayName: string) {
+    yield* requireAdministrator(principal, dependencies.installationId);
+    const member = yield* dependencies.repository.updateMemberDisplayName(
+      dependencies.installationId,
+      memberId,
+      displayName,
+      dependencies.clock.now().toISOString(),
+    );
+    // Display names surface on comments and member listings; clear the whole
+    // cache so stale principals stop serving the previous name.
+    sessionCache?.clear();
+    apiKeyCache?.clear();
+    return member;
+  });
+
+  const updateMemberRole = Effect.fn(
+    "InstallationAccessService.updateMemberRole",
+  )(function*(principal: Principal, memberId: string, role: MembershipRole) {
+    yield* requireAdministrator(principal, dependencies.installationId);
+    if (principal.id === memberId) {
+      return yield* Effect.fail(new IdentityConflict({
+        message: "An administrator cannot change their own role.",
+      }));
+    }
+    const member = yield* dependencies.repository.updateMemberRole(
+      dependencies.installationId,
+      memberId,
+      role,
+      dependencies.clock.now().toISOString(),
+    );
+    // Role changes must take effect on in-flight sessions; clear the whole
+    // cache instead of indexing it (same rationale as deactivation).
+    sessionCache?.clear();
+    apiKeyCache?.clear();
+    return member;
+  });
+
   const issueApiKey = Effect.fn(
     "InstallationAccessService.issueApiKey",
   )(function*(command: IssueApiKeyCommand) {
@@ -768,10 +872,13 @@ function makeInstallationAccessService(
     authenticateManagedApiKey,
     authenticateSession,
     completeExternalIdentity,
+    activateMember,
     deactivateMember,
     issueApiKey,
     issueLocalBrowserLogin,
     loginAsLocalOwner,
+    updateMemberDisplayName,
+    updateMemberRole,
     listApiKeys,
     listMembers,
     loginWithLocalBrowserToken,

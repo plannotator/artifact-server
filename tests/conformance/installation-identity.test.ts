@@ -931,6 +931,352 @@ describe("installation identity and access", () => {
       "Bearer resource_metadata=\"https://team.example.test/.well-known/oauth-protected-resource/api\" scope=\"artifactserver\"",
     );
   });
+
+  test("AUTH-029-B: administration reactivates a deactivated member while revoked credentials stay revoked", async () => {
+    const localBrowserToken = await issueLocalBrowserLogin(server, installation);
+    const login = await fetch(
+      `${server.baseUrl}/auth/local?token=${localBrowserToken}`,
+      {redirect: "manual"},
+    );
+    const cookies = applicationCookies(login.headers.getSetCookie());
+
+    const memberResponse = await fetch(`${server.baseUrl}/api/v1/members`, {
+      body: JSON.stringify({
+        displayName: "Reactivatable member",
+        email: "reactivate@example.test",
+      }),
+      headers: browserMutationHeaders(server.baseUrl, cookies),
+      method: "POST",
+    });
+    expect(memberResponse.status).toBe(201);
+    const admittedMember = z.object({
+      member: z.object({id: z.string()}),
+    }).parse(await memberResponse.json()).member;
+
+    const keyResponse = await fetch(`${server.baseUrl}/api/v1/api-keys`, {
+      body: JSON.stringify({
+        capabilities: ["artifact:read"],
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        memberId: admittedMember.id,
+        name: "Member key before deactivation",
+      }),
+      headers: browserMutationHeaders(server.baseUrl, cookies),
+      method: "POST",
+    });
+    expect(keyResponse.status).toBe(201);
+    const issuedKey = issuedHumanKeySchema.parse(await keyResponse.json());
+
+    const deactivated = await fetch(
+      `${server.baseUrl}/api/v1/members/${admittedMember.id}/deactivate`,
+      {headers: browserMutationHeaders(server.baseUrl, cookies), method: "POST"},
+    );
+    expect(deactivated.status).toBe(200);
+    expect((await fetch(`${server.baseUrl}/api/v1/members`, {
+      headers: {Authorization: `Bearer ${issuedKey.token}`},
+    })).status).toBe(401);
+
+    const activated = await fetch(
+      `${server.baseUrl}/api/v1/members/${admittedMember.id}/activate`,
+      {headers: browserMutationHeaders(server.baseUrl, cookies), method: "POST"},
+    );
+    expect(activated.status).toBe(200);
+    const activatedBody = z.object({
+      member: z.object({status: z.literal("active")}),
+    }).parse(await activated.json());
+    expect(activatedBody.member.status).toBe("active");
+
+    // Reactivation restores sign-in eligibility only: credentials revoked by
+    // the deactivation stay revoked, so the member issues fresh keys.
+    expect((await fetch(`${server.baseUrl}/api/v1/members`, {
+      headers: {Authorization: `Bearer ${issuedKey.token}`},
+    })).status).toBe(401);
+
+    const members = z.object({
+      members: z.array(z.object({
+        email: z.string(),
+        status: z.literal("active"),
+      })),
+    }).parse(await (await fetch(`${server.baseUrl}/api/v1/members`, {
+      headers: browserMutationHeaders(server.baseUrl, cookies),
+    })).json());
+    expect(members.members).toContainEqual({
+      email: "reactivate@example.test",
+      status: "active",
+    });
+  });
+
+  test("AUTH-029-F: reactivation is administrator-only and refuses unknown members", async () => {
+    const localBrowserToken = await issueLocalBrowserLogin(server, installation);
+    const login = await fetch(
+      `${server.baseUrl}/auth/local?token=${localBrowserToken}`,
+      {redirect: "manual"},
+    );
+    const cookies = applicationCookies(login.headers.getSetCookie());
+
+    const memberResponse = await fetch(`${server.baseUrl}/api/v1/members`, {
+      body: JSON.stringify({
+        displayName: "Plain member",
+        email: "plain-member@example.test",
+      }),
+      headers: browserMutationHeaders(server.baseUrl, cookies),
+      method: "POST",
+    });
+    expect(memberResponse.status).toBe(201);
+    const admittedMember = z.object({
+      member: z.object({id: z.string()}),
+    }).parse(await memberResponse.json()).member;
+
+    const memberKeyResponse = await fetch(`${server.baseUrl}/api/v1/api-keys`, {
+      body: JSON.stringify({
+        capabilities: ["artifact:read"],
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        memberId: admittedMember.id,
+        name: "Plain member key",
+      }),
+      headers: browserMutationHeaders(server.baseUrl, cookies),
+      method: "POST",
+    });
+    const memberKey = issuedHumanKeySchema.parse(await memberKeyResponse.json());
+
+    const denied = await fetch(
+      `${server.baseUrl}/api/v1/members/${admittedMember.id}/activate`,
+      {headers: {Authorization: `Bearer ${memberKey.token}`}, method: "POST"},
+    );
+    expect(denied.status).toBe(403);
+
+    const unknown = await fetch(
+      `${server.baseUrl}/api/v1/members/member_missing/activate`,
+      {headers: browserMutationHeaders(server.baseUrl, cookies), method: "POST"},
+    );
+    expect(unknown.status).toBe(404);
+  });
+
+  test("AUTH-030-B: administration edits a member display name", async () => {
+    const localBrowserToken = await issueLocalBrowserLogin(server, installation);
+    const login = await fetch(
+      `${server.baseUrl}/auth/local?token=${localBrowserToken}`,
+      {redirect: "manual"},
+    );
+    const cookies = applicationCookies(login.headers.getSetCookie());
+
+    const memberResponse = await fetch(`${server.baseUrl}/api/v1/members`, {
+      body: JSON.stringify({
+        displayName: "Typo Name",
+        email: "rename@example.test",
+      }),
+      headers: browserMutationHeaders(server.baseUrl, cookies),
+      method: "POST",
+    });
+    expect(memberResponse.status).toBe(201);
+    const admittedMember = z.object({
+      member: z.object({id: z.string()}),
+    }).parse(await memberResponse.json()).member;
+
+    const renamed = await fetch(
+      `${server.baseUrl}/api/v1/members/${admittedMember.id}`,
+      {
+        body: JSON.stringify({displayName: "Corrected Name"}),
+        headers: browserMutationHeaders(server.baseUrl, cookies),
+        method: "PATCH",
+      },
+    );
+    expect(renamed.status).toBe(200);
+    const renamedBody = z.object({
+      member: z.object({displayName: z.literal("Corrected Name")}),
+    }).parse(await renamed.json());
+
+    const members = z.object({
+      members: z.array(z.object({
+        displayName: z.string(),
+        email: z.string(),
+      })),
+    }).parse(await (await fetch(`${server.baseUrl}/api/v1/members`, {
+      headers: browserMutationHeaders(server.baseUrl, cookies),
+    })).json());
+    expect(members.members).toContainEqual({
+      displayName: renamedBody.member.displayName,
+      email: "rename@example.test",
+    });
+  });
+
+  test("AUTH-030-F: display-name edits are administrator-only and need a valid name", async () => {
+    const localBrowserToken = await issueLocalBrowserLogin(server, installation);
+    const login = await fetch(
+      `${server.baseUrl}/auth/local?token=${localBrowserToken}`,
+      {redirect: "manual"},
+    );
+    const cookies = applicationCookies(login.headers.getSetCookie());
+
+    const memberResponse = await fetch(`${server.baseUrl}/api/v1/members`, {
+      body: JSON.stringify({
+        displayName: "Member One",
+        email: "rename-denied@example.test",
+      }),
+      headers: browserMutationHeaders(server.baseUrl, cookies),
+      method: "POST",
+    });
+    const admittedMember = z.object({
+      member: z.object({id: z.string()}),
+    }).parse(await memberResponse.json()).member;
+
+    const memberKeyResponse = await fetch(`${server.baseUrl}/api/v1/api-keys`, {
+      body: JSON.stringify({
+        capabilities: ["artifact:read"],
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        memberId: admittedMember.id,
+        name: "Rename denied key",
+      }),
+      headers: browserMutationHeaders(server.baseUrl, cookies),
+      method: "POST",
+    });
+    const memberKey = issuedHumanKeySchema.parse(await memberKeyResponse.json());
+
+    const denied = await fetch(
+      `${server.baseUrl}/api/v1/members/${admittedMember.id}`,
+      {
+        body: JSON.stringify({displayName: "Escalated Name"}),
+        headers: {Authorization: `Bearer ${memberKey.token}`},
+        method: "PATCH",
+      },
+    );
+    expect(denied.status).toBe(403);
+
+    const invalid = await fetch(
+      `${server.baseUrl}/api/v1/members/${admittedMember.id}`,
+      {
+        body: JSON.stringify({displayName: ""}),
+        headers: browserMutationHeaders(server.baseUrl, cookies),
+        method: "PATCH",
+      },
+    );
+    // The shared zod error mapping answers malformed bodies with 422.
+    expect(invalid.status).toBe(422);
+  });
+
+  test("AUTH-031-B: administration changes member roles while an active administrator remains", async () => {
+    const localBrowserToken = await issueLocalBrowserLogin(server, installation);
+    const login = await fetch(
+      `${server.baseUrl}/auth/local?token=${localBrowserToken}`,
+      {redirect: "manual"},
+    );
+    const cookies = applicationCookies(login.headers.getSetCookie());
+
+    const admit = async (displayName: string, email: string, role: string) => {
+      const response = await fetch(`${server.baseUrl}/api/v1/members`, {
+        body: JSON.stringify({displayName, email, role}),
+        headers: browserMutationHeaders(server.baseUrl, cookies),
+        method: "POST",
+      });
+      expect(response.status).toBe(201);
+      return z.object({
+        member: z.object({id: z.string(), role: z.string()}),
+      }).parse(await response.json()).member;
+    };
+
+    const firstMember = await admit(
+      "Promotable member",
+      "promote@example.test",
+      "member",
+    );
+    const promoted = await fetch(
+      `${server.baseUrl}/api/v1/members/${firstMember.id}/role`,
+      {
+        body: JSON.stringify({role: "administrator"}),
+        headers: browserMutationHeaders(server.baseUrl, cookies),
+        method: "POST",
+      },
+    );
+    expect(promoted.status).toBe(200);
+    expect(z.object({
+      member: z.object({role: z.literal("administrator")}),
+    }).parse(await promoted.json()).member.role).toBe("administrator");
+
+    const secondAdministrator = await admit(
+      "Demotable administrator",
+      "demote@example.test",
+      "administrator",
+    );
+    const demoted = await fetch(
+      `${server.baseUrl}/api/v1/members/${secondAdministrator.id}/role`,
+      {
+        body: JSON.stringify({role: "member"}),
+        headers: browserMutationHeaders(server.baseUrl, cookies),
+        method: "POST",
+      },
+    );
+    expect(demoted.status).toBe(200);
+    expect(z.object({
+      member: z.object({role: z.literal("member")}),
+    }).parse(await demoted.json()).member.role).toBe("member");
+  });
+
+  test("AUTH-031-F: role changes refuse non-administrators, self changes, and last-administrator demotions", async () => {
+    const localBrowserToken = await issueLocalBrowserLogin(server, installation);
+    const login = await fetch(
+      `${server.baseUrl}/auth/local?token=${localBrowserToken}`,
+      {redirect: "manual"},
+    );
+    const cookies = applicationCookies(login.headers.getSetCookie());
+    const viewer = sessionResponseSchema.parse(
+      await (await fetch(`${server.baseUrl}/api/v1/session`, {
+        headers: {Cookie: cookies.header},
+      })).json(),
+    ).principal;
+
+    const memberResponse = await fetch(`${server.baseUrl}/api/v1/members`, {
+      body: JSON.stringify({
+        displayName: "Role denied member",
+        email: "role-denied@example.test",
+      }),
+      headers: browserMutationHeaders(server.baseUrl, cookies),
+      method: "POST",
+    });
+    const admittedMember = z.object({
+      member: z.object({id: z.string()}),
+    }).parse(await memberResponse.json()).member;
+
+    const memberKeyResponse = await fetch(`${server.baseUrl}/api/v1/api-keys`, {
+      body: JSON.stringify({
+        capabilities: ["artifact:read"],
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        memberId: admittedMember.id,
+        name: "Role denied key",
+      }),
+      headers: browserMutationHeaders(server.baseUrl, cookies),
+      method: "POST",
+    });
+    const memberKey = issuedHumanKeySchema.parse(await memberKeyResponse.json());
+
+    const denied = await fetch(
+      `${server.baseUrl}/api/v1/members/${admittedMember.id}/role`,
+      {
+        body: JSON.stringify({role: "administrator"}),
+        headers: {Authorization: `Bearer ${memberKey.token}`},
+        method: "POST",
+      },
+    );
+    expect(denied.status).toBe(403);
+
+    const selfChange = await fetch(
+      `${server.baseUrl}/api/v1/members/${viewer.id}/role`,
+      {
+        body: JSON.stringify({role: "member"}),
+        headers: browserMutationHeaders(server.baseUrl, cookies),
+        method: "POST",
+      },
+    );
+    expect(selfChange.status).toBe(409);
+
+    const lastAdministrator = await fetch(
+      `${server.baseUrl}/api/v1/members/${viewer.id}/role`,
+      {
+        body: JSON.stringify({role: "member"}),
+        headers: {Authorization: `Bearer ${memberKey.token}`},
+        method: "POST",
+      },
+    );
+    expect(lastAdministrator.status).toBe(403);
+  });
 });
 
 class TestIdentityProvider implements InteractiveIdentityProvider {
