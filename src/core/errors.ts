@@ -429,6 +429,7 @@ export class IdentityRepositoryFailure extends Schema.TaggedError<IdentityReposi
   {
     cause: Schema.Defect(),
     operation: Schema.Literals([
+      "activateMember",
       "admitMember",
       "bindExternalIdentity",
       "consumeLoginAttempt",
@@ -447,6 +448,8 @@ export class IdentityRepositoryFailure extends Schema.TaggedError<IdentityReposi
       "revokeApiKey",
       "revokeApplicationSession",
       "rotateApiKey",
+      "updateMemberDisplayName",
+      "updateMemberRole",
     ]),
   },
 ) {}

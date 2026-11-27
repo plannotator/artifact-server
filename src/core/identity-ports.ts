@@ -38,6 +38,11 @@ export interface CreateApplicationSessionRecord {
 
 /** Persistent identity operations required by the Node application composition. */
 export interface IdentityRepository {
+  activateMember(
+    installationId: string,
+    memberId: string,
+    updatedAt: string,
+  ): Promise<InstallationMember>;
   admitMember(command: AdmitMemberRecord): Promise<InstallationMember>;
   bindExternalIdentity(command: BindExternalIdentityRecord): Promise<void>;
   consumeLoginAttempt(
@@ -96,6 +101,18 @@ export interface IdentityRepository {
     replacement: StoredManagedApiKey,
     revokedAt: string,
   ): Promise<ManagedApiKey>;
+  updateMemberDisplayName(
+    installationId: string,
+    memberId: string,
+    displayName: string,
+    updatedAt: string,
+  ): Promise<InstallationMember>;
+  updateMemberRole(
+    installationId: string,
+    memberId: string,
+    role: InstallationMember["role"],
+    updatedAt: string,
+  ): Promise<InstallationMember>;
 }
 
 /** Atomic first-key operation required by private-team composition roots. */

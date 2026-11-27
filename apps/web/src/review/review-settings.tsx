@@ -103,6 +103,7 @@ export function ReviewSettings({
             projects={projects}
             route={route}
             session={session}
+            viewerId={principal.id}
           />
         </main>
       </div>
@@ -117,6 +118,7 @@ function SettingsContent({
   projects,
   route,
   session,
+  viewerId,
 }: {
   readonly administrator: boolean;
   readonly canManageProjects: boolean;
@@ -124,6 +126,7 @@ function SettingsContent({
   readonly projects: readonly Project[];
   readonly route: SettingsRoute;
   readonly session: Session;
+  readonly viewerId: string;
 }) {
   if (route.kind === "notFound") {
     return (
@@ -165,7 +168,7 @@ function SettingsContent({
   if (!administrator) return <AdministratorPermissionRequired />;
   switch (route.kind) {
     case "members":
-      return <MembersScreen />;
+      return <MembersScreen viewerId={viewerId} />;
     case "apiKeys":
       return <ApiKeysScreen />;
     case "publicLinks":

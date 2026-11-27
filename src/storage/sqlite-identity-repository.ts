@@ -339,6 +339,104 @@ export class SqliteIdentityRepository implements BootstrapManagedApiKeyRepositor
     }
   }
 
+  async activateMember(
+    installationId: string,
+    memberId: string,
+    updatedAt: string,
+  ): Promise<InstallationMember> {
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const existing = this.#findMember(installationId, memberId);
+      if (existing === null) {
+        throw new IdentityNotFound({message: "The member does not exist."});
+      }
+      this.#database.prepare(`
+        UPDATE installation_members
+        SET status = ?, updated_at = ?
+        WHERE installation_id = ? AND id = ?
+      `).run(memberStatuses.active, updatedAt, installationId, memberId);
+      // Sessions and API keys stay revoked by the earlier deactivation:
+      // the member signs in again and issues fresh keys.
+      this.#database.exec("COMMIT;");
+      return {...existing, status: memberStatuses.active, updatedAt};
+    } catch (cause) {
+      this.#database.exec("ROLLBACK;");
+      throw cause;
+    }
+  }
+
+  async updateMemberDisplayName(
+    installationId: string,
+    memberId: string,
+    displayName: string,
+    updatedAt: string,
+  ): Promise<InstallationMember> {
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const existing = this.#findMember(installationId, memberId);
+      if (existing === null) {
+        throw new IdentityNotFound({message: "The member does not exist."});
+      }
+      this.#database.prepare(`
+        UPDATE installation_members
+        SET display_name = ?, updated_at = ?
+        WHERE installation_id = ? AND id = ?
+      `).run(displayName, updatedAt, installationId, memberId);
+      this.#database.exec("COMMIT;");
+      return {...existing, displayName, updatedAt};
+    } catch (cause) {
+      this.#database.exec("ROLLBACK;");
+      throw cause;
+    }
+  }
+
+  async updateMemberRole(
+    installationId: string,
+    memberId: string,
+    role: InstallationMember["role"],
+    updatedAt: string,
+  ): Promise<InstallationMember> {
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const existing = this.#findMember(installationId, memberId);
+      if (existing === null) {
+        throw new IdentityNotFound({message: "The member does not exist."});
+      }
+      if (
+        existing.status === memberStatuses.active &&
+        existing.role === membershipRoles.administrator &&
+        role === membershipRoles.member
+      ) {
+        const activeAdministratorCount = countRowSchema.parse(
+          this.#database.prepare(`
+          SELECT COUNT(*) AS count
+          FROM installation_members
+          WHERE installation_id = ? AND role = ? AND status = ?
+          `).get(
+            installationId,
+            membershipRoles.administrator,
+            memberStatuses.active,
+          ),
+        );
+        if (activeAdministratorCount.count <= 1) {
+          throw new IdentityConflict({
+            message: "The installation must retain one active administrator.",
+          });
+        }
+      }
+      this.#database.prepare(`
+        UPDATE installation_members
+        SET role = ?, updated_at = ?
+        WHERE installation_id = ? AND id = ?
+      `).run(role, updatedAt, installationId, memberId);
+      this.#database.exec("COMMIT;");
+      return {...existing, role, updatedAt};
+    } catch (cause) {
+      this.#database.exec("ROLLBACK;");
+      throw cause;
+    }
+  }
+
   async createApplicationSession(
     command: CreateApplicationSessionRecord,
   ): Promise<ApplicationSession> {

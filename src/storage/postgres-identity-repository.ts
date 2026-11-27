@@ -295,6 +295,102 @@ export class PostgresIdentityRepository implements BootstrapManagedApiKeyReposit
     }));
   }
 
+  async activateMember(
+    installationId: string,
+    memberId: string,
+    updatedAt: string,
+  ): Promise<InstallationMember> {
+    this.#assertInstallationScope(installationId);
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        yield* sql`SELECT pg_advisory_xact_lock(
+          hashtextextended(${`artifact-server:member-policy:${installationId}`}, 0)
+        )`;
+        const existing = yield* this.#findMember(installationId, memberId, true);
+        if (existing === null) {
+          return yield* new IdentityNotFound({message: "The member does not exist."});
+        }
+        yield* sql`UPDATE installation_members
+          SET status = ${memberStatuses.active}, updated_at = ${updatedAt}
+          WHERE installation_id = ${installationId} AND id = ${memberId}`;
+        // Sessions and API keys stay revoked by the earlier deactivation:
+        // the member signs in again and issues fresh keys.
+        return {...existing, status: memberStatuses.active, updatedAt};
+      }));
+    }));
+  }
+
+  async updateMemberDisplayName(
+    installationId: string,
+    memberId: string,
+    displayName: string,
+    updatedAt: string,
+  ): Promise<InstallationMember> {
+    this.#assertInstallationScope(installationId);
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        yield* sql`SELECT pg_advisory_xact_lock(
+          hashtextextended(${`artifact-server:member-policy:${installationId}`}, 0)
+        )`;
+        const existing = yield* this.#findMember(installationId, memberId, true);
+        if (existing === null) {
+          return yield* new IdentityNotFound({message: "The member does not exist."});
+        }
+        yield* sql`UPDATE installation_members
+          SET display_name = ${displayName}, updated_at = ${updatedAt}
+          WHERE installation_id = ${installationId} AND id = ${memberId}`;
+        return {...existing, displayName, updatedAt};
+      }));
+    }));
+  }
+
+  async updateMemberRole(
+    installationId: string,
+    memberId: string,
+    role: InstallationMember["role"],
+    updatedAt: string,
+  ): Promise<InstallationMember> {
+    this.#assertInstallationScope(installationId);
+    return this.#database.run(Effect.gen({self: this}, function*() {
+      const sql = yield* SqlClient;
+      return yield* sql.withTransaction(Effect.gen({self: this}, function*() {
+        yield* sql`SELECT pg_advisory_xact_lock(
+          hashtextextended(${`artifact-server:member-policy:${installationId}`}, 0)
+        )`;
+        const existing = yield* this.#findMember(installationId, memberId, true);
+        if (existing === null) {
+          return yield* new IdentityNotFound({message: "The member does not exist."});
+        }
+        if (
+          existing.status === memberStatuses.active &&
+          existing.role === membershipRoles.administrator &&
+          role === membershipRoles.member
+        ) {
+          const rows = yield* sql.unsafe<object>(
+            `SELECT COUNT(*) AS count FROM installation_members
+             WHERE installation_id = $1 AND role = $2 AND status = $3`,
+            [
+              installationId,
+              membershipRoles.administrator,
+              memberStatuses.active,
+            ],
+          );
+          if (countRowSchema.parse(rows[0]).count <= 1) {
+            return yield* new IdentityConflict({
+              message: "The installation must retain one active administrator.",
+            });
+          }
+        }
+        yield* sql`UPDATE installation_members
+          SET role = ${role}, updated_at = ${updatedAt}
+          WHERE installation_id = ${installationId} AND id = ${memberId}`;
+        return {...existing, role, updatedAt};
+      }));
+    }));
+  }
+
   async createApplicationSession(
     command: CreateApplicationSessionRecord,
   ): Promise<ApplicationSession> {

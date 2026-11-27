@@ -1082,6 +1082,59 @@ export function createHttpApp(
     return context.json({member});
   });
 
+  app.post("/api/v1/members/:memberId/activate", async (context) => {
+    const member = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      InstallationAccessService.use((access) =>
+        access.activateMember(
+          context.get("principal"),
+          context.req.param("memberId"),
+        )
+      ),
+    );
+    return context.json({member});
+  });
+
+  const updateMemberSchema = z.object({
+    displayName: z.string().trim().min(1).max(200),
+  });
+  const setMemberRoleSchema = z.object({
+    role: memberRoleSchema,
+  });
+
+  app.patch("/api/v1/members/:memberId", async (context) => {
+    const body = updateMemberSchema.parse(await context.req.json());
+    const member = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      InstallationAccessService.use((access) =>
+        access.updateMemberDisplayName(
+          context.get("principal"),
+          context.req.param("memberId"),
+          body.displayName,
+        )
+      ),
+    );
+    return context.json({member});
+  });
+
+  app.post("/api/v1/members/:memberId/role", async (context) => {
+    const body = setMemberRoleSchema.parse(await context.req.json());
+    const member = await runHttpApplicationEffect(
+      context,
+      dependencies,
+      InstallationAccessService.use((access) =>
+        access.updateMemberRole(
+          context.get("principal"),
+          context.req.param("memberId"),
+          body.role,
+        )
+      ),
+    );
+    return context.json({member});
+  });
+
   app.get("/api/v1/api-keys", async (context) => {
     const apiKeys = await runHttpApplicationEffect(
       context,
